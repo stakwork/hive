@@ -51,7 +51,7 @@ export async function storePullRequest(
 ): Promise<void> {
   const pr = payload.pull_request;
 
-  logger.debug("[storePullRequest] Processing merged PR", "github/storePullRequest", { {
+  logger.debug("[storePullRequest] Processing merged PR", {
     workspaceId,
     repositoryId,
     prNumber: payload.number,
@@ -60,7 +60,7 @@ export async function storePullRequest(
     mergedBy: pr.merged_by?.login,
     baseBranch: pr.base.ref,
     headBranch: pr.head.ref,
-  } });
+  });
 
   const swarm = await db.swarm.findFirst({
     where: {
@@ -69,7 +69,7 @@ export async function storePullRequest(
   });
 
   if (!swarm) {
-    logger.error("[storePullRequest] Swarm not found", "github/storePullRequest", { { workspaceId } });
+    logger.error("[storePullRequest] Swarm not found", { workspaceId });
     throw new Error("Swarm not found");
   }
 
@@ -91,12 +91,12 @@ export async function storePullRequest(
       // Parse owner/repo from repository full_name (e.g., "owner/repo")
       const [owner, repo] = payload.repository.full_name.split("/");
 
-      logger.debug("[storePullRequest] Fetching PR content", "github/storePullRequest", { {
+      logger.debug("[storePullRequest] Fetching PR content", {
         workspaceId,
         prNumber: payload.number,
         owner,
         repo,
-      } });
+      });
 
       prDocs = await fetchPullRequestContent(octokit, {
         owner,
@@ -104,11 +104,11 @@ export async function storePullRequest(
         pull_number: payload.number,
       });
 
-      logger.debug("[storePullRequest] PR content fetched", "github/storePullRequest", { {
+      logger.debug("[storePullRequest] PR content fetched", {
         workspaceId,
         prNumber: payload.number,
         contentLength: prDocs.length,
-      } });
+      });
     } catch (error) {
       logger.error("[storePullRequest] Failed to fetch PR content, using basic info", "github/storePullRequest", { {
         workspaceId,
@@ -134,13 +134,13 @@ export async function storePullRequest(
     docs: prDocs,
   };
 
-  logger.debug("[storePullRequest] Posting to swarm", "github/storePullRequest", { {
+  logger.debug("[storePullRequest] Posting to swarm", {
     workspaceId,
     pullRequestUrl,
     prNumber: payload.number,
     prName: pr.title,
     docsLength: prDocs.length,
-  } });
+  });
 
   return; // FIXME make a quality AI learning
 
@@ -155,20 +155,20 @@ export async function storePullRequest(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error("[storePullRequest] Failed to post to swarm", "github/storePullRequest", { {
+    logger.error("[storePullRequest] Failed to post to swarm", {
       workspaceId,
       prNumber: payload.number,
       status: response.status,
       statusText: response.statusText,
       error: errorText,
-    } });
+    });
     throw new Error(`Failed to post PR to swarm: ${response.status} ${response.statusText}`);
   }
 
   const result = await response.json();
-  logger.debug("[storePullRequest] Successfully posted to swarm", "github/storePullRequest", { {
+  logger.debug("[storePullRequest] Successfully posted to swarm", {
     workspaceId,
     prNumber: payload.number,
     result,
-  } });
+  });
 }

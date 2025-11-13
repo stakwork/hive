@@ -108,7 +108,7 @@ export function ProjectNameSetupStep() {
             setInfoMessage("");
           }
         } else {
-          logger.error("Failed to check slug availability:", { data.error });
+          logger.error("Failed to check slug availability:", { error: data.error });
         }
       } catch (error) {
         logger.error("Error checking slug availability:", { error });

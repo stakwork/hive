@@ -69,7 +69,7 @@ export function RerunIngest({
         });
         setIsOpen(false);
       } else {
-        logger.error("Ingest API error:", "RerunIngest", { { status: response.status, data } });
+        logger.error("Ingest API error:", { status: response.status, data });
         toast({
           title: "Ingest Failed",
           description: data?.message || `Failed to start code ingestion (${response.status})`,

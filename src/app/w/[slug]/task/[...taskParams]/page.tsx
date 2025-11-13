@@ -60,12 +60,12 @@ export default function TaskChatPage() {
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(taskIdFromUrl);
 
   // Debug logging
-  // logger.debug("[TaskPage] Workspace context:", "[...taskParams]/page", { {
+  // logger.debug("[TaskPage] Workspace context:", { 
   //   workspaceId,
   //   workspaceObject: workspace,
   //   effectiveWorkspaceId,
   //   currentTaskId,
-  // } });
+  //  });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -477,7 +477,7 @@ export default function TaskChatPage() {
               }
             } else {
               // Pod might have been released or doesn't exist anymore - just skip silently
-              logger.debug("Failed to fetch diff (pod may no longer exist):", { diffResponse.status });
+              logger.debug("Failed to fetch diff (pod may no longer exist):", { status: diffResponse.status });
             }
           } catch (error) {
             logger.error("Error fetching diff:", { error });
@@ -587,7 +587,7 @@ export default function TaskChatPage() {
 
   const handleCommit = async () => {
     if (!workspaceId || !currentTaskId) {
-      logger.error("Missing commit requirements:", "[...taskParams]/page", { { workspaceId, claimedPodId, currentTaskId } });
+      logger.error("Missing commit requirements:", {  workspaceId, claimedPodId, currentTaskId  });
       toast({
         title: "Error",
         description: `Missing required information to commit. workspaceId: ${!!workspaceId}, taskId: ${!!currentTaskId}`,

@@ -113,7 +113,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
           if (result.success && result.data) {
             const settings = result.data;
 
-            logger.debug("result.data>>>>", { result.data });
+            logger.debug("result.data>>>>", { data: result.data });
 
             const files = Object.entries(settings.containerFiles || {}).reduce(
               (acc, curr) => {

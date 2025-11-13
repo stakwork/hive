@@ -45,7 +45,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         };
 
         recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-          logger.error("Speech recognition error:", { event.error });
+          logger.error("Speech recognition error:", { error: event.error });
           setIsListening(false);
         };
 

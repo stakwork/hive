@@ -16,14 +16,14 @@ export async function POST(request: NextRequest) {
     const event = request.headers.get("x-github-event");
     const delivery = request.headers.get("x-github-delivery");
 
-    logger.debug("[GithubWebhook] Received", "webhook/route", { {
+    logger.debug("[GithubWebhook] Received", {
       event,
       delivery,
       hasSignature: !!signature,
-    } });
+    });
 
     if (!signature || !event) {
-      logger.error("[GithubWebhook] Missing signature or event", "webhook/route", { { hasSignature: !!signature, event } });
+      logger.error("[GithubWebhook] Missing signature or event", { hasSignature: !!signature, event });
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -41,13 +41,13 @@ export async function POST(request: NextRequest) {
     const fullName: string | undefined = payload?.repository?.full_name;
     const candidateUrl = repoHtmlUrl || (fullName ? `https://github.com/${fullName}` : undefined);
     if (!candidateUrl) {
-      logger.error("[GithubWebhook] Missing candidate url", "webhook/route", { { delivery } });
+      logger.error("[GithubWebhook] Missing candidate url", { delivery });
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
     const webhookId = request.headers.get("x-github-hook-id");
     if (!webhookId) {
-      logger.error("[GithubWebhook] Missing webhook ID", "webhook/route", { { delivery, candidateUrl } });
+      logger.error("[GithubWebhook] Missing webhook ID", { delivery, candidateUrl });
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
@@ -78,20 +78,20 @@ export async function POST(request: NextRequest) {
     });
 
     if (!repository || !repository.githubWebhookSecret) {
-      logger.error("[GithubWebhook] Repository not found or missing secret", "webhook/route", { {
+      logger.error("[GithubWebhook] Repository not found or missing secret", {
         delivery,
         webhookId,
         candidateUrl,
-      } });
+      });
       return NextResponse.json({ success: false }, { status: 404 });
     }
 
-    logger.debug("[GithubWebhook] Repository found", "webhook/route", { {
+    logger.debug("[GithubWebhook] Repository found", {
       delivery,
       repositoryUrl: repository.repositoryUrl,
       workspaceId: repository.workspaceId,
       branch: repository.branch,
-    } });
+    });
 
     const enc = EncryptionService.getInstance();
     const secret = enc.decryptField("githubWebhookSecret", repository.githubWebhookSecret);
@@ -100,18 +100,18 @@ export async function POST(request: NextRequest) {
     const expected = `sha256=${expectedDigest}`;
 
     if (!timingSafeEqual(expected, signature)) {
-      logger.error("[GithubWebhook] Signature verification failed", "webhook/route", { {
+      logger.error("[GithubWebhook] Signature verification failed", {
         delivery,
         repositoryUrl: repository.repositoryUrl,
         workspaceId: repository.workspaceId,
-      } });
+      });
       return NextResponse.json({ success: false }, { status: 401 });
     }
 
-    logger.debug("[GithubWebhook] Signature verified", "webhook/route", { {
+    logger.debug("[GithubWebhook] Signature verified", {
       delivery,
       workspaceId: repository.workspaceId,
-    } });
+    });
 
     const repoDefaultBranch: string | undefined = payload?.repository?.default_branch;
     const allowedBranches = new Set<string>(
@@ -132,28 +132,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    logger.debug("[GithubWebhook] GitHub credentials", "webhook/route", { {
+    logger.debug("[GithubWebhook] GitHub credentials", {
       delivery,
       workspaceId: repository.workspaceId,
       hasCredentials: !!githubPat,
-    } });
+    });
 
     if (event === "push") {
       const ref: string | undefined = payload?.ref;
       if (!ref) {
-        logger.error("[GithubWebhook] Missing ref in push event", "webhook/route", { {
+        logger.error("[GithubWebhook] Missing ref in push event", {
           delivery,
           workspaceId: repository.workspaceId,
-        } });
+        });
         return NextResponse.json({ success: false }, { status: 400 });
       }
       const pushedBranch = ref.split("/").pop();
       if (!pushedBranch) {
-        logger.error("[GithubWebhook] Missing pushed branch", "webhook/route", { {
+        logger.error("[GithubWebhook] Missing pushed branch", {
           delivery,
           workspaceId: repository.workspaceId,
           ref,
-        } });
+        });
         return NextResponse.json({ success: false }, { status: 400 });
       }
       if (!allowedBranches.has(pushedBranch)) {
@@ -165,21 +165,21 @@ export async function POST(request: NextRequest) {
         });
         return NextResponse.json({ success: true }, { status: 202 });
       }
-      logger.debug("[GithubWebhook] Branch validated", "webhook/route", { {
+      logger.debug("[GithubWebhook] Branch validated", {
         delivery,
         workspaceId: repository.workspaceId,
         pushedBranch,
-      } });
+      });
     } else if (event === "pull_request") {
       const action = payload?.action;
       const merged = payload?.pull_request?.merged;
 
       if (action === "closed" && merged === true) {
-        logger.debug("[GithubWebhook] Processing merged PR", "webhook/route", { {
+        logger.debug("[GithubWebhook] Processing merged PR", {
           delivery,
           workspaceId: repository.workspaceId,
           prNumber: payload.number,
-        } });
+        });
 
         // Store PR data without failing the webhook if this fails
         try {
@@ -227,22 +227,22 @@ export async function POST(request: NextRequest) {
       where: { workspaceId: repository.workspaceId },
     });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
-      logger.error("[GithubWebhook] Swarm not found or misconfigured", "webhook/route", { {
+      logger.error("[GithubWebhook] Swarm not found or misconfigured", {
         delivery,
         workspaceId: repository.workspaceId,
         hasSwarm: !!swarm,
         hasName: !!swarm?.name,
         hasApiKey: !!swarm?.swarmApiKey,
-      } });
+      });
       return NextResponse.json({ success: false }, { status: 400 });
     }
 
-    logger.debug("[GithubWebhook] Swarm found", "webhook/route", { {
+    logger.debug("[GithubWebhook] Swarm found", {
       delivery,
       workspaceId: repository.workspaceId,
       swarmId: swarm.id,
       swarmName: swarm.name,
-    } });
+    });
 
     // Get username from credentials for async sync
     const username = workspace?.ownerId
@@ -265,29 +265,29 @@ export async function POST(request: NextRequest) {
         where: { id: repository.id },
         data: { status: RepositoryStatus.PENDING },
       });
-      logger.debug("[GithubWebhook] Repository status → PENDING", "webhook/route", { {
+      logger.debug("[GithubWebhook] Repository status → PENDING", {
         delivery,
         workspaceId: repository.workspaceId,
         repositoryUrl: repository.repositoryUrl,
-      } });
+      });
     } catch (err) {
-      logger.error("[GithubWebhook] Failed to set repository to PENDING", "webhook/route", { {
+      logger.error("[GithubWebhook] Failed to set repository to PENDING", {
         delivery,
         workspaceId: repository.workspaceId,
         error: err,
-      } });
+      });
     }
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
 
-    logger.debug("[GithubWebhook] Triggering async sync", { {
+    logger.debug("[GithubWebhook] Triggering async sync", { 
       delivery,
       workspaceId: repository.workspaceId,
       swarmId: swarm.id,
       swarmHost,
       repositoryUrl: repository.repositoryUrl,
       callbackUrl,
-      hasGithubAuth: !!(username && githubPat }),
+      hasGithubAuth: !!(username && githubPat  }),
     });
 
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
@@ -298,14 +298,14 @@ export async function POST(request: NextRequest) {
       callbackUrl,
     );
 
-    logger.debug("[GithubWebhook] Async sync response", "webhook/route", { {
+    logger.debug("[GithubWebhook] Async sync response", {
       delivery,
       workspaceId: repository.workspaceId,
       swarmId: swarm.id,
       ok: apiResult.ok,
       status: apiResult.status,
       hasRequestId: !!apiResult.data?.request_id,
-    } });
+    });
 
     try {
       const reqId = apiResult.data?.request_id;
@@ -314,31 +314,31 @@ export async function POST(request: NextRequest) {
           where: { id: swarm.id },
           data: { ingestRefId: reqId },
         });
-        logger.debug("[GithubWebhook] Saved ingest reference", "webhook/route", { {
+        logger.debug("[GithubWebhook] Saved ingest reference", {
           delivery,
           requestId: reqId,
           workspaceId: repository.workspaceId,
           swarmId: swarm.id,
-        } });
+        });
       } else {
-        logger.error("[GithubWebhook] No request_id in response", "webhook/route", { {
+        logger.error("[GithubWebhook] No request_id in response", {
           delivery,
           workspaceId: repository.workspaceId,
           swarmId: swarm.id,
-        } });
+        });
       }
     } catch (e) {
-      logger.error("[GithubWebhook] Failed to persist ingestRefId", "webhook/route", { {
+      logger.error("[GithubWebhook] Failed to persist ingestRefId", {
         delivery,
         workspaceId: repository.workspaceId,
         swarmId: swarm.id,
         error: e,
-      } });
+      });
     }
 
     return NextResponse.json({ success: apiResult.ok, delivery }, { status: 202 });
   } catch (error) {
-    logger.error("[GithubWebhook] Unhandled error", "webhook/route", { { error } });
+    logger.error("[GithubWebhook] Unhandled error", { error });
     return NextResponse.json({ success: false }, { status: 500 });
   }
 }

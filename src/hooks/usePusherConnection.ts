@@ -171,11 +171,11 @@ export function usePusherConnection({
             PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
             (update: WorkflowStatusUpdate) => {
               if (LOGS) {
-                logger.debug("Received workflow status update:", "usePusherConnection", { {
+                logger.debug("Received workflow status update:", {
                   taskId: update.taskId,
                   workflowStatus: update.workflowStatus,
                   channelName,
-                } });
+                });
               }
               if (onWorkflowStatusUpdateRef.current) {
                 onWorkflowStatusUpdateRef.current(update);
@@ -188,12 +188,12 @@ export function usePusherConnection({
             PUSHER_EVENTS.TASK_TITLE_UPDATE,
             (update: TaskTitleUpdateEvent) => {
               if (LOGS) {
-                logger.debug("Received task title update:", "usePusherConnection", { {
+                logger.debug("Received task title update:", {
                   taskId: update.taskId,
                   newTitle: update.newTitle,
                   previousTitle: update.previousTitle,
                   channelName,
-                } });
+                });
               }
               if (onTaskTitleUpdateRef.current) {
                 onTaskTitleUpdateRef.current(update);
@@ -208,12 +208,12 @@ export function usePusherConnection({
             PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
             (update: RecommendationsUpdatedEvent) => {
               if (LOGS) {
-                logger.debug("Received recommendations update:", "usePusherConnection", { {
+                logger.debug("Received recommendations update:", {
                   workspaceSlug: update.workspaceSlug,
                   newRecommendationCount: update.newRecommendationCount,
                   totalRecommendationCount: update.totalRecommendationCount,
                   channelName,
-                } });
+                });
               }
               if (onRecommendationsUpdatedRef.current) {
                 onRecommendationsUpdatedRef.current(update);
@@ -226,12 +226,12 @@ export function usePusherConnection({
             PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
             (update: TaskTitleUpdateEvent) => {
               if (LOGS) {
-                logger.debug("Received workspace task title update:", "usePusherConnection", { {
+                logger.debug("Received workspace task title update:", {
                   taskId: update.taskId,
                   newTitle: update.newTitle,
                   previousTitle: update.previousTitle,
                   channelName,
-                } });
+                });
               }
               if (onTaskTitleUpdateRef.current) {
                 onTaskTitleUpdateRef.current(update);

@@ -61,8 +61,8 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
           )
 
           console.log('🎥 SAVING CAMERA STATE ON UNMOUNT:')
-          logger.debug("  📍 Position:", { { x: position.x.toFixed(1 }), y: position.y.toFixed(1), z: position.z.toFixed(1) })
-          logger.debug("  🎯 Target:", { { x: target.x.toFixed(1 }), y: target.y.toFixed(1), z: target.z.toFixed(1) })
+          logger.debug("  📍 Position:", {  x: position.x.toFixed(1  }), y: position.y.toFixed(1), z: position.z.toFixed(1) })
+          logger.debug("  🎯 Target:", {  x: target.x.toFixed(1  }), y: target.y.toFixed(1), z: target.z.toFixed(1) })
           logger.debug("  📏 Distance between position and target:", { distance.toFixed(1 }))
 
           if (distance < 100) {
@@ -129,7 +129,7 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
 
         setTimeout(() => {
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
-          logger.debug("CameraAnimations: cameraControlsRef._debugId", { cameraControlsRef._debugId })
+          logger.debug("CameraAnimations: cameraControlsRef._debugId", { _debugId: cameraControlsRef._debugId })
 
           const randomId = Math.random().toString(36).slice(2, 6)
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work

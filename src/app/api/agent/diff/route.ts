@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { podId, workspaceId, taskId } = body;
-    logger.debug(">>> [DIFF] Request params:", "diff/route", { { podId, workspaceId, taskId, userId } });
+    logger.debug(">>> [DIFF] Request params:", {  podId, workspaceId, taskId, userId  });
 
     // Validate required fields
     if (!podId) {
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    logger.debug(">>> [DIFF] Workspace found:", "diff/route", { { id: workspace.id, hasSwarm: !!workspace.swarm } });
+    logger.debug(">>> [DIFF] Workspace found:", {  id: workspace.id, hasSwarm: !!workspace.swarm  });
 
     if (process.env.MOCK_BROWSER_URL || process.env.CUSTOM_GOOSE_URL) {
       console.log(">>> [DIFF] Using mock mode");
@@ -118,7 +118,7 @@ index 1234567..abcdefg 100644
 
     const isOwner = workspace.ownerId === userId;
     const isMember = workspace.members.length > 0;
-    logger.debug(">>> [DIFF] Access check:", "diff/route", { { isOwner, isMember } });
+    logger.debug(">>> [DIFF] Access check:", {  isOwner, isMember  });
 
     if (!isOwner && !isMember) {
       console.log(">>> [DIFF] Access denied");
@@ -147,11 +147,11 @@ index 1234567..abcdefg 100644
     let podWorkspace;
     try {
       podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
-      logger.debug(">>> [DIFF] Pod workspace retrieved:", "diff/route", { {
+      logger.debug(">>> [DIFF] Pod workspace retrieved:", { 
         id: podWorkspace.id,
         state: podWorkspace.state,
         hasControlPort: !!podWorkspace.portMappings[POD_PORTS.CONTROL],
-      } });
+       });
     } catch (error) {
       logger.error(">>> [DIFF] Failed to get pod from pool:", { error });
       throw error;
@@ -227,7 +227,7 @@ index 1234567..abcdefg 100644
       },
     });
 
-    logger.debug(">>> [DIFF] Chat message with DIFF artifact created:", { chatMessage.id });
+    logger.debug(">>> [DIFF] Chat message with DIFF artifact created:", { id: chatMessage.id });
 
     return NextResponse.json(
       {

@@ -87,9 +87,9 @@ export async function GET(request: NextRequest) {
       { role: "user", content: question },
     ];
 
-    logger.debug("🤖 Creating generateText with:", { {
+    logger.debug("🤖 Creating generateText with:", { 
       model: model?.modelId,
-      toolsCount: Object.keys(tools }).length,
+      toolsCount: Object.keys(tools  }).length,
       messagesCount: messages.length,
       question: question,
     });

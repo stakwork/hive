@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
 
     // Check if there's already an ongoing agent process
     if (swarm.agentRequestId && swarm.agentStatus === 'PROCESSING') {
-      logger.debug("[stakgraph/services] Reusing existing agent request:", { swarm.agentRequestId });
+      logger.debug("[stakgraph/services] Reusing existing agent request:", { agentRequestId: swarm.agentRequestId });
       return NextResponse.json(
         {
           success: true,
@@ -122,16 +122,16 @@ export async function GET(request: NextRequest) {
       try {
         logger.debug("[stakgraph/services] Starting agent mode for repo:", { repo_url });
         const { owner, repo } = parseGithubOwnerRepo(repo_url);
-        logger.debug("[stakgraph/services] Parsed GitHub:", "route", { { owner, repo } });
+        logger.debug("[stakgraph/services] Parsed GitHub:", {  owner, repo  });
 
         // Start the agent request with proper GitHub authentication
         logger.debug("[stakgraph/services] Initiating agent request to:", { swarmUrl });
-        logger.debug("[stakgraph/services] Agent request params:", "route", { {
+        logger.debug("[stakgraph/services] Agent request params:", { 
           owner,
           repo,
           hasUsername: !!githubProfile?.username,
           hasPAT: !!githubProfile?.token,
-        } });
+         });
         const agentInitResult = await swarmApiRequestAuth({
           swarmUrl: swarmUrl,
           endpoint: "/services_agent",
@@ -184,13 +184,13 @@ export async function GET(request: NextRequest) {
         logger.error("[stakgraph/services] Error stack:", { error instanceof Error ? error.stack : "No stack trace" });
         logger.error("Agent mode failed, falling back to stakgraph services endpoint:", "route", { error });
         // Fall back to stakgraph services endpoint
-        logger.debug("[stakgraph/services] Calling fallback stakgraph services with params:", "route", { {
+        logger.debug("[stakgraph/services] Calling fallback stakgraph services with params:", { 
           swarmUrl,
           hasApiKey: !!decryptedApiKey,
           repo_url,
           hasUsername: !!githubProfile?.username,
           hasPAT: !!githubProfile?.token,
-        } });
+         });
         const result = await fetchStakgraphServices(swarmUrl, decryptedApiKey, {
           clone: "true", // Always clone to ensure we get the latest code
           ...(repo_url ? { repo_url } : {}),

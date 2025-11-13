@@ -124,11 +124,11 @@ export const Graph = () => {
   // }, [removeSimulation])
 
   useEffect(() => {
-    logger.debug("here is simulation", "Graph/index", { {
+    logger.debug("here is simulation", {
       simulation: !!simulation,
       isSleeping,
       justWokeUp: justWokeUpRef.current
-    } })
+    })
 
     if (!simulation || isSleeping || justWokeUpRef.current) {
       return

@@ -69,7 +69,7 @@ export function GithubAuthStep() {
       });
 
       if (result?.error) {
-        logger.error("Sign in error:", { result.error });
+        logger.error("Sign in error:", { error: result.error });
         // Reset signing in state on error
         setIsSigningIn(false);
       }

@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
     const result = await sendChunkToStakwork(chunk);
     if (!result.success) {
-      logger.error("Failed to send chunk to Stakwork:", { result.error });
+      logger.error("Failed to send chunk to Stakwork:", { error: result.error });
       return NextResponse.json({ error: "Failed to send chunk to Stakwork" }, { status: 500 });
     }
 

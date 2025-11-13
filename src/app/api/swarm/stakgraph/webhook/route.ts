@@ -10,10 +10,10 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get("x-signature");
     const requestIdHeader = request.headers.get("x-request-id") || request.headers.get("idempotency-key");
 
-    logger.debug("[StakgraphWebhook] Received", "webhook/route", { {
+    logger.debug("[StakgraphWebhook] Received", {
       hasSignature: !!signature,
       requestIdHeader,
-    } });
+    });
 
     if (!signature) {
       logger.error("[StakgraphWebhook] Missing signature");
@@ -26,34 +26,34 @@ export async function POST(request: NextRequest) {
     try {
       payload = JSON.parse(rawBody) as WebhookPayload;
     } catch (error) {
-      logger.error("[StakgraphWebhook] Invalid JSON", "webhook/route", { { error } });
+      logger.error("[StakgraphWebhook] Invalid JSON", { error });
       return NextResponse.json({ success: false, message: "Invalid JSON" }, { status: 400 });
     }
 
-    logger.debug("[StakgraphWebhook] Payload received", "webhook/route", { {
+    logger.debug("[StakgraphWebhook] Payload received", {
       requestId: payload.request_id,
       status: payload.status,
       requestIdHeader,
-    } });
+    });
 
     const webhookService = new StakgraphWebhookService();
     const result = await webhookService.processWebhook(signature, rawBody, payload, requestIdHeader);
 
     if (!result.success) {
-      logger.error("[StakgraphWebhook] Processing failed", "webhook/route", { {
+      logger.error("[StakgraphWebhook] Processing failed", {
         requestId: payload.request_id,
         status: result.status,
         message: result.message,
-      } });
+      });
       return NextResponse.json({ success: false, message: result.message }, { status: result.status });
     }
 
-    logger.debug("[StakgraphWebhook] Processing succeeded", "webhook/route", { {
+    logger.debug("[StakgraphWebhook] Processing succeeded", {
       requestId: payload.request_id,
-    } });
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error("[StakgraphWebhook] Unhandled error", "webhook/route", { { error } });
+    logger.error("[StakgraphWebhook] Unhandled error", { error });
     return NextResponse.json({ success: false, message: "Failed to process webhook" }, { status: 500 });
   }
 }

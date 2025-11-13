@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
 
     console.log("🔴 Github app webhook received");
 
-    logger.debug("🔴 Github app webhook headers", { req.headers });
+    logger.debug("🔴 Github app webhook headers", { headers: req.headers });
 
     logger.debug("🔴 Github app webhook body", { req });
 

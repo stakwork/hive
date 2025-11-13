@@ -664,7 +664,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     let dedupNodes: any = {};
 
     if (data.connections && Array.isArray(data.connections) && data.connections.length > 0) {
-      // logger.debug("saved connections detected", { data.connections })
+      // logger.debug("saved connections detected", { connections: data.connections })
       myEdges = data.connections.map((e: any, x: number) => {
         const node = myNodes.find((node: any) => node.id === e.source);
 

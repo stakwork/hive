@@ -42,11 +42,11 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const startIngestion = useCallback(async () => {
     // Primary guard: check workspace state (persists across remounts)
     if (!workspaceId || !swarmId || ingestRefId) {
-      logger.debug("startIngestion skipped (state):", "swarm-setup/WorkspaceSetup", { {
+      logger.debug("startIngestion skipped (state):", {
         workspaceId: !!workspaceId,
         swarmId: !!swarmId,
         ingestRefId: !!ingestRefId,
-      } });
+      });
       return;
     }
 
@@ -88,7 +88,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   const createStakworkCustomer = useCallback(async () => {
     // Primary guard: check workspace state (persists across remounts)
     if (!workspaceId || hasStakworkCustomer) {
-      logger.debug("createStakworkCustomer skipped (state):", "swarm-setup/WorkspaceSetup", { { workspaceId: !!workspaceId, hasStakworkCustomer } });
+      logger.debug("createStakworkCustomer skipped (state):", { workspaceId: !!workspaceId, hasStakworkCustomer });
       return;
     }
 
@@ -275,12 +275,12 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
   // Handle services setup when swarmId becomes available
   useEffect(() => {
     const setupServices = async () => {
-      logger.debug("Services setup conditions:", "swarm-setup/WorkspaceSetup", { {
+      logger.debug("Services setup conditions:", {
         swarmId: !!swarmId,
         containerFilesSetUp,
         workspaceId: !!workspaceId,
         setupServicesDone: setupServicesDone.current,
-      } });
+      });
 
       if (!swarmId || containerFilesSetUp || !workspaceId || setupServicesDone.current) {
         console.log("Skipping services setup - conditions not met");

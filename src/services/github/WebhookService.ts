@@ -164,7 +164,7 @@ export class WebhookService extends BaseServiceClass {
 
       if (webhookExists) {
         const storedSecret = encryptionService.decryptField("githubWebhookSecret", repoRec.githubWebhookSecret);
-        logger.debug("=> Using existing webhook for workspace", { repoRec.id });
+        logger.debug("=> Using existing webhook for workspace", { id: repoRec.id });
         return { id: webhookId, secret: storedSecret };
       }
 
@@ -184,7 +184,7 @@ export class WebhookService extends BaseServiceClass {
       active,
     });
 
-    logger.debug("=> Creating new webhook for workspace", { repoRec.id });
+    logger.debug("=> Creating new webhook for workspace", { id: repoRec.id });
     await db.repository.update({
       where: { id: repoRec.id },
       data: {

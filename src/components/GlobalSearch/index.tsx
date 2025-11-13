@@ -103,7 +103,7 @@ export function GlobalSearch() {
           const data: SearchResponse = await response.json();
           setResults(data.data);
         } else {
-          logger.error("Search failed:", { response.statusText });
+          logger.error("Search failed:", { statusText: response.statusText });
           setResults(null);
         }
       } catch (error) {

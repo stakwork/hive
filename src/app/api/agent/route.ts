@@ -188,10 +188,10 @@ export async function POST(request: NextRequest) {
     ...(logger ? { logger } : {}),
   });
 
-  logger.debug("✅ Session validated:", "agent/route", { {
+  logger.debug("✅ Session validated:", { 
     sessionId: validatedSessionId,
     oldSessionInvalidated,
-  } });
+   });
 
   // Update database with session ID
   if (oldSessionInvalidated) {
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  logger.debug("📝 Created placeholder assistant message:", { assistantMessage.id });
+  logger.debug("📝 Created placeholder assistant message:", { id: assistantMessage.id });
 
   const result = streamText({
     model,
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
 
   // Schedule background processing using after()
   after(async () => {
-    logger.debug("🔄 Background processing started for message:", { assistantMessage.id });
+    logger.debug("🔄 Background processing started for message:", { id: assistantMessage.id });
     let accumulatedText = "";
     let lastSaveLength = 0;
     const SAVE_INTERVAL = 200; // Save every 200 characters

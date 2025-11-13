@@ -199,11 +199,11 @@ export async function checkRepositoryAccess(
   installationId: string,
   repositoryUrl: string,
 ): Promise<boolean> {
-  logger.debug("[REPO ACCESS] Starting repository access check:", "githubApp", { {
+  logger.debug("[REPO ACCESS] Starting repository access check:", {
     userId,
     installationId,
     repositoryUrl,
-  } });
+  });
 
   try {
     // Extract owner and repo name from repository URL
@@ -215,7 +215,7 @@ export async function checkRepositoryAccess(
 
     const [, owner, repo] = githubMatch;
     const targetRepoFullName = `${owner}/${repo}`.toLowerCase();
-    logger.debug("[REPO ACCESS] Parsed repository:", "githubApp", { { owner, repo, targetRepoFullName } });
+    logger.debug("[REPO ACCESS] Parsed repository:", { owner, repo, targetRepoFullName });
 
     // Get access token for the specific GitHub owner
     logger.debug("[REPO ACCESS] Getting tokens for user:", { userId, "and owner:", owner });
@@ -237,7 +237,7 @@ export async function checkRepositoryAccess(
       },
     });
 
-    logger.debug("[REPO ACCESS] GitHub API response status:", { response.status });
+    logger.debug("[REPO ACCESS] GitHub API response status:", { status: response.status });
 
     if (!response.ok) {
       logger.error("[REPO ACCESS] Failed to fetch installation repositories:", { response.status, response.statusText });

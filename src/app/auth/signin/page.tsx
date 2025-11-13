@@ -73,7 +73,7 @@ function SignInContent() {
       });
 
       if (result?.error) {
-        logger.error("Sign in error:", { result.error });
+        logger.error("Sign in error:", { error: result.error });
         // Reset signing in state on error
         setIsSigningIn(false);
       }
@@ -94,7 +94,7 @@ function SignInContent() {
       });
 
       if (result?.error) {
-        logger.error("Mock sign in error:", { result.error });
+        logger.error("Mock sign in error:", { error: result.error });
         setIsMockSigningIn(false);
       }
       // Note: On success, the useEffect will handle the redirect based on session

@@ -129,7 +129,7 @@ export async function extractPrArtifact(
             }
           }
         } else {
-          logger.error("No PR URL found for task:", { task.id });
+          logger.error("No PR URL found for task:", { id: task.id });
         }
 
         return { id: prArt.id, type: prArt.type, content };

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const validationResult = StakworkRunWebhookSchema.safeParse(body);
 
     if (!validationResult.success) {
-      logger.error("Invalid webhook payload:", { validationResult.error });
+      logger.error("Invalid webhook payload:", { error: validationResult.error });
       return NextResponse.json(
         {
           error: "Invalid webhook payload",

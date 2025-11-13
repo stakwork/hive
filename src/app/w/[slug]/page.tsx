@@ -10,14 +10,14 @@ export default function DashboardPage() {
   const { workspace } = useWorkspace();
   const [servicesStarted, setServicesStarted] = useState(false);
 
-  logger.debug("/w/[slug]/page =====>", "[slug]/page", { {
+  logger.debug("/w/[slug]/page =====>", {
     containerFilesSetUp: workspace?.containerFilesSetUp,
     swarmId: workspace?.swarmId,
     swarmStatus: workspace?.swarmStatus,
     ingestRefId: workspace?.ingestRefId,
     poolState: workspace?.poolState,
     repositories: workspace?.repositories,
-  } });
+  });
 
   const setupCompleted = workspace?.containerFilesSetUp;
   const hasSwarmId = !!workspace?.swarmId;

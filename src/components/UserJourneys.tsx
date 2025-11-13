@@ -248,7 +248,7 @@ export default function UserJourneys() {
           return matchingTest.properties.body;
         }
 
-        logger.error("No matching test found in graph for testFilePath:", { task.testFilePath });
+        logger.error("No matching test found in graph for testFilePath:", { testFilePath: task.testFilePath });
         logger.error("Available test files:", { graphResult.data.map((n: any }) => n.properties?.file));
       }
 
