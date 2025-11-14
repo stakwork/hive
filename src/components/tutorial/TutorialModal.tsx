@@ -47,6 +47,24 @@ export function TutorialModal() {
     router.push(`/w/${slug}/insights`);
   };
 
+  // Get position based on current step
+  const getPositionClass = () => {
+    switch (currentStep) {
+      case "welcome":
+      case "ingestion":
+        return "top-20 left-1/2 -translate-x-1/2"; // Center top
+      case "navigate-to-tasks":
+      case "navigate-to-insights":
+        return "top-20 left-4"; // Left side near sidebar
+      case "create-task":
+        return "top-20 right-4"; // Right side near New Task button
+      case "insights-explanation":
+        return "top-20 left-1/2 -translate-x-1/2"; // Center top
+      default:
+        return "top-20 left-1/2 -translate-x-1/2";
+    }
+  };
+
   const renderStepContent = () => {
     switch (currentStep) {
       case "welcome":
@@ -311,7 +329,7 @@ export function TutorialModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div className={`fixed z-50 p-4 animate-in fade-in slide-in-from-top-4 duration-300 ${getPositionClass()}`}>
       {renderStepContent()}
     </div>
   );
