@@ -38,7 +38,7 @@ export const HighlightedNodesLayer = memo(() => {
   const simulationNodes = simulation?.nodes() || []
 
   const highlightedNodes = nodeIdsToHighlight
-    .map(nodeId => simulationNodes.find(node => node.ref_id === nodeId))
+    .map(nodeId => simulationNodes.find((node: NodeExtended) => node.ref_id === nodeId))
     .filter(Boolean) as NodeExtended[]
 
   useFrame(({ clock }) => {
