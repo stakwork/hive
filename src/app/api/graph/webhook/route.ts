@@ -9,6 +9,16 @@ interface GraphWebhookPayload {
 
 export async function POST(request: NextRequest) {
   try {
+    // API Key authentication
+    const apiKey = request.headers.get('x-api-key');
+    if (!apiKey || apiKey !== process.env.GRAPH_WEBHOOK_API_KEY) {
+      console.error("Invalid or missing API key for graph webhook");
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const body = (await request.json()) as GraphWebhookPayload;
     const { node_ids, workspace_id } = body;
 
