@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface WorkspaceMembersPreviewProps {
   workspaceSlug: string;
@@ -54,11 +55,11 @@ export function WorkspaceMembersPreview({
     return null;
   }
 
-  // Sort: owner first, then by most recent joinedAt
+  // Sort: owner first, then by earliest joinedAt (oldest members first)
   const sortedMembers = [...members].sort((a, b) => {
     if (a.role === "OWNER") return -1;
     if (b.role === "OWNER") return 1;
-    return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime();
+    return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
   });
 
   const previewMembers = sortedMembers.slice(0, maxDisplay);
@@ -71,19 +72,24 @@ export function WorkspaceMembersPreview({
         {/* Avatar list */}
         <div className="flex items-center gap-2">
           {previewMembers.map((member) => (
-            <Avatar
-              key={member.id}
-              className="w-8 h-8 border-2 border-card hover:scale-110 transition-transform"
-              title={member.user.name || member.user.email || "Unknown user"}
-            >
-              <AvatarImage
-                src={member.user.image || undefined}
-                alt={member.user.name || member.user.email || "User"}
-              />
-              <AvatarFallback className="text-xs">
-                {getInitials(member.user)}
-              </AvatarFallback>
-            </Avatar>
+            <Tooltip key={member.id}>
+              <TooltipTrigger asChild>
+                <Avatar
+                  className="w-8 h-8 border-2 border-card hover:scale-110 transition-transform"
+                >
+                  <AvatarImage
+                    src={member.user.image || undefined}
+                    alt={member.user.name || member.user.email || "User"}
+                  />
+                  <AvatarFallback className="text-xs">
+                    {getInitials(member.user)}
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{member.user.name || member.user.email || "Unknown user"}</p>
+              </TooltipContent>
+            </Tooltip>
           ))}
 
           {/* +N badge if more than 4 members */}
