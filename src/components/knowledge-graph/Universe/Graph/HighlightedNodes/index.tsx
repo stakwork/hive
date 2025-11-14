@@ -1,8 +1,9 @@
-import { useGraphStore, useSimulationStore } from '@/stores/useStores'
+import { useWorkspace } from '@/hooks/useWorkspace'
+import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { Billboard } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { memo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { Group, Mesh, MeshBasicMaterial } from 'three'
 
 const HIGHLIGHT_DURATION = 15000 // 15 seconds
@@ -24,18 +25,67 @@ export const HighlightedNodesLayer = memo(() => {
   const groupRef = useRef<Group>(null)
   const timeRef = useRef(0)
 
+  const { workspace } = useWorkspace()
   const { webhookHighlightNodes, highlightTimestamp, clearWebhookHighlights } = useGraphStore((s) => s)
   const { simulation } = useSimulationStore((s) => s)
+  const nodesNormalized = useDataStore((s) => s.nodesNormalized)
+  const addNewNode = useDataStore((s) => s.addNewNode)
 
   // Auto-clear highlights after duration
-  const shouldClear = highlightTimestamp && Date.now() - highlightTimestamp > HIGHLIGHT_DURATION
-  if (shouldClear && webhookHighlightNodes.length > 0) {
-    clearWebhookHighlights()
-  }
+  useEffect(() => {
+    const shouldClear = highlightTimestamp && Date.now() - highlightTimestamp > HIGHLIGHT_DURATION
+    if (shouldClear && webhookHighlightNodes.length > 0) {
+      clearWebhookHighlights()
+    }
+  }, [highlightTimestamp, webhookHighlightNodes, clearWebhookHighlights])
 
-  // Get highlighted nodes with current simulation positions
-  const nodeIdsToHighlight = webhookHighlightNodes || []
+  // Memoize node IDs to prevent unnecessary re-renders
+  const nodeIdsToHighlight = useMemo(() => webhookHighlightNodes || [], [webhookHighlightNodes])
   const simulationNodes = simulation?.nodes() || []
+
+  useEffect(() => {
+    const foundNodeIds = new Set()
+    const missingNodeIds: string[] = []
+
+    nodeIdsToHighlight.forEach(nodeId => {
+      const inNormalized = nodesNormalized?.get(nodeId)
+
+      if (inNormalized) {
+        foundNodeIds.add(nodeId)
+      } else {
+        missingNodeIds.push(nodeId)
+      }
+    })
+
+    const fetchMissingNodes = async () => {
+      if (missingNodeIds.length === 0 || !workspace?.slug) return
+
+      try {
+        const refIds = missingNodeIds.join(',')
+        const response = await fetch(`/api/workspaces/${workspace.slug}/graph/nodes?ref_ids=${refIds}`)
+
+        if (!response.ok) {
+          console.error('Failed to fetch missing nodes:', response.statusText)
+          return
+        }
+
+        const data = await response.json()
+        const nodes = data.data || []
+
+        console.log('missing added nodes:', nodes)
+
+        if (nodes.length > 0) {
+          addNewNode({ nodes, edges: [] })
+        }
+      } catch (error) {
+        console.error('Error fetching missing nodes:', error)
+      }
+    }
+
+    if (missingNodeIds.length > 0) {
+      fetchMissingNodes()
+    }
+  }, [nodeIdsToHighlight, nodesNormalized, addNewNode, workspace?.slug])
 
   const highlightedNodes = nodeIdsToHighlight
     .map(nodeId => simulationNodes.find((node: NodeExtended) => node.ref_id === nodeId))
@@ -76,7 +126,7 @@ export const HighlightedNodesLayer = memo(() => {
 
   return (
     <group ref={groupRef} name="highlighted-nodes-layer">
-      {highlightedNodes.map((node, index) => (
+      {highlightedNodes.map((node) => (
         <group
           key={`highlight-${node.ref_id}`}
           position={[node.x || 0, node.y || 0, node.z || 0]}

@@ -44,14 +44,9 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const nodeType = searchParams.get("node_type");
+    const refIds = searchParams.get("ref_ids");
     const output = searchParams.get("output") || "json";
 
-    if (!nodeType) {
-      return NextResponse.json(
-        { success: false, message: "Missing required parameter: node_type" },
-        { status: 400 },
-      );
-    }
 
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({
@@ -76,16 +71,26 @@ export async function GET(
     const swarmUrlObj = new URL(swarm.swarmUrl);
     const graphUrl = `https://${swarmUrlObj.hostname}:3355`;
 
+    // Build API params based on what's provided
+    const apiParams: Record<string, string> = {
+      output: output,
+    };
+
+    if (nodeType) {
+      apiParams.node_type = nodeType;
+    }
+
+    if (refIds) {
+      apiParams.ref_ids = refIds;
+    }
+
     // Proxy to graph microservice
     const apiResult = await swarmApiRequestAuth({
       swarmUrl: graphUrl,
       endpoint: "/nodes",
       method: "GET",
       apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
-      params: {
-        node_type: nodeType,
-        output: output,
-      },
+      params: apiParams,
     });
 
     if (!apiResult.ok) {
