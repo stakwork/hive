@@ -28,8 +28,7 @@ test.describe('Dashboard Smoke Tests', () => {
   });
 
   test('should navigate to tasks page', async ({ page }) => {
-    await page.locator(selectors.navigation.tasksLink).click();
-    await page.waitForURL(/\/w\/.*\/tasks/);
+    await dashboardPage.goToTasks();
     await expect(page.locator(selectors.pageTitle.tasks)).toBeVisible();
   });
 

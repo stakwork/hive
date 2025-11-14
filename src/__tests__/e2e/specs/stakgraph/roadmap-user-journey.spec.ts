@@ -34,7 +34,7 @@ test.describe('Roadmap User Journey', () => {
     await dashboardPage.goto(scenario.workspace.slug);
 
     // Navigate to roadmap
-    await page.locator(selectors.navigation.roadmapLink).click();
+    await dashboardPage.goToRoadmap();
     await roadmapPage.waitForLoad();
 
     // Create a new feature

@@ -1,5 +1,5 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import { PoolUserResponse, ServiceConfig, PoolStatusResponse } from "@/types";
+import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse } from "@/types";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
 import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";
@@ -26,6 +26,7 @@ interface IPoolManagerService {
     github_username: string,
   ) => Promise<void>;
   getPoolStatus: (poolId: string, poolApiKey: string) => Promise<PoolStatusResponse>;
+  getPoolWorkspaces: (poolId: string, poolApiKey: string) => Promise<PoolWorkspacesResponse>;
 }
 
 export class PoolManagerService extends BaseServiceClass implements IPoolManagerService {
@@ -107,6 +108,32 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           lastCheck: data.status.last_check,
         },
       };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("fetch")) {
+        throw new Error("Unable to connect to pool service");
+      }
+      throw error;
+    }
+  }
+
+  async getPoolWorkspaces(poolId: string, poolApiKey: string): Promise<PoolWorkspacesResponse> {
+    try {
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
+
+      const response = await fetch(`${this.config.baseURL}/pools/${poolId}/workspaces`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${decryptedApiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to fetch workspace data at the moment");
+      }
+
+      const data = await response.json();
+      return data;
     } catch (error) {
       if (error instanceof Error && error.message.includes("fetch")) {
         throw new Error("Unable to connect to pool service");

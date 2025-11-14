@@ -132,3 +132,38 @@ export interface PoolStatus {
 export interface PoolStatusResponse {
   status: PoolStatus;
 }
+
+export interface VMResourceUsage {
+  available: boolean;
+  requests: {
+    cpu: string;
+    memory: string;
+  };
+  usage: {
+    cpu: string;
+    memory: string;
+  };
+}
+
+export interface VMData {
+  id: string;
+  subdomain: string;
+  state: string;
+  internal_state: string;
+  usage_status: "used" | "unused";
+  user_info: string | null;
+  resource_usage: VMResourceUsage;
+  marked_at: string | null;
+  url?: string;
+  fqdn?: string;
+  created?: string;
+  repoName?: string;
+  primaryRepo?: string;
+  branches?: string[];
+  flagged_for_recreation?: boolean;
+}
+
+export interface PoolWorkspacesResponse {
+  pool_name: string;
+  workspaces: VMData[];
+}

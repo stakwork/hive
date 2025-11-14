@@ -243,7 +243,7 @@ export default function CallPage() {
 
           {/* Right Side - Synchronized Knowledge Graph */}
           <div className="flex-1 p-4 min-h-0 overflow-hidden">
-            <div className="h-full">
+            <div className="h-full w-full">
               <StoreProvider storeId={storeId}>
                 <SynchronizedGraphComponent
                   endpoint={`/graph/subgraph?node_type=${encodeURIComponent(nodeTypeParam)}&include_properties=true&start_node=${call.ref_id}&depth=2&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
