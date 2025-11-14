@@ -147,6 +147,51 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     handleSend(prompt);
   };
 
+  const handleFeatureClick = async (featureId: string, featureName: string) => {
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/learnings/features/${encodeURIComponent(featureId)}?workspace=${encodeURIComponent(workspaceSlug)}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const feature = data.feature;
+
+      const userMessage: LearnMessage = {
+        id: Date.now().toString(),
+        content: `Tell me about the "${featureName}" feature`,
+        role: "user",
+        timestamp: new Date(),
+      };
+
+      const assistantMessage: LearnMessage = {
+        id: (Date.now() + 1).toString(),
+        content: feature?.documentation || "No documentation available for this feature.",
+        role: "assistant",
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    } catch (error) {
+      console.error("Error fetching feature documentation:", error);
+      const errorMessage: LearnMessage = {
+        id: (Date.now() + 1).toString(),
+        content: "I'm sorry, but I encountered an error while fetching the feature documentation. Please try again later.",
+        role: "assistant",
+        timestamp: new Date(),
+        isError: true,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="relative h-full">
       <div className={isMobile ? "h-full" : "h-full pr-80"}>
@@ -167,6 +212,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           <LearnSidebar
             workspaceSlug={workspaceSlug}
             onPromptClick={handlePromptClick}
+            onFeatureClick={handleFeatureClick}
             currentQuestion={currentInput.trim() || undefined}
             refetchTrigger={refetchTrigger}
           />
