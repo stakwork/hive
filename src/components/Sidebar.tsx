@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   Bot,
+  Brain,
   CheckSquare,
   ChevronDown,
   ChevronRight,
@@ -95,8 +96,15 @@ const baseNavigationItems: NavigationItem[] = [
       { icon: Bot, label: "Janitors", href: "/defence/janitors" },
     ],
   },
-  { icon: BookOpen, label: "Learn", href: "/learn" },
-  { icon: Phone, label: "Calls", href: "/calls" },
+  {
+    icon: Brain,
+    label: "Context",
+    href: "/context",
+    children: [
+      { icon: BookOpen, label: "Learn", href: "/context/learn" },
+      { icon: Phone, label: "Calls", href: "/context/calls" },
+    ],
+  },
 ];
 
 function SidebarContent({
