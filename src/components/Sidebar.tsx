@@ -5,12 +5,16 @@ import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
   BookOpen,
+  Bot,
   CheckSquare,
+  ChevronDown,
+  ChevronRight,
   Map,
   Menu,
   Phone,
   Settings,
-  Users,
+  Shield,
+  TestTube2,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname, useRouter } from "next/navigation";
@@ -45,6 +49,17 @@ export function isActiveTab(pathname: string, href: string): boolean {
   return cleanRel === cleanHref || cleanRel.startsWith(`${cleanHref}/`);
 }
 
+export function isParentActive(pathname: string, children: NavigationItem[]): boolean {
+  return children.some((child) => isActiveTab(pathname, child.href));
+}
+
+interface NavigationItem {
+  icon: any;
+  label: string;
+  href: string;
+  children?: NavigationItem[];
+}
+
 interface SidebarProps {
   user: {
     name?: string | null;
@@ -59,22 +74,29 @@ interface SidebarProps {
 }
 
 interface SidebarContentProps {
-  navigationItems: typeof baseNavigationItems;
+  navigationItems: NavigationItem[];
   pathname: string;
   handleNavigate: (href: string) => void;
   tasksWaitingForInputCount: number;
   user: SidebarProps['user'];
 }
 
-const baseNavigationItems = [
+const baseNavigationItems: NavigationItem[] = [
   { icon: PiGraphFill, label: "Graph", href: "/" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   { icon: Map, label: "Roadmap", href: "/roadmap" },
-  { icon: BarChart3, label: "Insights", href: "/insights" },
-  { icon: Users, label: "User Journeys", href: "/user-journeys" },
+  {
+    icon: Shield,
+    label: "Defence",
+    href: "/defence",
+    children: [
+      { icon: BarChart3, label: "Insights", href: "/defence/insights" },
+      { icon: TestTube2, label: "Testing", href: "/defence/testing" },
+      { icon: Bot, label: "Janitors", href: "/defence/janitors" },
+    ],
+  },
   { icon: BookOpen, label: "Learn", href: "/learn" },
   { icon: Phone, label: "Calls", href: "/calls" },
-  // { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
 function SidebarContent({
@@ -84,6 +106,29 @@ function SidebarContent({
   tasksWaitingForInputCount,
   user,
 }: SidebarContentProps) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    // Auto-expand Defence if any child route is active
+    const initialExpanded = new Set<string>();
+    navigationItems.forEach((item) => {
+      if (item.children && isParentActive(pathname, item.children)) {
+        initialExpanded.add(item.label);
+      }
+    });
+    return initialExpanded;
+  });
+
+  const toggleSection = (label: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Workspace Switcher */}
@@ -92,7 +137,11 @@ function SidebarContent({
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
           {navigationItems.map((item) => {
-            const isActive = isActiveTab(pathname, item.href);
+            const hasChildren = item.children && item.children.length > 0;
+            const isExpanded = expandedSections.has(item.label);
+            const isActive = hasChildren
+              ? isParentActive(pathname, item.children!)
+              : isActiveTab(pathname, item.href);
             const isTasksItem = item.label === "Tasks";
             const showBadge = isTasksItem && tasksWaitingForInputCount > 0;
 
@@ -101,11 +150,18 @@ function SidebarContent({
                 <Button
                   data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                   variant={isActive ? "secondary" : "ghost"}
-                  className={`w-full justify-start ${isActive
-                    ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
-                    : "hover:bg-primary/5 dark:hover:bg-primary/10"
-                    }`}
-                  onClick={() => handleNavigate(item.href)}
+                  className={`w-full justify-start ${
+                    isActive
+                      ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
+                      : "hover:bg-primary/5 dark:hover:bg-primary/10"
+                  }`}
+                  onClick={() => {
+                    if (hasChildren) {
+                      toggleSection(item.label);
+                    } else {
+                      handleNavigate(item.href);
+                    }
+                  }}
                 >
                   <item.icon className="w-4 h-4 mr-2" />
                   {item.label}
@@ -114,7 +170,41 @@ function SidebarContent({
                       {tasksWaitingForInputCount}
                     </Badge>
                   )}
+                  {hasChildren && (
+                    <span className="ml-auto">
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                    </span>
+                  )}
                 </Button>
+                {/* Render children if expanded */}
+                {hasChildren && isExpanded && (
+                  <ul className="ml-6 mt-1 space-y-1">
+                    {item.children!.map((child) => {
+                      const isChildActive = isActiveTab(pathname, child.href);
+                      return (
+                        <li key={child.href}>
+                          <Button
+                            data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            variant={isChildActive ? "secondary" : "ghost"}
+                            className={`w-full justify-start text-sm ${
+                              isChildActive
+                                ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
+                                : "hover:bg-primary/5 dark:hover:bg-primary/10"
+                            }`}
+                            onClick={() => handleNavigate(child.href)}
+                          >
+                            <child.icon className="w-4 h-4 mr-2" />
+                            {child.label}
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </li>
             );
           })}
@@ -156,12 +246,12 @@ export function Sidebar({ user }: SidebarProps) {
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
-  const canAccessInsights = useFeatureFlag(
+  const canAccessDefence = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
   );
 
   const excludeLabels: string[] = [];
-  if (!canAccessInsights) excludeLabels.push("Insights");
+  if (!canAccessDefence) excludeLabels.push("Defence");
 
   const navigationItems = baseNavigationItems.filter(
     (item) => !excludeLabels.includes(item.label),
