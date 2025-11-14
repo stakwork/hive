@@ -30,6 +30,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
   const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const [scrollToTopTrigger, setScrollToTopTrigger] = useState(0);
   const { processStream } = useStreamProcessor<LearnMessage>({
     toolProcessors: learnToolProcessors,
     hiddenTools: ["final_answer"],
@@ -73,6 +74,9 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
       };
 
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
+
+      // Trigger scroll to top by incrementing counter
+      setScrollToTopTrigger((prev) => prev + 1);
     } catch (error) {
       console.error("Error fetching feature documentation:", error);
       const errorMessage: LearnMessage = {
@@ -228,6 +232,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           onRefetchLearnings={triggerRefetch}
           showMicMode={isLocalhost}
           workspaceSlug={workspaceSlug}
+          scrollToTopTrigger={scrollToTopTrigger}
         />
       </div>
       {!isMobile && (

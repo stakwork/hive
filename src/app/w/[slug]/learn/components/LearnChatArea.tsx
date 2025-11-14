@@ -21,6 +21,7 @@ interface LearnChatAreaProps {
   onRefetchLearnings?: () => void;
   showMicMode?: boolean;
   workspaceSlug?: string;
+  scrollToTopTrigger?: number;
 }
 
 export function LearnChatArea({
@@ -33,9 +34,11 @@ export function LearnChatArea({
   onRefetchLearnings,
   showMicMode = false,
   workspaceSlug,
+  scrollToTopTrigger = 0,
 }: LearnChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
@@ -58,8 +61,18 @@ export function LearnChatArea({
   // Auto-scroll only if user hasn't manually scrolled up
   useEffect(() => {
     if (!shouldAutoScroll) return;
+
+    // Default: scroll to bottom
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, shouldAutoScroll]);
+
+  // Handle scroll-to-top trigger
+  useEffect(() => {
+    if (scrollToTopTrigger > 0 && lastMessageRef.current) {
+      // Scroll to show the last message at the top
+      lastMessageRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [scrollToTopTrigger]);
 
   // Only show download if there's at least one Q&A exchange (not counting initial greeting)
   const hasValidConversation =
@@ -131,8 +144,10 @@ export function LearnChatArea({
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
         >
-          {messages.map((message) => (
-            <LearnChatMessage key={message.id} message={message} />
+          {messages.map((message, index) => (
+            <div key={message.id} ref={index === messages.length - 1 ? lastMessageRef : null}>
+              <LearnChatMessage message={message} />
+            </div>
           ))}
 
           {isLoading && (

@@ -22,7 +22,13 @@ interface LearnSidebarProps {
   refetchTrigger?: number;
 }
 
-export function LearnSidebar({ workspaceSlug, onPromptClick, onFeatureClick, currentQuestion, refetchTrigger }: LearnSidebarProps) {
+export function LearnSidebar({
+  workspaceSlug,
+  onPromptClick,
+  onFeatureClick,
+  currentQuestion,
+  refetchTrigger,
+}: LearnSidebarProps) {
   const [learnings, setLearnings] = useState<Learnings | null>(null);
   const [features, setFeatures] = useState<Feature[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -198,7 +204,7 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, onFeatureClick, cur
               className="flex items-center gap-2 mb-3 w-full hover:opacity-70 transition-opacity"
             >
               <Box className="w-4 h-4 text-muted-foreground" />
-              <h3 className="font-medium text-muted-foreground">Features</h3>
+              <h3 className="font-medium text-muted-foreground">Concepts</h3>
               <ChevronDown
                 className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${isFeaturesCollapsed ? "-rotate-90" : ""}`}
               />
@@ -221,7 +227,9 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, onFeatureClick, cur
                       onClick={() => handleFeatureClickInternal(feature.id, feature.name)}
                       className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
                     >
-                      <div className="text-muted-foreground group-hover:text-foreground transition-colors">{feature.name}</div>
+                      <div className="text-muted-foreground group-hover:text-foreground transition-colors">
+                        {feature.name}
+                      </div>
                     </motion.button>
                   ))}
                 </motion.div>
