@@ -189,7 +189,7 @@ function SidebarContent({
                 </Button>
                 {/* Render children if expanded */}
                 {hasChildren && isExpanded && (
-                  <ul className="relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[22px] pl-4">
+                  <ul className="relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[19px] pl-4">
                     {item.children!.map((child) => {
                       const isChildActive = isActiveTab(pathname, child.href);
                       return (
