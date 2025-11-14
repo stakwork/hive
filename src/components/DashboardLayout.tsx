@@ -6,6 +6,8 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "./GlobalSearch";
+import { TutorialProvider } from "@/contexts/TutorialContext";
+import { TutorialModal } from "@/components/tutorial";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -69,16 +71,21 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="h-screen bg-background text-foreground flex flex-col">
-      <Sidebar user={user} />
-      <GlobalSearch />
+    <TutorialProvider>
+      <div className="h-screen bg-background text-foreground flex flex-col">
+        <Sidebar user={user} />
+        <GlobalSearch />
 
-      {/* Main content */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${isTaskPage ? "md:pl-0" : "md:pl-64"}`}>
-        <main className={`flex-1 flex flex-col overflow-auto ${isTaskPage ? "p-1 md:p-3" : "p-4 md:p-8"}`}>
-          {children}
-        </main>
+        {/* Main content */}
+        <div className={`flex-1 flex flex-col overflow-hidden ${isTaskPage ? "md:pl-0" : "md:pl-64"}`}>
+          <main className={`flex-1 flex flex-col overflow-auto ${isTaskPage ? "p-1 md:p-3" : "p-4 md:p-8"}`}>
+            {children}
+          </main>
+        </div>
+
+        {/* Tutorial Modal */}
+        <TutorialModal />
       </div>
-    </div>
+    </TutorialProvider>
   );
 }

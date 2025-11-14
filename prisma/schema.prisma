@@ -234,6 +234,9 @@ model Workspace {
   // Screenshots
   screenshots Screenshot[]
 
+  // Tutorial progress
+  tutorialCompleted Boolean @default(false) @map("tutorial_completed")
+
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])

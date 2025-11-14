@@ -187,6 +187,8 @@ export async function getWorkspaceById(
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
       swarmUrl: workspace.swarm?.swarmUrl || null,
+      tutorialCompleted: workspace.tutorialCompleted,
+      swarm: workspace.swarm || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -227,6 +229,8 @@ export async function getWorkspaceById(
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
     swarmUrl: workspace.swarm?.swarmUrl || null,
+    tutorialCompleted: workspace.tutorialCompleted,
+    swarm: workspace.swarm || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),

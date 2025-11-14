@@ -44,6 +44,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
   containerFilesSetUp: boolean | null;
   repositoryDraft: string | null;
   swarmUrl: string | null;
+  tutorialCompleted: boolean;
   repositories: Array<{
     id: string;
     name: string;
@@ -52,6 +53,9 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
     status: "PENDING" | "SYNCED" | "FAILED";
     updatedAt: string;
   }>;
+  swarm?: {
+    ingestRefId: string | null;
+  } | null;
 }
 
 export interface WorkspaceAccessValidation {
