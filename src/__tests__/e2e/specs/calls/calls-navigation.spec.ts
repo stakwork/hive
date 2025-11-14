@@ -24,10 +24,9 @@ test.describe('Calls Navigation', () => {
     dashboardPage = new DashboardPage(page);
     callsPage = new CallsPage(page);
 
-    // Authenticate and navigate to dashboard
-    await authPage.goto();
+    // Authenticate and navigate to the scenario workspace dashboard
     await authPage.signInWithMock();
-    await dashboardPage.waitForLoad();
+    await dashboardPage.goto(workspaceSlug);
   });
 
   test('should navigate to calls page via sidebar', async ({ page }) => {

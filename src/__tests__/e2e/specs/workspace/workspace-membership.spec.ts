@@ -1,6 +1,6 @@
 import { test } from '@/__tests__/e2e/support/fixtures/test-hooks';
 import { AuthPage, DashboardPage, WorkspaceSettingsPage } from '@/__tests__/e2e/support/page-objects';
-import { createInvitableUser } from '@/__tests__/e2e/support/fixtures/e2e-scenarios';
+import { createInvitableUser, createStandardWorkspaceScenario } from '@/__tests__/e2e/support/fixtures/e2e-scenarios';
 import { WorkspaceRole } from '@/lib/auth/roles';
 
 /**
@@ -15,6 +15,11 @@ test.describe('Workspace Member Management', () => {
   let inviteeUsername: string;
 
   test.beforeEach(async ({ page }) => {
+    // Create workspace with proper setup
+    const scenario = await createStandardWorkspaceScenario();
+    workspaceSlug = scenario.workspace.slug;
+
+    // Create invitable user
     inviteeUsername = `e2e-member-${Date.now()}`;
     await createInvitableUser({ githubUsername: inviteeUsername });
 
@@ -22,10 +27,8 @@ test.describe('Workspace Member Management', () => {
     dashboardPage = new DashboardPage(page);
     settingsPage = new WorkspaceSettingsPage(page);
 
-    await authPage.goto();
+    // Sign in and navigate to scenario workspace settings
     await authPage.signInWithMock();
-    await dashboardPage.waitForLoad();
-    workspaceSlug = authPage.getCurrentWorkspaceSlug();
     await settingsPage.goto(workspaceSlug);
     await settingsPage.waitForLoad();
   });

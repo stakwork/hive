@@ -1,5 +1,6 @@
 import { test, expect } from '@/__tests__/e2e/support/fixtures/test-hooks';
 import { AuthPage, DashboardPage, TasksPage } from '@/__tests__/e2e/support/page-objects';
+import { createStandardWorkspaceScenario } from '@/__tests__/e2e/support/fixtures/e2e-scenarios';
 
 /**
  * Task Creation Flow E2E Tests
@@ -20,15 +21,17 @@ test.describe('Task Creation Flow', () => {
   let workspaceSlug: string;
 
   test.beforeEach(async ({ page }) => {
+    // Create workspace with proper setup
+    const scenario = await createStandardWorkspaceScenario();
+    workspaceSlug = scenario.workspace.slug;
+
     authPage = new AuthPage(page);
     dashboardPage = new DashboardPage(page);
     tasksPage = new TasksPage(page);
 
-    // Sign in and navigate to dashboard
-    await authPage.goto();
+    // Sign in and navigate to scenario workspace dashboard
     await authPage.signInWithMock();
-    workspaceSlug = authPage.getCurrentWorkspaceSlug();
-    await dashboardPage.waitForLoad();
+    await dashboardPage.goto(workspaceSlug);
   });
 
   test('should create a new task and verify it appears in the task list', async ({ page }) => {
