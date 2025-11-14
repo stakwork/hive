@@ -53,15 +53,15 @@ export async function GET(
     const poolManagerService = new PoolManagerService(config);
 
     try {
-      const poolStatus = await poolManagerService.getPoolStatus(swarm.id, swarm.poolApiKey);
+      const workspaces = await poolManagerService.getPoolWorkspaces(swarm.id, swarm.poolApiKey);
 
       return NextResponse.json({
         success: true,
-        data: poolStatus,
+        data: workspaces,
       });
     } catch (error) {
-      console.warn("Pool status fetch failed (pool may still be active):", error);
-      const message = error instanceof Error ? error.message : "Unable to fetch pool data right now";
+      console.warn("Pool workspaces fetch failed:", error);
+      const message = error instanceof Error ? error.message : "Unable to fetch workspace data right now";
       return NextResponse.json(
         {
           success: false,
@@ -71,7 +71,7 @@ export async function GET(
       );
     }
   } catch (error) {
-    console.error("Error in pool status endpoint:", error);
+    console.error("Error in pool workspaces endpoint:", error);
     return NextResponse.json(
       {
         success: false,

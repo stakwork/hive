@@ -13,6 +13,7 @@ import {
   Map,
   Menu,
   Phone,
+  Server,
   Settings,
   Shield,
   TestTube2,
@@ -84,8 +85,16 @@ interface SidebarContentProps {
 
 const baseNavigationItems: NavigationItem[] = [
   { icon: PiGraphFill, label: "Graph", href: "/" },
-  { icon: CheckSquare, label: "Tasks", href: "/tasks" },
-  { icon: Map, label: "Roadmap", href: "/roadmap" },
+  { icon: Server, label: "Capacity", href: "/capacity" },
+  {
+    icon: Map,
+    label: "Offence",
+    href: "/offence",
+    children: [
+      { icon: CheckSquare, label: "Tasks", href: "/tasks" },
+      { icon: Map, label: "Roadmap", href: "/roadmap" },
+    ],
+  },
   {
     icon: Shield,
     label: "Defence",
@@ -188,22 +197,29 @@ function SidebarContent({
                   )}
                 </Button>
                 {/* Render children if expanded */}
-                {hasChildren && isExpanded && (
-                  <ul className="relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[19px] pl-4">
+                {hasChildren && (
+                  <ul className={`relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[19px] pl-4 ${!isExpanded ? 'hidden' : ''}`}>
                     {item.children!.map((child) => {
                       const isChildActive = isActiveTab(pathname, child.href);
+                      const isChildTasksItem = child.label === "Tasks";
+                      const showChildBadge = isChildTasksItem && tasksWaitingForInputCount > 0;
                       return (
                         <li key={child.href} className="py-1">
                           <button
                             data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
-                            className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors ${
+                            className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors flex items-center ${
                               isChildActive
                                 ? "text-foreground font-medium bg-primary/10 dark:bg-primary/20"
                                 : "text-foreground hover:bg-primary/5 dark:hover:bg-primary/10"
                             }`}
                             onClick={() => handleNavigate(child.href)}
                           >
-                            {child.label}
+                            <span className="flex-1">{child.label}</span>
+                            {showChildBadge && (
+                              <Badge className="ml-2 px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                                {tasksWaitingForInputCount}
+                              </Badge>
+                            )}
                           </button>
                         </li>
                       );
