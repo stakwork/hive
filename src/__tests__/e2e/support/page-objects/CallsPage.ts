@@ -12,7 +12,7 @@ export class CallsPage {
    * Navigate to calls page for a specific workspace
    */
   async goto(workspaceSlug: string): Promise<void> {
-    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/calls`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/context/calls`);
     await this.waitForLoad();
   }
 
