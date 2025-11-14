@@ -9,7 +9,6 @@ import { Group } from 'three'
 import { Line2 } from 'three-stdlib'
 import { Connections } from './Connections'
 import { Cubes } from './Cubes'
-import { HighlightedNodesLayer } from './HighlightedNodes'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
 import { calculateRadius } from './utils/calculateGroupRadius'
@@ -402,7 +401,7 @@ export const Graph = () => {
 
         <Connections linksPosition={linksPositionRef.current} />
       </group>
-      <HighlightedNodesLayer />
+      {/* <HighlightedNodesLayer /> */}
       {graphStyle === 'split' ? <LayerLabels /> : null}
       <NodeDetailsPanel />
     </group>
