@@ -147,9 +147,8 @@ function SidebarContent({
           {navigationItems.map((item) => {
             const hasChildren = item.children && item.children.length > 0;
             const isExpanded = expandedSections.has(item.label);
-            const isActive = hasChildren
-              ? isParentActive(pathname, item.children!)
-              : isActiveTab(pathname, item.href);
+            // Parent is only active if directly on parent page, not when child is active
+            const isActive = !hasChildren && isActiveTab(pathname, item.href);
             const isTasksItem = item.label === "Tasks";
             const showBadge = isTasksItem && tasksWaitingForInputCount > 0;
 
@@ -190,24 +189,22 @@ function SidebarContent({
                 </Button>
                 {/* Render children if expanded */}
                 {hasChildren && isExpanded && (
-                  <ul className="ml-6 mt-1 space-y-1">
+                  <ul className="relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[22px] pl-4">
                     {item.children!.map((child) => {
                       const isChildActive = isActiveTab(pathname, child.href);
                       return (
-                        <li key={child.href}>
-                          <Button
+                        <li key={child.href} className="py-1">
+                          <button
                             data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
-                            variant={isChildActive ? "secondary" : "ghost"}
-                            className={`w-full justify-start text-sm ${
+                            className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors ${
                               isChildActive
-                                ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
-                                : "hover:bg-primary/5 dark:hover:bg-primary/10"
+                                ? "text-foreground font-medium bg-primary/10 dark:bg-primary/20"
+                                : "text-foreground hover:bg-primary/5 dark:hover:bg-primary/10"
                             }`}
                             onClick={() => handleNavigate(child.href)}
                           >
-                            <child.icon className="w-4 h-4 mr-2" />
                             {child.label}
-                          </Button>
+                          </button>
                         </li>
                       );
                     })}
