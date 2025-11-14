@@ -9,9 +9,10 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, Loader2, Plus, Play } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, Plus, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
+import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 
 interface BadgeMetadata {
   type: "PR" | "WORKFLOW" | "LIVE";
@@ -384,38 +385,40 @@ export default function UserJourneys() {
   };
 
   const renderBadge = (badge: BadgeMetadata) => {
-    const badgeElement = (
+    // Use PRStatusBadge component for PR badges
+    if (badge.type === "PR" && badge.url) {
+      // Map badge text to status
+      const status =
+        badge.text === "Open"
+          ? "IN_PROGRESS"
+          : badge.text === "Merged"
+            ? "DONE"
+            : badge.text === "Closed"
+              ? "CANCELLED"
+              : "IN_PROGRESS";
+
+      return (
+        <PRStatusBadge
+          url={badge.url}
+          status={status as "IN_PROGRESS" | "DONE" | "CANCELLED"}
+        />
+      );
+    }
+
+    // Render other badge types (LIVE, WORKFLOW) as before
+    return (
       <Badge
         variant="secondary"
-        className={`${badge.icon ? "gap-1" : ""} h-5`}
+        className="h-5"
         style={{
           backgroundColor: badge.color,
           color: "white",
           borderColor: badge.borderColor,
         }}
       >
-        {badge.icon === "GitPullRequest" && <GitPullRequest className="w-3 h-3" />}
-        {badge.icon === "GitMerge" && <GitMerge className="w-3 h-3" />}
-        {badge.icon === "GitPullRequestClosed" && <GitPullRequestClosed className="w-3 h-3" />}
         {badge.text}
-        {badge.hasExternalLink && <ExternalLink className="w-3 h-3 ml-0.5" />}
       </Badge>
     );
-
-    if (badge.url && badge.hasExternalLink) {
-      return (
-        <a
-          href={badge.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {badgeElement}
-        </a>
-      );
-    }
-
-    return badgeElement;
   };
 
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
