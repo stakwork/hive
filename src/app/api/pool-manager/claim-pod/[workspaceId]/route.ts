@@ -72,7 +72,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Legacy mock for testing browser URL only
     if (process.env.MOCK_BROWSER_URL) {
       return NextResponse.json(
-        { success: true, message: "Pod claimed successfully", frontend: process.env.MOCK_BROWSER_URL },
+        { success: true, message: "Pod claimed successfully", podId: "mock-pod-id", frontend: process.env.MOCK_BROWSER_URL },
         { status: 200 },
       );
     }
