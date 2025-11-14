@@ -1,4 +1,5 @@
 import { ServiceConfig } from "@/types";
+import { config } from "@/lib/env";
 
 // Service endpoint configurations
 export const serviceConfigs: Record<string, ServiceConfig> = {
@@ -39,7 +40,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     },
   },
   swarm: {
-    baseURL: process.env.SWARM_SUPER_ADMIN_URL || "",
+    baseURL: config.SWARM_SUPER_ADMIN_URL || "",
     apiKey: "", // Added under x-user-token
     timeout: 600000,
     headers: {
