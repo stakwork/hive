@@ -1,8 +1,5 @@
 "use client";
 
-import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
-import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
-import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { useDataStore } from "@/stores/useStores";
@@ -33,7 +30,10 @@ interface GraphComponentProps {
   className?: string;
   height?: string;
   width?: string;
-  showWidgets?: boolean;
+  topLeftWidget?: React.ReactNode;
+  topRightWidget?: React.ReactNode;
+  bottomLeftWidget?: React.ReactNode;
+  bottomRightWidget?: React.ReactNode;
 }
 
 export const GraphComponent = ({
@@ -42,7 +42,10 @@ export const GraphComponent = ({
   className,
   height = "h-full",
   width = "w-full",
-  showWidgets = false
+  topLeftWidget,
+  topRightWidget,
+  bottomLeftWidget,
+  bottomRightWidget
 }: GraphComponentProps = {}) => {
   return (
     <GraphComponentInner
@@ -51,7 +54,10 @@ export const GraphComponent = ({
       className={className}
       height={height}
       width={width}
-      showWidgets={showWidgets}
+      topLeftWidget={topLeftWidget}
+      topRightWidget={topRightWidget}
+      bottomLeftWidget={bottomLeftWidget}
+      bottomRightWidget={bottomRightWidget}
     />
   );
 };
@@ -62,7 +68,10 @@ const GraphComponentInner = ({
   className,
   height = "h-full",
   width = "w-full",
-  showWidgets = false
+  topLeftWidget,
+  topRightWidget,
+  bottomLeftWidget,
+  bottomRightWidget
 }: GraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
@@ -133,15 +142,24 @@ const GraphComponentInner = ({
 
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
-      {/* Ingestion widget in top-left corner - only when we have data */}
-      {showWidgets && dataInitial?.nodes && dataInitial.nodes.length > 0 && <IngestionStatusWidget />}
+      {/* Top-left widget */}
+      {topLeftWidget && (
+        <div className="absolute top-4 left-4 z-10">{topLeftWidget}</div>
+      )}
 
-      {/* Status widgets in top-right corner - only show on dashboard */}
-      {showWidgets && (
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-          <GitHubStatusWidget />
-          <PoolStatusWidget />
-        </div>
+      {/* Top-right widget */}
+      {topRightWidget && (
+        <div className="absolute top-4 right-4 z-10">{topRightWidget}</div>
+      )}
+
+      {/* Bottom-left widget */}
+      {bottomLeftWidget && (
+        <div className="absolute bottom-4 left-4 z-10">{bottomLeftWidget}</div>
+      )}
+
+      {/* Bottom-right widget */}
+      {bottomRightWidget && (
+        <div className="absolute bottom-4 right-4 z-10">{bottomRightWidget}</div>
       )}
 
       <div className="border rounded overflow-hidden bg-card flex-1">
@@ -151,11 +169,7 @@ const GraphComponentInner = ({
           </div>
         ) : (!dataInitial?.nodes || dataInitial.nodes.length === 0) ? (
           <div className="flex h-full items-center justify-center">
-            {showWidgets ? (
-              <IngestionStatusWidget centered />
-            ) : (
-              <div className="text-lg text-gray-300">No data found</div>
-            )}
+            <div className="text-lg text-gray-300">No data found</div>
           </div>
         ) : (
           <Universe enableRotation={enableRotation} />
