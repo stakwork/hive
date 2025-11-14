@@ -1,7 +1,6 @@
 
 
 import { Flex } from '@/components/common/Flex'
-import { useWebhookHighlights } from '@/hooks/useWebhookHighlights'
 import { useControlStore } from '@/stores/useControlStore'
 import { useDataStore, useGraphStore } from '@/stores/useStores'
 import { AdaptiveDpr, AdaptiveEvents, Html, Loader, Preload } from '@react-three/drei'
@@ -45,7 +44,7 @@ const UniverseComponent = ({ enableRotation = false }: { enableRotation?: boolea
   ]
 
   // Initialize webhook highlights listener
-  useWebhookHighlights()
+  // useWebhookHighlights()
 
   // Get saved camera position for initial canvas setup
   const { cameraPosition } = useGraphStore((s) => s)
