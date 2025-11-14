@@ -1,3 +1,5 @@
+import { db } from "@/lib/db";
+import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { NextRequest, NextResponse } from "next/server";
 
 export const fetchCache = "force-no-store";
@@ -9,8 +11,12 @@ interface GraphWebhookPayload {
 
 export async function POST(request: NextRequest) {
   try {
+
+    console.log("Graph webhook received");
     // API Key authentication
     const apiKey = request.headers.get('x-api-key');
+    console.log("apiKey:", apiKey);
+    console.log("process.env.GRAPH_WEBHOOK_API_KEY:", process.env.GRAPH_WEBHOOK_API_KEY);
     if (!apiKey || apiKey !== process.env.GRAPH_WEBHOOK_API_KEY) {
       console.error("Invalid or missing API key for graph webhook");
       return NextResponse.json(
@@ -33,6 +39,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const workspace = await db.workspace.findUnique({
+      where: {
+        id: workspace_id,
+      },
+    });
+
+    console.log("workspace:", workspace);
+
+    // Broadcast highlight event to workspace if workspace_id is provided
+    if (workspace) {
+      try {
+        const channelName = getWorkspaceChannelName(workspace.slug);
+        const eventPayload = {
+          nodeIds: node_ids,
+          workspaceId: workspace.slug,
+          timestamp: Date.now(),
+        };
+
+        await pusherServer.trigger(
+          channelName,
+          PUSHER_EVENTS.HIGHLIGHT_NODES,
+          eventPayload,
+        );
+
+        console.log(`Broadcasted highlight event to workspace: ${workspace_id}`);
+      } catch (error) {
+        console.error("Error broadcasting highlight event:", error);
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -41,6 +77,7 @@ export async function POST(request: NextRequest) {
             nodeIds: node_ids,
             workspaceId: workspace_id,
           },
+          broadcasted: !!workspace_id,
         },
       },
       { status: 200 },

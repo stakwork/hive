@@ -43,6 +43,8 @@ const defaultData: Omit<
   | 'setCameraPosition'
   | 'setCameraTarget'
   | 'saveCameraState'
+  | 'setWebhookHighlightNodes'
+  | 'clearWebhookHighlights'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -72,6 +74,8 @@ const defaultData: Omit<
   selectedNodeType: '',
   cameraPosition: null,
   cameraTarget: null,
+  webhookHighlightNodes: [],
+  highlightTimestamp: null,
 }
 
 export const createGraphStore = (
@@ -187,5 +191,13 @@ export const createGraphStore = (
     saveCameraState: (position, target) => set({
       cameraPosition: position,
       cameraTarget: target
+    }),
+    setWebhookHighlightNodes: (nodeIds: string[]) => set({
+      webhookHighlightNodes: nodeIds,
+      highlightTimestamp: Date.now()
+    }),
+    clearWebhookHighlights: () => set({
+      webhookHighlightNodes: [],
+      highlightTimestamp: null
     }),
   }));

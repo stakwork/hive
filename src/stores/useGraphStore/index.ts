@@ -59,6 +59,8 @@ export type GraphStore = {
   dateRangeFilter: string
   cameraPosition: CameraPosition | null
   cameraTarget: CameraTarget | null
+  webhookHighlightNodes: string[]
+  highlightTimestamp: number | null
   setDisableCameraRotation: (rotation: boolean) => void
   setScrollEventsDisabled: (rotation: boolean) => void
   setData: (data: GraphData) => void
@@ -89,6 +91,8 @@ export type GraphStore = {
   setCameraPosition: (position: CameraPosition | null) => void
   setCameraTarget: (target: CameraTarget | null) => void
   saveCameraState: (position: CameraPosition, target: CameraTarget) => void
+  setWebhookHighlightNodes: (nodeIds: string[]) => void
+  clearWebhookHighlights: () => void
 }
 
 const defaultData: Omit<
@@ -126,6 +130,8 @@ const defaultData: Omit<
   | 'setCameraPosition'
   | 'setCameraTarget'
   | 'saveCameraState'
+  | 'setWebhookHighlightNodes'
+  | 'clearWebhookHighlights'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -155,6 +161,8 @@ const defaultData: Omit<
   selectedNodeType: '',
   cameraPosition: null,
   cameraTarget: null,
+  webhookHighlightNodes: [],
+  highlightTimestamp: null,
 }
 
 export const useGraphStore = create<GraphStore>()((set, get) => ({
@@ -266,6 +274,14 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
   saveCameraState: (position, target) => set({
     cameraPosition: position,
     cameraTarget: target
+  }),
+  setWebhookHighlightNodes: (nodeIds: string[]) => set({
+    webhookHighlightNodes: nodeIds,
+    highlightTimestamp: Date.now()
+  }),
+  clearWebhookHighlights: () => set({
+    webhookHighlightNodes: [],
+    highlightTimestamp: null
   }),
 }))
 
