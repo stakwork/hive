@@ -13,45 +13,14 @@ import { Check, Copy, ExternalLink, GitMerge, GitPullRequest, GitPullRequestClos
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 
-interface UserJourneyTask {
-  id: string;
-  title: string;
-  description: string | null;
-  status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "BLOCKED";
-  workflowStatus: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ERROR" | "HALTED" | "FAILED" | null;
-  testFilePath: string | null;
-  testFileUrl: string | null;
-  stakworkProjectId: number | null;
-  createdAt: string;
-  repository?: {
-    id: string;
-    name: string;
-    repositoryUrl: string;
-    branch: string;
-  };
-  prArtifact?: {
-    id: string;
-    type: string;
-    content: {
-      url: string;
-      status: "IN_PROGRESS" | "DONE" | "CANCELLED";
-    };
-  } | null;
-}
-
-interface E2eTestNode {
-  node_type: string;
-  ref_id: string;
-  properties: {
-    name: string;
-    file: string;
-    body: string;
-    test_kind: string;
-    node_key: string;
-    start: number;
-    end: number;
-    token_count: number;
-  };
+interface BadgeMetadata {
+  type: "PR" | "WORKFLOW" | "LIVE";
+  text: string;
+  url?: string;
+  color: string;
+  borderColor: string;
+  icon?: "GitPullRequest" | "GitMerge" | "GitPullRequestClosed" | null;
+  hasExternalLink?: boolean;
 }
 
 interface UserJourneyRow {
@@ -61,8 +30,23 @@ interface UserJourneyRow {
   testFilePath: string | null;
   testFileUrl: string | null;
   createdAt: string;
-  task?: UserJourneyTask;
-  graphNode?: E2eTestNode;
+  badge: BadgeMetadata;
+  task?: {
+    description: string | null;
+    status: string;
+    workflowStatus: string | null;
+    stakworkProjectId: number | null;
+    repository?: {
+      id: string;
+      name: string;
+      repositoryUrl: string;
+      branch: string;
+    };
+  };
+  graphNode?: {
+    body: string;
+    testKind: string;
+  };
 }
 
 export default function UserJourneys() {
@@ -70,9 +54,8 @@ export default function UserJourneys() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
-  const [userJourneyTasks, setUserJourneyTasks] = useState<UserJourneyTask[]>([]);
-  const [e2eTestsGraph, setE2eTestsGraph] = useState<E2eTestNode[]>([]);
-  const [fetchingTasks, setFetchingTasks] = useState(false);
+  const [userJourneys, setUserJourneys] = useState<UserJourneyRow[]>([]);
+  const [fetchingJourneys, setFetchingJourneys] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [hidePending, setHidePending] = useState(false);
@@ -82,104 +65,42 @@ export default function UserJourneys() {
   const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null); // ID of task being replayed (for loading state)
   const open = useModal();
 
-  const fetchUserJourneyTasks = useCallback(async () => {
-    if (!id) return;
+  const fetchUserJourneys = useCallback(async () => {
+    if (!slug) return;
 
     try {
-      setFetchingTasks(true);
-      const response = await fetch(`/api/tasks?workspaceId=${id}&sourceType=USER_JOURNEY&limit=100&includeLatestMessage=true`);
+      setFetchingJourneys(true);
+      const response = await fetch(`/api/workspaces/${slug}/user-journeys`);
 
       if (!response.ok) {
-        console.error("Failed to fetch user journey tasks");
+        console.error("Failed to fetch user journeys");
         return;
       }
 
       const result = await response.json();
       if (result.success && result.data) {
-        setUserJourneyTasks(result.data);
+        setUserJourneys(result.data);
       }
     } catch (error) {
-      console.error("Error fetching user journey tasks:", error);
+      console.error("Error fetching user journeys:", error);
     } finally {
-      setFetchingTasks(false);
-    }
-  }, [id]);
-
-  const fetchE2eTestsFromGraph = useCallback(async () => {
-    if (!slug) return;
-
-    try {
-      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
-
-      if (!response.ok) {
-        console.error("Failed to fetch E2E tests from graph");
-        return;
-      }
-
-      const result = await response.json();
-      if (result.success && result.data && Array.isArray(result.data)) {
-        setE2eTestsGraph(result.data);
-      }
-    } catch (error) {
-      console.error("Error fetching E2E tests from graph:", error);
+      setFetchingJourneys(false);
     }
   }, [slug]);
 
   useEffect(() => {
     if (!frontend) {
-      fetchUserJourneyTasks();
-      fetchE2eTestsFromGraph();
+      fetchUserJourneys();
     }
-  }, [frontend, fetchUserJourneyTasks, fetchE2eTestsFromGraph]);
-
-  // Helper to construct GitHub URL for graph node files
-  const getGithubUrlForGraphNode = (node: E2eTestNode): string | null => {
-    const repo = workspace?.repositories?.[0];
-    if (!repo) return null;
-    const branch = repo.branch || 'main';
-    return `${repo.repositoryUrl}/blob/${branch}/${node.properties.file}`;
-  };
-
-  // Filter out tasks with merged PRs (they'll appear as graph nodes instead)
-  const pendingTasks = userJourneyTasks.filter(task =>
-    !task.prArtifact?.content ||
-    task.prArtifact.content.status !== "DONE"
-  );
-
-  // Convert graph nodes to rows (always show as "Live")
-  const graphRows: UserJourneyRow[] = e2eTestsGraph.map(node => ({
-    id: node.ref_id,
-    title: node.properties.name,
-    type: "GRAPH_NODE" as const,
-    testFilePath: node.properties.file,
-    testFileUrl: getGithubUrlForGraphNode(node),
-    createdAt: new Date().toISOString(), // Graph nodes don't have timestamps
-    graphNode: node,
-  }));
-
-  // Convert pending tasks to rows
-  const taskRows: UserJourneyRow[] = pendingTasks.map(task => ({
-    id: task.id,
-    title: task.title,
-    type: "TASK" as const,
-    testFilePath: task.testFilePath,
-    testFileUrl: task.testFileUrl,
-    createdAt: task.createdAt,
-    task: task,
-  }));
-
-  // Combine and sort by created date (newest first)
-  const allRows = [...graphRows, ...taskRows].sort((a, b) =>
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  }, [frontend, fetchUserJourneys]);
 
   // Apply hide pending filter
   const filteredRows = hidePending
-    ? allRows.filter(row =>
+    ? userJourneys.filter(row =>
         row.type === "GRAPH_NODE" || // Always show graph nodes
         row.task?.status === "DONE"   // Only show completed tasks
       )
-    : allRows;
+    : userJourneys;
 
   // Shared function to drop the pod
   const dropPod = useCallback(
@@ -238,16 +159,10 @@ export default function UserJourneys() {
 
     if (row.type === "GRAPH_NODE") {
       // For graph nodes, use the test body directly
-      code = row.graphNode!.properties.body;
+      code = row.graphNode!.body;
     } else {
-      // For tasks, try to find matching test in graph first
-      const graphTest = e2eTestsGraph.find(
-        (t) =>
-          t.properties.file === row.task!.testFilePath ||
-          t.properties.file.endsWith(row.task!.testFilePath || "")
-      );
-      // Fall back to task title if not found in graph
-      code = graphTest?.properties.body || row.task!.title;
+      // For tasks, fetch the test code
+      code = await fetchTestCode(row) || row.title;
     }
 
     await navigator.clipboard.writeText(code);
@@ -255,70 +170,21 @@ export default function UserJourneys() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const getTestFileUrl = (task: UserJourneyTask): string | null => {
-    // Prefer constructing URL dynamically from repository data (source of truth)
-    if (task.repository?.repositoryUrl && task.testFilePath) {
-      const branch = task.repository.branch || 'main';
+  // Fetch test code from ChatMessages (fast) or fallback to title
+  const fetchTestCode = async (row: UserJourneyRow): Promise<string | null> => {
+    if (!row.task) return null;
 
-      // Remove owner/repo prefix from path if present (e.g., "stakwork/hive/src/..." -> "src/...")
-      let path = task.testFilePath;
-      const pathParts = path.split('/');
-
-      // If path starts with owner/repo that matches the repository URL, strip it
-      if (pathParts.length >= 3 &&
-          task.repository.repositoryUrl.toLowerCase().includes(`/${pathParts[0]}/${pathParts[1]}`.toLowerCase())) {
-        path = pathParts.slice(2).join('/');
-      }
-
-      return `${task.repository.repositoryUrl}/blob/${branch}/${path}`;
-    }
-
-    // Fallback to stored URL only if we can't construct it
-    return task.testFileUrl;
-  };
-
-  // Fetch test code from ChatMessages (fast) or Graph API (fallback for old migrated tests)
-  const fetchTestCode = async (task: UserJourneyTask): Promise<string | null> => {
     try {
-      // Path 1: Try ChatMessages first (works for newly recorded tests)
-      // This is fast and works immediately after recording
-      const messagesResponse = await fetch(`/api/tasks/${task.id}/messages`);
+      const messagesResponse = await fetch(`/api/tasks/${row.id}/messages`);
 
       if (messagesResponse.ok) {
         const result = await messagesResponse.json();
         if (result.success && result.data?.messages && result.data.messages.length > 0) {
-          // First message contains the test code
           const testCode = result.data.messages[0].message;
           if (testCode && testCode.trim().length > 0) {
             return testCode;
           }
         }
-      }
-
-      // Path 2: Fallback to Graph API (for old migrated tests that don't have ChatMessages)
-      // This works for tests that were created before we added ChatMessage storage
-      const graphResponse = await fetch(
-        `/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`
-      );
-
-      if (!graphResponse.ok) {
-        console.error("Failed to fetch E2E tests from graph");
-        return null;
-      }
-
-      const graphResult = await graphResponse.json();
-      if (graphResult.success && graphResult.data && Array.isArray(graphResult.data)) {
-        // Find the matching test by comparing task.testFilePath with node.properties.file
-        const matchingTest = graphResult.data.find(
-          (node: any) => node.properties?.file === task.testFilePath
-        );
-
-        if (matchingTest && matchingTest.properties?.body) {
-          return matchingTest.properties.body;
-        }
-
-        console.error("No matching test found in graph for testFilePath:", task.testFilePath);
-        console.error("Available test files:", graphResult.data.map((n: any) => n.properties?.file));
       }
 
       return null;
@@ -359,7 +225,6 @@ export default function UserJourneys() {
         const errorData = await response.json();
         console.error("Failed to claim pod:", errorData);
 
-        // Show error message to user
         toast({
           variant: "destructive",
           title: "Unable to Create User Journey",
@@ -401,10 +266,10 @@ export default function UserJourneys() {
 
       if (row.type === "GRAPH_NODE") {
         // For graph nodes, use the test body directly
-        testCode = row.graphNode!.properties.body;
+        testCode = row.graphNode!.body;
       } else {
         // For tasks, fetch test code
-        testCode = await fetchTestCode(row.task!);
+        testCode = await fetchTestCode(row);
       }
 
       if (!testCode) {
@@ -494,8 +359,8 @@ export default function UserJourneys() {
           description: `Task "${title}" has been created and is now in progress.`,
         });
 
-        // Refetch tasks to show the new one
-        await fetchUserJourneyTasks();
+        // Refetch journeys to show the new one
+        await fetchUserJourneys();
 
         // Close the browser panel and release the pod
         handleCloseBrowser();
@@ -518,78 +383,39 @@ export default function UserJourneys() {
     }
   };
 
-  const getStatusBadge = (row: UserJourneyRow) => {
-    // Graph nodes always show "Live" badge
-    if (row.type === "GRAPH_NODE") {
-      return (
-        <Badge
-          variant="secondary"
-          className="h-5 border-[#10b981]/30"
-          style={{ backgroundColor: "#10b981", color: "white" }}
-        >
-          Live
-        </Badge>
-      );
-    }
+  const renderBadge = (badge: BadgeMetadata) => {
+    const badgeElement = (
+      <Badge
+        variant="secondary"
+        className={`${badge.icon ? "gap-1" : ""} h-5`}
+        style={{
+          backgroundColor: badge.color,
+          color: "white",
+          borderColor: badge.borderColor,
+        }}
+      >
+        {badge.icon === "GitPullRequest" && <GitPullRequest className="w-3 h-3" />}
+        {badge.icon === "GitMerge" && <GitMerge className="w-3 h-3" />}
+        {badge.icon === "GitPullRequestClosed" && <GitPullRequestClosed className="w-3 h-3" />}
+        {badge.text}
+        {badge.hasExternalLink && <ExternalLink className="w-3 h-3 ml-0.5" />}
+      </Badge>
+    );
 
-    // For tasks, show PR or workflow badges
-    const task = row.task!;
-
-    // Show PR badge if available
-    if (task.prArtifact?.content) {
-      const prStatus = task.prArtifact.content.status;
+    if (badge.url && badge.hasExternalLink) {
       return (
         <a
-          href={task.prArtifact.content.url}
+          href={badge.url}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
         >
-          <Badge
-            variant="secondary"
-            className={`gap-1 h-5 ${
-              prStatus === "IN_PROGRESS"
-                ? "border-[#238636]/30"
-                : prStatus === "CANCELLED"
-                  ? "border-[#6e7681]/30"
-                  : "bg-gray-100 text-gray-800 border-gray-200"
-            }`}
-            style={
-              prStatus === "IN_PROGRESS"
-                ? { backgroundColor: "#238636", color: "white" }
-                : prStatus === "CANCELLED"
-                  ? { backgroundColor: "#6e7681", color: "white" }
-                  : undefined
-            }
-          >
-            {prStatus === "CANCELLED" ? (
-              <GitPullRequestClosed className="w-3 h-3" />
-            ) : (
-              <GitPullRequest className="w-3 h-3" />
-            )}
-            {prStatus === "IN_PROGRESS"
-              ? "Open"
-              : "Closed"}
-            <ExternalLink className="w-3 h-3 ml-0.5" />
-          </Badge>
+          {badgeElement}
         </a>
       );
     }
 
-    // Fallback to workflow status badge
-    if (task.workflowStatus === "COMPLETED") {
-      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Completed</Badge>;
-    }
-
-    if (task.workflowStatus === "FAILED" || task.workflowStatus === "HALTED" || task.workflowStatus === "ERROR") {
-      return <Badge variant="default" className="bg-red-600 hover:bg-red-700">Failed</Badge>;
-    }
-
-    if (task.workflowStatus === "IN_PROGRESS" || task.workflowStatus === "PENDING") {
-      return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">In Progress</Badge>;
-    }
-
-    return <Badge variant="secondary">Pending</Badge>;
+    return badgeElement;
   };
 
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
@@ -654,7 +480,7 @@ export default function UserJourneys() {
               </div>
             </CardHeader>
             <CardContent>
-              {fetchingTasks ? (
+              {fetchingJourneys ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
@@ -691,7 +517,7 @@ export default function UserJourneys() {
                               )}
                             </Button>
                           </TableCell>
-                          <TableCell>{getStatusBadge(row)}</TableCell>
+                          <TableCell>{renderBadge(row.badge)}</TableCell>
                           <TableCell>
                             {row.type === "GRAPH_NODE" || row.testFileUrl ? (
                               <div className="flex items-center gap-2">
@@ -737,7 +563,7 @@ export default function UserJourneys() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">
-                    {hidePending && allRows.length > 0
+                    {hidePending && userJourneys.length > 0
                       ? "No completed tests to display. Toggle off to see all tests."
                       : "No E2E tests yet. Create a user journey to get started!"}
                   </p>
