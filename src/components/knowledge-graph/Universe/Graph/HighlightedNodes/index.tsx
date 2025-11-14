@@ -1,7 +1,6 @@
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
-import { Billboard } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { memo, useEffect, useMemo, useRef } from 'react'
 import { Group, Mesh, MeshBasicMaterial } from 'three'
@@ -18,7 +17,6 @@ const NEURON_PULSE = {
   color: '#00ff88', // Electric green
   pulseSpeed: PULSE_SPEED,
   amplitude: PULSE_AMPLITUDE,
-  rings: 3,
 }
 
 export const HighlightedNodesLayer = memo(() => {
@@ -131,30 +129,16 @@ export const HighlightedNodesLayer = memo(() => {
           key={`highlight-${node.ref_id}`}
           position={[node.x || 0, node.y || 0, node.z || 0]}
         >
-          <Billboard follow lockX={false} lockY={false} lockZ={false}>
-            {/* Multiple concentric rings */}
-            {[...Array(NEURON_PULSE.rings)].map((_, ringIndex) => (
-              <mesh key={ringIndex} position={[0, 0, ringIndex * -0.5]}>
-                <ringGeometry args={[30 + ringIndex * 15, 35 + ringIndex * 15, 32]} />
-                <meshBasicMaterial
-                  color={NEURON_PULSE.color}
-                  transparent
-                  opacity={0.4 - ringIndex * 0.1}
-                  depthWrite={false}
-                />
-              </mesh>
-            ))}
-            {/* Core */}
-            <mesh position={[0, 0, 1]}>
-              <circleGeometry args={[12, 16]} />
-              <meshBasicMaterial
-                color={NEURON_PULSE.color}
-                transparent
-                opacity={0.9}
-                depthWrite={false}
-              />
-            </mesh>
-          </Billboard>
+          {/* Single pulsing sphere */}
+          <mesh position={[0, 0, 0]}>
+            <sphereGeometry args={[25, 32, 16]} />
+            <meshBasicMaterial
+              color={NEURON_PULSE.color}
+              transparent
+              opacity={0.6}
+              depthWrite={false}
+            />
+          </mesh>
         </group>
       ))}
     </group>
