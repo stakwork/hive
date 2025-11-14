@@ -2,6 +2,7 @@
 
 import { GraphComponent } from "@/components/knowledge-graph";
 import { useGraphPolling } from "@/hooks/useGraphPolling";
+import { useWebhookHighlights } from "@/hooks/useWebhookHighlights";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { logStoreInstances } from "@/stores/createStoreFactory";
 import { StoreProvider } from "@/stores/StoreProvider";
@@ -23,6 +24,8 @@ function DashboardInner() {
     enabled: true,
     interval: 5000
   });
+
+  useWebhookHighlights()
 
 
   return (
