@@ -9,6 +9,8 @@ import { StoreProvider } from "@/stores/StoreProvider";
 export function Dashboard() {
   const { id: workspaceId } = useWorkspace();
 
+  console.log("workspaceId:", workspaceId)
+
   logStoreInstances()
 
   return (
