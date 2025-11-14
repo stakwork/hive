@@ -30,6 +30,7 @@ export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/api/github/app/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/stakwork/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/webhook/stakwork", strategy: "prefix", access: "webhook" },
+  { path: "/api/graph/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/janitors/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/swarm/stakgraph/webhook", strategy: "prefix", access: "webhook" },
   { path: "/api/chat/response", strategy: "prefix", access: "webhook" },
