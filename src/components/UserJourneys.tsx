@@ -510,10 +510,6 @@ export default function UserJourneys() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>E2E Tests</CardTitle>
-                  <CardDescription>End-to-end tests from your codebase</CardDescription>
-                </div>
                 <div className="flex items-center gap-2">
                   <label htmlFor="hide-pending" className="text-sm text-muted-foreground cursor-pointer">
                     Hide pending recordings
