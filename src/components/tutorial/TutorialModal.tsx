@@ -1,34 +1,29 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useTutorial } from "@/contexts/TutorialContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { X, Sparkles, Database, ListChecks, Lightbulb, CheckCircle } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
+import { Sparkles, Database, ListChecks, Lightbulb, CheckCircle } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIngestStatus } from "@/hooks/useIngestStatus";
 
 export function TutorialModal() {
   const { isActive, currentStep, nextStep, skipTutorial } = useTutorial();
-  const router = useRouter();
   const pathname = usePathname();
-  const { slug, workspace } = useWorkspace();
+  const { workspace } = useWorkspace();
   const { status: ingestStatus } = useIngestStatus();
-  
-  const [waitingForNavigation, setWaitingForNavigation] = useState(false);
 
   // Handle automatic progression based on user navigation
   useEffect(() => {
     if (!isActive) return;
 
     if (currentStep === "navigate-to-tasks" && pathname.includes("/tasks")) {
-      setWaitingForNavigation(false);
       nextStep();
     }
 
     if (currentStep === "navigate-to-insights" && pathname.includes("/insights")) {
-      setWaitingForNavigation(false);
       nextStep();
     }
   }, [pathname, currentStep, isActive, nextStep]);
@@ -36,16 +31,6 @@ export function TutorialModal() {
   if (!isActive || currentStep === "complete") {
     return null;
   }
-
-  const handleNavigateToTasks = () => {
-    setWaitingForNavigation(true);
-    router.push(`/w/${slug}/tasks`);
-  };
-
-  const handleNavigateToInsights = () => {
-    setWaitingForNavigation(true);
-    router.push(`/w/${slug}/insights`);
-  };
 
   // Get position based on current step
   const getPositionClass = () => {
@@ -55,7 +40,7 @@ export function TutorialModal() {
         return "top-20 left-1/2 -translate-x-1/2"; // Center top
       case "navigate-to-tasks":
       case "navigate-to-insights":
-        return "top-20 left-4"; // Left side near sidebar
+        return "top-20 left-64"; // Right of sidebar (sidebar is typically ~16rem = 64 in Tailwind)
       case "create-task":
         return "top-20 right-4"; // Right side near New Task button
       case "insights-explanation":
@@ -180,16 +165,15 @@ export function TutorialModal() {
                   <li>• Track progress and collaborate</li>
                 </ul>
               </div>
-              <p className="text-sm text-muted-foreground font-medium">
-                👈 Click "Tasks" in the sidebar to continue
-              </p>
+              <div className="bg-blue-100 dark:bg-blue-900/50 p-4 rounded-lg border-2 border-blue-500 animate-pulse">
+                <p className="text-sm font-bold text-center">
+                  👈 Click "Tasks" in the sidebar to continue
+                </p>
+              </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="ghost" onClick={skipTutorial}>
+            <CardFooter>
+              <Button variant="ghost" onClick={skipTutorial} className="w-full">
                 Skip Tutorial
-              </Button>
-              <Button onClick={handleNavigateToTasks} disabled={waitingForNavigation}>
-                {waitingForNavigation ? "Opening..." : "Go to Tasks"}
               </Button>
             </CardFooter>
           </Card>
@@ -259,16 +243,15 @@ export function TutorialModal() {
                   <li>• Automated suggestions</li>
                 </ul>
               </div>
-              <p className="text-sm text-muted-foreground font-medium">
-                👈 Click "Insights" in the sidebar to continue
-              </p>
+              <div className="bg-purple-100 dark:bg-purple-900/50 p-4 rounded-lg border-2 border-purple-500 animate-pulse">
+                <p className="text-sm font-bold text-center">
+                  👈 Click "Insights" in the sidebar to continue
+                </p>
+              </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="ghost" onClick={skipTutorial}>
+            <CardFooter>
+              <Button variant="ghost" onClick={skipTutorial} className="w-full">
                 Skip Tutorial
-              </Button>
-              <Button onClick={handleNavigateToInsights} disabled={waitingForNavigation}>
-                {waitingForNavigation ? "Opening..." : "Go to Insights"}
               </Button>
             </CardFooter>
           </Card>
