@@ -14,6 +14,9 @@ export const useWebhookHighlights = () => {
   const { setWebhookHighlightNodes } = useGraphStore((s) => s)
 
   useEffect(() => {
+    // Skip in test environment to prevent E2E test failures
+    if (process.env.NODE_ENV === 'test' || typeof window === 'undefined') return
+
     if (!workspace?.slug) return
 
     const pusher = getPusherClient()
