@@ -1,5 +1,4 @@
 import { useWorkspace } from '@/hooks/useWorkspace'
-import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from '@/lib/pusher'
 import { useGraphStore } from '@/stores/useStores'
 import { useEffect } from 'react'
 
@@ -14,31 +13,28 @@ export const useWebhookHighlights = () => {
   const { setWebhookHighlightNodes } = useGraphStore((s) => s)
 
   useEffect(() => {
-    // Skip in test environment to prevent E2E test failures
-    if (process.env.NODE_ENV === 'test' || typeof window === 'undefined') return
+    // if (!workspace?.slug) return
 
-    if (!workspace?.slug) return
+    // const pusher = getPusherClient()
+    // const channelName = getWorkspaceChannelName(workspace.slug)
+    // const channel = pusher.subscribe(channelName)
 
-    const pusher = getPusherClient()
-    const channelName = getWorkspaceChannelName(workspace.slug)
-    const channel = pusher.subscribe(channelName)
+    // const handleHighlightEvent = (data: HighlightEvent) => {
+    //   console.log('Received highlight event:', data)
 
-    const handleHighlightEvent = (data: HighlightEvent) => {
-      console.log('Received highlight event:', data)
+    //   console.log("pusher-data:", data);
 
-      console.log("pusher-data:", data);
+    //   // Verify this is for the current workspace
+    //   if (data.workspaceId === workspace.slug) {
+    //     setWebhookHighlightNodes(data.nodeIds)
+    //   }
+    // }
 
-      // Verify this is for the current workspace
-      if (data.workspaceId === workspace.slug) {
-        setWebhookHighlightNodes(data.nodeIds)
-      }
-    }
+    // channel.bind(PUSHER_EVENTS.HIGHLIGHT_NODES, handleHighlightEvent)
 
-    channel.bind(PUSHER_EVENTS.HIGHLIGHT_NODES, handleHighlightEvent)
-
-    return () => {
-      channel.unbind(PUSHER_EVENTS.HIGHLIGHT_NODES, handleHighlightEvent)
-      pusher.unsubscribe(channelName)
-    }
+    // return () => {
+    //   channel.unbind(PUSHER_EVENTS.HIGHLIGHT_NODES, handleHighlightEvent)
+    //   pusher.unsubscribe(channelName)
+    // }
   }, [workspace?.slug, setWebhookHighlightNodes])
 }
