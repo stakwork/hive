@@ -1,5 +1,5 @@
 import { EncryptionService } from "@/lib/encryption";
-import { env } from "@/lib/env";
+import { config } from "@/lib/env";
 import { HttpClient } from "@/lib/http-client";
 import {
   CreateSwarmRequest,
@@ -18,7 +18,7 @@ export async function createSwarmApi(
   return client.post<CreateSwarmResponse>(
     `/api/super/new_swarm`,
     swarm,
-    { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
+    { "x-super-token": config.SWARM_SUPERADMIN_API_KEY as string },
     serviceName,
   );
 }
@@ -31,14 +31,14 @@ export async function stopSwarmApi(
   return client.post<StopSwarmResponse>(
     `/api/super/stop_swarm`,
     swarm,
-    { "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string },
+    { "x-super-token": config.SWARM_SUPERADMIN_API_KEY as string },
     serviceName,
   );
 }
 
 export async function validateUriApi(client: HttpClient, domain: string): Promise<ValidateUriResponse> {
   return client.get<ValidateUriResponse>(`/api/super/check-domain?domain=${domain}`, {
-    "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string,
+    "x-super-token": config.SWARM_SUPERADMIN_API_KEY as string,
   });
 }
 
@@ -50,12 +50,12 @@ export async function fetchSwarmDetails(swarmId: string): Promise<{ ok: boolean;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       console.log(`Attempt: ${attempt + 1}/${maxRetries} for swarm ${swarmId}`);
-      const url = `${env.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
+      const url = `${config.SWARM_SUPER_ADMIN_URL}/api/super/details?id=${encodeURIComponent(swarmId)}`;
 
       const response = await fetch(url, {
         method: "GET",
         headers: {
-          "x-super-token": env.SWARM_SUPERADMIN_API_KEY as string,
+          "x-super-token": config.SWARM_SUPERADMIN_API_KEY as string,
         },
       });
       const data = await response.json();
@@ -155,12 +155,12 @@ export async function swarmApiRequestAuth({
     // build query string if params provided
     const queryString = params
       ? "?" +
-        new URLSearchParams(
-          Object.entries(params).reduce(
-            (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
-            {} as Record<string, string>,
-          ),
-        ).toString()
+      new URLSearchParams(
+        Object.entries(params).reduce(
+          (acc, [k, v]) => (v !== undefined ? { ...acc, [k]: String(v) } : acc),
+          {} as Record<string, string>,
+        ),
+      ).toString()
       : "";
 
     const url =

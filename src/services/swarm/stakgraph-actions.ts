@@ -1,3 +1,4 @@
+import { config } from "@/lib/env";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 
 type Creds = { username?: string; pat?: string };
@@ -68,7 +69,15 @@ export async function triggerIngestAsync(
   useLsp: boolean = false,
 ) {
   console.log("===Trigger IngestAsync was hit. useLsp:", useLsp);
-  const stakgraphUrl = `https://${swarmName}:7799`;
+
+  // Use CUSTOM_SWARM_URL if set (for mocking), otherwise use default swarm URL
+  let stakgraphUrl = `https://${swarmName}:7799`;
+  let endpoint = "/ingest_async";
+  if (config.CUSTOM_SWARM_URL) {
+    // When using mock, the stakgraph ingest endpoint is at a different path
+    stakgraphUrl = config.CUSTOM_SWARM_URL.replace("/api/mock/jarvis", "/api/mock/swarm");
+    endpoint = "/stakgraph/ingest";
+  }
   const data: Record<string, string | boolean> = {
     repo_url: repoUrl,
     username: creds.username,
@@ -79,7 +88,7 @@ export async function triggerIngestAsync(
   if (callbackUrl) data.callback_url = callbackUrl;
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
-    endpoint: "/ingest_async",
+    endpoint: endpoint,
     method: "POST",
     apiKey,
     data,
