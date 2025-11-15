@@ -37,7 +37,7 @@ export function useGraphPolling({
 
     if (!workspaceId || !enabled || isPollingRequestInProgress.current) return;
 
-    const { dataInitial } = useDataStore.getState();
+    const { dataInitial, repositoryNodes } = useDataStore.getState();
 
     // Mark request as in progress
     isPollingRequestInProgress.current = true;
@@ -52,10 +52,10 @@ export function useGraphPolling({
 
 
       // Add start_date_added_to_graph parameter if we have nodes (use latest node's date)
-      const latestNode = dataInitial?.nodes?.at(-1); // Nodes are sorted by date_added_to_graph
+      const latestNode = dataInitial?.nodes?.at(-1) || repositoryNodes?.at(-1); // Nodes are sorted by date_added_to_graph
       if (latestNode?.date_added_to_graph) {
-        const dateParam = Math.floor(latestNode.date_added_to_graph); // Remove decimal part
-        pollingEndpoint += `&start_date_added_to_graph=${dateParam}`;
+        const dateParam = Math.floor(latestNode.date_added_to_graph - 10000000); // Remove decimal part
+        pollingEndpoint += `&start_date_added_to_graph=${0}`;
         console.log(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`);
       } else {
         console.log(`Polling: No existing nodes, using base endpoint`);

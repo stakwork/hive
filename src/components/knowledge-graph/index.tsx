@@ -52,6 +52,7 @@ export const GraphComponent = ({
   const resetData = useDataStore((s) => s.resetData);
   const dataInitial = useDataStore((s) => s.dataInitial);
 
+  const repositoryNodes = useDataStore((s) => s.repositoryNodes);
 
   useEffect(() => {
     const fetchSchema = async () => {
@@ -107,6 +108,8 @@ export const GraphComponent = ({
     fetchNodes();
   }, [workspaceId, addNewNode, resetData, propEndpoint]);
 
+  console.log('repositoryNodes', repositoryNodes);
+
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
       {/* Ingestion widget in top-left corner - only when we have data */}
@@ -121,17 +124,9 @@ export const GraphComponent = ({
       )}
 
       <div className="border rounded overflow-hidden bg-card flex-1">
-        {nodesLoading ? (
+        {nodesLoading && !repositoryNodes.length ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">Loading...</div>
-          </div>
-        ) : (!dataInitial?.nodes || dataInitial.nodes.length === 0) ? (
-          <div className="flex h-full items-center justify-center">
-            {showWidgets ? (
-              <IngestionStatusWidget centered />
-            ) : (
-              <div className="text-lg text-gray-300">No data found</div>
-            )}
           </div>
         ) : (
           <Universe enableRotation={enableRotation} />
@@ -139,5 +134,5 @@ export const GraphComponent = ({
       </div>
 
     </div >
-  );
-};
+  )
+}

@@ -23,13 +23,15 @@ const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 
   const dataInitial = useDataStore((s) => s.dataInitial)
 
+  console.log('content-render-called-content');
+
   return (
     <>
       <color args={[colors.BLUE_PRESS_STATE]} attach="transparent" />
 
       <Controls enableRotation={enableRotation} />
 
-      <>{dataInitial?.nodes?.length ? <Graph /> : null}</>
+      <Graph />
     </>
   )
 }
@@ -38,7 +40,7 @@ let wheelEventTimeout: ReturnType<typeof setTimeout> | null = null
 
 const cameraProps = {
   far: 30000,
-  near: 1,
+  near: 0.01,
   position: [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z],
 } as const
 

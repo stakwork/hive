@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useGitVisualizer } from "@/hooks/useGitVisualizer";
+import Repository3DGraph from "@/components/knowledge-graph/Universe/Graph/GitSee";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { useEffect } from "react";
 
@@ -14,14 +14,17 @@ export const Gitsee = () => {
     }
   }, [slug, loadSettings]);
 
-    const primaryRepoUrl = formData.repositories?.[0]?.repositoryUrl || "";
-    console.log("=====>", workspaceId, primaryRepoUrl, formData.swarmUrl);
-    useGitVisualizer({ workspaceId, repositoryUrl: primaryRepoUrl, swarmUrl: formData.swarmUrl });
+  const primaryRepoUrl = formData.repositories?.[0]?.repositoryUrl || "";
 
   return (
-    <Card className="max-w-2xl">
-      <CardContent>
-        <svg width="500" height="500" id="vizzy" style={{ width: "100%", height: "100%" }}></svg>
+    <Card className="w-full h-[600px]">
+      <CardContent className="p-0 h-full">
+        <div className="w-full h-full rounded-lg overflow-hidden">
+          <Repository3DGraph
+            repositoryUrl={primaryRepoUrl}
+            workspaceId={workspaceId || undefined}
+          />
+        </div>
       </CardContent>
     </Card>
   );

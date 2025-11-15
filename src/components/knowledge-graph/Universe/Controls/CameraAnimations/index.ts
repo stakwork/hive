@@ -1,6 +1,6 @@
-import { MathUtils } from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useEffect } from 'react'
+import { MathUtils } from 'three'
 
 import { useControlStore } from '@/stores/useControlStore'
 import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
@@ -40,7 +40,7 @@ export const useCameraAnimations = ({ enabled, enableRotation }: { enabled: bool
     console.log('updateGraphRadius', graphRadius)
 
     if (!selectedNode && cameraControlsRef) {
-      cameraControlsRef.setLookAt(initialCameraPosition.x, initialCameraPosition.y, graphRadius + 200, 0, 0, 0, true)
+      cameraControlsRef.setLookAt(initialCameraPosition.x, initialCameraPosition.y, graphRadius + 50, 0, 0, 0, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode, graphRadius, cameraFocusTrigger])

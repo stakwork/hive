@@ -9,6 +9,7 @@ import { Group } from 'three'
 import { Line2 } from 'three-stdlib'
 import { Connections } from './Connections'
 import { Cubes } from './Cubes'
+import { RepositoryScene } from './GitSee'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
 import { calculateRadius } from './utils/calculateGroupRadius'
@@ -347,19 +348,22 @@ export const Graph = () => {
     setSimulationInProgress,
   ])
 
-  if (!simulation) {
-    return null
-  }
+  // if (!simulation) {
+  //   return null
+  // }
 
+
+  console.log('graph-render-called');
 
 
   return (
 
     <group ref={groupRef}>
-      <group>
+      <group onUpdate={() => console.log('group-update-called')}>
         <Cubes />
 
         <Connections linksPosition={linksPositionRef.current} />
+        <RepositoryScene />
       </group>
       {graphStyle === 'split' ? <LayerLabels /> : null}
       <NodeDetailsPanel />

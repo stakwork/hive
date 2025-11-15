@@ -25,6 +25,7 @@ export type DataStore = {
   categoryFilter: NodeType | null
   dataInitial: { nodes: Node[]; links: Link[] } | null
   dataNew: { nodes: Node[]; links: Link[] } | null
+  repositoryNodes: Node[]
   filters: FilterParams
   selectedTimestamp: NodeExtended | null
   sources: Sources[] | null
@@ -66,6 +67,7 @@ export type DataStore = {
   resetGraph: () => void
   resetData: () => void
   finishLoading: () => void
+  setRepositoryNodes: (nodes: Node[]) => void
 }
 
 const defaultData: Omit<
@@ -92,6 +94,7 @@ const defaultData: Omit<
   | 'resetGraph'
   | 'resetData'
   | 'finishLoading'
+  | 'setRepositoryNodes'
 > = {
   categoryFilter: null,
   dataInitial: null,
@@ -116,6 +119,7 @@ const defaultData: Omit<
   nodesNormalized: new Map<string, NodeExtended>(),
   linksNormalized: new Map<string, Link>(),
   nodeLinksNormalized: {},
+  repositoryNodes: [],
 }
 
 export const useDataStore = create<DataStore>()(
@@ -123,11 +127,13 @@ export const useDataStore = create<DataStore>()(
     ...defaultData,
 
     addNewNode: (data) => {
+      const repositoryNodeTypes = ['GitHubRepo', 'Commits', 'Stars', 'Issues', 'Age', 'Contributor'];
       const {
         dataInitial: existingData,
         nodesNormalized,
         linksNormalized,
         nodeLinksNormalized: existingNodeLinksNormalized,
+        repositoryNodes: existingRepositoryNodes,
       } = get()
 
       if (!data?.nodes) {
@@ -138,7 +144,11 @@ export const useDataStore = create<DataStore>()(
       const normalizedLinksMap = linksNormalized || new Map()
       const nodeLinksNormalized: Record<string, string[]> = existingNodeLinksNormalized || {}
 
-      const nodesFilteredByFilters = data.nodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
+      // Separate repository nodes from regular graph nodes
+      const repositoryNodes = data.nodes.filter((node) => repositoryNodeTypes.includes(node.node_type));
+      const graphNodes = data.nodes.filter((node) => !repositoryNodeTypes.includes(node.node_type));
+
+      const nodesFilteredByFilters = graphNodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
       const newNodes: Node[] = []
 
       nodesFilteredByFilters.forEach((node) => {
@@ -196,13 +206,26 @@ export const useDataStore = create<DataStore>()(
         count: updatedNodes.filter((node) => filter === 'all' || node.node_type?.toLowerCase() === filter).length,
       }))
 
-      if (!newNodes.length && !newLinks.length) {
+      // Merge repository nodes (avoid duplicates)
+      const updatedRepositoryNodes = [...existingRepositoryNodes];
+      repositoryNodes.forEach((repoNode) => {
+        if (!updatedRepositoryNodes.find(existing => existing.ref_id === repoNode.ref_id)) {
+          updatedRepositoryNodes.push(repoNode);
+        }
+      });
+
+      // Check if we have any updates (graph nodes/links OR repository nodes)
+      const hasGraphUpdates = newNodes.length > 0 || newLinks.length > 0;
+      const hasRepositoryUpdates = updatedRepositoryNodes.length !== existingRepositoryNodes.length;
+
+      if (!hasGraphUpdates && !hasRepositoryUpdates) {
         return
       }
 
       set({
         dataInitial: { nodes: updatedNodes, links: updatedLinks },
         dataNew: { nodes: newNodes, links: newLinks },
+        repositoryNodes: updatedRepositoryNodes,
         nodeTypes,
         linkTypes,
         sidebarFilters,
@@ -228,6 +251,7 @@ export const useDataStore = create<DataStore>()(
         sidebarFilters: [],
         sidebarFilterCounts: [],
         dataNew: null,
+        repositoryNodes: [],
         runningProjectId: '',
         nodeTypes: [],
         nodesNormalized: new Map<string, NodeExtended>(),
@@ -271,6 +295,7 @@ export const useDataStore = create<DataStore>()(
     resetRunningProjectMessages: () => set({ runningProjectMessages: [] }),
     setAbortRequests: (abortRequest) => set({ abortRequest }),
     finishLoading: () => set({ splashDataLoading: false }),
+    setRepositoryNodes: (repositoryNodes) => set({ repositoryNodes }),
   })),
 )
 
@@ -307,3 +332,5 @@ export const getLinksBetweenNodes = (nodeA: string, nodeB: string) => {
 
   return refIds.map((refId) => linksNormalized.get(refId)).filter((link): link is Link => !!link)
 }
+
+export const useRepositoryNodes = () => useDataStore((s) => s.repositoryNodes)

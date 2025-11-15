@@ -133,11 +133,16 @@ export async function GET(request: NextRequest) {
       // Continue with original data if processing fails
     }
 
+    console.log('endpoint', endpoint);
+    console.log('endpoint-includes', endpoint.includes('start_date_added_to_graph'));
+    console.log('processedData', processedData?.nodes?.length);
+    console.log('mockData', mockData.data.nodes.length);
+
     return NextResponse.json(
       {
         success: true || apiResult.ok,
         status: 200 || apiResult.status,
-        data: mockData.data || processedData,
+        data: !endpoint.includes('start_date_added_to_graph') ? mockData.data : processedData,
       },
       { status: 200 || apiResult.status },
     );

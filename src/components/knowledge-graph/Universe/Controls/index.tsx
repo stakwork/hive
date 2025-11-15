@@ -45,7 +45,7 @@ export const Controls = ({ disableAnimations, enableRotation = false }: Props) =
       enabled={!isUserScrollingOnHtmlPanel}
       makeDefault
       maxDistance={12000}
-      minDistance={100}
+      minDistance={10}
       onEnd={() => setIsUserDragging(false)}
       onStart={() => setIsUserDragging(true)}
       smoothTime={smoothTime}
