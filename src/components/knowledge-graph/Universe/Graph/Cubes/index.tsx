@@ -1,8 +1,10 @@
-import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode, useSimulationStore } from '@/stores/useStores'
-import { getStoreBundle } from '@/stores/createStoreFactory'
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { useStoreId } from '@/stores/StoreProvider'
+import { getStoreBundle } from '@/stores/createStoreFactory'
+import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
+import { useRouter } from 'next/navigation'
 import { memo, useCallback, useRef } from 'react'
 import { Group, Mesh, MeshStandardMaterial } from 'three'
 import { useNodeNavigation } from '../../useNodeNavigation'
@@ -12,8 +14,6 @@ import { RelevanceGroups } from './RelevanceGroups'
 import { RelevanceList } from './RelevanceList/indes'
 import { nodeBackground } from './constants'
 import { nodeMatchesFollowerFilter } from './utils/nodesMatchsFollowesFilter'
-import { useWorkspace } from '@/hooks/useWorkspace'
-import { useRouter } from 'next/navigation'
 
 const POINTER_IN_DELAY = 100
 
@@ -206,9 +206,6 @@ export const Cubes = memo(() => {
         if (node.node_type === 'Task' && node.properties?.task_id && slug) {
           // Navigate to task page
           router.push(`/w/${slug}/task/${node.properties.task_id}`)
-        } else if (node.node_type === 'Episode' && node.ref_id && slug) {
-          // Navigate to calls page
-          router.push(`/w/${slug}/context/calls/${node.ref_id}`)
         } else {
           // Default behavior: show node details in the graph
           navigateToNode(object.userData.ref_id)

@@ -1,8 +1,8 @@
-import { distributeNodesOnCircle } from '@/stores/useSimulationStore/utils/distributeNodesOnCircle/indes'
-import { Neighbourhood, useDataStore, useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useStores'
-import { getLinksBetweenNodesInstance } from '@/stores/useStoreInstances'
 import { useStoreId } from '@/stores/StoreProvider'
-import { Billboard, Line } from '@react-three/drei'
+import { distributeNodesOnCircle } from '@/stores/useSimulationStore/utils/distributeNodesOnCircle/indes'
+import { getLinksBetweenNodesInstance } from '@/stores/useStoreInstances'
+import { Neighbourhood, useDataStore, useGraphStore, useSelectedNodeRelativeIds } from '@/stores/useStores'
+import { Billboard, Html, Line } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
 import { memo, useCallback, useMemo } from 'react'
 import { Vector3 } from 'three'
@@ -105,6 +105,38 @@ export const RelevanceGroups = memo(() => {
           <ringGeometry args={[nodeSize / 2 + 1, nodeSize / 2 + 3, 64]} />
           <meshBasicMaterial color="white" opacity={0.5} side={2} transparent />
         </mesh>
+        {/* Info box with HTML */}
+        {<Html position={[0, -nodeSize - 20, 0]} center distanceFactor={250} sprite transform zIndexRange={[0, 0]}>
+          <div className="bg-black/80 text-white px-3 py-2 rounded-lg border border-gray-600 shadow-lg backdrop-blur-sm">
+            <div className="text-center">
+              <div className="text-sm font-normal leading-tight mb-1 max-w-[200px]">
+                {(() => {
+                  if (selectedNode?.node_type === 'Episode') {
+                    const episodeTitle = selectedNode?.properties?.episode_title as string | undefined
+                    if (episodeTitle && episodeTitle.includes('Meeting recording')) {
+                      const isoDateMatch = episodeTitle.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
+                      if (isoDateMatch) {
+                        const date = new Date(isoDateMatch[1]);
+                        const formattedDate = date.toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        });
+                        const formattedTime = date.toLocaleTimeString('en-US', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        });
+                        return `Meeting recording from ${formattedDate} at ${formattedTime}`;
+                      }
+                    }
+                    return episodeTitle || 'Episode';
+                  }
+                  return selectedNode?.name || selectedNode?.properties?.name || selectedNode?.properties?.title || 'Unnamed Node'
+                })()}
+              </div>
+            </div>
+          </div>
+        </Html>}
       </Billboard>
     </group>
   )

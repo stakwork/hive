@@ -1,10 +1,11 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { FilterTab } from "@/stores/graphStore.types";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
-import { useDataStore } from "@/stores/useStores";
+import { useDataStore, useGraphStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Universe } from "./Universe";
 interface ApiResponse {
   success: boolean;
@@ -42,25 +43,25 @@ export const GraphComponent = ({
   className,
   height = "h-full",
   width = "w-full",
-  topLeftWidget,
-  topRightWidget,
-  bottomLeftWidget,
-  bottomRightWidget
 }: GraphComponentProps = {}) => {
   return (
     <GraphComponentInner
-      endpoint={propEndpoint}
+      endpoint={propEndpoint || ''}
       enableRotation={enableRotation}
-      className={className}
+      className={className || ''}
       height={height}
       width={width}
-      topLeftWidget={topLeftWidget}
-      topRightWidget={topRightWidget}
-      bottomLeftWidget={bottomLeftWidget}
-      bottomRightWidget={bottomRightWidget}
     />
   );
 };
+
+type Props = {
+  endpoint: string;
+  enableRotation: boolean;
+  className: string;
+  height: string;
+  width: string;
+}
 
 const GraphComponentInner = ({
   endpoint: propEndpoint,
@@ -68,11 +69,7 @@ const GraphComponentInner = ({
   className,
   height = "h-full",
   width = "w-full",
-  topLeftWidget,
-  topRightWidget,
-  bottomLeftWidget,
-  bottomRightWidget
-}: GraphComponentProps) => {
+}: Props) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
 
@@ -80,6 +77,7 @@ const GraphComponentInner = ({
   const setSchemas = useSchemaStore((s) => s.setSchemas);
   const resetData = useDataStore((s) => s.resetData);
   const dataInitial = useDataStore((s) => s.dataInitial);
+  const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
 
 
   useEffect(() => {
@@ -87,80 +85,116 @@ const GraphComponentInner = ({
       const response = await fetch(`/api/swarm/jarvis/schema?id=${workspaceId}`);
       const data: SchemaResponse = await response.json();
 
-      console.log("schema data", data);
       if (data.data) {
-
         setSchemas(data.data.schemas.filter((schema) => !schema.is_deleted))
         if (!data.success) throw new Error("Failed to fetch schema data");
-        console.log("schema data", data);
       };
     };
     fetchSchema();
   }, [workspaceId, setSchemas]);
 
-  // --- load nodes ---
-  useEffect(() => {
-    const fetchNodes = async () => {
-      // resetData()
-      setNodesLoading(true);
-      try {
+  // Fetch data based on active filter tab
+  const fetchFilteredData = useCallback(async (tab: FilterTab) => {
+    if (!workspaceId) return;
 
-        const requestUrl = propEndpoint ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}` : `/api/swarm/jarvis/nodes?id=${workspaceId}`;
+    resetData();
+    setNodesLoading(true);
 
-        const response = await fetch(requestUrl);
-        const data: ApiResponse = await response.json();
-        if (!data.success) throw new Error("Failed to fetch nodes data");
-        if (data.data?.nodes && data.data.nodes.length > 0) {
+    try {
+      let requestUrl: string;
 
-          addNewNode({
-            nodes: data.data.nodes.map(node => ({
-              ...node,
+      switch (tab) {
+        case 'all':
+          // Use existing endpoint or default
+          requestUrl = propEndpoint
+            ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}`
+            : `/api/swarm/jarvis/nodes?id=${workspaceId}`;
+          break;
 
+        case 'code':
+          // Filter for code-related nodes
+          const codeNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel']);
+          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=10000&top_node_count=10000`)}&node_type=${encodeURIComponent(codeNodeTypes)}`;
+          break;
+
+        case 'comms':
+          // Filter for communication nodes
+          const commsNodeTypes = JSON.stringify(['Episode', 'Message', 'Person']);
+          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=1000&top_node_count=100`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
+          break;
+
+        case 'tasks':
+          // Fetch latest 10 tasks from tasks API
+          requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=1000`;
+          const tasksResponse = await fetch(requestUrl);
+          const tasksData = await tasksResponse.json();
+
+          if (tasksData.success && Array.isArray(tasksData.data)) {
+            // Transform tasks to graph nodes
+            const taskNodes = tasksData.data.map((task: any) => ({
+              ref_id: task.id,
+              node_type: 'Task',
+              name: task.title,
+              label: task.title,
+              properties: {
+                name: task.title,
+                description: task.description,
+                status: task.status,
+                priority: task.priority,
+              } as any,
               x: 0,
               y: 0,
               z: 0,
-              edge_count: 0
-            })),
-            edges: data.data.edges || []
-          })
+              edge_count: 0,
+            }));
 
+            addNewNode({
+              nodes: taskNodes,
+              edges: [],
+            });
+          }
+          setNodesLoading(false);
+          return;
 
-        }
-      } catch (err) {
-        console.error("Failed to load nodes:", err);
-      } finally {
-        setNodesLoading(false);
+        default:
+          requestUrl = propEndpoint
+            ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}`
+            : `/api/swarm/jarvis/nodes?id=${workspaceId}`;
       }
-    };
 
-    if (dataInitial?.nodes && dataInitial.nodes.length > 0) {
-      return;
+      const response = await fetch(requestUrl);
+      const data: ApiResponse = await response.json();
+
+      if (!data.success) throw new Error("Failed to fetch filtered data");
+
+      if (data.data?.nodes && data.data.nodes.length > 0) {
+        const nodesWithPosition = data.data.nodes.map((node: Node) => ({
+          ...node,
+          x: 0,
+          y: 0,
+          z: 0,
+          edge_count: 0,
+        }));
+
+        addNewNode({
+          nodes: nodesWithPosition,
+          edges: data.data.edges || [],
+        });
+      }
+    } catch {
+    } finally {
+      setNodesLoading(false);
     }
+  }, [workspaceId, resetData, addNewNode, propEndpoint]);
 
-    fetchNodes();
-  }, [workspaceId, addNewNode, resetData, propEndpoint, dataInitial]);
+  // Load data when filter changes
+  useEffect(() => {
+    fetchFilteredData(activeFilterTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilterTab]);
 
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
-      {/* Top-left widget */}
-      {topLeftWidget && (
-        <div className="absolute top-4 left-4 z-10">{topLeftWidget}</div>
-      )}
-
-      {/* Top-right widget */}
-      {topRightWidget && (
-        <div className="absolute top-4 right-4 z-10">{topRightWidget}</div>
-      )}
-
-      {/* Bottom-left widget */}
-      {bottomLeftWidget && (
-        <div className="absolute bottom-4 left-4 z-10">{bottomLeftWidget}</div>
-      )}
-
-      {/* Bottom-right widget */}
-      {bottomRightWidget && (
-        <div className="absolute bottom-4 right-4 z-10">{bottomRightWidget}</div>
-      )}
 
       <div className="border rounded overflow-hidden bg-card flex-1">
         {nodesLoading ? (

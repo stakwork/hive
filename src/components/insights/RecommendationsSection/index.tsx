@@ -12,18 +12,17 @@ import { JanitorType, Priority } from "@prisma/client";
 export function RecommendationsSection() {
   const { workspace } = useWorkspace();
   const { toast } = useToast();
-  
+
   // Get state and actions from store
   const {
     recommendations,
     recommendationsLoading: loading,
     showAll,
     janitorConfig,
-    runningJanitors,
     fetchRecommendations,
     acceptRecommendation,
     dismissRecommendation,
-    setShowAll
+    setShowAll,
   } = useInsightsStore();
 
   // Fetch recommendations on mount
@@ -66,28 +65,25 @@ export function RecommendationsSection() {
       });
     }
   };
+
   const displayedRecommendations = showAll ? recommendations : recommendations.slice(0, 3);
-  
+
   // Check if any janitors are enabled
-  const hasEnabledJanitors = janitorConfig ? 
-    (janitorConfig.unitTestsEnabled || janitorConfig.integrationTestsEnabled) : false;
-  
-  // Check if any janitors are currently running
-  const hasRunningJanitors = runningJanitors.size > 0;
+  const hasEnabledJanitors = janitorConfig
+    ? janitorConfig.unitTestsEnabled || janitorConfig.integrationTestsEnabled
+    : false;
 
   const getPriorityBadge = (priority: Priority) => {
     const config = getPriorityConfig(priority);
     const colorClasses: Record<string, string> = {
       red: "bg-red-100 text-red-700 hover:bg-red-200",
-      orange: "bg-orange-100 text-orange-700 hover:bg-orange-200", 
+      orange: "bg-orange-100 text-orange-700 hover:bg-orange-200",
       blue: "bg-blue-100 text-blue-700 hover:bg-blue-200",
       gray: "bg-gray-100 text-gray-700 hover:bg-gray-200",
     };
-    
+
     return (
-      <Badge className={`text-xs ${colorClasses[config.color] || "bg-gray-100 text-gray-700"}`}>
-        {config.label}
-      </Badge>
+      <Badge className={`text-xs ${colorClasses[config.color] || "bg-gray-100 text-gray-700"}`}>{config.label}</Badge>
     );
   };
 
@@ -124,20 +120,19 @@ export function RecommendationsSection() {
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">Enable Automated Analysis</h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Turn on code analysis to receive personalized recommendations for improving your codebase quality, performance, and maintainability.
+              Turn on code analysis to receive personalized recommendations for improving your codebase quality,
+              performance, and maintainability.
             </p>
           </div>
         ) : displayedRecommendations.length > 0 ? (
           displayedRecommendations.map((recommendation) => {
-            const Icon = getRecommendationIcon(recommendation.janitorRun?.type as JanitorType);
+            const Icon = getRecommendationIcon(recommendation.janitorRun?.janitorType as JanitorType);
             return (
               <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Icon className="h-4 w-4 text-muted-foreground" />
-                    <h4 className="text-sm font-medium line-clamp-1">
-                      {recommendation.title}
-                    </h4>
+                    <h4 className="text-sm font-medium line-clamp-1">{recommendation.title}</h4>
                   </div>
                   <div className="flex items-center gap-2">
                     {!recommendation.janitorRun && (
@@ -149,27 +144,21 @@ export function RecommendationsSection() {
                     {getPriorityBadge(recommendation.priority as Priority)}
                   </div>
                 </div>
-                
+
                 <p className="text-xs text-muted-foreground mb-3">{recommendation.description}</p>
-                {recommendation.impact && (
-                  <p className="text-xs text-blue-600 mb-3">Impact: {recommendation.impact}</p>
-                )}
-                
+                {recommendation.impact && <p className="text-xs text-blue-600 mb-3">Impact: {recommendation.impact}</p>}
+
                 <div className="flex items-center justify-start">
                   <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
+                    <Button
+                      size="sm"
+                      variant="outline"
                       className="h-7 text-xs"
                       onClick={() => handleDismiss(recommendation.id)}
                     >
                       Dismiss
                     </Button>
-                    <Button 
-                      size="sm" 
-                      className="h-7 text-xs"
-                      onClick={() => handleAccept(recommendation.id)}
-                    >
+                    <Button size="sm" className="h-7 text-xs" onClick={() => handleAccept(recommendation.id)}>
                       Accept
                     </Button>
                   </div>
@@ -188,7 +177,7 @@ export function RecommendationsSection() {
             </p>
           </div>
         )}
-        
+
         {!loading && recommendations.length > 3 && !showAll && (
           <div className="pt-2 text-center">
             <Button

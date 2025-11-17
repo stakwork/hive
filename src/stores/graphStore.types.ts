@@ -1,10 +1,12 @@
-import { GraphData, Link, NodeExtended } from '@Universe/types'
+import { GraphData, Link, NodeExtended } from '@Universe/types';
 
 export type Position = { x: number; y: number; z: number }
 export type Neighbourhood = { name: string; ref_id: string }
 export type GraphStyle = 'sphere' | 'force' | 'split'
 export type CameraPosition = { x: number; y: number; z: number }
 export type CameraTarget = { x: number; y: number; z: number }
+
+export type FilterTab = 'all' | 'code' | 'comms' | 'tasks'
 
 export type GraphStore = {
   graphRadius: number
@@ -37,6 +39,7 @@ export type GraphStore = {
   cameraTarget: CameraTarget | null
   webhookHighlightNodes: string[]
   highlightTimestamp: number | null
+  activeFilterTab: FilterTab
   webhookHighlightDepth: number
 
   // setters
@@ -72,4 +75,5 @@ export type GraphStore = {
   saveCameraState(position: CameraPosition, target: CameraTarget): void
   setWebhookHighlightNodes(nodeIds: string[], depth?: number): void
   clearWebhookHighlights(): void
+  setActiveFilterTab(tab: FilterTab): void
 }

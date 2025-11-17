@@ -17,6 +17,7 @@ export default function DefenseInsightsPage() {
   const { workspace } = useWorkspace();
   const {
     fetchRecommendations,
+    fetchJanitorConfig,
     reset
   } = useInsightsStore();
   const { toast } = useToast();
@@ -64,13 +65,14 @@ export default function DefenseInsightsPage() {
   useEffect(() => {
     if (workspace?.slug) {
       fetchRecommendations(workspace.slug);
+      fetchJanitorConfig(workspace.slug);
     }
 
     // Reset store when component unmounts or workspace changes
     return () => {
       reset();
     };
-  }, [workspace?.slug, fetchRecommendations, reset]);
+  }, [workspace?.slug, fetchRecommendations, fetchJanitorConfig, reset]);
 
   return (
     <div className="space-y-6">

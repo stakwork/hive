@@ -84,10 +84,11 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
     const endpoint = searchParams.get("endpoint") || "graph/search/latest?limit=1000&top_node_count=500";
+    const nodeType = searchParams.get("node_type");
 
-    console.log("endpoint");
-    console.log(endpoint);
-    console.log("endpoint-end");
+    console.log("[Jarvis Nodes] Full request URL:", request.nextUrl.toString());
+    console.log("[Jarvis Nodes] Endpoint param:", endpoint);
+    console.log("[Jarvis Nodes] Node type param:", nodeType);
 
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
@@ -144,13 +145,19 @@ export async function GET(request: NextRequest) {
     if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
     if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
 
-    console.log(jarvisUrl);
-    console.log(endpoint);
+    // Append node_type to endpoint if provided
+    let finalEndpoint = endpoint;
+    if (nodeType) {
+      const separator = endpoint.includes('?') ? '&' : '?';
+      finalEndpoint = `${endpoint}${separator}node_type=${nodeType}`;
+    }
 
-    // console.log("jarvisUrl", jarvisUrl);
+    console.log("[Jarvis Nodes] Jarvis URL:", jarvisUrl);
+    console.log("[Jarvis Nodes] Final endpoint to swarm:", finalEndpoint);
+
     const apiResult = await swarmApiRequest({
       swarmUrl: jarvisUrl,
-      endpoint,
+      endpoint: finalEndpoint,
       method: "GET",
       apiKey,
     });

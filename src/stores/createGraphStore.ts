@@ -1,10 +1,10 @@
+import { NodeExtended } from '@Universe/types';
 import { create } from "zustand";
-import { type GraphStore, type Position, type Neighbourhood, type GraphStyle } from "./graphStore.types";
-import { NodeExtended } from '@Universe/types'
 import { createDataStore } from "./createDataStore";
+import { type GraphStore, type GraphStyle } from "./graphStore.types";
 
 // Re-export types for backward compatibility
-export type { Position, Neighbourhood, GraphStyle } from "./graphStore.types";
+export type { GraphStyle, Neighbourhood, Position } from "./graphStore.types";
 
 export const graphStyles: GraphStyle[] = ['sphere', 'force', 'split']
 
@@ -45,6 +45,7 @@ const defaultData: Omit<
   | 'saveCameraState'
   | 'setWebhookHighlightNodes'
   | 'clearWebhookHighlights'
+  | 'setActiveFilterTab'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -76,6 +77,7 @@ const defaultData: Omit<
   cameraTarget: null,
   webhookHighlightNodes: [],
   highlightTimestamp: null,
+  activeFilterTab: 'all',
   webhookHighlightDepth: 0,
 }
 
@@ -202,4 +204,5 @@ export const createGraphStore = (
       webhookHighlightNodes: [],
       highlightTimestamp: null
     }),
+    setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
   }));
