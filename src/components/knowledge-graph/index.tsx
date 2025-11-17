@@ -1,12 +1,12 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { FilterTab } from "@/stores/graphStore.types";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useState } from "react";
 import { Universe } from "./Universe";
-import { FilterTab } from "@/stores/graphStore.types";
 interface ApiResponse {
   success: boolean;
   data?: {
@@ -121,18 +121,18 @@ const GraphComponentInner = ({
         case 'code':
           // Filter for code-related nodes
           const codeNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel']);
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=10&top_node_count=100`)}&node_type=${encodeURIComponent(codeNodeTypes)}`;
+          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=10000&top_node_count=10000`)}&node_type=${encodeURIComponent(codeNodeTypes)}`;
           break;
 
         case 'comms':
           // Filter for communication nodes
           const commsNodeTypes = JSON.stringify(['Episode', 'Message', 'Person']);
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=10&top_node_count=10`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
+          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=1000&top_node_count=100`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
           break;
 
         case 'tasks':
           // Fetch latest 10 tasks from tasks API
-          requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=10`;
+          requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=1000`;
           console.log('[Graph Filter] Fetching tasks from:', requestUrl);
           const tasksResponse = await fetch(requestUrl);
           console.log('[Graph Filter] Response status:', tasksResponse.status, tasksResponse.ok);
