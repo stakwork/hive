@@ -5,7 +5,6 @@ import { Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface WorkspaceMembersPreviewProps {
@@ -38,19 +37,6 @@ export function WorkspaceMembersPreview({
     includeSystemAssignees: false,
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm">
-        <div className="flex -space-x-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="w-8 h-8 rounded-full border-2 border-card" />
-          ))}
-        </div>
-        <Skeleton className="h-8 w-24" />
-      </div>
-    );
-  }
-
   if (!members || members.length === 0) {
     return null;
   }
@@ -68,7 +54,7 @@ export function WorkspaceMembersPreview({
 
   return (
     <Link href={`/w/${workspaceSlug}/settings#members`}>
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm hover:bg-accent/95 transition-colors cursor-pointer">
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm hover:bg-accent/95 transition-all duration-300 cursor-pointer ${loading ? 'opacity-0' : 'opacity-100'}`}>
         {/* Avatar list */}
         <div className="flex items-center gap-2">
           {previewMembers.map((member) => (
