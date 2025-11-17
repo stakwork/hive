@@ -12,6 +12,8 @@ import { RelevanceGroups } from './RelevanceGroups'
 import { RelevanceList } from './RelevanceList/indes'
 import { nodeBackground } from './constants'
 import { nodeMatchesFollowerFilter } from './utils/nodesMatchsFollowesFilter'
+import { useWorkspace } from '@/hooks/useWorkspace'
+import { useRouter } from 'next/navigation'
 
 const POINTER_IN_DELAY = 100
 
@@ -34,6 +36,8 @@ export const Cubes = memo(() => {
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
   const { navigateToNode } = useNodeNavigation()
+  const router = useRouter()
+  const { slug } = useWorkspace()
 
   const group = nodesWrapperRef.current
   const instances = instancesRef.current
@@ -196,10 +200,22 @@ export const Cubes = memo(() => {
       }
 
       if (object?.userData && !ignoreNodeEvent(object.userData as NodeExtended)) {
-        navigateToNode(object.userData.ref_id)
+        const node = object.userData as NodeExtended
+
+        // Handle navigation for specific node types
+        if (node.node_type === 'Task' && node.properties?.task_id && slug) {
+          // Navigate to task page
+          router.push(`/w/${slug}/task/${node.properties.task_id}`)
+        } else if (node.node_type === 'Episode' && node.ref_id && slug) {
+          // Navigate to calls page
+          router.push(`/w/${slug}/context/calls/${node.ref_id}`)
+        } else {
+          // Default behavior: show node details in the graph
+          navigateToNode(object.userData.ref_id)
+        }
       }
     },
-    [ignoreNodeEvent, navigateToNode],
+    [ignoreNodeEvent, navigateToNode, router, slug],
   )
 
   const onPointerOut = useCallback(
