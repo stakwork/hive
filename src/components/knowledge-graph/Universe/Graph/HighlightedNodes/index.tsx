@@ -7,8 +7,8 @@ import { Group, Mesh, MeshBasicMaterial } from 'three'
 
 const HIGHLIGHT_DURATION = 15000 // 15 seconds
 const PULSE_SPEED = 3
-const BASE_SCALE = 1.5
-const PULSE_AMPLITUDE = 0.4
+const BASE_SCALE = 0.8
+const PULSE_AMPLITUDE = 0.1
 
 // const MOCK_NODES = ["768a7859-5c49-4675-91b2-fc48dcd0b039"]
 
