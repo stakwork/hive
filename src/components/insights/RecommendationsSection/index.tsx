@@ -129,7 +129,7 @@ export function RecommendationsSection() {
           </div>
         ) : displayedRecommendations.length > 0 ? (
           displayedRecommendations.map((recommendation) => {
-            const Icon = getRecommendationIcon(recommendation.janitorRun?.type as JanitorType);
+            const Icon = getRecommendationIcon(recommendation.janitorRun?.janitorType as JanitorType);
             return (
               <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors">
                 <div className="flex items-center justify-between mb-2">
