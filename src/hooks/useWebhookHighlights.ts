@@ -6,6 +6,8 @@ import { useEffect } from 'react'
 interface HighlightEvent {
   nodeIds: string[]
   workspaceId: string
+  depth: number
+  title: string
   timestamp: number
 }
 
@@ -28,7 +30,8 @@ export const useWebhookHighlights = () => {
 
         // Verify this is for the current workspace
         if (data.workspaceId === workspace.slug) {
-          setWebhookHighlightNodes(data.nodeIds)
+          console.log("setting webhook highlight nodes:", data.nodeIds, data.depth)
+          setWebhookHighlightNodes(data.nodeIds, data.depth)
         }
       }
 

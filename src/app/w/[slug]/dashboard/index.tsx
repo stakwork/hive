@@ -1,18 +1,18 @@
 "use client";
 
-import { GraphComponent } from "@/components/knowledge-graph";
-import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
-import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
+import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
+import { GraphComponent } from "@/components/knowledge-graph";
+import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { useGraphPolling } from "@/hooks/useGraphPolling";
 import { useWebhookHighlights } from "@/hooks/useWebhookHighlights";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { logStoreInstances } from "@/stores/createStoreFactory";
+import { FilterTab } from "@/stores/graphStore.types";
 import { StoreProvider } from "@/stores/StoreProvider";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
-import { FilterTab } from "@/stores/graphStore.types";
 
 export function Dashboard() {
   const { id: workspaceId } = useWorkspace();

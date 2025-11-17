@@ -1,4 +1,4 @@
-import { GraphData, Link, NodeExtended } from '@Universe/types'
+import { GraphData, Link, NodeExtended } from '@Universe/types';
 
 export type Position = { x: number; y: number; z: number }
 export type Neighbourhood = { name: string; ref_id: string }
@@ -40,6 +40,7 @@ export type GraphStore = {
   webhookHighlightNodes: string[]
   highlightTimestamp: number | null
   activeFilterTab: FilterTab
+  webhookHighlightDepth: number
 
   // setters
   setDisableCameraRotation(rotation: boolean): void
@@ -72,7 +73,7 @@ export type GraphStore = {
   setCameraPosition(position: CameraPosition | null): void
   setCameraTarget(target: CameraTarget | null): void
   saveCameraState(position: CameraPosition, target: CameraTarget): void
-  setWebhookHighlightNodes(nodeIds: string[]): void
+  setWebhookHighlightNodes(nodeIds: string[], depth?: number): void
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
 }

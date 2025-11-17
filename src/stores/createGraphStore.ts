@@ -1,10 +1,10 @@
+import { NodeExtended } from '@Universe/types';
 import { create } from "zustand";
-import { type GraphStore, type Position, type Neighbourhood, type GraphStyle } from "./graphStore.types";
-import { NodeExtended } from '@Universe/types'
 import { createDataStore } from "./createDataStore";
+import { type GraphStore, type GraphStyle } from "./graphStore.types";
 
 // Re-export types for backward compatibility
-export type { Position, Neighbourhood, GraphStyle } from "./graphStore.types";
+export type { GraphStyle, Neighbourhood, Position } from "./graphStore.types";
 
 export const graphStyles: GraphStyle[] = ['sphere', 'force', 'split']
 
@@ -78,6 +78,7 @@ const defaultData: Omit<
   webhookHighlightNodes: [],
   highlightTimestamp: null,
   activeFilterTab: 'all',
+  webhookHighlightDepth: 0,
 }
 
 export const createGraphStore = (
@@ -194,9 +195,10 @@ export const createGraphStore = (
       cameraPosition: position,
       cameraTarget: target
     }),
-    setWebhookHighlightNodes: (nodeIds: string[]) => set({
+    setWebhookHighlightNodes: (nodeIds: string[], depth = 0) => set({
       webhookHighlightNodes: nodeIds,
-      highlightTimestamp: Date.now()
+      highlightTimestamp: Date.now(),
+      webhookHighlightDepth: depth
     }),
     clearWebhookHighlights: () => set({
       webhookHighlightNodes: [],
