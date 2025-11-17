@@ -14,7 +14,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, Loader2, Plus, Play, Eye } from "lucide-react";
+import { Archive, ExternalLink, Loader2, Plus, Play, Eye } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
@@ -57,8 +57,8 @@ export default function UserJourneys() {
   const [frontend, setFrontend] = useState<string | null>(null);
   const [userJourneys, setUserJourneys] = useState<UserJourneyRow[]>([]);
   const [fetchingJourneys, setFetchingJourneys] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
 
   // Filter state (defaults: show pending, hide failed)
   const [showPendingTasks, setShowPendingTasks] = useState(true);
@@ -216,11 +216,41 @@ export default function UserJourneys() {
     return null;
   };
 
-  const handleCopyCode = async (row: UserJourneyRow) => {
-    const code = (await fetchTestCode(row)) || row.title;
-    await navigator.clipboard.writeText(code);
-    setCopiedId(row.id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleArchive = async (row: UserJourneyRow) => {
+    try {
+      setArchivingId(row.id);
+
+      const response = await fetch(`/api/tasks/${row.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          archived: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to archive task");
+      }
+
+      toast({
+        title: "Test Archived",
+        description: "The test has been archived successfully.",
+      });
+
+      // Refresh the list
+      await fetchUserJourneys();
+    } catch (error) {
+      console.error("Error archiving test:", error);
+      toast({
+        variant: "destructive",
+        title: "Archive Failed",
+        description: "Unable to archive the test. Please try again.",
+      });
+    } finally {
+      setArchivingId(null);
+    }
   };
 
   const handleCloseBrowser = () => {
@@ -505,7 +535,7 @@ export default function UserJourneys() {
                         <TableHead>Status</TableHead>
                         <TableHead>Test File</TableHead>
                         <TableHead>Created</TableHead>
-                        <TableHead className="w-[100px]">Actions</TableHead>
+                        <TableHead className="w-[100px]">Archive</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -553,14 +583,15 @@ export default function UserJourneys() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleCopyCode(row)}
+                              onClick={() => handleArchive(row)}
+                              disabled={archivingId === row.id}
                               className="h-8 w-8 p-0"
-                              title="Copy test code"
+                              title="Archive test"
                             >
-                              {copiedId === row.id ? (
-                                <Check className="h-4 w-4 text-green-500" />
+                              {archivingId === row.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Copy className="h-4 w-4" />
+                                <Archive className="h-4 w-4" />
                               )}
                             </Button>
                           </TableCell>

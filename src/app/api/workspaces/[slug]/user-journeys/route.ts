@@ -333,8 +333,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const repository = workspace.repositories[0] || null;
 
-    // 1. Fetch existing tasks
-    const tasks = await db.task.findMany({
+    // 1. Fetch ALL existing tasks (including archived ones for matching)
+    const allTasks = await db.task.findMany({
       where: {
         workspaceId: workspace.id,
         deleted: false,
@@ -383,7 +383,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     console.log("[user-journeys] Syncing graph nodes to tasks", {
       workspaceId: workspace.id,
       filesInGraph: nodesByFile.size,
-      existingTasks: tasks.length,
+      existingTasks: allTasks.length,
     });
 
     // 4. Sync graph files to tasks
@@ -401,11 +401,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     for (const [filePath, nodes] of nodesByFile) {
       // Try to match existing task by testFilePath
-      let existingTask = tasks.find((t) => t.testFilePath === filePath);
+      let existingTask = allTasks.find((t) => t.testFilePath === filePath);
 
       // Fallback: PR correlation (handles path changes)
       if (!existingTask && githubToken) {
-        const mergedTasks = tasks.filter(
+        const mergedTasks = allTasks.filter(
           (t) =>
             t.chatMessages[0]?.artifacts[0]?.content &&
             typeof t.chatMessages[0].artifacts[0].content === "object" &&
@@ -425,6 +425,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             break;
           }
         }
+      }
+
+      // Skip archived tasks - don't recreate or update them
+      if (existingTask?.archived) {
+        console.log("[user-journeys] Skipping archived task", {
+          taskId: existingTask.id,
+          filePath,
+        });
+        continue;
       }
 
       if (existingTask) {
@@ -470,11 +479,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       console.log("[user-journeys] Created tasks", { count: tasksToCreate.length });
     }
 
-    // 5. Refresh tasks after sync
+    // 5. Refresh tasks after sync (exclude archived)
     const updatedTasks = await db.task.findMany({
       where: {
         workspaceId: workspace.id,
         deleted: false,
+        archived: false,
         sourceType: TaskSourceType.USER_JOURNEY,
       },
       include: {
