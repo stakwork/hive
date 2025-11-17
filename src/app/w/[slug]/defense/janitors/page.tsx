@@ -62,15 +62,15 @@ const taskCoordinatorJanitors: JanitorItem[] = [
   },
 ];
 
-export default function DefenceJanitorsPage() {
-  const canAccessDefence = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
+export default function DefenseJanitorsPage() {
+  const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const { workspace } = useWorkspace();
   const {
     fetchJanitorConfig,
     reset
   } = useInsightsStore();
 
-  if (!canAccessDefence) {
+  if (!canAccessDefense) {
     redirect("/");
   }
 

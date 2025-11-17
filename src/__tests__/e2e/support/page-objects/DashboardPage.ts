@@ -28,14 +28,14 @@ export class DashboardPage {
    * Navigate to tasks page
    */
   async goToTasks(): Promise<void> {
-    // First expand the Offence section if not already expanded
-    const offenceButton = this.page.locator('[data-testid="nav-offence"]');
+    // First expand the Offense section if not already expanded
+    const offenseButton = this.page.locator('[data-testid="nav-offense"]');
     const tasksLink = this.page.locator(selectors.navigation.tasksLink).first();
 
-    // Check if tasks link is visible, if not, click Offence to expand
+    // Check if tasks link is visible, if not, click Offense to expand
     const isTasksVisible = await tasksLink.isVisible();
     if (!isTasksVisible) {
-      await offenceButton.click();
+      await offenseButton.click();
       await this.page.waitForTimeout(300); // Wait for expand animation
     }
 
@@ -47,14 +47,14 @@ export class DashboardPage {
    * Navigate to roadmap page
    */
   async goToRoadmap(): Promise<void> {
-    // First expand the Offence section if not already expanded
-    const offenceButton = this.page.locator('[data-testid="nav-offence"]');
+    // First expand the Offense section if not already expanded
+    const offenseButton = this.page.locator('[data-testid="nav-offense"]');
     const roadmapLink = this.page.locator(selectors.navigation.roadmapLink).first();
 
-    // Check if roadmap link is visible, if not, click Offence to expand
+    // Check if roadmap link is visible, if not, click Offense to expand
     const isRoadmapVisible = await roadmapLink.isVisible();
     if (!isRoadmapVisible) {
-      await offenceButton.click();
+      await offenseButton.click();
       await this.page.waitForTimeout(300); // Wait for expand animation
     }
 

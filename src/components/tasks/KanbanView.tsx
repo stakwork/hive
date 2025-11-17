@@ -49,8 +49,8 @@ const kanbanColumns: KanbanColumn[] = [
     status: WorkflowStatus.HALTED,
     title: "Halted",
     icon: <Pause className="h-4 w-4" />,
-    color: "text-orange-600 dark:text-orange-400",
-    bgColor: "bg-orange-50/30 dark:bg-orange-950/10",
+    color: "text-yellow-600 dark:text-yellow-400",
+    bgColor: "bg-yellow-50/30 dark:bg-yellow-950/10",
   },
 ];
 

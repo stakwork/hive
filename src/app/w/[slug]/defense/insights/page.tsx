@@ -12,8 +12,8 @@ import { useInsightsStore } from "@/stores/useInsightsStore";
 import { redirect } from "next/navigation";
 import { useCallback, useEffect } from "react";
 
-export default function DefenceInsightsPage() {
-  const canAccessDefence = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
+export default function DefenseInsightsPage() {
+  const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const { workspace } = useWorkspace();
   const {
     fetchRecommendations,
@@ -21,7 +21,7 @@ export default function DefenceInsightsPage() {
   } = useInsightsStore();
   const { toast } = useToast();
 
-  if (!canAccessDefence) {
+  if (!canAccessDefense) {
     redirect("/");
   }
 

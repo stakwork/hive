@@ -10,7 +10,7 @@ export default function InsightsPage() {
 
   useEffect(() => {
     if (workspace?.slug) {
-      router.replace(`/w/${workspace.slug}/defence/insights`);
+      router.replace(`/w/${workspace.slug}/defense/insights`);
     }
   }, [workspace?.slug, router]);
 
