@@ -92,4 +92,23 @@ export class DashboardPage {
   async isLoaded(): Promise<boolean> {
     return await this.page.locator('[data-testid="graph-component"]').isVisible();
   }
+
+  /**
+   * Open the workspace switcher dropdown
+   */
+  async openWorkspaceSwitcher(): Promise<void> {
+    // Click the workspace switcher button to open the dropdown
+    const switcherButton = this.page.locator(selectors.workspace.switcherButton);
+    await switcherButton.click();
+    
+    // Wait for the dropdown menu to be visible
+    await expect(this.page.locator('[role="menu"]')).toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Verify workspace switcher label shows correct count
+   */
+  async verifyWorkspaceSwitcherLabel(expectedText: string): Promise<void> {
+    await expect(this.page.locator(selectors.workspace.switcherLabel)).toContainText(expectedText);
+  }
 }

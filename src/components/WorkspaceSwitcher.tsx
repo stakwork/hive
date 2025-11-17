@@ -113,6 +113,7 @@ export function WorkspaceSwitcher({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            data-testid="workspace-switcher-button"
             variant="outline"
             className="w-full justify-between h-auto p-3 hover:bg-accent transition-colors"
             disabled={loading}
@@ -149,7 +150,10 @@ export function WorkspaceSwitcher({
           sideOffset={8}
           forceMount
         >
-          <DropdownMenuLabel className="text-xs text-muted-foreground">
+          <DropdownMenuLabel 
+            className="text-xs text-muted-foreground"
+            data-testid="workspace-switcher-label"
+          >
             Workspaces ({workspaces.length})
           </DropdownMenuLabel>
 

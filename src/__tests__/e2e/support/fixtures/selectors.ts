@@ -40,7 +40,9 @@ export const selectors = {
 
   // Workspace
   workspace: {
-    switcher: 'button', // Will be filtered by workspace name
+    switcher: 'button', // Will be filtered by workspace name (deprecated - use switcherButton)
+    switcherButton: '[data-testid="workspace-switcher-button"]',
+    switcherLabel: '[data-testid="workspace-switcher-label"]',
     nameInput: 'input.border-input.flex.h-9',
     slugInput: 'input.border-input.flex.h-9',
     descriptionTextarea: 'textarea.border-input.flex.field-sizing-content',
