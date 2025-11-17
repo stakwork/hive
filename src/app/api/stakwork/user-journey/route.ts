@@ -25,7 +25,7 @@ async function callStakwork(
   username: string | null,
   workspaceId: string,
   taskId: string,
-  testFilePath: string,
+  testFilePath: string | null,
   testFileUrl: string | null,
   baseBranch: string | null,
   testName: string,
@@ -168,22 +168,16 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.poolName || swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
-    // Calculate testFilePath and testFileUrl BEFORE creating task and calling Stakwork
-    // Use the user's chosen filename directly, or provide a default
-    // The filename is provided by the browser artifact panel when the user saves the test
-    const testFilePath = testName
-      ? `src/__tests__/e2e/specs/${testName}`
-      : `src/__tests__/e2e/specs/user-journey-test.spec.ts`;
-
     // Get workspace's primary repository if available
     const repository = await db.repository.findFirst({
       where: { workspaceId: workspace.id },
       select: { id: true, repositoryUrl: true, branch: true },
     });
 
-    const testFileUrl = repository?.repositoryUrl
-      ? `${repository.repositoryUrl}/blob/${repository.branch || 'main'}/${testFilePath}`
-      : null;
+    // Don't create fake testFilePath - Stakwork workflow will determine the actual path
+    // The path will be synced from the graph after the workflow completes
+    const testFilePath = null;
+    const testFileUrl = null;
 
     // Create a task FIRST to track this user journey test
     // This allows us to send the task ID to Stakwork so webhooks can update the task
