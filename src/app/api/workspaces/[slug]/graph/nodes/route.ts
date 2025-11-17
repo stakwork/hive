@@ -1,6 +1,5 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
@@ -34,6 +33,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const nodeType = searchParams.get("node_type");
     const refIds = searchParams.get("ref_ids");
     const output = searchParams.get("output") || "json";
+    const limit = searchParams.get("limit") || "100";
+    const limitMode = searchParams.get("limit_mode") || "per_type";
+
 
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({
@@ -59,42 +61,75 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     };
 
     if (nodeType) {
-      apiParams.node_type = nodeType;
+      // If nodeType is a JSON array string, parse it and join as comma-separated
+      try {
+        const parsed = JSON.parse(nodeType);
+        if (Array.isArray(parsed)) {
+          apiParams.node_types = parsed.join(',');
+        } else {
+          apiParams.node_types = nodeType;
+        }
+      } catch {
+        // If it's not JSON, use as-is
+        apiParams.node_types = nodeType;
+      }
     }
 
     if (refIds) {
       apiParams.ref_ids = refIds;
     }
 
+    if (limit) {
+      apiParams.limit = limit;
+    }
+
+    if (limitMode) {
+      apiParams.limit_mode = limitMode;
+    }
+
+
     // Proxy to graph microservice
-    const apiResult = await swarmApiRequestAuth({
-      swarmUrl: graphUrl,
-      endpoint: "/nodes",
+    // const apiResult = await swarmApiRequestAuth({
+    //   swarmUrl: graphUrl,
+    //   endpoint: "/nodes",
+    //   method: "GET",
+    //   apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
+    //   params: apiParams,
+    // });
+
+    console.log('url-url', `${graphUrl}/graph?${new URLSearchParams(apiParams).toString()}`);
+
+    const apiResult = await fetch(`${graphUrl}/graph?${new URLSearchParams(apiParams).toString()}`, {
       method: "GET",
-      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
-      params: apiParams,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
+      },
     });
 
+
     if (!apiResult.ok) {
+      const data = await apiResult.json();
       return NextResponse.json(
         {
           success: false,
           message: "Failed to fetch graph nodes",
-          details: apiResult.data,
+          details: data,
         },
         { status: apiResult.status },
       );
     }
 
+    const data = await apiResult.json();
+
     return NextResponse.json(
       {
         success: true,
-        data: apiResult.data,
+        data: { nodes: data.nodes, edges: data.edges },
       },
       { status: 200 },
     );
-  } catch (error) {
-    console.error("Error fetching graph nodes:", error);
+  } catch {
     return NextResponse.json({ success: false, message: "Failed to fetch graph nodes" }, { status: 500 });
   }
 }

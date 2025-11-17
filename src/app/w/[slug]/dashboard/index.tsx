@@ -54,7 +54,7 @@ function DashboardInner() {
 
       {/* Top-right widgets */}
       <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-        {workspace?.poolState === "COMPLETE" && (
+        {(workspace?.poolState === "COMPLETE" || true) && (
           <GraphFilterDropdown
             value={activeFilterTab}
             onValueChange={handleFilterChange}
