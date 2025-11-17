@@ -185,22 +185,15 @@ export default function UserJourneys() {
     }
 
     // Fallback to graph (deployed tasks)
-    if (row.testFilePath) {
+    if (row.title) {
       try {
         const graphResponse = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
         if (graphResponse.ok) {
           const result = await graphResponse.json();
           if (result.success && Array.isArray(result.data)) {
-            // Graph may return full paths (owner/repo/path) or relative paths
-            // Try exact match first, then try matching the end of the path
-            const node = result.data.find((n: { properties: { file: string } }) => {
-              if (!row.testFilePath) return false;
-              const graphPath = n.properties.file;
-              return (
-                graphPath === row.testFilePath ||
-                graphPath.endsWith(`/${row.testFilePath}`) ||
-                graphPath.endsWith(row.testFilePath)
-              );
+            // Match by test name (properties.name)
+            const node = result.data.find((n: { properties: { name: string } }) => {
+              return n.properties.name === row.title;
             });
             if (node?.properties.body) {
               console.log("[testCode] from graph", node.properties.body);
@@ -367,15 +360,15 @@ export default function UserJourneys() {
     }
   };
 
-  const saveUserJourneyTest = async (filename: string, generatedCode: string) => {
+  const saveUserJourneyTest = async (testName: string, generatedCode: string) => {
     try {
-      const title = filename || "User Journey Test";
+      const title = testName || "User Journey Test";
 
       const payload = {
         message: generatedCode,
         workspaceId: id,
         title: title,
-        testName: filename,
+        testName: testName,
       };
 
       const response = await fetch("/api/stakwork/user-journey", {
