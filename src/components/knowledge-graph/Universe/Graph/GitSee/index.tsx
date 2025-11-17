@@ -1,13 +1,13 @@
 'use client';
 
-import { useRepositoryNodes, useDataStore } from '@/stores/useDataStore';
-import { Billboard, Text } from '@react-three/drei';
+import { useDataStore, useRepositoryNodes } from '@/stores/useDataStore';
+import { Billboard, Html, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 // --------------------------------------------------------
-// AVATAR TEXTURE CACHE (no disappearing images)
+// AVATAR TEXTURE CACHE
 // --------------------------------------------------------
 
 const avatarCache = new Map<string, THREE.Texture>();
@@ -17,7 +17,7 @@ function getAvatarTexture(color: number, avatarUrl?: string) {
   const cached = avatarCache.get(key);
   if (cached) return cached;
 
-  // SSR-safe: if no document, return 1x1 texture
+  // SSR-safe fallback
   if (typeof document === 'undefined') {
     const data = new Uint8Array([255, 255, 255, 255]);
     const tex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
@@ -74,63 +74,26 @@ export function RepositoryScene() {
   const repoRef = useRef<THREE.Group>(null);
   const contributorRefs = useRef<(THREE.Mesh | null)[]>([]);
   const fileRefs = useRef<(THREE.Mesh | null)[]>([]);
-  const statRefs = useRef<(THREE.Mesh | null)[]>([]);
   const startTimeRef = useRef<number | null>(null);
 
-  // Enhanced lighting refs
+  // lighting refs
   const lightRefTopLeft = useRef<THREE.DirectionalLight>(null);
   const lightRefTopRight = useRef<THREE.DirectionalLight>(null);
-  const lightRefBottomLeft = useRef<THREE.DirectionalLight>(null);
-  const lightRefBottomRight = useRef<THREE.DirectionalLight>(null);
   const spotLightRef = useRef<THREE.SpotLight>(null);
 
   const [showOuterNodes, setShowOuterNodes] = useState(false);
 
   const repositoryNodes = useRepositoryNodes();
-
-  // Check if we have graph nodes to determine positioning
   const dataInitial = useDataStore((s) => s.dataInitial);
   const hasGraphNodes = dataInitial?.nodes && dataInitial.nodes.length > 0;
 
-  // Position GitSee away from main graph when both are present
+  // position GitSee vs main graph
   const gitseePosition = useMemo(() => {
     if (hasGraphNodes) {
-      // Move GitSee to the side/above when graph nodes are present
-      return new THREE.Vector3(150, 100, 0); // Off to the side and elevated
+      return new THREE.Vector3(150, 100, 0);
     }
-    return new THREE.Vector3(0, 0, 0); // Center when only GitSee
+    return new THREE.Vector3(0, 0, 0);
   }, [hasGraphNodes]);
-
-  // Lighting configuration
-  const lightingConfig = useMemo(() => ({
-    spotLight: true,
-    directionalLightTopLeft: true,
-    directionalLightTopRight: true,
-    directionalLightBottomLeft: false,
-    directionalLightBottomRight: false,
-  }), []);
-
-  // Set up lighting to point towards GitSee center
-  useEffect(() => {
-    const { x, y, z } = gitseePosition;
-
-    if (lightingConfig.directionalLightTopLeft && lightRefTopLeft.current) {
-      lightRefTopLeft.current.target.position.set(x, y, z);
-      lightRefTopLeft.current.target.updateMatrixWorld();
-    }
-    if (lightingConfig.directionalLightTopRight && lightRefTopRight.current) {
-      lightRefTopRight.current.target.position.set(x, y, z);
-      lightRefTopRight.current.target.updateMatrixWorld();
-    }
-    if (lightingConfig.directionalLightBottomLeft && lightRefBottomLeft.current) {
-      lightRefBottomLeft.current.target.position.set(x, y, z);
-      lightRefBottomLeft.current.target.updateMatrixWorld();
-    }
-    if (lightingConfig.directionalLightBottomRight && lightRefBottomRight.current) {
-      lightRefBottomRight.current.target.position.set(x, y, z);
-      lightRefBottomRight.current.target.updateMatrixWorld();
-    }
-  }, [lightingConfig, gitseePosition]);
 
   // --------------------------------------------------------
   // DATA
@@ -141,7 +104,7 @@ export function RepositoryScene() {
       .filter((n) => n.node_type === 'Contributor')
       .slice(0, 12);
 
-    const radius = 18; // medium distance
+    const radius = 18;
     const count = nodes.length || 1;
 
     return nodes.map((n, i) => {
@@ -158,7 +121,7 @@ export function RepositoryScene() {
         avatar_url: n.properties.avatar_url,
         color: 0x6366f1,
         target,
-        texture: getAvatarTexture(0x6366f1, n.properties.avatar_url)
+        texture: getAvatarTexture(0x6366f1, n.properties.avatar_url),
       };
     });
   }, [repositoryNodes]);
@@ -170,11 +133,12 @@ export function RepositoryScene() {
       { name: 'Dockerfile', pos: new THREE.Vector3(-11, -4, -8) },
       { name: 'tsconfig.json', pos: new THREE.Vector3(11, -4, 8) },
       { name: 'docker-compose.yml', pos: new THREE.Vector3(0, 10, -10) },
-      { name: '.env', pos: new THREE.Vector3(9, -7, 0) }
+      { name: '.env', pos: new THREE.Vector3(9, -7, 0) },
     ],
     []
   );
 
+  // 📌 FINAL CALLOUT DISTANCES (bigger, cleaner)
   const statsData = useMemo(() => {
     const commitsNode = repositoryNodes.find((n) => n.node_type === 'Commits');
     const starsNode = repositoryNodes.find((n) => n.node_type === 'Stars');
@@ -183,21 +147,25 @@ export function RepositoryScene() {
 
     return [
       {
-        name: `${commitsNode?.properties?.total_commits || 0} commits`,
-        pos: new THREE.Vector3(-16, 0, 0)
+        label: `${commitsNode?.properties?.total_commits || 0} COMMITS`,
+        sub: 'repository metric',
+        pos: new THREE.Vector3(-30, 6, 0),
       },
       {
-        name: `${issuesNode?.properties?.total_issues || 0} issues`,
-        pos: new THREE.Vector3(16, 2, 0)
+        label: `${issuesNode?.properties?.total_issues || 0} ISSUES`,
+        sub: 'repository metric',
+        pos: new THREE.Vector3(30, 6, 0),
       },
       {
-        name: `${starsNode?.properties?.stars || 0} stars`,
-        pos: new THREE.Vector3(0, -10, 0)
+        label: `${starsNode?.properties?.stars || 0} STARS`,
+        sub: 'repository metric',
+        pos: new THREE.Vector3(0, -22, 0),
       },
       {
-        name: `${ageNode?.properties?.age_in_years || 0}y old`,
-        pos: new THREE.Vector3(0, 10, 2)
-      }
+        label: `${ageNode?.properties?.age_in_years || 0} YEARS OLD`,
+        sub: 'repository metric',
+        pos: new THREE.Vector3(0, 22, 0),
+      },
     ];
   }, [repositoryNodes]);
 
@@ -219,17 +187,8 @@ export function RepositoryScene() {
     [filesData]
   );
 
-  const statLines = useMemo(
-    () =>
-      statsData.map((s) => {
-        const { x, y, z } = s.pos;
-        return new Float32Array([0, 0, 0, x, y, z]);
-      }),
-    [statsData]
-  );
-
   // --------------------------------------------------------
-  // ANIMATION: staged appearance
+  // ANIMATION
   // --------------------------------------------------------
 
   const tempVec = useRef(new THREE.Vector3()).current;
@@ -240,23 +199,18 @@ export function RepositoryScene() {
     }
     const elapsed = state.clock.elapsedTime - startTimeRef.current;
 
-    // 1) Central node appear (scale from 0 → 2, a bit of wobble)
+    // central node appear
     const appearDuration = 1.0;
     const p = Math.min(elapsed / appearDuration, 1);
-    const ease = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    const ease = 1 - Math.pow(1 - p, 3);
 
     if (repoRef.current) {
       const baseScale = 2.0;
       const scale = baseScale * ease;
       repoRef.current.scale.set(scale, scale, scale);
-
-      // subtle idle wobble - disabled for better camera control
-      // const wobbleTime = Math.max(elapsed - appearDuration, 0);
-      // repoRef.current.rotation.y = wobbleTime * 0.25;
-      // repoRef.current.rotation.x = Math.sin(wobbleTime * 0.4) * 0.05;
     }
 
-    // 2) After delay, show outer nodes
+    // outer nodes delay
     const outerDelay = 1.1;
     if (!showOuterNodes && elapsed > outerDelay) {
       setShowOuterNodes(true);
@@ -266,27 +220,20 @@ export function RepositoryScene() {
 
     const t = elapsed - outerDelay;
 
-    // Contributors: move center -> target, very gentle bob
+    // contributors gently move
     contributorRefs.current.forEach((mesh, i) => {
       if (!mesh) return;
       const c = contributorData[i];
 
       tempVec.copy(c.target);
-      tempVec.y += Math.sin(t * 1.2 + i * 0.6) * 0.15; // very gentle bob
-
-      mesh.position.lerp(tempVec, 0.01);
+      tempVec.y += Math.sin(t * 1.2 + i * 0.6) * 0.15;
+      mesh.position.lerp(tempVec, 0.05);
     });
 
-    // Files: rotate slowly
+    // files rotate
     fileRefs.current.forEach((mesh) => {
       if (!mesh) return;
       mesh.rotation.y += 0.002;
-    });
-
-    // Stats: slight tilt
-    statRefs.current.forEach((mesh, i) => {
-      if (!mesh) return;
-      mesh.rotation.y = Math.sin(t * 0.7 + i) * 0.1;
     });
   });
 
@@ -304,7 +251,7 @@ export function RepositoryScene() {
 
   return (
     <group position={[gitseePosition.x, gitseePosition.y, gitseePosition.z]}>
-      {/* CENTRAL NODE (appears first) */}
+      {/* CENTRAL NODE */}
       <group ref={repoRef}>
         <mesh scale={[0.5, 0.5, 0.5]}>
           <icosahedronGeometry args={[1.6, 3]} />
@@ -345,8 +292,9 @@ export function RepositoryScene() {
         </Text>
       </Billboard>
 
-      {/* CONTRIBUTORS (appear after central) */}
-      {showOuterNodes &&
+      {/* CONTRIBUTORS */}
+      {
+        showOuterNodes &&
         contributorData.map((c, i) => (
           <Billboard key={`contrib-${i}`}>
             <line>
@@ -365,7 +313,7 @@ export function RepositoryScene() {
 
             <mesh
               ref={(m) => (contributorRefs.current[i] = m)}
-              position={[0, 0, 0]} // start at center, then lerp to target
+              position={[0, 0, 0]}
             >
               <circleGeometry args={[1.5, 48]} />
               <meshBasicMaterial
@@ -397,10 +345,12 @@ export function RepositoryScene() {
               {c.contributions} contributions
             </Text>
           </Billboard>
-        ))}
+        ))
+      }
 
       {/* FILES */}
-      {showOuterNodes &&
+      {
+        showOuterNodes &&
         filesData.map((f, i) => (
           <Billboard key={`file-${i}`}>
             <line>
@@ -410,7 +360,11 @@ export function RepositoryScene() {
                   args={[fileLines[i], 3]}
                 />
               </bufferGeometry>
-              <lineBasicMaterial color={0x64748b} transparent opacity={0.2} />
+              <lineBasicMaterial
+                color={0x64748b}
+                transparent
+                opacity={0.2}
+              />
             </line>
 
             <mesh
@@ -440,107 +394,142 @@ export function RepositoryScene() {
               {f.name}
             </Text>
           </Billboard>
-        ))}
+        ))
+      }
 
-      {/* STATS */}
-      {showOuterNodes &&
-        statsData.map((s, i) => (
-          <Billboard key={`stat-${i}`}>
-            <line>
-              <bufferGeometry>
-                <bufferAttribute
-                  attach="attributes-position"
-                  args={[statLines[i], 3]}
+      {/* 🔥 STATS — FINAL CALL-OUT STYLE */}
+      {
+        showOuterNodes &&
+        statsData.map((s, i) => {
+          // calculate dot position (70% toward the callout)
+          const dotPos = new THREE.Vector3(
+            s.pos.x * 0.65,
+            s.pos.y * 0.65,
+            s.pos.z
+          );
+
+          const linePoints = new Float32Array([
+            0, 0, 0, // center
+            dotPos.x, dotPos.y, dotPos.z,
+            s.pos.x, s.pos.y, s.pos.z,
+          ]);
+
+          return (
+            <group key={`stat-${i}`}>
+
+              {/* yellow dot */}
+              <mesh position={dotPos}>
+                <circleGeometry args={[0.45, 32]} />
+                <meshBasicMaterial color={'#ffd54a'} />
+              </mesh>
+
+              {/* line from center to dot to callout */}
+              <line>
+                <bufferGeometry>
+                  <bufferAttribute
+                    attach="attributes-position"
+                    args={[linePoints, 3]}
+                  />
+                </bufferGeometry>
+                <lineBasicMaterial
+                  color={'#ffd54a'}
+                  linewidth={2}
+                  transparent
+                  opacity={0.9}
                 />
-              </bufferGeometry>
-              <lineBasicMaterial color={0x334155} transparent opacity={0.15} />
-            </line>
+              </line>
 
-            <mesh
-              ref={(m) => (statRefs.current[i] = m)}
-              position={s.pos}
-            >
-              <boxGeometry args={[5.2, 1.8, 0.35]} />
-              <meshStandardMaterial
-                color={0x020617}
-                emissive={0x111827}
-                emissiveIntensity={0.7}
-                metalness={0.7}
-                roughness={0.25}
-                transparent
-                opacity={0.9}
-              />
-            </mesh>
+              {/* HTML callout box */}
+              <Html
+                transform
+                sprite
+                distanceFactor={20}
+                position={[s.pos.x, s.pos.y, s.pos.z]}
+                style={{ pointerEvents: 'none' }}
+              >
+                <div
+                  style={{
+                    border: '2px solid #ffd54a',
+                    padding: '14px 18px',
+                    borderRadius: '6px',
+                    color: '#fefefe',
+                    fontFamily:
+                      'Inter, system-ui, -apple-system, sans-serif',
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    backdropFilter: 'blur(4px)',
+                    minWidth: '180px',
+                    boxShadow: '0 0 22px rgba(255,213,74,0.3)',
+                    letterSpacing: '0.03em',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      marginBottom: '4px',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {s.label}
+                  </div>
 
-            <Text
-              position={[s.pos.x, s.pos.y, s.pos.z + 0.5]}
-              fontSize={0.9}
-              color="#e5e7eb"
-              anchorX="center"
-              anchorY="middle"
-              maxWidth={18}
-            >
-              {s.name}
-            </Text>
-          </Billboard>
-        ))}
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: '#f3e3aa',
+                      opacity: 0.85,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    {s.sub}
+                  </div>
+                </div>
+              </Html>
+            </group>
+          );
+        })
+      }
 
-      {/* ENHANCED LIGHTING SETUP */}
-      <ambientLight intensity={0.5} />
+      {/* LIGHTING */}
+      <ambientLight intensity={0.45} />
 
-      {/* Directional lights with targeted positioning */}
-      {lightingConfig.directionalLightTopLeft && (
-        <directionalLight
-          ref={lightRefTopLeft}
-          color="white"
-          intensity={5}
-          position={[gitseePosition.x + 10, gitseePosition.y - 10, gitseePosition.z + 20]}
-        />
-      )}
-      {lightingConfig.directionalLightTopRight && (
-        <directionalLight
-          ref={lightRefTopRight}
-          color="white"
-          intensity={5}
-          position={[gitseePosition.x - 10, gitseePosition.y + 10, gitseePosition.z + 20]}
-        />
-      )}
-      {lightingConfig.directionalLightBottomLeft && (
-        <directionalLight
-          ref={lightRefBottomLeft}
-          color="white"
-          intensity={5}
-          position={[gitseePosition.x - 10, gitseePosition.y + 10, gitseePosition.z + 20]}
-        />
-      )}
-      {lightingConfig.directionalLightBottomRight && (
-        <directionalLight
-          ref={lightRefBottomRight}
-          color="white"
-          intensity={5}
-          position={[gitseePosition.x + 10, gitseePosition.y - 10, gitseePosition.z + 20]}
-        />
-      )}
+      <directionalLight
+        ref={lightRefTopLeft}
+        color="white"
+        intensity={5}
+        position={[
+          gitseePosition.x + 10,
+          gitseePosition.y - 10,
+          gitseePosition.z + 20,
+        ]}
+      />
 
-      {/* Spot light for dramatic effect */}
-      {lightingConfig.spotLight && (
-        <spotLight
-          ref={spotLightRef}
-          position={[gitseePosition.x + 10, gitseePosition.y + 5, gitseePosition.z]}
-          angle={0.15}
-          color="lime"
-          penumbra={1}
-          intensity={5}
-          target-position={[gitseePosition.x, gitseePosition.y, gitseePosition.z]}
-        />
-      )}
+      <directionalLight
+        ref={lightRefTopRight}
+        color="white"
+        intensity={5}
+        position={[
+          gitseePosition.x - 10,
+          gitseePosition.y + 10,
+          gitseePosition.z + 20,
+        ]}
+      />
 
-      {/* Central point light */}
+      <spotLight
+        ref={spotLightRef}
+        position={[gitseePosition.x + 10, gitseePosition.y + 5, gitseePosition.z]}
+        angle={0.15}
+        color="lime"
+        penumbra={1}
+        intensity={5}
+      />
+
       <pointLight
         intensity={500}
         color="lime"
         position={[gitseePosition.x, gitseePosition.y, gitseePosition.z]}
       />
-    </group>
+    </group >
   );
 }
