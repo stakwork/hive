@@ -7,6 +7,8 @@ export const fetchCache = "force-no-store";
 interface GraphWebhookPayload {
   node_ids: string[];
   workspace_id?: string;
+  depth?: number;
+  title?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -26,7 +28,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as GraphWebhookPayload;
-    const { node_ids, workspace_id } = body;
+    const { node_ids, workspace_id, depth, title } = body;
+
+    console.log(body)
 
     console.log("node_ids:", node_ids);
     console.log("workspace_id:", workspace_id);
@@ -54,6 +58,8 @@ export async function POST(request: NextRequest) {
         const eventPayload = {
           nodeIds: node_ids,
           workspaceId: workspace.slug,
+          depth: depth || 0,
+          title: title || "",
           timestamp: Date.now(),
         };
 

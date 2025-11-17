@@ -37,6 +37,7 @@ export type GraphStore = {
   cameraTarget: CameraTarget | null
   webhookHighlightNodes: string[]
   highlightTimestamp: number | null
+  webhookHighlightDepth: number
 
   // setters
   setDisableCameraRotation(rotation: boolean): void
@@ -69,6 +70,6 @@ export type GraphStore = {
   setCameraPosition(position: CameraPosition | null): void
   setCameraTarget(target: CameraTarget | null): void
   saveCameraState(position: CameraPosition, target: CameraTarget): void
-  setWebhookHighlightNodes(nodeIds: string[]): void
+  setWebhookHighlightNodes(nodeIds: string[], depth?: number): void
   clearWebhookHighlights(): void
 }

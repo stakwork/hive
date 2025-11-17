@@ -24,7 +24,7 @@ export const HighlightedNodesLayer = memo(() => {
   const timeRef = useRef(0)
 
   const { workspace } = useWorkspace()
-  const { webhookHighlightNodes, highlightTimestamp, clearWebhookHighlights } = useGraphStore((s) => s)
+  const { webhookHighlightNodes, highlightTimestamp, webhookHighlightDepth, clearWebhookHighlights, setWebhookHighlightNodes } = useGraphStore((s) => s)
   const { simulation } = useSimulationStore((s) => s)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
   const addNewNode = useDataStore((s) => s.addNewNode)
@@ -42,48 +42,111 @@ export const HighlightedNodesLayer = memo(() => {
   const simulationNodes = simulation?.nodes() || []
 
   useEffect(() => {
-    const foundNodeIds = new Set()
-    const missingNodeIds: string[] = []
-
-    nodeIdsToHighlight.forEach(nodeId => {
-      const inNormalized = nodesNormalized?.get(nodeId)
-
-      if (inNormalized) {
-        foundNodeIds.add(nodeId)
-      } else {
-        missingNodeIds.push(nodeId)
-      }
-    })
-
-    const fetchMissingNodes = async () => {
-      if (missingNodeIds.length === 0 || !workspace?.slug) return
+    const fetchNodesData = async () => {
+      if (!workspace?.slug || webhookHighlightNodes.length === 0) return
 
       try {
-        const refIds = missingNodeIds.join(',')
-        const response = await fetch(`/api/workspaces/${workspace.slug}/graph/nodes?ref_ids=${refIds}`)
+        if (webhookHighlightDepth === 0) {
+          // Depth 0: Just fetch missing nodes directly
+          const foundNodeIds = new Set()
+          const missingNodeIds: string[] = []
 
-        if (!response.ok) {
-          console.error('Failed to fetch missing nodes:', response.statusText)
-          return
-        }
+          webhookHighlightNodes.forEach(nodeId => {
+            const inNormalized = nodesNormalized?.get(nodeId)
+            if (inNormalized) {
+              foundNodeIds.add(nodeId)
+            } else {
+              missingNodeIds.push(nodeId)
+            }
+          })
 
-        const data = await response.json()
-        const nodes = data.data || []
+          if (missingNodeIds.length > 0) {
+            const refIds = missingNodeIds.join(',')
+            const response = await fetch(`/api/workspaces/${workspace.slug}/graph/nodes?ref_ids=${refIds}`)
 
-        console.log('missing added nodes:', nodes)
+            if (!response.ok) {
+              console.error('Failed to fetch missing nodes:', response.statusText)
+              return
+            }
 
-        if (nodes.length > 0) {
-          addNewNode({ nodes, edges: [] })
+            const data = await response.json()
+            const nodes = data.data || []
+
+            console.log('missing added nodes:', nodes)
+
+            if (nodes.length > 0) {
+              addNewNode({ nodes, edges: [] })
+            }
+          }
+        } else {
+          // Depth > 0: Call subgraph endpoint for each ref_id and group results
+          console.log(`Fetching subgraphs for ${webhookHighlightNodes.length} nodes with depth ${webhookHighlightDepth}`)
+
+          const allNodes: any[] = []
+          const allEdges: any[] = []
+          const allNodeIds = new Set<string>(webhookHighlightNodes) // Start with original nodes
+
+          for (const nodeId of webhookHighlightNodes) {
+            try {
+              // Build subgraph endpoint URL
+              const subgraphEndpoint = `/graph/subgraph?include_properties=true&start_node=${nodeId}&depth=${webhookHighlightDepth}&min_depth=0&limit=100&sort_by=date_added_to_graph`
+              const encodedEndpoint = encodeURIComponent(subgraphEndpoint)
+
+              const response = await fetch(`/api/swarm/jarvis/nodes?id=${workspace.id}&endpoint=${encodedEndpoint}`)
+
+              if (!response.ok) {
+                console.error(`Failed to fetch subgraph for node ${nodeId}:`, response.statusText)
+                continue
+              }
+
+              const data = await response.json()
+              const nodes = data.data?.nodes || []
+              const edges = data.data?.edges || []
+
+              console.log(`Subgraph for node ${nodeId}:`, { nodes: nodes.length, edges: edges.length })
+
+              // Collect all unique nodes and edges
+              nodes.forEach((node: any) => {
+                if (!allNodeIds.has(node.ref_id)) {
+                  allNodeIds.add(node.ref_id)
+                  allNodes.push(node)
+                }
+              })
+
+              edges.forEach((edge: any) => {
+                // Check if edge already exists to avoid duplicates
+                const edgeExists = allEdges.some(existingEdge =>
+                  existingEdge.ref_id === edge.ref_id ||
+                  (existingEdge.source === edge.source && existingEdge.target === edge.target)
+                )
+                if (!edgeExists) {
+                  allEdges.push(edge)
+                }
+              })
+
+            } catch (error) {
+              console.error(`Error fetching subgraph for node ${nodeId}:`, error)
+            }
+          }
+
+          // Add all collected nodes and edges to the graph
+          if (allNodes.length > 0 || allEdges.length > 0) {
+            console.log(`Adding grouped subgraph data:`, { nodes: allNodes.length, edges: allEdges.length })
+            addNewNode({ nodes: allNodes, edges: allEdges })
+
+            // Update webhookHighlightNodes to include all fetched node IDs
+            const updatedHighlightNodes = Array.from(allNodeIds)
+            console.log(`Updating webhookHighlightNodes from ${webhookHighlightNodes.length} to ${updatedHighlightNodes.length} nodes`)
+            setWebhookHighlightNodes(updatedHighlightNodes, webhookHighlightDepth)
+          }
         }
       } catch (error) {
-        console.error('Error fetching missing nodes:', error)
+        console.error('Error in fetchNodesData:', error)
       }
     }
 
-    if (missingNodeIds.length > 0) {
-      fetchMissingNodes()
-    }
-  }, [nodeIdsToHighlight, nodesNormalized, addNewNode, workspace?.slug])
+    fetchNodesData()
+  }, [webhookHighlightNodes, webhookHighlightDepth, nodesNormalized, addNewNode, workspace?.id])
 
   const highlightedNodes = nodeIdsToHighlight
     .map(nodeId => simulationNodes.find((node: NodeExtended) => node.ref_id === nodeId))
