@@ -29,7 +29,7 @@ function DashboardInner() {
   const dataInitial = useDataStore((s) => s.dataInitial);
 
   useGraphPolling({
-    enabled: false,
+    enabled: true,
     interval: 5000
   });
 
