@@ -7,7 +7,7 @@ import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
 import { Group } from 'three'
 import { Line2 } from 'three-stdlib'
-import { Connections } from './Connections'
+import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
 import { LayerLabels } from './LayerLabels'
@@ -400,7 +400,8 @@ export const Graph = () => {
       <group>
         <Cubes />
 
-        <Connections linksPosition={linksPositionRef.current} />
+        {/* <Connections linksPosition={linksPositionRef.current} /> */}
+        <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
       <HighlightedNodesLayer />
       {graphStyle === 'split' ? <LayerLabels /> : null}
