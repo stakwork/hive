@@ -43,22 +43,14 @@ export const GraphComponent = ({
   className,
   height = "h-full",
   width = "w-full",
-  topLeftWidget,
-  topRightWidget,
-  bottomLeftWidget,
-  bottomRightWidget
 }: GraphComponentProps = {}) => {
   return (
     <GraphComponentInner
-      endpoint={propEndpoint}
+      endpoint={propEndpoint || ''}
       enableRotation={enableRotation}
-      className={className}
+      className={className || ''}
       height={height}
       width={width}
-      topLeftWidget={topLeftWidget}
-      topRightWidget={topRightWidget}
-      bottomLeftWidget={bottomLeftWidget}
-      bottomRightWidget={bottomRightWidget}
     />
   );
 };
