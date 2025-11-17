@@ -88,8 +88,8 @@ const baseNavigationItems: NavigationItem[] = [
   { icon: Server, label: "Capacity", href: "/capacity" },
   {
     icon: Map,
-    label: "Offence",
-    href: "/offence",
+    label: "Offense",
+    href: "/offense",
     children: [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
       { icon: Map, label: "Roadmap", href: "/roadmap" },
@@ -97,12 +97,12 @@ const baseNavigationItems: NavigationItem[] = [
   },
   {
     icon: Shield,
-    label: "Defence",
-    href: "/defence",
+    label: "Defense",
+    href: "/defense",
     children: [
-      { icon: BarChart3, label: "Insights", href: "/defence/insights" },
-      { icon: TestTube2, label: "Testing", href: "/defence/testing" },
-      { icon: Bot, label: "Janitors", href: "/defence/janitors" },
+      { icon: BarChart3, label: "Insights", href: "/defense/insights" },
+      { icon: TestTube2, label: "Testing", href: "/defense/testing" },
+      { icon: Bot, label: "Janitors", href: "/defense/janitors" },
     ],
   },
   {
@@ -124,7 +124,7 @@ function SidebarContent({
   user,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
-    // Auto-expand Defence if any child route is active
+    // Auto-expand Defense if any child route is active
     const initialExpanded = new Set<string>();
     navigationItems.forEach((item) => {
       if (item.children && isParentActive(pathname, item.children)) {
@@ -267,12 +267,12 @@ export function Sidebar({ user }: SidebarProps) {
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
-  const canAccessDefence = useFeatureFlag(
+  const canAccessDefense = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
   );
 
   const excludeLabels: string[] = [];
-  if (!canAccessDefence) excludeLabels.push("Defence");
+  if (!canAccessDefense) excludeLabels.push("Defense");
 
   const navigationItems = baseNavigationItems.filter(
     (item) => !excludeLabels.includes(item.label),

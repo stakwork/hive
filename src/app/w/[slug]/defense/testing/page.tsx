@@ -9,10 +9,10 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { redirect } from "next/navigation";
 
-export default function DefenceTestingPage() {
-  const canAccessDefence = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
+export default function DefenseTestingPage() {
+  const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
 
-  if (!canAccessDefence) {
+  if (!canAccessDefense) {
     redirect("/");
   }
 
