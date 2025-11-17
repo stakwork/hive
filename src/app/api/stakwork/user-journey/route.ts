@@ -27,6 +27,7 @@ async function callStakwork(
   taskId: string,
   testFilePath: string,
   testFileUrl: string | null,
+  baseBranch: string | null,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -56,6 +57,7 @@ async function callStakwork(
       workspaceId,
       testFilePath,
       testFileUrl,
+      baseBranch,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
@@ -248,6 +250,7 @@ export async function POST(request: NextRequest) {
       task.id,
       testFilePath,
       testFileUrl,
+      repository?.branch || 'main',
     );
 
     // Update task with stakworkProjectId if Stakwork succeeded
