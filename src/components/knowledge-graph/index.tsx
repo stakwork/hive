@@ -126,7 +126,7 @@ const GraphComponentInner = ({
 
         case 'comms':
           // Filter for communication nodes
-          const commsNodeTypes = JSON.stringify(['Episode', 'Message']);
+          const commsNodeTypes = JSON.stringify(['Episode', 'Message', 'Person']);
           requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=10&top_node_count=10`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
           break;
 
