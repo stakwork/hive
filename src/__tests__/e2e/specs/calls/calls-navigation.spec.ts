@@ -45,11 +45,11 @@ test.describe('Calls Navigation', () => {
     await callsLink.click();
 
     // Wait for URL to change to calls page
-    await page.waitForURL(/\/w\/.*\/calls/, { timeout: 10000 });
+    await page.waitForURL(/\/w\/.*\/context\/calls/, { timeout: 10000 });
 
     // Verify we're on the calls page
     await expect(page.locator(selectors.pageTitle.calls)).toBeVisible();
-    expect(page.url()).toContain('/calls');
+    expect(page.url()).toContain('/context/calls');
   });
 
   test('should display calls page title', async ({ page }) => {
