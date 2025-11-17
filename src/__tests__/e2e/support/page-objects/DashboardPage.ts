@@ -92,4 +92,12 @@ export class DashboardPage {
   async isLoaded(): Promise<boolean> {
     return await this.page.locator('[data-testid="graph-component"]').isVisible();
   }
+
+  /**
+   * Open workspace switcher dropdown
+   */
+  async openWorkspaceSwitcher(): Promise<void> {
+    const workspaceSwitcherButton = this.page.locator(selectors.workspace.switcherTrigger);
+    await workspaceSwitcherButton.click();
+  }
 }

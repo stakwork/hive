@@ -116,3 +116,27 @@ export async function createInvitableUser(options: Partial<CreateTestUserOptions
     ...options,
   });
 }
+
+/**
+ * Workspace with specific slug for workspace switcher test
+ * Creates a workspace with "mock-stakgraph" slug
+ */
+export async function createMockStakgraphWorkspaceScenario(): Promise<TestWorkspaceScenarioResult> {
+  return createTestWorkspaceScenario({
+    owner: {
+      name: "dev-user",
+      email: "dev-user@mock.dev",
+      withGitHubAuth: true,
+      githubUsername: "dev-user",
+    },
+    workspace: {
+      name: "Mock Stakgraph Workspace",
+      slug: "mock-stakgraph",
+      description: "Workspace for workspace switcher E2E testing",
+    },
+    withSwarm: true,
+    swarm: {
+      containerFilesSetUp: true,
+    },
+  });
+}

@@ -116,6 +116,7 @@ export function WorkspaceSwitcher({
             variant="outline"
             className="w-full justify-between h-auto p-3 hover:bg-accent transition-colors"
             disabled={loading}
+            data-testid="workspace-switcher-trigger"
           >
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground overflow-hidden">
@@ -149,7 +150,10 @@ export function WorkspaceSwitcher({
           sideOffset={8}
           forceMount
         >
-          <DropdownMenuLabel className="text-xs text-muted-foreground">
+          <DropdownMenuLabel 
+            className="text-xs text-muted-foreground"
+            data-testid="workspace-switcher-label"
+          >
             Workspaces ({workspaces.length})
           </DropdownMenuLabel>
 
