@@ -45,6 +45,7 @@ const defaultData: Omit<
   | 'saveCameraState'
   | 'setWebhookHighlightNodes'
   | 'clearWebhookHighlights'
+  | 'setActiveFilterTab'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -76,6 +77,7 @@ const defaultData: Omit<
   cameraTarget: null,
   webhookHighlightNodes: [],
   highlightTimestamp: null,
+  activeFilterTab: 'all',
 }
 
 export const createGraphStore = (
@@ -200,4 +202,5 @@ export const createGraphStore = (
       webhookHighlightNodes: [],
       highlightTimestamp: null
     }),
+    setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
   }));

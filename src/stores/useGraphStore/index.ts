@@ -30,6 +30,8 @@ export type CameraTarget = {
   z: number
 }
 
+export type FilterTab = 'all' | 'code' | 'comms' | 'tasks'
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -61,6 +63,7 @@ export type GraphStore = {
   cameraTarget: CameraTarget | null
   webhookHighlightNodes: string[]
   highlightTimestamp: number | null
+  activeFilterTab: FilterTab
   setDisableCameraRotation: (rotation: boolean) => void
   setScrollEventsDisabled: (rotation: boolean) => void
   setData: (data: GraphData) => void
@@ -93,6 +96,7 @@ export type GraphStore = {
   saveCameraState: (position: CameraPosition, target: CameraTarget) => void
   setWebhookHighlightNodes: (nodeIds: string[]) => void
   clearWebhookHighlights: () => void
+  setActiveFilterTab: (tab: FilterTab) => void
 }
 
 const defaultData: Omit<
@@ -132,6 +136,7 @@ const defaultData: Omit<
   | 'saveCameraState'
   | 'setWebhookHighlightNodes'
   | 'clearWebhookHighlights'
+  | 'setActiveFilterTab'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -163,6 +168,7 @@ const defaultData: Omit<
   cameraTarget: null,
   webhookHighlightNodes: [],
   highlightTimestamp: null,
+  activeFilterTab: 'all',
 }
 
 export const useGraphStore = create<GraphStore>()((set, get) => ({
@@ -283,6 +289,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
     webhookHighlightNodes: [],
     highlightTimestamp: null
   }),
+  setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
 }))
 
 export const useSelectedNode = () => useGraphStore((s) => s.selectedNode)

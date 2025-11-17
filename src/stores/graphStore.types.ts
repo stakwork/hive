@@ -6,6 +6,8 @@ export type GraphStyle = 'sphere' | 'force' | 'split'
 export type CameraPosition = { x: number; y: number; z: number }
 export type CameraTarget = { x: number; y: number; z: number }
 
+export type FilterTab = 'all' | 'code' | 'comms' | 'tasks'
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -37,6 +39,7 @@ export type GraphStore = {
   cameraTarget: CameraTarget | null
   webhookHighlightNodes: string[]
   highlightTimestamp: number | null
+  activeFilterTab: FilterTab
 
   // setters
   setDisableCameraRotation(rotation: boolean): void
@@ -71,4 +74,5 @@ export type GraphStore = {
   saveCameraState(position: CameraPosition, target: CameraTarget): void
   setWebhookHighlightNodes(nodeIds: string[]): void
   clearWebhookHighlights(): void
+  setActiveFilterTab(tab: FilterTab): void
 }

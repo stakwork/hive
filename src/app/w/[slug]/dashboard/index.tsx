@@ -1,6 +1,7 @@
 "use client";
 
 import { GraphComponent } from "@/components/knowledge-graph";
+import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
@@ -10,7 +11,8 @@ import { useWebhookHighlights } from "@/hooks/useWebhookHighlights";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { logStoreInstances } from "@/stores/createStoreFactory";
 import { StoreProvider } from "@/stores/StoreProvider";
-import { useDataStore } from "@/stores/useStores";
+import { useDataStore, useGraphStore } from "@/stores/useStores";
+import { FilterTab } from "@/stores/graphStore.types";
 
 export function Dashboard() {
   const { id: workspaceId } = useWorkspace();
@@ -25,19 +27,49 @@ export function Dashboard() {
 }
 
 function DashboardInner() {
-  const { slug } = useWorkspace();
+  const { slug, workspace } = useWorkspace();
   const dataInitial = useDataStore((s) => s.dataInitial);
+  const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
+  const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
 
   useGraphPolling({
-    enabled: true,
+    enabled: activeFilterTab === 'all',
     interval: 5000
   });
 
   useWebhookHighlights()
 
+  const handleFilterChange = (value: FilterTab) => {
+    setActiveFilterTab(value);
+  };
 
   return (
-    <div className="flex flex-col flex-1 h-full">
+    <div className="flex flex-col flex-1 h-full relative">
+      {/* Top-left widgets */}
+      {dataInitial?.nodes && dataInitial.nodes.length > 0 && (
+        <div className="absolute top-4 left-4 z-10">
+          <IngestionStatusWidget />
+        </div>
+      )}
+
+      {/* Top-right widgets */}
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        {workspace?.poolState === "COMPLETE" && (
+          <GraphFilterDropdown
+            value={activeFilterTab}
+            onValueChange={handleFilterChange}
+          />
+        )}
+        <GitHubStatusWidget />
+        <PoolStatusWidget />
+      </div>
+
+      {/* Bottom-left widget */}
+      <div className="absolute bottom-4 left-4 z-10">
+        <WorkspaceMembersPreview workspaceSlug={slug} />
+      </div>
+
+      {/* Graph Component */}
       <div className="flex-1 min-h-0">
         <GraphComponent
           endpoint={`graph/search/latest?limit=1000&top_node_count=500`}
@@ -45,18 +77,6 @@ function DashboardInner() {
           enablePolling={true}
           height="h-full"
           width="w-full"
-          topLeftWidget={
-            dataInitial?.nodes && dataInitial.nodes.length > 0 ? (
-              <IngestionStatusWidget />
-            ) : undefined
-          }
-          topRightWidget={
-            <div className="flex items-center gap-2">
-              <GitHubStatusWidget />
-              <PoolStatusWidget />
-            </div>
-          }
-          bottomLeftWidget={<WorkspaceMembersPreview workspaceSlug={slug} />}
         />
       </div>
     </div>
