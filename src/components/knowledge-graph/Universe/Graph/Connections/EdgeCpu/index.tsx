@@ -127,8 +127,9 @@ export function EdgesGPU({
 
     // 🛡 2. Guard: If geo not ready – don't render anything
     useFrame(() => {
-        if (!startRef.current || !endRef.current) return;
+        if (!geoAndMat || !startRef.current || !endRef.current) return;
 
+        const { geometry, material } = geoAndMat;
         const aStart = startRef.current;
         const aEnd = endRef.current;
         const max = aStart.length;

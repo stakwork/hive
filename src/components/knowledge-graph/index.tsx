@@ -70,7 +70,7 @@ const GraphComponentInner = ({
   height = "h-full",
   width = "w-full",
 }: Props) => {
-  const { id: workspaceId } = useWorkspace();
+  const { id: workspaceId, slug } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
@@ -114,13 +114,13 @@ const GraphComponentInner = ({
         case 'code':
           // Filter for code-related nodes
           const codeNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel']);
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=10000&top_node_count=10000`)}&node_type=${encodeURIComponent(codeNodeTypes)}`;
+          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(codeNodeTypes)}&limit=100&limit_mode=per_type`;
           break;
 
         case 'comms':
           // Filter for communication nodes
           const commsNodeTypes = JSON.stringify(['Episode', 'Message', 'Person']);
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search?limit=1000&top_node_count=100`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
+          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(commsNodeTypes)}&limit=100&limit_mode=per_type`;
           break;
 
         case 'tasks':
@@ -185,7 +185,7 @@ const GraphComponentInner = ({
     } finally {
       setNodesLoading(false);
     }
-  }, [workspaceId, resetData, addNewNode, propEndpoint]);
+  }, [workspaceId, resetData, addNewNode, propEndpoint, slug]);
 
   // Load data when filter changes
   useEffect(() => {
