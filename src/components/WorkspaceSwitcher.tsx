@@ -149,7 +149,10 @@ export function WorkspaceSwitcher({
           sideOffset={8}
           forceMount
         >
-          <DropdownMenuLabel className="text-xs text-muted-foreground">
+          <DropdownMenuLabel 
+            className="text-xs text-muted-foreground"
+            data-testid="workspace-switcher-label"
+          >
             Workspaces ({workspaces.length})
           </DropdownMenuLabel>
 
