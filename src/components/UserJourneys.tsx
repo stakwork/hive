@@ -2,14 +2,19 @@
 
 import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, Loader2, Plus, Play } from "lucide-react";
+import { Archive, ExternalLink, Loader2, Plus, Play, Eye } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
@@ -27,12 +32,11 @@ interface BadgeMetadata {
 interface UserJourneyRow {
   id: string;
   title: string;
-  type: "GRAPH_NODE" | "TASK";
   testFilePath: string | null;
   testFileUrl: string | null;
   createdAt: string;
   badge: BadgeMetadata;
-  task?: {
+  task: {
     description: string | null;
     status: string;
     workflowStatus: string | null;
@@ -44,10 +48,6 @@ interface UserJourneyRow {
       branch: string;
     };
   };
-  graphNode?: {
-    body: string;
-    testKind: string;
-  };
 }
 
 export default function UserJourneys() {
@@ -57,13 +57,17 @@ export default function UserJourneys() {
   const [frontend, setFrontend] = useState<string | null>(null);
   const [userJourneys, setUserJourneys] = useState<UserJourneyRow[]>([]);
   const [fetchingJourneys, setFetchingJourneys] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
-  const [hidePending, setHidePending] = useState(false);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+
+  // Filter state (defaults: show pending, hide failed)
+  const [showPendingTasks, setShowPendingTasks] = useState(true);
+  const [showFailedTasks, setShowFailedTasks] = useState(false);
+
   // Replay-related state
-  const [replayTestCode, setReplayTestCode] = useState<string | null>(null); // Test code to replay
-  const [replayTitle, setReplayTitle] = useState<string | null>(null); // Title of test being replayed
-  const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null); // ID of task being replayed (for loading state)
+  const [replayTestCode, setReplayTestCode] = useState<string | null>(null);
+  const [replayTitle, setReplayTitle] = useState<string | null>(null);
+  const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null);
   const open = useModal();
 
   const fetchUserJourneys = useCallback(async () => {
@@ -95,13 +99,23 @@ export default function UserJourneys() {
     }
   }, [frontend, fetchUserJourneys]);
 
-  // Apply hide pending filter
-  const filteredRows = hidePending
-    ? userJourneys.filter(row =>
-        row.type === "GRAPH_NODE" || // Always show graph nodes
-        row.task?.status === "DONE"   // Only show completed tasks
-      )
-    : userJourneys;
+  // Updated filter logic
+  const filteredRows = userJourneys.filter((row) => {
+    // Filter out pending tasks if toggled off
+    if (!showPendingTasks) {
+      const isPending = row.task.status === "IN_PROGRESS" && !row.badge.url;
+      if (isPending) return false;
+    }
+
+    // Filter out failed workflows without PR if toggled off (default)
+    if (!showFailedTasks) {
+      const isFailed = ["FAILED", "ERROR", "HALTED"].includes(row.task.workflowStatus || "");
+      const hasNoPR = !row.badge.url;
+      if (isFailed && hasNoPR) return false;
+    }
+
+    return true;
+  });
 
   // Shared function to drop the pod
   const dropPod = useCallback(
@@ -112,11 +126,9 @@ export default function UserJourneys() {
 
       try {
         if (useBeacon) {
-          // Use sendBeacon for reliable delivery when page is closing
           const blob = new Blob([JSON.stringify({})], { type: "application/json" });
           navigator.sendBeacon(dropUrl, blob);
         } else {
-          // Use regular fetch for normal scenarios
           await fetch(dropUrl, {
             method: "POST",
             headers: {
@@ -155,52 +167,95 @@ export default function UserJourneys() {
     };
   }, [frontend, dropPod]);
 
-  const handleCopyCode = async (row: UserJourneyRow) => {
-    let code: string;
-
-    if (row.type === "GRAPH_NODE") {
-      // For graph nodes, use the test body directly
-      code = row.graphNode!.body;
-    } else {
-      // For tasks, fetch the test code
-      code = await fetchTestCode(row) || row.title;
-    }
-
-    await navigator.clipboard.writeText(code);
-    setCopiedId(row.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  // Fetch test code from ChatMessages (fast) or fallback to title
+  // Simplified test code fetching (ChatMessage first, then graph fallback)
   const fetchTestCode = async (row: UserJourneyRow): Promise<string | null> => {
-    if (!row.task) return null;
-
+    // Try ChatMessage first (pending tasks)
     try {
       const messagesResponse = await fetch(`/api/tasks/${row.id}/messages`);
-
       if (messagesResponse.ok) {
         const result = await messagesResponse.json();
-        if (result.success && result.data?.messages && result.data.messages.length > 0) {
-          const testCode = result.data.messages[0].message;
-          if (testCode && testCode.trim().length > 0) {
-            return testCode;
-          }
+        const testCode = result.data?.messages?.[0]?.message;
+        if (testCode && testCode.trim().length > 0) {
+          console.log("[testCode] from task message", testCode);
+          return testCode;
         }
       }
-
-      return null;
     } catch (error) {
-      console.error("Error fetching test code:", error);
-      return null;
+      console.error("Error fetching from ChatMessage:", error);
+    }
+
+    // Fallback to graph (deployed tasks)
+    if (row.testFilePath) {
+      try {
+        const graphResponse = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
+        if (graphResponse.ok) {
+          const result = await graphResponse.json();
+          if (result.success && Array.isArray(result.data)) {
+            // Graph may return full paths (owner/repo/path) or relative paths
+            // Try exact match first, then try matching the end of the path
+            const node = result.data.find((n: { properties: { file: string } }) => {
+              if (!row.testFilePath) return false;
+              const graphPath = n.properties.file;
+              return (
+                graphPath === row.testFilePath ||
+                graphPath.endsWith(`/${row.testFilePath}`) ||
+                graphPath.endsWith(row.testFilePath)
+              );
+            });
+            if (node?.properties.body) {
+              console.log("[testCode] from graph", node.properties.body);
+              return node.properties.body;
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching from graph:", error);
+      }
+    }
+
+    return null;
+  };
+
+  const handleArchive = async (row: UserJourneyRow) => {
+    try {
+      setArchivingId(row.id);
+
+      const response = await fetch(`/api/tasks/${row.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          archived: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to archive task");
+      }
+
+      toast({
+        title: "Test Archived",
+        description: "The test has been archived successfully.",
+      });
+
+      // Refresh the list
+      await fetchUserJourneys();
+    } catch (error) {
+      console.error("Error archiving test:", error);
+      toast({
+        variant: "destructive",
+        title: "Archive Failed",
+        description: "Unable to archive the test. Please try again.",
+      });
+    } finally {
+      setArchivingId(null);
     }
   };
 
   const handleCloseBrowser = () => {
-    // Close iframe immediately for better UX
     setFrontend(null);
-    // Drop pod in background (no await)
     dropPod();
-    // Clear podId and replay state
     setClaimedPodId(null);
     setReplayTestCode(null);
     setReplayTitle(null);
@@ -253,7 +308,6 @@ export default function UserJourneys() {
   };
 
   const handleReplay = async (row: UserJourneyRow) => {
-    // Check if services are set up
     if (workspace?.poolState !== "COMPLETE") {
       open("ServicesWizard");
       return;
@@ -262,16 +316,8 @@ export default function UserJourneys() {
     try {
       setIsReplayingTask(row.id);
 
-      // Step 1: Get test code
-      let testCode: string | null = null;
-
-      if (row.type === "GRAPH_NODE") {
-        // For graph nodes, use the test body directly
-        testCode = row.graphNode!.body;
-      } else {
-        // For tasks, fetch test code
-        testCode = await fetchTestCode(row);
-      }
+      // Get test code
+      const testCode = await fetchTestCode(row);
 
       if (!testCode) {
         toast({
@@ -283,7 +329,7 @@ export default function UserJourneys() {
         return;
       }
 
-      // Step 2: Claim a pod
+      // Claim a pod
       const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
         method: "POST",
         headers: {
@@ -303,7 +349,7 @@ export default function UserJourneys() {
 
       const data = await response.json();
 
-      // Step 3: Set state to trigger replay
+      // Set state to trigger replay
       if (data.frontend) {
         setReplayTestCode(testCode);
         setReplayTitle(row.title);
@@ -323,7 +369,6 @@ export default function UserJourneys() {
 
   const saveUserJourneyTest = async (filename: string, generatedCode: string) => {
     try {
-      // Use filename directly as title for predictability and consistency
       const title = filename || "User Journey Test";
 
       const payload = {
@@ -360,10 +405,7 @@ export default function UserJourneys() {
           description: `Task "${title}" has been created and is now in progress.`,
         });
 
-        // Refetch journeys to show the new one
         await fetchUserJourneys();
-
-        // Close the browser panel and release the pod
         handleCloseBrowser();
       } else {
         toast({
@@ -371,7 +413,6 @@ export default function UserJourneys() {
           description: "Test was saved but task creation may have failed.",
         });
 
-        // Still close the browser panel even if task creation failed
         handleCloseBrowser();
       }
     } catch (error) {
@@ -387,7 +428,6 @@ export default function UserJourneys() {
   const renderBadge = (badge: BadgeMetadata) => {
     // Use PRStatusBadge component for PR badges
     if (badge.type === "PR" && badge.url) {
-      // Map badge text to status
       const status =
         badge.text === "Open"
           ? "IN_PROGRESS"
@@ -397,15 +437,10 @@ export default function UserJourneys() {
               ? "CANCELLED"
               : "IN_PROGRESS";
 
-      return (
-        <PRStatusBadge
-          url={badge.url}
-          status={status as "IN_PROGRESS" | "DONE" | "CANCELLED"}
-        />
-      );
+      return <PRStatusBadge url={badge.url} status={status as "IN_PROGRESS" | "DONE" | "CANCELLED"} />;
     }
 
-    // Render other badge types (LIVE, WORKFLOW) as before
+    // Render other badge types (LIVE, WORKFLOW)
     return (
       <Badge
         variant="secondary"
@@ -447,10 +482,27 @@ export default function UserJourneys() {
             ✕
           </Button>
         ) : (
-          <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
-            <Plus className="w-4 h-4" />
-            Create User Journey
-          </Button>
+          <div className="flex items-center gap-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <Eye className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuCheckboxItem checked={showPendingTasks} onCheckedChange={setShowPendingTasks}>
+                  Pending Tasks
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={showFailedTasks} onCheckedChange={setShowFailedTasks}>
+                  Failed Tasks
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
+              <Plus className="w-4 h-4" />
+              Create User Journey
+            </Button>
+          </div>
         )}
       </div>
 
@@ -468,21 +520,7 @@ export default function UserJourneys() {
       ) : (
         <div className="space-y-6">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <label htmlFor="hide-pending" className="text-sm text-muted-foreground cursor-pointer">
-                    Hide pending recordings
-                  </label>
-                  <Switch
-                    id="hide-pending"
-                    checked={hidePending}
-                    onCheckedChange={setHidePending}
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               {fetchingJourneys ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -497,7 +535,7 @@ export default function UserJourneys() {
                         <TableHead>Status</TableHead>
                         <TableHead>Test File</TableHead>
                         <TableHead>Created</TableHead>
-                        <TableHead className="w-[100px]">Actions</TableHead>
+                        <TableHead className="w-[100px]">Archive</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -522,19 +560,17 @@ export default function UserJourneys() {
                           </TableCell>
                           <TableCell>{renderBadge(row.badge)}</TableCell>
                           <TableCell>
-                            {row.type === "GRAPH_NODE" || row.testFileUrl ? (
+                            {row.testFileUrl ? (
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
-                                {row.testFileUrl && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => window.open(row.testFileUrl!, "_blank")}
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                  </Button>
-                                )}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => window.open(row.testFileUrl!, "_blank")}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
                               </div>
                             ) : (
                               <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
@@ -547,14 +583,15 @@ export default function UserJourneys() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleCopyCode(row)}
+                              onClick={() => handleArchive(row)}
+                              disabled={archivingId === row.id}
                               className="h-8 w-8 p-0"
-                              title="Copy test code"
+                              title="Archive test"
                             >
-                              {copiedId === row.id ? (
-                                <Check className="h-4 w-4 text-green-500" />
+                              {archivingId === row.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Copy className="h-4 w-4" />
+                                <Archive className="h-4 w-4" />
                               )}
                             </Button>
                           </TableCell>
@@ -566,9 +603,11 @@ export default function UserJourneys() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">
-                    {hidePending && userJourneys.length > 0
-                      ? "No completed tests to display. Toggle off to see all tests."
-                      : "No E2E tests yet. Create a user journey to get started!"}
+                    {!showPendingTasks && userJourneys.length > 0
+                      ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
+                      : !showFailedTasks && userJourneys.length > 0
+                        ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
+                        : "No E2E tests yet. Create a user journey to get started!"}
                   </p>
                 </div>
               )}

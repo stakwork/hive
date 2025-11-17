@@ -10,36 +10,24 @@ export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { slug } = await params;
 
     if (!session?.user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { success: false, message: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Invalid user session" }, { status: 401 });
     }
 
     // Get workspace and verify user has access
     const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
-      return NextResponse.json(
-        { success: false, message: "Workspace not found or access denied" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Workspace not found or access denied" }, { status: 404 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -47,29 +35,23 @@ export async function GET(
     const refIds = searchParams.get("ref_ids");
     const output = searchParams.get("output") || "json";
 
-
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
     });
 
     if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found for this workspace" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found for this workspace" }, { status: 404 });
     }
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm configuration is incomplete" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm configuration is incomplete" }, { status: 400 });
     }
 
     // Extract hostname from swarm URL and construct graph endpoint
     const swarmUrlObj = new URL(swarm.swarmUrl);
-    const graphUrl = `https://${swarmUrlObj.hostname}:3355`;
+    const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
+    const graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
 
     // Build API params based on what's provided
     const apiParams: Record<string, string> = {
@@ -95,10 +77,10 @@ export async function GET(
 
     if (!apiResult.ok) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           message: "Failed to fetch graph nodes",
-          details: apiResult.data 
+          details: apiResult.data,
         },
         { status: apiResult.status },
       );
@@ -113,9 +95,6 @@ export async function GET(
     );
   } catch (error) {
     console.error("Error fetching graph nodes:", error);
-    return NextResponse.json(
-      { success: false, message: "Failed to fetch graph nodes" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to fetch graph nodes" }, { status: 500 });
   }
 }

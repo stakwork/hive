@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskSourceType } from "@prisma/client";
+import { TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
+import { EncryptionService } from "@/lib/encryption";
+import { getUserAppTokens } from "@/lib/githubApp";
+import { matchTaskToGraphViaPR } from "@/lib/github";
 
 interface BadgeMetadata {
   type: "PR" | "WORKFLOW" | "LIVE";
@@ -33,12 +36,11 @@ interface E2eTestNode {
 interface UserJourneyResponse {
   id: string;
   title: string;
-  type: "GRAPH_NODE" | "TASK";
   testFilePath: string | null;
   testFileUrl: string | null;
   createdAt: string;
   badge: BadgeMetadata;
-  task?: {
+  task: {
     description: string | null;
     status: string;
     workflowStatus: string | null;
@@ -50,40 +52,110 @@ interface UserJourneyResponse {
       branch: string;
     };
   };
-  graphNode?: {
-    body: string;
-    testKind: string;
-  };
 }
 
-function calculateBadge(
-  type: "GRAPH_NODE" | "TASK",
-  task?: {
-    workflowStatus: string | null;
-    prArtifact?: {
-      content: {
-        url: string;
-        status: "IN_PROGRESS" | "DONE" | "CANCELLED";
+interface TaskWithPR {
+  id: string;
+  testFilePath: string | null;
+  chatMessages?: {
+    artifacts?: {
+      content?: {
+        url?: string;
+        status?: string;
       };
-    } | null;
-  },
-): BadgeMetadata {
-  // Graph nodes always show "Live" badge
-  if (type === "GRAPH_NODE") {
-    return {
-      type: "LIVE",
-      text: "Live",
-      color: "#10b981",
-      borderColor: "#10b981",
-      icon: null,
-      hasExternalLink: false,
-    };
-  }
+    }[];
+  }[];
+}
 
-  // For tasks, check PR artifact first (highest priority)
-  if (task?.prArtifact?.content) {
-    const prStatus = task.prArtifact.content.status;
-    const prUrl = task.prArtifact.content.url;
+/**
+ * Extract relative file path by removing owner/repo prefix if present
+ * Example: "stakwork/hive/src/file.ts" -> "src/file.ts"
+ */
+function extractRelativePath(filePath: string, repositoryUrl?: string): string {
+  if (!repositoryUrl) return filePath;
+
+  try {
+    // Extract owner/repo from GitHub URL
+    // Example: https://github.com/stakwork/hive -> stakwork/hive
+    const urlMatch = repositoryUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+    if (!urlMatch) return filePath;
+
+    const [, owner, repo] = urlMatch;
+    const prefix = `${owner}/${repo}/`;
+
+    // Remove prefix if present
+    if (filePath.startsWith(prefix)) {
+      return filePath.substring(prefix.length);
+    }
+
+    return filePath;
+  } catch (error) {
+    console.error("[extractRelativePath] Error:", error);
+    return filePath;
+  }
+}
+
+/**
+ * Fetch E2E test nodes from graph microservice
+ */
+async function fetchE2eTestsFromGraph(swarmUrl: string, swarmApiKey: string): Promise<E2eTestNode[]> {
+  try {
+    const swarmUrlObj = new URL(swarmUrl);
+    const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
+    const graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355/nodes`;
+
+    const url = new URL(graphUrl);
+    url.searchParams.append("node_type", "E2etest");
+    url.searchParams.append("output", "json");
+
+    console.log("[fetchE2eTestsFromGraph] Fetching nodes", { graphUrl, hostname: swarmUrlObj.hostname });
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "x-api-token": swarmApiKey,
+      },
+    });
+
+    if (!response.ok) {
+      console.error("[fetchE2eTestsFromGraph] Request failed", {
+        status: response.status,
+        statusText: response.statusText,
+      });
+      return [];
+    }
+
+    const data = await response.json();
+    const nodes = Array.isArray(data) ? data : [];
+
+    console.log("[fetchE2eTestsFromGraph] Fetched nodes", { count: nodes.length });
+
+    return nodes;
+  } catch (error) {
+    console.error("[fetchE2eTestsFromGraph] Error:", error);
+    return [];
+  }
+}
+
+/**
+ * Calculate badge metadata for a task
+ */
+function calculateBadge(
+  task: {
+    status: TaskStatus;
+    workflowStatus: WorkflowStatus | null;
+  },
+  prArtifact?: {
+    content: {
+      url: string;
+      status: "IN_PROGRESS" | "DONE" | "CANCELLED";
+    };
+  } | null,
+): BadgeMetadata {
+  // Check PR artifact first (highest priority)
+  if (prArtifact?.content) {
+    const prStatus = prArtifact.content.status;
+    const prUrl = prArtifact.content.url;
 
     if (prStatus === "IN_PROGRESS") {
       return {
@@ -122,21 +194,26 @@ function calculateBadge(
     }
   }
 
-  // Fallback to workflow status
-  const workflowStatus = task?.workflowStatus;
-
-  if (workflowStatus === "COMPLETED") {
+  // Check if deployed to graph (no PR artifact but status=DONE)
+  if (task.status === TaskStatus.DONE && task.workflowStatus === WorkflowStatus.COMPLETED) {
     return {
-      type: "WORKFLOW",
-      text: "Completed",
-      color: "#16a34a",
-      borderColor: "#16a34a",
+      type: "LIVE",
+      text: "Live",
+      color: "#10b981",
+      borderColor: "#10b981",
       icon: null,
       hasExternalLink: false,
     };
   }
 
-  if (workflowStatus === "FAILED" || workflowStatus === "HALTED" || workflowStatus === "ERROR") {
+  // Fallback to workflow status
+  const workflowStatus = task.workflowStatus;
+
+  if (
+    workflowStatus === WorkflowStatus.FAILED ||
+    workflowStatus === WorkflowStatus.ERROR ||
+    workflowStatus === WorkflowStatus.HALTED
+  ) {
     return {
       type: "WORKFLOW",
       text: "Failed",
@@ -147,12 +224,23 @@ function calculateBadge(
     };
   }
 
-  if (workflowStatus === "IN_PROGRESS" || workflowStatus === "PENDING") {
+  if (workflowStatus === WorkflowStatus.IN_PROGRESS || workflowStatus === WorkflowStatus.PENDING) {
     return {
       type: "WORKFLOW",
       text: "In Progress",
       color: "#ca8a04",
       borderColor: "#ca8a04",
+      icon: null,
+      hasExternalLink: false,
+    };
+  }
+
+  if (workflowStatus === WorkflowStatus.COMPLETED) {
+    return {
+      type: "WORKFLOW",
+      text: "Completed",
+      color: "#16a34a",
+      borderColor: "#16a34a",
       icon: null,
       hasExternalLink: false,
     };
@@ -169,7 +257,19 @@ function calculateBadge(
   };
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+/**
+ * Construct GitHub URL for a file path
+ */
+function constructGithubUrl(
+  repository: { repositoryUrl: string; branch: string } | null,
+  filePath: string,
+): string | null {
+  if (!repository) return null;
+  const branch = repository.branch || "main";
+  return `${repository.repositoryUrl}/blob/${branch}/${filePath}`;
+}
+
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -195,6 +295,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         swarm: {
           select: {
             id: true,
+            swarmUrl: true,
+            swarmApiKey: true,
           },
         },
         members: {
@@ -229,156 +331,207 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Fetch user journey tasks
-    const tasks = await db.task.findMany({
+    const repository = workspace.repositories[0] || null;
+
+    // 1. Fetch ALL existing tasks (including archived ones for matching)
+    const allTasks = await db.task.findMany({
       where: {
         workspaceId: workspace.id,
         deleted: false,
         sourceType: TaskSourceType.USER_JOURNEY,
       },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        status: true,
-        workflowStatus: true,
-        testFilePath: true,
-        testFileUrl: true,
-        stakworkProjectId: true,
-        createdAt: true,
-        repository: {
-          select: {
-            id: true,
-            name: true,
-            repositoryUrl: true,
-            branch: true,
-          },
-        },
+      include: {
+        repository: true,
         chatMessages: {
-          select: {
-            id: true,
-            timestamp: true,
+          orderBy: { timestamp: "desc" },
+          take: 1,
+          include: {
             artifacts: {
-              where: {
-                type: "PULL_REQUEST",
-              },
-              select: {
-                id: true,
-                type: true,
-                content: true,
-              },
-              orderBy: {
-                createdAt: "desc",
-              },
+              where: { type: "PULL_REQUEST" },
+              orderBy: { createdAt: "desc" },
               take: 1,
             },
           },
-          orderBy: {
-            timestamp: "desc",
-          },
-          take: 1,
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
-    // Process tasks to extract PR artifacts
-    const processedTasks = await Promise.all(
-      tasks.map(async (task) => {
+    // 2. Fetch graph nodes directly (no self-call)
+    let graphNodes: E2eTestNode[] = [];
+    if (workspace.swarm?.swarmUrl && workspace.swarm?.swarmApiKey) {
+      const encryptionService = EncryptionService.getInstance();
+      const decryptedApiKey = encryptionService.decryptField("swarmApiKey", workspace.swarm.swarmApiKey);
+      graphNodes = await fetchE2eTestsFromGraph(workspace.swarm.swarmUrl, decryptedApiKey);
+    }
+
+    // 3. Group graph nodes by file (one task per file)
+    // Extract relative paths by removing owner/repo prefix if present
+    const nodesByFile = new Map<string, E2eTestNode[]>();
+    const repositoryUrl = repository?.repositoryUrl;
+
+    graphNodes.forEach((node) => {
+      const rawFilePath = node.properties.file;
+      const relativePath = extractRelativePath(rawFilePath, repositoryUrl);
+
+      if (!nodesByFile.has(relativePath)) {
+        nodesByFile.set(relativePath, []);
+      }
+      nodesByFile.get(relativePath)!.push(node);
+    });
+
+    console.log("[user-journeys] Syncing graph nodes to tasks", {
+      workspaceId: workspace.id,
+      filesInGraph: nodesByFile.size,
+      existingTasks: allTasks.length,
+    });
+
+    // 4. Sync graph files to tasks
+    const tasksToUpdate: string[] = [];
+    const tasksToCreate: Array<{ filePath: string; nodes: E2eTestNode[] }> = [];
+
+    // Get GitHub token for PR correlation
+    let githubToken: string | null = null;
+    try {
+      const tokens = await getUserAppTokens(userId);
+      githubToken = tokens?.accessToken || null;
+    } catch (error) {
+      console.log("[user-journeys] No GitHub token available for PR correlation", error);
+    }
+
+    for (const [filePath, nodes] of nodesByFile) {
+      // Try to match existing task by testFilePath
+      let existingTask = allTasks.find((t) => t.testFilePath === filePath);
+
+      // Fallback: PR correlation (handles path changes)
+      if (!existingTask && githubToken) {
+        const mergedTasks = allTasks.filter(
+          (t) =>
+            t.chatMessages[0]?.artifacts[0]?.content &&
+            typeof t.chatMessages[0].artifacts[0].content === "object" &&
+            "status" in t.chatMessages[0].artifacts[0].content &&
+            t.chatMessages[0].artifacts[0].content.status === "DONE",
+        );
+
+        for (const task of mergedTasks) {
+          const match = await matchTaskToGraphViaPR(task as TaskWithPR, nodes, githubToken);
+          if (match) {
+            existingTask = task;
+            console.log("[user-journeys] Matched task via PR correlation", {
+              taskId: task.id,
+              originalPath: task.testFilePath,
+              graphPath: filePath,
+            });
+            break;
+          }
+        }
+      }
+
+      // Skip archived tasks - don't recreate or update them
+      if (existingTask?.archived) {
+        console.log("[user-journeys] Skipping archived task", {
+          taskId: existingTask.id,
+          filePath,
+        });
+        continue;
+      }
+
+      if (existingTask) {
+        tasksToUpdate.push(existingTask.id);
+      } else {
+        tasksToCreate.push({ filePath, nodes });
+      }
+    }
+
+    // Update existing tasks to mark as deployed
+    if (tasksToUpdate.length > 0) {
+      await db.task.updateMany({
+        where: { id: { in: tasksToUpdate } },
+        data: {
+          status: TaskStatus.DONE,
+          workflowStatus: WorkflowStatus.COMPLETED,
+        },
+      });
+      console.log("[user-journeys] Updated tasks", { count: tasksToUpdate.length });
+    }
+
+    // Create new tasks for unmatched graph files (manually added tests)
+    for (const { filePath, nodes } of tasksToCreate) {
+      await db.task.create({
+        data: {
+          title: nodes[0].properties.name,
+          description: `E2E test file: ${filePath}`,
+          workspaceId: workspace.id,
+          sourceType: TaskSourceType.USER_JOURNEY,
+          status: TaskStatus.DONE,
+          workflowStatus: WorkflowStatus.COMPLETED,
+          priority: "MEDIUM",
+          testFilePath: filePath,
+          testFileUrl: constructGithubUrl(repository, filePath),
+          repositoryId: repository?.id || null,
+          createdById: workspace.ownerId,
+          updatedById: workspace.ownerId,
+        },
+      });
+    }
+
+    if (tasksToCreate.length > 0) {
+      console.log("[user-journeys] Created tasks", { count: tasksToCreate.length });
+    }
+
+    // 5. Refresh tasks after sync (exclude archived)
+    const updatedTasks = await db.task.findMany({
+      where: {
+        workspaceId: workspace.id,
+        deleted: false,
+        archived: false,
+        sourceType: TaskSourceType.USER_JOURNEY,
+      },
+      include: {
+        repository: true,
+        chatMessages: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+          include: {
+            artifacts: {
+              where: { type: "PULL_REQUEST" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // 6. Process tasks with PR artifacts
+    const processedTasks: UserJourneyResponse[] = await Promise.all(
+      updatedTasks.map(async (task) => {
         const prArtifact = await extractPrArtifact(task, userId);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { chatMessages, ...taskWithoutMessages } = task;
         return {
-          ...taskWithoutMessages,
-          prArtifact,
+          id: task.id,
+          title: task.title,
+          testFilePath: task.testFilePath,
+          testFileUrl: task.testFileUrl,
+          createdAt: task.createdAt.toISOString(),
+          badge: calculateBadge(task, prArtifact),
+          task: {
+            description: task.description,
+            status: task.status,
+            workflowStatus: task.workflowStatus,
+            stakworkProjectId: task.stakworkProjectId,
+            repository: task.repository || undefined,
+          },
         };
       }),
     );
 
-    // Filter out tasks with merged PRs (they appear as graph nodes instead)
-    const pendingTasks = processedTasks.filter(
-      (task) => !task.prArtifact?.content || task.prArtifact.content.status !== "DONE",
-    );
-
-    // Fetch E2E test nodes from graph
-    let graphNodes: E2eTestNode[] = [];
-    if (workspace.swarm) {
-      try {
-        const graphResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL}/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`,
-          {
-            headers: {
-              Cookie: request.headers.get("Cookie") || "",
-            },
-          },
-        );
-
-        if (graphResponse.ok) {
-          const graphResult = await graphResponse.json();
-          if (graphResult.success && Array.isArray(graphResult.data)) {
-            graphNodes = graphResult.data;
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching E2E tests from graph:", error);
-      }
-    }
-
-    // Helper to construct GitHub URL for graph node files
-    const getGithubUrlForGraphNode = (node: E2eTestNode): string | null => {
-      const repo = workspace.repositories?.[0];
-      if (!repo) return null;
-      const branch = repo.branch || "main";
-      return `${repo.repositoryUrl}/blob/${branch}/${node.properties.file}`;
-    };
-
-    // Convert graph nodes to response format
-    const graphRows: UserJourneyResponse[] = graphNodes.map((node) => ({
-      id: node.ref_id,
-      title: node.properties.name,
-      type: "GRAPH_NODE" as const,
-      testFilePath: node.properties.file,
-      testFileUrl: getGithubUrlForGraphNode(node),
-      createdAt: new Date().toISOString(),
-      badge: calculateBadge("GRAPH_NODE"),
-      graphNode: {
-        body: node.properties.body,
-        testKind: node.properties.test_kind,
-      },
-    }));
-
-    // Convert pending tasks to response format
-    const taskRows: UserJourneyResponse[] = pendingTasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      type: "TASK" as const,
-      testFilePath: task.testFilePath,
-      testFileUrl: task.testFileUrl,
-      createdAt: task.createdAt.toISOString(),
-      badge: calculateBadge("TASK", {
-        workflowStatus: task.workflowStatus,
-        prArtifact: task.prArtifact,
-      }),
-      task: {
-        description: task.description,
-        status: task.status,
-        workflowStatus: task.workflowStatus,
-        stakworkProjectId: task.stakworkProjectId,
-        repository: task.repository || undefined,
-      },
-    }));
-
-    // Combine and sort by created date (newest first)
-    const allRows = [...graphRows, ...taskRows].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    console.log("[user-journeys] Returning processed tasks", { count: processedTasks.length });
 
     return NextResponse.json(
       {
         success: true,
-        data: allRows,
+        data: processedTasks,
       },
       { status: 200 },
     );
