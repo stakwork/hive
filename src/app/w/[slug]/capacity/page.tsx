@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
-import { PoolSummary } from "@/components/capacity/PoolSummary";
 import { VMGrid } from "@/components/capacity/VMGrid";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, AlertCircle, Server } from "lucide-react";
@@ -140,10 +139,7 @@ export default function CapacityPage() {
       />
 
       <div className="space-y-6">
-        {/* Pool Summary */}
-        {poolStatus && <PoolSummary poolStatus={poolStatus} />}
-
-        {/* VM Grid Visualization */}
+        {/* Pods */}
         {vmData.length > 0 && (
           <div>
             <h3 className="text-lg font-semibold mb-4">Pods</h3>

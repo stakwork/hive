@@ -10,7 +10,7 @@ export default function UserJourneysPage() {
 
   useEffect(() => {
     if (workspace?.slug) {
-      router.replace(`/w/${workspace.slug}/defence/testing`);
+      router.replace(`/w/${workspace.slug}/defense/testing`);
     }
   }, [workspace?.slug, router]);
 
