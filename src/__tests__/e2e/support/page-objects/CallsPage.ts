@@ -61,6 +61,6 @@ export class CallsPage {
     }
 
     await callsLink.click();
-    await this.page.waitForURL(/\/w\/.*\/calls/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/context\/calls/, { timeout: 10000 });
   }
 }
