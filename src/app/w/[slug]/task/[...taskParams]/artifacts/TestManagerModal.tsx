@@ -13,7 +13,7 @@ interface TestManagerModalProps {
   onClose: () => void;
   generatedCode?: string;
   errorMessage?: string;
-  onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  onUserJourneySave?: (testName: string, generatedCode: string) => void;
 }
 
 export function TestManagerModal({
@@ -26,20 +26,6 @@ export function TestManagerModal({
   const [testName, setTestName] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
-
-  const generateFilename = (name: string) => {
-    if (!name.trim()) {
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      return `test-recording-${ts}.spec.js`;
-    }
-    const sanitized = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    return `${sanitized}.spec.js`;
-  };
-
-  const filename = generateFilename(testName);
 
   useEffect(() => {
     if (isOpen && generatedCode) {
@@ -58,7 +44,7 @@ export function TestManagerModal({
     }
     if (onUserJourneySave) {
       setSaving(true);
-      onUserJourneySave(filename, generatedCode);
+      onUserJourneySave(testName, generatedCode);
       setSaving(false);
       onClose();
       return;

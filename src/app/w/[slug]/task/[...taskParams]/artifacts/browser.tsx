@@ -44,7 +44,7 @@ export function BrowserArtifactPanel({
   workspaceId?: string;
   taskId?: string;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
-  onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  onUserJourneySave?: (testName: string, generatedCode: string) => void;
   externalTestCode?: string | null;
   externalTestTitle?: string | null;
   isMobile?: boolean;
@@ -460,9 +460,17 @@ export function BrowserArtifactPanel({
                 </div>
               )}
               {showActions && (
-                <div className={`fixed top-0 left-0 bottom-0 z-40 ${SIDEBAR_WIDTH} transition-all duration-300 ease-in-out`}>
+                <div
+                  className={`fixed top-0 left-0 bottom-0 z-40 ${SIDEBAR_WIDTH} transition-all duration-300 ease-in-out`}
+                >
                   <ActionsList
-                    actions={replayActions.length > 0 ? replayActions : (previewActions.length > 0 ? previewActions : capturedActions)}
+                    actions={
+                      replayActions.length > 0
+                        ? replayActions
+                        : previewActions.length > 0
+                          ? previewActions
+                          : capturedActions
+                    }
                     onRemoveAction={removeAction}
                     onClearAll={clearAllActions}
                     isRecording={isRecording}
