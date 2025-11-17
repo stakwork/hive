@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, Clock, User } from "lucide-react";
+import { CheckCircle2, Loader2, Sparkles, Clock, User } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
@@ -18,6 +18,7 @@ export function RecommendationsSection() {
     recommendations,
     recommendationsLoading: loading,
     showAll,
+    janitorConfig,
     fetchRecommendations,
     acceptRecommendation,
     dismissRecommendation,
@@ -64,7 +65,12 @@ export function RecommendationsSection() {
       });
     }
   };
+  
   const displayedRecommendations = showAll ? recommendations : recommendations.slice(0, 3);
+  
+  // Check if any janitors are enabled
+  const hasEnabledJanitors = janitorConfig ? 
+    (janitorConfig.unitTestsEnabled || janitorConfig.integrationTestsEnabled) : false;
 
   const getPriorityBadge = (priority: Priority) => {
     const config = getPriorityConfig(priority);
@@ -107,6 +113,16 @@ export function RecommendationsSection() {
           <div className="text-center py-8">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">Loading recommendations...</p>
+          </div>
+        ) : !hasEnabledJanitors && recommendations.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="mx-auto w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+              <Sparkles className="h-8 w-8 text-blue-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Enable Automated Analysis</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Turn on code analysis to receive personalized recommendations for improving your codebase quality, performance, and maintainability.
+            </p>
           </div>
         ) : displayedRecommendations.length > 0 ? (
           displayedRecommendations.map((recommendation) => {
