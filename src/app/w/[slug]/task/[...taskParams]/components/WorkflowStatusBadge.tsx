@@ -42,7 +42,7 @@ const statusConfig = {
   [WorkflowStatus.HALTED]: {
     label: "Halted",
     icon: Pause,
-    className: "text-orange-600",
+    className: "text-yellow-600",
     iconClassName: "",
   },
   [WorkflowStatus.FAILED]: {

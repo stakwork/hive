@@ -119,7 +119,7 @@ export function VMConfigSection() {
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {poolStatus.status.pendingVms > 0 && (
                     <>
-                      <span className="text-orange-600">
+                      <span className="text-yellow-600">
                         {poolStatus.status.pendingVms} pending
                       </span>
                       {poolStatus.status.failedVms > 0 && <span>•</span>}

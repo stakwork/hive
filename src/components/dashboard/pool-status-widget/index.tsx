@@ -84,7 +84,7 @@ export function PoolStatusWidget() {
                   <span className="text-muted-foreground">{totalVms}</span>
                 </div>
                 {hasIssues && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
                 )}
               </div>
             </TooltipTrigger>
@@ -97,7 +97,7 @@ export function PoolStatusWidget() {
                   <span className="text-muted-foreground">{poolStatus.status.unusedVms} available</span>
                 </div>
                 {poolStatus.status.pendingVms > 0 && (
-                  <div className="text-orange-600">
+                  <div className="text-yellow-600">
                     {poolStatus.status.pendingVms} pending
                   </div>
                 )}

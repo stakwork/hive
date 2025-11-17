@@ -12,7 +12,7 @@ function getStatusIndicator(state: string, usage_status: string) {
     return <Circle className="h-2 w-2 fill-green-500 text-green-500" />;
   }
   if (state === "pending") {
-    return <Circle className="h-2 w-2 fill-amber-500 text-amber-500" />;
+    return <Circle className="h-2 w-2 fill-yellow-500 text-yellow-500" />;
   }
   if (state === "failed") {
     return <Circle className="h-2 w-2 fill-red-500 text-red-500" />;
