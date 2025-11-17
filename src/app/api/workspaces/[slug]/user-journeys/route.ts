@@ -400,8 +400,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }
 
     for (const [filePath, nodes] of nodesByFile) {
-      // Try to match existing task by testFilePath
-      let existingTask = allTasks.find((t) => t.testFilePath === filePath);
+      // Try to match existing task by testName (task.title)
+      const testName = nodes[0].properties.name; // First test's name in the file
+      let existingTask = allTasks.find((t) => t.title === testName);
 
       // Fallback: PR correlation (handles path changes)
       if (!existingTask && githubToken) {
@@ -419,8 +420,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             existingTask = task;
             console.log("[user-journeys] Matched task via PR correlation", {
               taskId: task.id,
-              originalPath: task.testFilePath,
-              graphPath: filePath,
+              originalTitle: task.title,
+              testName: testName,
             });
             break;
           }
@@ -431,7 +432,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       if (existingTask?.archived) {
         console.log("[user-journeys] Skipping archived task", {
           taskId: existingTask.id,
-          filePath,
+          testName: testName,
         });
         continue;
       }
