@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { config } from "@/lib/env";
 import { getS3Service } from "@/services/s3";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
@@ -141,8 +142,8 @@ export async function GET(request: NextRequest) {
 
     let jarvisUrl = `https://${vanityAddress}:8444`;
     let apiKey = swarm.swarmApiKey;
-    if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
-    if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
+    if (config.CUSTOM_SWARM_URL) jarvisUrl = `${config.CUSTOM_SWARM_URL}`;
+    if (config.CUSTOM_SWARM_API_KEY) apiKey = config.CUSTOM_SWARM_API_KEY;
 
     console.log(jarvisUrl);
     console.log(endpoint);
