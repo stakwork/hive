@@ -40,9 +40,10 @@ export const NodeCard = ({ node, compact = false, onClick }: NodeCardProps) => {
   const sourceLink = getSourceLink(node)
   const properties = node.properties || {}
 
-  // Filter out certain system properties that shouldn't be displayed
-  const filteredProperties = Object.entries(properties).filter(([key]) =>
-    !['image_url', 'source_link', 'media_url', 'audio_EN'].includes(key)
+  // Filter out certain system properties and object properties that shouldn't be displayed
+  const filteredProperties = Object.entries(properties).filter(([key, value]) =>
+    !['image_url', 'source_link', 'media_url', 'audio_EN'].includes(key) &&
+    typeof value !== 'object'
   )
 
   if (compact) {
