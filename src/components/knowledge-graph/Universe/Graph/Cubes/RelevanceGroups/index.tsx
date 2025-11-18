@@ -1,3 +1,4 @@
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { useStoreId } from '@/stores/StoreProvider'
 import { distributeNodesOnCircle } from '@/stores/useSimulationStore/utils/distributeNodesOnCircle/indes'
 import { getLinksBetweenNodesInstance } from '@/stores/useStoreInstances'
@@ -14,6 +15,7 @@ type TGroupsMap = Record<string, number>
 
 export const RelevanceGroups = memo(() => {
   const { selectedNode, setSelectedNodeType, selectedNodeType } = useGraphStore(useShallow((s) => s))
+  const { slug } = useWorkspace()
   const storeId = useStoreId()
 
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
@@ -107,7 +109,22 @@ export const RelevanceGroups = memo(() => {
         </mesh>
         {/* Info box with HTML */}
         {<Html position={[0, -nodeSize - 20, 0]} center distanceFactor={250} sprite transform zIndexRange={[0, 0]}>
-          <div className="bg-black/80 text-white px-3 py-2 rounded-lg border border-gray-600 shadow-lg backdrop-blur-sm">
+          <div className="relative bg-background/95 text-foreground px-3 py-2 rounded-lg border border-border shadow-lg backdrop-blur-sm">
+            {/* Navigation icon button for Episode or Call nodes */}
+            {selectedNode && (selectedNode.node_type === 'Episode' || selectedNode.node_type === 'Call') && (
+              <button
+                onClick={() => {
+                  const url = `/w/${slug}/calls/${selectedNode.ref_id}`;
+                  window.open(url, '_blank');
+                }}
+                className="absolute -top-3 -right-3 size-6 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full inline-flex items-center justify-center transition-all duration-200 hover:scale-110 shadow-md hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 z-10"
+                title="View Call Details"
+              >
+                <svg className="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </button>
+            )}
             <div className="text-center">
               <div className="text-sm font-normal leading-tight mb-1 max-w-[200px]">
                 {(() => {
