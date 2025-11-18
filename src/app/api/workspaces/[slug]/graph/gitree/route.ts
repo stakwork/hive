@@ -9,6 +9,12 @@ export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
+interface GitreeEdge {
+  source: string;
+  target: string;
+  [key: string]: any;
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
@@ -119,7 +125,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const finalData = {
       nodes: data.nodes,
-      edges: data.edges.map((edge: any) => ({ ...edge, ref_id: `${edge.source}-${edge.target}` })),
+      edges: data.edges.map((edge: GitreeEdge) => ({ ...edge, ref_id: `${edge.source}-${edge.target}` })),
     }
 
     return NextResponse.json(
