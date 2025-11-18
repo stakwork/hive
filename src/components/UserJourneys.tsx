@@ -465,55 +465,49 @@ export default function UserJourneys() {
     : [];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">User Journeys</h1>
-        </div>
-        {frontend ? (
-          <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
-            ✕
-          </Button>
-        ) : (
-          <div className="flex items-center gap-4">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                  <Eye className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuCheckboxItem checked={showPendingTasks} onCheckedChange={setShowPendingTasks}>
-                  Pending Tasks
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem checked={showFailedTasks} onCheckedChange={setShowFailedTasks}>
-                  Failed Tasks
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
-              <Plus className="w-4 h-4" />
-              Create User Journey
+    <div className="space-y-6">
+      {frontend ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-end">
+            <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
+              ✕
             </Button>
           </div>
-        )}
-      </div>
-
-      {frontend ? (
-        <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel
-            artifacts={browserArtifacts}
-            ide={false}
-            workspaceId={id || workspace?.id}
-            onUserJourneySave={saveUserJourneyTest}
-            externalTestCode={replayTestCode}
-            externalTestTitle={replayTitle}
-          />
+          <div className="h-[600px] border rounded-lg overflow-hidden">
+            <BrowserArtifactPanel
+              artifacts={browserArtifacts}
+              ide={false}
+              workspaceId={id || workspace?.id}
+              onUserJourneySave={saveUserJourneyTest}
+              externalTestCode={replayTestCode}
+              externalTestTitle={replayTitle}
+            />
+          </div>
         </div>
       ) : (
-        <div className="space-y-6">
-          <Card>
-            <CardContent className="p-0">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-end gap-4 mb-6">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuCheckboxItem checked={showPendingTasks} onCheckedChange={setShowPendingTasks}>
+                    Pending Tasks
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showFailedTasks} onCheckedChange={setShowFailedTasks}>
+                    Failed Tasks
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
+                <Plus className="w-4 h-4" />
+                Create User Journey
+              </Button>
+            </div>
               {fetchingJourneys ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -604,9 +598,8 @@ export default function UserJourneys() {
                   </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
