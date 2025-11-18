@@ -99,6 +99,7 @@ export const NodeCard = ({ node, compact = false, onClick }: NodeCardProps) => {
             title={getDisplayName(node)}
             imageUrl={getImageUrl(node)}
             className="w-full"
+            showExpandButton={false}
           />
         </div>
       ) : hasImage && (
