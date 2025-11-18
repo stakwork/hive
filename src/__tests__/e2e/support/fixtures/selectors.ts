@@ -16,6 +16,7 @@ export const selectors = {
     settingsButton: '[data-testid="settings-button"]',
     tasksLink: '[data-testid="nav-tasks"]',
     dashboardLink: '[data-testid="nav-dashboard"]',
+    capacityLink: '[data-testid="nav-capacity"]',
     insightsLink: '[data-testid="nav-insights"]',
     learnLink: '[data-testid="nav-learn"]',
     userJourneysLink: '[data-testid="nav-user-journeys"]',
@@ -31,6 +32,7 @@ export const selectors = {
     insights: '[data-testid="page-title"]:has-text("Insights")',
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
     calls: '[data-testid="page-title"]:has-text("Calls")',
+    capacity: '[data-testid="page-title"]:has-text("Capacity")',
   },
 
   // Page descriptions
