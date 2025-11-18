@@ -188,7 +188,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%2C%22Call%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -293,7 +293,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=21&skip=10",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%2C%22Call%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=21&skip=10",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -323,7 +323,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%2C%22Call%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
         expect.objectContaining({
           method: "GET",
           headers: {
