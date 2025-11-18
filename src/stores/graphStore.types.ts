@@ -6,7 +6,7 @@ export type GraphStyle = 'sphere' | 'force' | 'split'
 export type CameraPosition = { x: number; y: number; z: number }
 export type CameraTarget = { x: number; y: number; z: number }
 
-export type FilterTab = 'all' | 'code' | 'comms' | 'tasks'
+export type FilterTab = 'all' | 'code' | 'comms' | 'tasks' | 'concepts'
 
 export type GraphStore = {
   graphRadius: number
