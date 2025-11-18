@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const limit = searchParams.get("limit") || "100";
     const limitMode = searchParams.get("limit_mode") || "per_type";
     const concise = searchParams.get("concise") === "true";
-    const typeLimits = searchParams.get("per_type_limits") || "Feature:10,File:10,Function:50,Class:25";
+    const typeLimits = searchParams.get("per_type_limits") || "Feature:10,File:100,Function:50,Endpoint:25";
 
 
     // Get swarm for this workspace
@@ -84,16 +84,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       apiParams.concise = "true";
     }
 
-    if (typeLimits) {
-      apiParams.per_type_limits = typeLimits;
-    }
+    // if (typeLimits) {
+    //   apiParams.per_type_limits = typeLimits;
+    // }
 
     const queryString = Object.keys(apiParams).length > 0 ? `?${new URLSearchParams(apiParams).toString()}` : '';
 
     console.log(queryString);
     console.log(`${graphUrl}/gitree/all-features-graph${queryString}`);
 
-    const apiResult = await fetch(`${graphUrl}/gitree/all-features-graph${queryString}`, {
+    const apiResult = await fetch(`${graphUrl}/gitree/all-features-graph?per_type_limits=Function:100,Class:5,Library:1,Import:1,Datamodel:100,File:10,IntegrationTest:5,UnitTest:5,Var:5`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -115,10 +115,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const data = await apiResult.json();
 
+    console.log(data)
+
+    const finalData = {
+      nodes: data.nodes,
+      edges: data.edges.map((i) => ({ ...i, ref_id: `${i.source}-${i.target}` })),
+    }
+
     return NextResponse.json(
       {
         success: true,
-        data: data,
+        data: finalData,
       },
       { status: 200 },
     );
