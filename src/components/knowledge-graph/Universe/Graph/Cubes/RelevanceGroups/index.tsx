@@ -115,8 +115,8 @@ export const RelevanceGroups = memo(() => {
               <button
                 onClick={() => {
                   let url: string;
-                  if (selectedNode.node_type === 'Task' && selectedNode.properties?.task_id) {
-                    url = `/w/${slug}/task/${selectedNode.properties.task_id}`;
+                  if (selectedNode.node_type === 'Task') {
+                    url = `/w/${slug}/task/${selectedNode.ref_id}`;
                   } else {
                     url = `/w/${slug}/calls/${selectedNode.ref_id}`;
                   }
