@@ -10,6 +10,7 @@ import { Line2 } from 'three-stdlib'
 import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
+import { HtmlNodesLayer } from './HtmlNodesLayer'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
 import { calculateRadius } from './utils/calculateGroupRadius'
@@ -71,7 +72,6 @@ export const Graph = () => {
 
       // If we have existing simulation and data, set alpha to almost min to quickly trigger end event
       if (simulation && dataInitial?.nodes?.length) {
-        console.log('Waking up simulation with existing data, setting alpha to trigger end event')
         simulation.alpha(0.001).restart() // Almost minimum alpha to quickly trigger 'end' event
       }
 
@@ -124,12 +124,6 @@ export const Graph = () => {
   // }, [removeSimulation])
 
   useEffect(() => {
-    console.log('here is simulation', {
-      simulation: !!simulation,
-      isSleeping,
-      justWokeUp: justWokeUpRef.current
-    })
-
     if (!simulation || isSleeping || justWokeUpRef.current) {
       return
     }
@@ -223,8 +217,6 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  console.warn(`Missing source or target node for link: ${link?.ref_id}`)
-
                   return
                 }
 
@@ -335,8 +327,6 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  console.warn(`Missing source or target node for link: ${link?.ref_id}`)
-
                   return
                 }
 
@@ -404,6 +394,7 @@ export const Graph = () => {
         <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
       <HighlightedNodesLayer />
+      <HtmlNodesLayer nodeTypes={['Person']} enabled />
       {graphStyle === 'split' ? <LayerLabels /> : null}
       <NodeDetailsPanel />
     </group>

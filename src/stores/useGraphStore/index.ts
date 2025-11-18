@@ -30,7 +30,7 @@ export type CameraTarget = {
   z: number
 }
 
-export type FilterTab = 'all' | 'code' | 'comms' | 'tasks'
+export type FilterTab = 'all' | 'code' | 'comms' | 'tasks' | 'concepts'
 
 export type GraphStore = {
   graphRadius: number

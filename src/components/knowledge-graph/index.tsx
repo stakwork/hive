@@ -123,6 +123,12 @@ const GraphComponentInner = ({
           requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(commsNodeTypes)}&limit=1000&limit_mode=per_type`;
           break;
 
+        case 'concepts':
+          // Filter for communication nodes
+          const conceptsNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel', 'Feature']);
+          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(conceptsNodeTypes)}&limit=1000&limit_mode=per_type`;
+          break;
+
         case 'tasks':
           // Fetch latest 10 tasks from tasks API
           requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=1000`;
