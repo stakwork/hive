@@ -79,6 +79,14 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to capacity page
+   */
+  async goToCapacity(): Promise<void> {
+    await this.page.locator(selectors.navigation.capacityLink).click();
+    await this.page.waitForURL(/\/w\/.*\/capacity/, { timeout: 10000 });
+  }
+
+  /**
    * Reload the page
    */
   async reload(): Promise<void> {
