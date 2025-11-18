@@ -126,7 +126,7 @@ const GraphComponentInner = ({
         case 'concepts':
           // Filter for communication nodes
           const conceptsNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Feature', 'File']);
-          requestUrl = `/api/workspaces/${slug}/graph/gitree?node_type=${encodeURIComponent(conceptsNodeTypes)}&limit=1000&limit_mode=per_type`;
+          requestUrl = `/api/workspaces/${slug}/graph/gitree?node_type=${encodeURIComponent(conceptsNodeTypes)}&limit=10000&limit_mode=per_type`;
           break;
 
         case 'tasks':

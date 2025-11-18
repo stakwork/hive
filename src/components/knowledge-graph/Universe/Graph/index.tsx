@@ -43,7 +43,7 @@ export const Graph = () => {
   const nodesPositionRef = useRef(new Map<string, NodePosition>())
   const justWokeUpRef = useRef(false)
 
-  const { graphStyle, setGraphRadius } = useGraphStore((s) => s)
+  const { graphStyle, setGraphRadius, activeFilterTab } = useGraphStore((s) => s)
 
   const {
     simulation,
@@ -383,6 +383,9 @@ export const Graph = () => {
   }
 
 
+  console.log('activeFilterTab', activeFilterTab)
+  console.log('graphStyle', graphStyle)
+
 
   return (
 
@@ -394,7 +397,7 @@ export const Graph = () => {
         <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
       <HighlightedNodesLayer />
-      <HtmlNodesLayer nodeTypes={['Person']} enabled />
+      {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
       <NodeDetailsPanel />
     </group>

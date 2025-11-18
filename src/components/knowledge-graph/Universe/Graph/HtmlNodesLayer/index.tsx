@@ -32,9 +32,7 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
           key={`html-${node.ref_id}`}
           position={[node.x || 0, node.y || 0, node.z || 0]}
           center
-          // distanceFactor={10}
           sprite
-          // transform
           zIndexRange={[0, 0]}
         >
           <div className="bg-background/95 text-foreground px-2 py-1 rounded border border-border shadow-sm backdrop-blur-sm text-xs max-w-[120px]">
