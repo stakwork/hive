@@ -1,10 +1,8 @@
-import { useWorkspace } from '@/hooks/useWorkspace'
 import { useStoreId } from '@/stores/StoreProvider'
 import { getStoreBundle } from '@/stores/createStoreFactory'
 import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { ThreeEvent, useFrame } from '@react-three/fiber'
-import { useRouter } from 'next/navigation'
 import { memo, useCallback, useRef } from 'react'
 import { Group, Mesh, MeshStandardMaterial } from 'three'
 import { useNodeNavigation } from '../../useNodeNavigation'
@@ -36,8 +34,6 @@ export const Cubes = memo(() => {
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
   const { navigateToNode } = useNodeNavigation()
-  const router = useRouter()
-  const { slug } = useWorkspace()
 
   const group = nodesWrapperRef.current
   const instances = instancesRef.current
@@ -200,19 +196,11 @@ export const Cubes = memo(() => {
       }
 
       if (object?.userData && !ignoreNodeEvent(object.userData as NodeExtended)) {
-        const node = object.userData as NodeExtended
-
-        // Handle navigation for specific node types
-        if (node.node_type === 'Task' && node.properties?.task_id && slug) {
-          // Navigate to task page
-          router.push(`/w/${slug}/task/${node.properties.task_id}`)
-        } else {
-          // Default behavior: show node details in the graph
-          navigateToNode(object.userData.ref_id)
-        }
+        // Default behavior: show node details in the graph
+        navigateToNode(object.userData.ref_id)
       }
     },
-    [ignoreNodeEvent, navigateToNode, router, slug],
+    [ignoreNodeEvent, navigateToNode],
   )
 
   const onPointerOut = useCallback(
