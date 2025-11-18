@@ -27,7 +27,7 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
 
   return (
     <group name="html-nodes-layer">
-      {filteredNodes.map((node) => (
+      {filteredNodes.map((node: NodeExtended) => (
         <Html
           key={`html-${node.ref_id}`}
           position={[node.x || 0, node.y || 0, node.z || 0]}
