@@ -88,7 +88,7 @@ const baseNavigationItems: NavigationItem[] = [
   { icon: Server, label: "Capacity", href: "/capacity" },
   {
     icon: Map,
-    label: "Offense",
+    label: "Build",
     href: "/offense",
     children: [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
@@ -97,7 +97,7 @@ const baseNavigationItems: NavigationItem[] = [
   },
   {
     icon: Shield,
-    label: "Defense",
+    label: "Protect",
     href: "/defense",
     children: [
       { icon: BarChart3, label: "Insights", href: "/defense/insights" },
@@ -124,7 +124,7 @@ function SidebarContent({
   user,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
-    // Auto-expand Defense if any child route is active
+    // Auto-expand Protect if any child route is active
     const initialExpanded = new Set<string>();
     navigationItems.forEach((item) => {
       if (item.children && isParentActive(pathname, item.children)) {
@@ -272,7 +272,7 @@ export function Sidebar({ user }: SidebarProps) {
   );
 
   const excludeLabels: string[] = [];
-  if (!canAccessDefense) excludeLabels.push("Defense");
+  if (!canAccessDefense) excludeLabels.push("Protect");
 
   const navigationItems = baseNavigationItems.filter(
     (item) => !excludeLabels.includes(item.label),
