@@ -21,6 +21,7 @@ export const selectors = {
     userJourneysLink: '[data-testid="nav-user-journeys"]',
     roadmapLink: '[data-testid="nav-roadmap"]',
     callsLink: '[data-testid="nav-calls"]',
+    capacityLink: '[data-testid="nav-capacity"]',
   },
 
   // Page titles
@@ -31,6 +32,7 @@ export const selectors = {
     insights: '[data-testid="page-title"]:has-text("Insights")',
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
     calls: '[data-testid="page-title"]:has-text("Calls")',
+    capacity: '[data-testid="page-title"]:has-text("Capacity")',
   },
 
   // Page descriptions
