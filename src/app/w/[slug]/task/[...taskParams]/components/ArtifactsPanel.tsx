@@ -30,12 +30,12 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
-    if (codeArtifacts.length > 0) tabs.push("CODE");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
-    if (ideArtifacts.length > 0) tabs.push("IDE");
-    if (graphArtifacts.length > 0) tabs.push("GRAPH");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
+    if (graphArtifacts.length > 0) tabs.push("GRAPH");
     if (diffArtifacts.length > 0) tabs.push("DIFF");
+    if (codeArtifacts.length > 0) tabs.push("CODE");
+    if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
   }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
@@ -74,24 +74,9 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
             transition={{ duration: 0.4 }}
           >
             <TabsList className="w-full flex">
-              {codeArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="CODE">
-                  Code / Files
-                </TabsTrigger>
-              )}
               {browserArtifacts.length > 0 && (
                 <TabsTrigger className="cursor-pointer" value="BROWSER">
                   Live Preview
-                </TabsTrigger>
-              )}
-              {ideArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="IDE">
-                  IDE
-                </TabsTrigger>
-              )}
-              {graphArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="GRAPH">
-                  Graph
                 </TabsTrigger>
               )}
               {workflowArtifacts.length > 0 && (
@@ -99,9 +84,24 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                   Workflow
                 </TabsTrigger>
               )}
+              {graphArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="GRAPH">
+                  Graph
+                </TabsTrigger>
+              )}
               {diffArtifacts.length > 0 && (
                 <TabsTrigger className="cursor-pointer" value="DIFF">
                   Diff
+                </TabsTrigger>
+              )}
+              {codeArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="CODE">
+                  Code / Files
+                </TabsTrigger>
+              )}
+              {ideArtifacts.length > 0 && (
+                <TabsTrigger className="cursor-pointer" value="IDE">
+                  IDE
                 </TabsTrigger>
               )}
             </TabsList>
