@@ -15,12 +15,12 @@ import { StoreProvider } from "@/stores/StoreProvider";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
 
 export function Dashboard() {
-  const { id: workspaceId } = useWorkspace();
+  const { id } = useWorkspace();
 
   logStoreInstances()
 
   return (
-    <StoreProvider storeId={`workspace-${workspaceId}`}>
+    <StoreProvider storeId={`workspace-${id}`}>
       <DashboardInner />
     </StoreProvider>
   );

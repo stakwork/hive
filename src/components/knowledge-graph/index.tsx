@@ -114,13 +114,13 @@ const GraphComponentInner = ({
         case 'code':
           // Filter for code-related nodes
           const codeNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel']);
-          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(codeNodeTypes)}&limit=100&limit_mode=per_type`;
+          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(codeNodeTypes)}&limit=1000&limit_mode=per_type`;
           break;
 
         case 'comms':
           // Filter for communication nodes
           const commsNodeTypes = JSON.stringify(['Episode', 'Message', 'Person']);
-          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(commsNodeTypes)}&limit=100&limit_mode=per_type`;
+          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(commsNodeTypes)}&limit=1000&limit_mode=per_type`;
           break;
 
         case 'tasks':

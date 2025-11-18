@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { getS3Service } from "@/services/s3";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -8,6 +9,59 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
+
+// Helper function to extract S3 key from media_url (matching jarvis/nodes logic)
+function extractS3KeyFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const rawKey = pathname.startsWith("/") ? pathname.substring(1) : pathname;
+
+    return decodeURIComponent(rawKey);
+  } catch {
+    return url;
+  }
+}
+
+// Helper function to process nodes and presign media_url fields
+async function processNodesMediaUrls(
+  nodes: any[],
+  s3Service: ReturnType<typeof getS3Service>,
+): Promise<any[]> {
+  const processedNodes = [];
+
+  for (const node of nodes) {
+    const processedNode = { ...node };
+
+    // Check if node has properties.media_url and if it's an S3 URL
+    if (node.properties?.media_url && typeof node.properties.media_url === "string") {
+      // Only presign if it's a sphinx-livekit-recordings URL
+      if (node.properties.media_url.includes("sphinx-livekit-recordings")) {
+        try {
+          const s3Key = extractS3KeyFromUrl(node.properties.media_url);
+
+          // Generate presigned URL with 1 hour expiration
+          const presignedUrl = await s3Service.generatePresignedDownloadUrlForBucket(
+            "sphinx-livekit-recordings",
+            s3Key,
+            3600,
+          );
+
+          processedNode.properties = {
+            ...node.properties,
+            media_url: presignedUrl,
+          };
+        } catch (error) {
+          // Keep original URL if presigning fails
+        }
+      }
+    }
+
+    processedNodes.push(processedNode);
+  }
+
+  return processedNodes;
+}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
@@ -53,7 +107,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Extract hostname from swarm URL and construct graph endpoint
     const swarmUrlObj = new URL(swarm.swarmUrl);
     const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
-    const graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
+
+    // Allow environment overrides for development/testing
+    let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
+    let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
+
+    if (process.env.CUSTOM_SWARM_URL) {
+      graphUrl = `${process.env.CUSTOM_SWARM_URL}:3355`;
+    }
+    if (process.env.CUSTOM_SWARM_API_KEY) {
+      apiKey = process.env.CUSTOM_SWARM_API_KEY;
+    }
 
     // Build API params based on what's provided
     const apiParams: Record<string, string> = {
@@ -87,26 +151,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       apiParams.limit_mode = limitMode;
     }
 
-
-    // Proxy to graph microservice
-    // const apiResult = await swarmApiRequestAuth({
-    //   swarmUrl: graphUrl,
-    //   endpoint: "/nodes",
-    //   method: "GET",
-    //   apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
-    //   params: apiParams,
-    // });
-
-    console.log('url-url', `${graphUrl}/graph?${new URLSearchParams(apiParams).toString()}`);
+    apiParams.edges = 'true';
+    apiParams.
 
     const apiResult = await fetch(`${graphUrl}/graph?${new URLSearchParams(apiParams).toString()}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "x-api-token": encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
+        "x-api-token": apiKey,
       },
     });
-
 
     if (!apiResult.ok) {
       const data = await apiResult.json();
@@ -122,10 +176,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const data = await apiResult.json();
 
+    // Process the response data to presign any media_url fields in nodes
+    let processedData = data;
+    try {
+      if (data?.nodes) {
+        const s3Service = getS3Service();
+        // Process nodes to presign S3 URLs
+        const processedNodes = await processNodesMediaUrls(data.nodes, s3Service);
+        processedData = {
+          ...data,
+          nodes: processedNodes,
+        };
+      }
+    } catch (error) {
+      // Continue with original data if processing fails
+    }
+
     return NextResponse.json(
       {
         success: true,
-        data: { nodes: data.nodes, edges: data.edges },
+        data: { nodes: processedData.nodes, edges: processedData.edges },
       },
       { status: 200 },
     );
