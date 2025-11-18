@@ -326,7 +326,7 @@ const SynchronizedGraphComponentInner = ({
 
         case 'comms':
           // Filter for communication nodes
-          const commsNodeTypes = JSON.stringify(['Episode', 'Message']);
+          const commsNodeTypes = JSON.stringify(['Episode', 'Call', 'Message']);
           requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
           break;
 

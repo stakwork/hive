@@ -97,7 +97,7 @@ export async function GET(
     const jarvisUrl = getJarvisUrl(workspace.swarm.name);
 
     const jarvisResponse = await fetch(
-      `${jarvisUrl}/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=${limit + 1}&skip=${skip}`,
+      `${jarvisUrl}/graph/nodes/list?node_type=%5B%22Episode%22%2C%22Call%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=${limit + 1}&skip=${skip}`,
       {
         method: "GET",
         headers: {
