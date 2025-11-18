@@ -119,7 +119,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const finalData = {
       nodes: data.nodes,
-      edges: data.edges.map((i) => ({ ...i, ref_id: `${i.source}-${i.target}` })),
+      edges: data.edges.map((edge: any) => ({ ...edge, ref_id: `${edge.source}-${edge.target}` })),
     }
 
     return NextResponse.json(
