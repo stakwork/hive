@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
+  Blocks,
   BookOpen,
   Bot,
   Brain,
@@ -15,7 +16,7 @@ import {
   Phone,
   Server,
   Settings,
-  Shield,
+  ShieldCheck,
   TestTube2,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
@@ -87,22 +88,22 @@ const baseNavigationItems: NavigationItem[] = [
   { icon: PiGraphFill, label: "Graph", href: "/" },
   { icon: Server, label: "Capacity", href: "/capacity" },
   {
-    icon: Map,
+    icon: Blocks,
     label: "Build",
-    href: "/offense",
+    href: "/build",
     children: [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
       { icon: Map, label: "Roadmap", href: "/roadmap" },
     ],
   },
   {
-    icon: Shield,
+    icon: ShieldCheck,
     label: "Protect",
-    href: "/defense",
+    href: "/protect",
     children: [
-      { icon: BarChart3, label: "Insights", href: "/defense/insights" },
-      { icon: TestTube2, label: "Testing", href: "/defense/testing" },
-      { icon: Bot, label: "Janitors", href: "/defense/janitors" },
+      { icon: BarChart3, label: "Insights", href: "/insights" },
+      { icon: TestTube2, label: "Testing", href: "/testing" },
+      { icon: Bot, label: "Janitors", href: "/janitors" },
     ],
   },
   {
@@ -110,8 +111,8 @@ const baseNavigationItems: NavigationItem[] = [
     label: "Context",
     href: "/context",
     children: [
-      { icon: BookOpen, label: "Learn", href: "/context/learn" },
-      { icon: Phone, label: "Calls", href: "/context/calls" },
+      { icon: BookOpen, label: "Learn", href: "/learn" },
+      { icon: Phone, label: "Calls", href: "/calls" },
     ],
   },
 ];
