@@ -34,6 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const limit = searchParams.get("limit") || "100";
     const limitMode = searchParams.get("limit_mode") || "per_type";
     const concise = searchParams.get("concise") === "true";
+    const typeLimits = searchParams.get("per_type_limits") || "Feature:10,File:10,Function:50,Class:25";
 
 
     // Get swarm for this workspace
@@ -81,6 +82,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (concise) {
       apiParams.concise = "true";
+    }
+
+    if (typeLimits) {
+      apiParams.per_type_limits = typeLimits;
     }
 
     const queryString = Object.keys(apiParams).length > 0 ? `?${new URLSearchParams(apiParams).toString()}` : '';
