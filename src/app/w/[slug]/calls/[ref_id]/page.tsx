@@ -33,7 +33,7 @@ export default function CallPage() {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
 
   const handleBackClick = () => {
-    router.push(`/w/${slug}/context/calls`);
+    router.push(`/w/${slug}/calls`);
   };
 
   const handleTimeUpdate = (time: number) => {

@@ -113,9 +113,9 @@ describe("POST /api/stakwork/user-journey", () => {
     } as any;
 
     // Mock environment variables
-    vi.stubEnv('STAKWORK_API_KEY', 'test-api-key');
-    vi.stubEnv('STAKWORK_USER_JOURNEY_WORKFLOW_ID', '123');
-    vi.stubEnv('STAKWORK_BASE_URL', 'https://stakwork-api.example.com');
+    vi.stubEnv("STAKWORK_API_KEY", "test-api-key");
+    vi.stubEnv("STAKWORK_USER_JOURNEY_WORKFLOW_ID", "123");
+    vi.stubEnv("STAKWORK_BASE_URL", "https://stakwork-api.example.com");
   });
 
   describe("Authentication", () => {
@@ -280,14 +280,17 @@ describe("POST /api/stakwork/user-journey", () => {
       const mockWorkspace = createMockWorkspace();
       const mockSwarm = createMockSwarm();
       const mockGithubProfile = createMockGithubProfile();
-      const mockStakworkResponseData = { success: true, data: { project_id: 456, workflow_id: 789, status: "pending" } };
+      const mockStakworkResponseData = {
+        success: true,
+        data: { project_id: 456, workflow_id: 789, status: "pending" },
+      };
 
       mockGetWorkspaceById.mockResolvedValue(mockWorkspace);
       mockDbWorkspaceFindUnique.mockResolvedValue({ slug: "test-workspace" });
       mockGetGithubUsernameAndPAT.mockResolvedValue(mockGithubProfile);
       mockDbSwarmFindUnique.mockResolvedValue(mockSwarm);
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       // Mock successful Stakwork API response
       mockFetch.mockResolvedValue({
         ok: true,
@@ -319,7 +322,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
       mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, data: {} }),
@@ -331,9 +334,7 @@ describe("POST /api/stakwork/user-journey", () => {
         body: createMockRequestBody(),
       });
 
-      expect(mockTransformSwarmUrlToRepo2Graph).toHaveBeenCalledWith(
-        "https://test-swarm.sphinx.chat/api"
-      );
+      expect(mockTransformSwarmUrlToRepo2Graph).toHaveBeenCalledWith("https://test-swarm.sphinx.chat/api");
     });
 
     it("should handle null GitHub profile gracefully", async () => {
@@ -342,7 +343,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(null);
       mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, data: {} }),
@@ -368,7 +369,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
       mockDbSwarmFindUnique.mockResolvedValue(mockSwarmWithoutPoolName);
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, data: {} }),
@@ -395,7 +396,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
       mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, data: mockWorkflowData }),
@@ -418,7 +419,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
       mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: false, error: "API error" }),
@@ -472,7 +473,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
       mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       // Mock fetch to throw an error that should be caught by the outer try-catch
       mockFetch.mockRejectedValue(new Error("Network error"));
 
@@ -504,7 +505,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
       mockDbSwarmFindUnique.mockResolvedValue(createMockSwarm());
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.sphinx.chat:3355");
-      
+
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, data: {} }),
@@ -527,7 +528,7 @@ describe("POST /api/stakwork/user-journey", () => {
       mockGetGithubUsernameAndPAT.mockResolvedValue(createMockGithubProfile());
       mockDbSwarmFindUnique.mockResolvedValue(mockSwarmWithoutUrl);
       mockTransformSwarmUrlToRepo2Graph.mockReturnValue("");
-      
+
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, data: {} }),
@@ -586,7 +587,6 @@ describe("POST /api/stakwork/user-journey", () => {
         title: "My Test",
         status: "IN_PROGRESS",
         workflowStatus: "PENDING",
-        testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
         stakworkProjectId: 456,
       };
 
@@ -625,8 +625,6 @@ describe("POST /api/stakwork/user-journey", () => {
           status: "TODO", // Changed from IN_PROGRESS
           workflowStatus: "PENDING",
           priority: "MEDIUM",
-          testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
-          testFileUrl: "https://github.com/testuser/test-repo/blob/main/src/__tests__/e2e/specs/my-test.spec.ts",
           stakworkProjectId: null, // Changed: task created before Stakwork returns
           repositoryId: "repo-123",
           createdById: "user-123",
@@ -657,7 +655,6 @@ describe("POST /api/stakwork/user-journey", () => {
         title: "My Test",
         status: "TODO", // Changed from IN_PROGRESS
         workflowStatus: "PENDING", // Changed: task always created with PENDING status
-        testFilePath: "src/__tests__/e2e/specs/my-test.spec.ts",
         stakworkProjectId: null, // No project ID when Stakwork fails
       };
 
@@ -801,14 +798,6 @@ describe("POST /api/stakwork/user-journey", () => {
         body: createMockRequestBody({
           testName: "login-flow.spec.ts",
         }),
-      });
-
-      expect(mockDbTaskCreate).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          testFilePath: "src/__tests__/e2e/specs/login-flow.spec.ts",
-          testFileUrl: "https://github.com/testorg/test-repo/blob/main/src/__tests__/e2e/specs/login-flow.spec.ts",
-        }),
-        select: expect.any(Object),
       });
     });
 

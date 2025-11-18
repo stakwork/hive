@@ -1,19 +1,20 @@
-"use client";
+import { LearnChat } from "./components/LearnChat";
+import { StoreProvider } from "@/stores/StoreProvider";
 
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { redirect, useRouter } from "next/navigation";
-import { useEffect } from "react";
+interface LearnPageProps {
+  params: Promise<{
+    slug: string;
+  }>;
+}
 
-export default function LearnPage() {
-  const router = useRouter();
-  const { workspace } = useWorkspace();
+export default async function LearnPage({ params }: LearnPageProps) {
+  const { slug } = await params;
 
-  useEffect(() => {
-    if (workspace?.slug) {
-      router.replace(`/w/${workspace.slug}/context/learn`);
-    }
-  }, [workspace?.slug, router]);
-
-  // Fallback redirect if workspace is not loaded yet
-  redirect("/");
+  return (
+    <div className="flex-1 flex flex-col h-full">
+      <StoreProvider storeId={`workspace-${slug}`}>
+        <LearnChat workspaceSlug={slug} />
+      </StoreProvider>
+    </div>
+  );
 }

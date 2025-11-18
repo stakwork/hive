@@ -2,7 +2,7 @@ import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { LearnChatInput } from "@/app/w/[slug]/context/learn/components/LearnChatInput";
+import { LearnChatInput } from "@/app/w/[slug]/learn/components/LearnChatInput";
 
 // Mock dependencies
 vi.mock("@/hooks/useSpeechRecognition", () => ({

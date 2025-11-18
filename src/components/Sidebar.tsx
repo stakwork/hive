@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
+  Blocks,
   BookOpen,
   Bot,
   Brain,
@@ -15,7 +16,7 @@ import {
   Phone,
   Server,
   Settings,
-  Shield,
+  ShieldCheck,
   TestTube2,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
@@ -87,22 +88,22 @@ const baseNavigationItems: NavigationItem[] = [
   { icon: PiGraphFill, label: "Graph", href: "/" },
   { icon: Server, label: "Capacity", href: "/capacity" },
   {
-    icon: Map,
-    label: "Offense",
-    href: "/offense",
+    icon: Blocks,
+    label: "Build",
+    href: "/build",
     children: [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
       { icon: Map, label: "Roadmap", href: "/roadmap" },
     ],
   },
   {
-    icon: Shield,
-    label: "Defense",
-    href: "/defense",
+    icon: ShieldCheck,
+    label: "Protect",
+    href: "/protect",
     children: [
-      { icon: BarChart3, label: "Insights", href: "/defense/insights" },
-      { icon: TestTube2, label: "Testing", href: "/defense/testing" },
-      { icon: Bot, label: "Janitors", href: "/defense/janitors" },
+      { icon: BarChart3, label: "Insights", href: "/insights" },
+      { icon: TestTube2, label: "Testing", href: "/testing" },
+      { icon: Bot, label: "Janitors", href: "/janitors" },
     ],
   },
   {
@@ -110,8 +111,8 @@ const baseNavigationItems: NavigationItem[] = [
     label: "Context",
     href: "/context",
     children: [
-      { icon: BookOpen, label: "Learn", href: "/context/learn" },
-      { icon: Phone, label: "Calls", href: "/context/calls" },
+      { icon: BookOpen, label: "Learn", href: "/learn" },
+      { icon: Phone, label: "Calls", href: "/calls" },
     ],
   },
 ];
@@ -124,7 +125,7 @@ function SidebarContent({
   user,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
-    // Auto-expand Defense if any child route is active
+    // Auto-expand Protect if any child route is active
     const initialExpanded = new Set<string>();
     navigationItems.forEach((item) => {
       if (item.children && isParentActive(pathname, item.children)) {
@@ -272,7 +273,7 @@ export function Sidebar({ user }: SidebarProps) {
   );
 
   const excludeLabels: string[] = [];
-  if (!canAccessDefense) excludeLabels.push("Defense");
+  if (!canAccessDefense) excludeLabels.push("Protect");
 
   const navigationItems = baseNavigationItems.filter(
     (item) => !excludeLabels.includes(item.label),

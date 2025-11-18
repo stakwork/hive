@@ -387,7 +387,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     });
 
     // 4. Sync graph files to tasks
-    const tasksToUpdate: string[] = [];
+    const tasksToUpdate: Array<{ id: string; filePath: string; testFileUrl: string | null }> = [];
     const tasksToCreate: Array<{ filePath: string; nodes: E2eTestNode[] }> = [];
 
     // Get GitHub token for PR correlation
@@ -438,21 +438,31 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       }
 
       if (existingTask) {
-        tasksToUpdate.push(existingTask.id);
+        tasksToUpdate.push({
+          id: existingTask.id,
+          filePath: filePath,
+          testFileUrl: constructGithubUrl(repository, filePath),
+        });
       } else {
         tasksToCreate.push({ filePath, nodes });
       }
     }
 
-    // Update existing tasks to mark as deployed
+    // Update existing tasks to mark as deployed and sync file paths
     if (tasksToUpdate.length > 0) {
-      await db.task.updateMany({
-        where: { id: { in: tasksToUpdate } },
-        data: {
-          status: TaskStatus.DONE,
-          workflowStatus: WorkflowStatus.COMPLETED,
-        },
-      });
+      await Promise.all(
+        tasksToUpdate.map((task) =>
+          db.task.update({
+            where: { id: task.id },
+            data: {
+              status: TaskStatus.DONE,
+              workflowStatus: WorkflowStatus.COMPLETED,
+              testFilePath: task.filePath,
+              testFileUrl: task.testFileUrl,
+            },
+          }),
+        ),
+      );
       console.log("[user-journeys] Updated tasks", { count: tasksToUpdate.length });
     }
 
