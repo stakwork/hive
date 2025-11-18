@@ -41,7 +41,7 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
           icon: GitPullRequest,
           iconBgColor: "bg-[#238636]/10",
           iconColor: "text-[#238636]",
-          buttonText: "Merge PR",
+          buttonText: "Open",
           buttonStyle: { backgroundColor: "#238636", color: "white" },
           buttonClassName: "hover:opacity-90",
           borderColor: "border-[#238636]/30",
