@@ -62,7 +62,7 @@ export function GraphFilterDropdown({ value, onValueChange }: GraphFilterDropdow
             <span>{filterLabels.tasks}</span>
           </div>
         </SelectItem>
-        <SelectItem value="product">
+        <SelectItem value="concepts">
           <div className="flex items-center gap-2">
             {filterIcons.concepts}
             <span>{filterLabels.concepts}</span>

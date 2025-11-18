@@ -125,8 +125,8 @@ const GraphComponentInner = ({
 
         case 'concepts':
           // Filter for communication nodes
-          const conceptsNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel', 'Feature']);
-          requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(conceptsNodeTypes)}&limit=1000&limit_mode=per_type`;
+          const conceptsNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Feature', 'File']);
+          requestUrl = `/api/workspaces/${slug}/graph/gitree?node_type=${encodeURIComponent(conceptsNodeTypes)}&limit=1000&limit_mode=per_type`;
           break;
 
         case 'tasks':
@@ -167,6 +167,8 @@ const GraphComponentInner = ({
             ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}`
             : `/api/swarm/jarvis/nodes?id=${workspaceId}`;
       }
+
+      console.log('requestUrl', requestUrl);
 
       const response = await fetch(requestUrl);
       const data: ApiResponse = await response.json();
