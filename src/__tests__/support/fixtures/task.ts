@@ -91,3 +91,37 @@ export async function updateTestTask(taskId: string, updates: any) {
 export async function deleteTestTask(taskId: string) {
   return db.task.delete({ where: { id: taskId } });
 }
+
+export interface CreateTestUserJourneyTaskOptions {
+  title: string;
+  description?: string;
+  workspaceId: string;
+  repositoryId?: string;
+  createdById: string;
+  status?: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
+  workflowStatus?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ERROR" | "FAILED" | "HALTED";
+  testFilePath?: string;
+  testFileUrl?: string;
+  stakworkProjectId?: number;
+}
+
+export async function createTestUserJourneyTask(
+  options: CreateTestUserJourneyTaskOptions,
+): Promise<Task> {
+  return db.task.create({
+    data: {
+      title: options.title,
+      description: options.description || null,
+      workspaceId: options.workspaceId,
+      repositoryId: options.repositoryId || null,
+      sourceType: "USER_JOURNEY",
+      status: options.status || "TODO",
+      workflowStatus: options.workflowStatus || null,
+      testFilePath: options.testFilePath || null,
+      testFileUrl: options.testFileUrl || null,
+      stakworkProjectId: options.stakworkProjectId || null,
+      createdById: options.createdById,
+      updatedById: options.createdById,
+    },
+  });
+}
