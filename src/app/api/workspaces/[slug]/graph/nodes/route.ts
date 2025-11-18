@@ -152,7 +152,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     apiParams.edges = 'true';
-    apiParams.
 
     const apiResult = await fetch(`${graphUrl}/graph?${new URLSearchParams(apiParams).toString()}`, {
       method: "GET",
