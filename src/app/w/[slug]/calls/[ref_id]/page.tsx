@@ -67,7 +67,7 @@ export default function CallPage() {
       try {
         // Fetch the subgraph data for this specific call
         const response = await fetch(
-          `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Clip","Video"]&depth=2&include_properties=true`)}`
+          `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Call","Clip","Video"]&depth=2&include_properties=true`)}`
         );
 
         if (!response.ok) {
@@ -82,7 +82,7 @@ export default function CallPage() {
 
         // Find the main call node
         const callNode = data.data.nodes.find((node: any) =>
-          (node.node_type === "Episode" || node.node_type === "Clip") && node.ref_id === ref_id
+          (node.node_type === "Episode" || node.node_type === "Call") && node.ref_id === ref_id
         );
 
         if (!callNode) {

@@ -128,7 +128,7 @@ export const RelevanceGroups = memo(() => {
             <div className="text-center">
               <div className="text-sm font-normal leading-tight mb-1 max-w-[200px]">
                 {(() => {
-                  if (selectedNode?.node_type === 'Episode') {
+                  if (selectedNode?.node_type === 'Episode' || selectedNode?.node_type === 'Call') {
                     const episodeTitle = selectedNode?.properties?.episode_title as string | undefined
                     if (episodeTitle && episodeTitle.includes('Meeting recording')) {
                       const isoDateMatch = episodeTitle.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
@@ -146,7 +146,7 @@ export const RelevanceGroups = memo(() => {
                         return `Meeting recording from ${formattedDate} at ${formattedTime}`;
                       }
                     }
-                    return episodeTitle || 'Episode';
+                    return episodeTitle || selectedNode?.node_type || 'Episode';
                   }
                   return selectedNode?.name || selectedNode?.properties?.name || selectedNode?.properties?.title || 'Unnamed Node'
                 })()}

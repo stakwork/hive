@@ -119,7 +119,7 @@ const GraphComponentInner = ({
 
         case 'comms':
           // Filter for communication nodes
-          const commsNodeTypes = JSON.stringify(['Episode', 'Message', 'Person']);
+          const commsNodeTypes = JSON.stringify(['Episode', 'Call', 'Message', 'Person']);
           requestUrl = `/api/workspaces/${slug}/graph/nodes?node_type=${encodeURIComponent(commsNodeTypes)}&limit=1000&limit_mode=per_type`;
           break;
 

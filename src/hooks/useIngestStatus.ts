@@ -23,11 +23,6 @@ export function useIngestStatus() {
         pollingIntervalRef.current = null;
       }
       setIsIngesting(false);
-
-      // console.log('codeIsSynced', codeIsSynced);
-      // console.log('ingestRefId', ingestRefId);
-      // console.log('workspaceId', workspaceId);
-      // console.log('ingestError', ingestError);
       return;
     }
 
@@ -37,11 +32,10 @@ export function useIngestStatus() {
       pollingIntervalRef.current = null;
     }
 
-    let isCancelled = false;
     setIsIngesting(true);
 
     const getIngestStatus = async () => {
-      if (isCancelled || isRequestPendingRef.current) return;
+      if (isRequestPendingRef.current) return;
 
       isRequestPendingRef.current = true;
       try {
@@ -114,8 +108,6 @@ export function useIngestStatus() {
     getIngestStatus();
 
     return () => {
-      isCancelled = true;
-      isRequestPendingRef.current = false;
       setIsIngesting(false);
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
