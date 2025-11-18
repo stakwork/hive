@@ -138,7 +138,7 @@ const SynchronizedGraphComponentInner = ({
         const matchingEdge = edgesWithStart.find((ed) => node.ref_id === ed.source || node.ref_id === ed.target);
         return { ...node, start: matchingEdge?.start || 0 } as NodeWithTimestamp;
       })
-      .filter((node) => node && node.node_type !== 'Clip' && node.node_type !== 'Episode' && node.node_type !== 'Show');
+      .filter((node) => node && node.node_type !== 'Clip' && node.node_type !== 'Episode' && node.node_type !== 'Call' && node.node_type !== 'Show');
 
     return markers;
   }, []);
