@@ -185,7 +185,7 @@ export async function GET(request: Request) {
             workspaceSlug,
             responseTime: Date.now() - startTime,
           });
-          return NextResponse.json({ hasTokens: false }, { status: 200 });
+          return NextResponse.json({ hasTokens: false, hasRepoAccess: false }, { status: 200 });
         }
 
         console.log("[github-app-status] Processing unlinked workspace", {
