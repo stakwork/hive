@@ -12,6 +12,10 @@ interface ServerModelProps {
     cpuUsage?: string; // e.g. "0.05"
     memoryUsage?: string; // e.g. "3.99"
     name: string;
+    subdomain?: string;
+    userInfo?: string | null;
+    created?: string;
+    repoName?: string;
     onClick?: () => void;
     selected?: boolean;
 }
@@ -24,7 +28,14 @@ const STATUS_COLORS: Record<string, string> = {
     UNKNOWN: '#64748b',
 };
 
-export function ServerModel({ position, state, usageStatus, cpuUsage = "0", memoryUsage = "0", name, onClick, selected }: ServerModelProps) {
+// Traffic light color for resource usage (green -> amber -> red)
+function getUsageColor(percentage: number): string {
+    if (percentage < 60) return '#10b981'; // Green
+    if (percentage < 80) return '#f59e0b'; // Amber
+    return '#ef4444'; // Red
+}
+
+export function ServerModel({ position, state, usageStatus, cpuUsage = "0", memoryUsage = "0", name, subdomain, userInfo, created, repoName, onClick, selected }: ServerModelProps) {
     const meshRef = useRef<THREE.Group>(null);
     const [hovered, setHover] = useState(false);
     useCursor(hovered);
@@ -137,7 +148,7 @@ export function ServerModel({ position, state, usageStatus, cpuUsage = "0", memo
                         {/* Bar Fill */}
                         <mesh position={[0.2 + (Math.min(cpuVal, 100) / 100 * 0.5) / 2, 0, 0.001]}>
                             <planeGeometry args={[Math.min(cpuVal, 100) / 100 * 0.5, 0.04]} />
-                            <meshBasicMaterial color="#60a5fa" />
+                            <meshBasicMaterial color={getUsageColor(cpuVal)} />
                         </mesh>
                         {/* Percentage Text */}
                         <Text
@@ -170,7 +181,7 @@ export function ServerModel({ position, state, usageStatus, cpuUsage = "0", memo
                         {/* Bar Fill */}
                         <mesh position={[0.2 + (Math.min(parseFloat(memoryUsage) || 0, 100) / 100 * 0.5) / 2, 0, 0.001]}>
                             <planeGeometry args={[Math.min(parseFloat(memoryUsage) || 0, 100) / 100 * 0.5, 0.04]} />
-                            <meshBasicMaterial color="#a78bfa" />
+                            <meshBasicMaterial color={getUsageColor(parseFloat(memoryUsage) || 0)} />
                         </mesh>
                         {/* Percentage Text */}
                         <Text
@@ -185,12 +196,53 @@ export function ServerModel({ position, state, usageStatus, cpuUsage = "0", memo
                     </group>
                 </group>
 
-                {/* Ventilation Grills (Right Side - Middle) */}
-                <mesh position={[0.35, 0, 0.02]}>
-                    <planeGeometry args={[0.5, 0.3]} />
-                    <meshStandardMaterial color="#111111" roughness={0.8} metalness={0.2} />
-                    {/* Grill lines texture simulation with simple geometry could be expensive, using dark material for now */}
-                </mesh>
+                {/* Metadata Panel (Middle Black Box) */}
+                <group position={[0.35, 0, 0.025]}>
+                    {/* Black Background */}
+                    <mesh position={[0, 0, 0]}>
+                        <planeGeometry args={[0.5, 0.3]} />
+                        <meshStandardMaterial color="#111111" roughness={0.8} metalness={0.2} />
+                    </mesh>
+
+                    {/* Subdomain */}
+                    {subdomain && (
+                        <Text
+                            position={[-0.22, 0.10, 0.01]}
+                            fontSize={0.045}
+                            color="#64748b"
+                            anchorX="left"
+                            anchorY="middle"
+                        >
+                            {subdomain.length > 20 ? subdomain.substring(0, 20) + '...' : subdomain}
+                        </Text>
+                    )}
+
+                    {/* Repository Name */}
+                    {repoName && (
+                        <Text
+                            position={[-0.22, 0.02, 0.01]}
+                            fontSize={0.035}
+                            color="#94a3b8"
+                            anchorX="left"
+                            anchorY="middle"
+                        >
+                            {repoName.length > 22 ? repoName.substring(0, 22) + '...' : repoName}
+                        </Text>
+                    )}
+
+                    {/* User Info (only for used servers) */}
+                    {isUsed && userInfo && (
+                        <Text
+                            position={[-0.22, -0.08, 0.01]}
+                            fontSize={0.04}
+                            color="#60a5fa"
+                            anchorX="left"
+                            anchorY="middle"
+                        >
+                            {userInfo.length > 22 ? userInfo.substring(0, 22) + '...' : userInfo}
+                        </Text>
+                    )}
+                </group>
 
                 {/* Status LED (Power) - Far Right Top */}
                 <mesh position={[0.82, 0.12, 0.02]}>
