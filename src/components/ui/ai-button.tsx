@@ -15,24 +15,33 @@ interface AIButtonProps<T> {
   endpoint: string;
   params?: Record<string, unknown>;
   onGenerated: (results: T[]) => void;
+  onGeneratingChange?: (generating: boolean) => void;
   tooltip?: string;
   iconOnly?: boolean;
   label?: string;
   variant?: "default" | "outline" | "ghost";
   size?: "default" | "sm" | "lg" | "icon";
+  disabled?: boolean;
 }
 
 export function AIButton<T>({
   endpoint,
   params,
   onGenerated,
+  onGeneratingChange,
   tooltip = "Generate with AI",
   iconOnly = false,
   label = "Generate",
   variant = "ghost",
   size = "icon",
+  disabled = false,
 }: AIButtonProps<T>) {
   const { generating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(endpoint);
+
+  // Notify parent when generating state changes
+  useEffect(() => {
+    onGeneratingChange?.(generating);
+  }, [generating, onGeneratingChange]);
 
   const handleGenerate = async () => {
     await generate(params);
@@ -51,7 +60,7 @@ export function AIButton<T>({
       size={iconOnly ? "icon" : size}
       variant={iconOnly ? "ghost" : variant}
       onClick={handleGenerate}
-      disabled={generating}
+      disabled={generating || disabled}
     >
       {generating ? (
         <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
