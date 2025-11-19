@@ -1,33 +1,61 @@
-import { Link, Node, NodeExtended } from '@Universe/types';
+import { nodeSize } from '@Universe/Graph/Cubes/constants';
+import { Node } from '@Universe/types';
 import {
   forceCenter,
   forceCollide,
   forceLink,
   forceManyBody,
-  forceRadial,
   forceSimulation,
   forceX,
   forceY,
-  forceZ,
+  forceZ
 } from 'd3-force-3d';
 import { create } from "zustand";
 import { createDataStore } from "./createDataStore";
-// Removed circular import - graphStore will be passed as parameter
 import { type SimulationStore } from "./useSimulationStore";
 import { distributeNodesOnSphere } from './useSimulationStore/utils/distributeNodesOnSphere';
 
+// --- HELPER: Pure Grid Logic ---
+// Calculates target positions but does NOT modify the simulation directly.
+const calculateGridMap = (nodes: Node[], nodeTypes: string[]) => {
+  const nodesByType: Record<string, Node[]> = {};
 
-const resetPosition = {
-  fx: null,
-  fy: null,
-  fz: null,
-  x: null,
-  y: null,
-  z: null,
-  vx: null,
-  vy: null,
-  vz: null,
-}
+  // 1. Group by type
+  nodes.forEach((node) => {
+    if (!nodesByType[node.node_type]) nodesByType[node.node_type] = [];
+    nodesByType[node.node_type].push(node);
+  });
+
+  const positionMap = new Map<string, { x: number, y: number, z: number }>();
+
+  // 2. Calculate positions
+  nodes.forEach((n) => {
+    const typeIndex = nodeTypes.indexOf(n.node_type) + 1;
+    // Separate layers by 500 units on Y axis
+    const yLayer = Math.floor(typeIndex / 2) * 500;
+    const isEvenLayer = typeIndex % 2 === 0;
+    const yOffset = isEvenLayer ? yLayer : -yLayer;
+
+    const sameTypeNodes = nodesByType[n.node_type];
+    const nodeIndexInType = sameTypeNodes.findIndex(node => node.ref_id === n.ref_id);
+
+    const nodesPerRow = Math.ceil(Math.sqrt(sameTypeNodes.length));
+    const spacing = 300;
+
+    const row = Math.floor(nodeIndexInType / nodesPerRow);
+    const col = nodeIndexInType % nodesPerRow;
+
+    const gridWidth = (nodesPerRow - 1) * spacing;
+    const gridHeight = (Math.ceil(sameTypeNodes.length / nodesPerRow) - 1) * spacing;
+
+    const x = col * spacing - gridWidth / 2;
+    const z = row * spacing - gridHeight / 2;
+
+    positionMap.set(n.ref_id, { x, y: yOffset, z });
+  });
+
+  return positionMap;
+};
 
 export const createSimulationStore = (
   dataStore: ReturnType<typeof createDataStore>,
@@ -38,278 +66,255 @@ export const createSimulationStore = (
     simulationVersion: 0,
     simulationInProgress: false,
     isSleeping: false,
+
     simulationCreate: (nodes) => {
-      const structuredNodes = structuredClone(nodes)
-
-      const simulation = forceSimulation([])
+      // Initialize with nodes but stop immediately.
+      // setForces() will handle the wakeup.
+      const simulation = forceSimulation(structuredClone(nodes))
         .numDimensions(3)
-        .stop()
-        .nodes(structuredNodes)
-        .force(
-          'link',
-          forceLink()
-            .strength(0)
-            .links([])
-            .id((d: Node) => d.ref_id),
-        )
+        .stop();
 
-      set({ simulation })
+      set({ simulation });
     },
 
-    removeSimulation: () => set({ simulation: null }),
+    removeSimulation: () => {
+      get().simulation?.stop();
+      set({ simulation: null });
+    },
 
+    // --- CORE: DATA INGESTION ---
     addNodesAndLinks: (newNodes, newLinks, replace) => {
-      const { simulation, simulationRestart } = get()
-      const { graphStyle } = graphStore.getState()
-      const { nodeTypes } = dataStore.getState()
+      const { simulation, setForces } = get();
+      if (!simulation) return;
 
-      if (!simulation) {
-        return
-      }
+      simulation.stop();
 
-      simulation.stop()
+      // 1. Safely retrieve current data
+      const linkForce = simulation.force('link');
+      const currentNodes = replace ? [] : simulation.nodes();
+      // Defensive check: if force is missing (e.g. from previous bugs), start empty
+      const currentLinks = (replace || !linkForce) ? [] : linkForce.links();
 
-      const nodes = replace ? [] : simulation.nodes()
+      // 2. Merge Data
+      const nextNodes = [...currentNodes, ...structuredClone(newNodes)];
+      const nextLinks = [...currentLinks, ...structuredClone(newLinks)];
 
-      const links = replace
-        ? []
-        : simulation
-          .force('link')
-          .links()
-          .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id }))
+      // 3. Filter Valid Links (Source/Target must exist)
+      const validLinks = nextLinks.filter(l => {
+        const sourceId = typeof l.source === 'object' ? l.source.ref_id : l.source;
+        const targetId = typeof l.target === 'object' ? l.target.ref_id : l.target;
+        return nextNodes.some(n => n.ref_id === sourceId) &&
+          nextNodes.some(n => n.ref_id === targetId);
+      });
 
-      nodes.push(...structuredClone(newNodes))
-      links.push(...structuredClone(newLinks))
+      // 4. Update D3 Data
+      simulation.nodes(nextNodes);
 
-      const filteredLinks = links.filter(
-        (i: Link) =>
-          nodes.some((n: NodeExtended) => n.ref_id === i.source) &&
-          nodes.some((n: NodeExtended) => n.ref_id === i.target),
-      )
+      // Re-initialize link force to register new connections
+      simulation.force('link', forceLink(validLinks).id((d: Node) => d.ref_id));
 
-      const nodesPositioned = graphStyle === 'split' ? (() => {
-        // Group nodes by type for grid positioning
-        const nodesByType: Record<string, Node[]> = {}
-        nodes.forEach((node: Node) => {
-          if (!nodesByType[node.node_type]) {
-            nodesByType[node.node_type] = []
-          }
-          nodesByType[node.node_type].push(node)
-        })
-
-        return nodes.map((n: Node) => {
-          const typeIndex = nodeTypes.indexOf(n.node_type) + 1
-          const yLayer = Math.floor(typeIndex / 2) * 500
-          const isEvenLayer = typeIndex % 2 === 0
-          const yOffset = isEvenLayer ? yLayer : -yLayer
-
-          // Get nodes of same type for grid positioning
-          const sameTypeNodes = nodesByType[n.node_type]
-          const nodeIndexInType = sameTypeNodes.findIndex(node => node.ref_id === n.ref_id)
-
-          // Grid layout calculations
-          const nodesPerRow = Math.ceil(Math.sqrt(sameTypeNodes.length))
-          const row = Math.floor(nodeIndexInType / nodesPerRow)
-          const col = nodeIndexInType % nodesPerRow
-
-          // Grid spacing
-          const spacing = 300
-          const gridWidth = (nodesPerRow - 1) * spacing
-          const gridHeight = (Math.ceil(sameTypeNodes.length / nodesPerRow) - 1) * spacing
-
-          // Center the grid around origin
-          const x = col * spacing - gridWidth / 2
-          const z = row * spacing - gridHeight / 2
-
-          return {
-            ...n,
-            fx: x,
-            fy: yOffset,
-            fz: z,
-            x: x,
-            y: yOffset,
-            z: z,
-          }
-        })
-      })() : nodes;
-
-      try {
-        simulation.nodes(nodesPositioned)
-
-        // For split mode, disable links to avoid positioning conflicts
-        if (graphStyle === 'split') {
-          simulation.force('link').links([])
-        } else {
-          simulation.force('link').links(filteredLinks)
-        }
-
-        simulationRestart()
-      } catch (error) {
-        console.error('Error in addNodesAndLinks:', error)
-        // Fallback: try without links if there's an error
-        simulation.force('link').links([])
-        simulationRestart()
-      }
+      // 5. Trigger Layout Calculation
+      // This ensures new nodes snap to grid (if Split) or start physics (if Organic)
+      setForces();
     },
 
+    // --- CORE: LAYOUT MANAGER ---
     setForces: () => {
-      const { simulationRestart, addRadialForce, addClusterForce, addSplitForce } = get()
-      const { graphStyle } = graphStore.getState()
+      const { simulation, resetSimulation, addLinkForce, addClusterForce, addSplitForce } = get();
+      const { graphStyle } = graphStore.getState();
 
+      if (!simulation) return;
+
+      // 1. Clean Slate (Remove conflicting forces & unlock grid nodes)
+      resetSimulation();
+
+      // 2. Apply Style
       switch (graphStyle) {
-        case 'sphere':
-          addRadialForce()
-          break
+        case 'sphere': // This is your Organic/Connected mode
+          addLinkForce();
+          break;
         case 'force':
-          addClusterForce()
-          break
+          addClusterForce();
+          break;
         case 'split':
-          addSplitForce()
-          break
+          addSplitForce();
+          break;
         default:
-          addRadialForce()
-          break
+          addLinkForce();
+          break;
       }
 
-      simulationRestart()
+      // 3. Restart Physics
+      simulation.alpha(0.5).restart();
     },
 
-    addRadialForce: () => {
-      const { simulation } = get()
+    // Helper to clear pollution from previous modes
+    resetSimulation: () => {
+      const { simulation } = get();
+      if (!simulation) return;
+
+      // Remove specific layout forces
+      simulation.force('radial', null);
+      simulation.force('x', null);
+      simulation.force('y', null);
+      simulation.force('z', null);
+      simulation.force('center', null);
+      simulation.force('collide', null);
+
+      // UNLOCK NODES: Crucial for switching from Split -> Organic
+      // We must set fx/fy/fz to null so physics can move them again.
+      simulation.nodes().forEach((n: Node) => {
+        n.fx = null;
+        n.fy = null;
+        n.fz = null;
+      });
+    },
+
+    // --- STYLE 1: ORGANIC (Connected Subgraphs) ---
+    addLinkForce: () => {
+      const { simulation } = get();
+
+      // Defensive link check
+      const linkForce = simulation.force('link');
+      const currentLinks = linkForce ? linkForce.links() : [];
 
       simulation
-        .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
-        .force('y', null)
-        .force('radial', forceRadial(900, 0, 0, 0).strength(0.1))
-        .force('center', forceCenter().strength(1))
+        .force('center', forceCenter().strength(0.05))
+        // Strong negative charge spreads unconnected nodes apart
         .force(
           'charge',
-          forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -100),
+          forceManyBody()
+            .strength((d) => (d.scale || 1) * -120)
+            .distanceMax(2000)
         )
-        .force('x', forceX().strength(0))
-        .force('y', forceY().strength(0))
-        .force('z', forceZ().strength(0))
+        // Strong links pull connected nodes together tightly
         .force(
           'link',
           forceLink()
-            .links(
-              simulation
-                .force('link')
-                .links()
-                .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
-            )
+            .links(currentLinks)
+            .id((d: Node) => d.ref_id)
+            .distance(40)
             .strength(1)
-            .distance(300)
-            .id((d: Node) => d.ref_id),
         )
         .force(
           'collide',
           forceCollide()
-            .radius((node: NodeExtended) => (node.scale || 1) * 80)
+            .radius((d) => (d.scale || 1) * nodeSize * 1.2)
             .strength(0.5)
-            .iterations(1),
-        )
+        );
     },
 
+    // --- STYLE 2: CLUSTER FORCE (Data Grouping) ---
     addClusterForce: () => {
-      const { simulation } = get()
-      const { neighbourhoods } = graphStore.getState()
-      const neighborhoodCenters = neighbourhoods?.length ? distributeNodesOnSphere(neighbourhoods, 3000) : null
+      const { simulation } = get();
+      const { neighbourhoods } = graphStore.getState();
+
+      // Defensive link check
+      const linkForce = simulation.force('link');
+      const currentLinks = linkForce ? linkForce.links() : [];
+
+      const centers = neighbourhoods?.length ? distributeNodesOnSphere(neighbourhoods, 3000) : {};
 
       simulation
-        .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
-        .force(
-          'charge',
-          forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * 0),
-        )
+        .force('center', forceCenter().strength(0.01))
+        .force('charge', forceManyBody().strength(-30))
         .force(
           'x',
-          forceX((n: NodeExtended) => {
-            const neighborhood = neighborhoodCenters && n.neighbourHood ? neighborhoodCenters[n.neighbourHood] : null
-
-            return neighborhood?.x || 0
-          }).strength(0.1),
+          forceX((n: Node) => {
+            const c = centers[n.neighbourHood];
+            return c ? c.x : 0;
+          }).strength(0.3)
         )
         .force(
           'y',
-          forceY((n: NodeExtended) => {
-            const neighborhood = neighborhoodCenters && n.neighbourHood ? neighborhoodCenters[n.neighbourHood] : null
-
-            return neighborhood?.y || 0
-          }).strength(0.1),
+          forceY((n: Node) => {
+            const c = centers[n.neighbourHood];
+            return c ? c.y : 0;
+          }).strength(0.3)
         )
         .force(
           'z',
-          forceZ((n: NodeExtended) => {
-            const neighborhood = neighborhoodCenters && n.neighbourHood ? neighborhoodCenters[n.neighbourHood] : null
-
-            return neighborhood?.z || 0
-          }).strength(0.1),
+          forceZ((n: Node) => {
+            const c = centers[n.neighbourHood];
+            return c ? c.z : 0;
+          }).strength(0.3)
         )
+        // Weak links allow nodes to travel to their clusters
         .force(
           'link',
           forceLink()
-            .links(
-              simulation
-                .force('link')
-                .links()
-                .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
-            )
-            .strength(0)
-            .distance(400)
-            .id((d: NodeExtended) => d.ref_id),
+            .links(currentLinks)
+            .id((d: Node) => d.ref_id)
+            .strength(0.01)
         )
-        .force(
-          'collide',
-          forceCollide()
-            .radius((node: NodeExtended) => (node.scale || 1) * 95)
-            .strength(0.5)
-            .iterations(1),
-        )
+        .force('collide', forceCollide().radius(50).strength(0.5));
     },
 
+    // --- STYLE 3: SPLIT / GRID (Deterministic) ---
     addSplitForce: () => {
-      const { simulation } = get()
+      const { simulation } = get();
+      const { nodeTypes } = dataStore.getState();
+      const nodes = simulation.nodes();
 
-      // Disable all forces for fixed positioning (nodes already positioned in addNodesAndLinks)
+      // 1. Calculate Grid Positions (includes new nodes)
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      // 2. Lock Positions
+      nodes.forEach(n => {
+        const pos = gridMap.get(n.ref_id);
+        if (pos) {
+          n.fx = pos.x;
+          n.fy = pos.y;
+          n.fz = pos.z;
+        }
+      });
+
+      // 3. Disable Physics Forces
       simulation
-        .force('center', null)
         .force('charge', null)
-        .force('link', forceLink().strength(0).links([]))
-        .force('collide', null)
-        .force('x', null)
-        .force('y', null)
-        .force('z', null)
-        .alpha(0.1) // Low alpha for quick settling
+        .force('center', null)
+        .force('collide', null);
+
+      // MUTE links, do not remove the force (to preserve data)
+      const linkForce = simulation.force('link');
+      if (linkForce) {
+        linkForce.strength(0);
+      }
+
+      simulation.alpha(0.3);
     },
+
+    // --- GETTERS / SETTERS ---
 
     getLinks: () => {
-      const { simulation } = get()
+      const { simulation } = get();
+      if (!simulation) return [];
 
-      return simulation ? simulation.force('link').links() : []
+      // Defensive check to prevent "undefined" error
+      const linkForce = simulation.force('link');
+      return linkForce ? linkForce.links() : [];
     },
 
     simulationRestart: () => {
-      const { simulation, setSimulationInProgress } = get()
+      const { simulation, setSimulationInProgress } = get();
 
       if (!simulation) {
-        return
+        return;
       }
 
-      setSimulationInProgress(true)
-
-      simulation.alpha(0.4).restart()
+      setSimulationInProgress(true);
+      simulation.alpha(0.4).restart();
     },
 
     updateSimulationVersion: () => {
-      set((state) => ({ simulationVersion: state.simulationVersion + 1 }))
+      set((state) => ({ simulationVersion: state.simulationVersion + 1 }));
     },
 
     setSimulationInProgress: (simulationInProgress: boolean) => {
-      set({ simulationInProgress })
+      set({ simulationInProgress });
     },
 
     setIsSleeping: (isSleeping: boolean) => {
-      set({ isSleeping })
+      set({ isSleeping });
     },
   }));

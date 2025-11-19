@@ -38,7 +38,7 @@ export interface SimulationStore {
   removeSimulation: () => void
   addNodesAndLinks: (nodes: Node[], links: Link[], replace: boolean) => void
   setForces: () => void
-  addRadialForce: () => void
+  addLinkForce: () => void
   addClusterForce: () => void
   addSplitForce: () => void
   simulationRestart: () => void
@@ -144,7 +144,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     simulationRestart()
   },
 
-  addRadialForce: () => {
+  addLinkForce: () => {
     const { simulation } = get()
 
     simulation
