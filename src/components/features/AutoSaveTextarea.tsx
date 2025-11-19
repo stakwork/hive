@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SaveIndicator } from "./SaveIndicator";
 import { useImageUpload } from "@/hooks/useImageUpload";
+import { ImagePreview } from "@/components/ui/image-preview";
 import { cn } from "@/lib/utils";
 
 interface AutoSaveTextareaProps {
@@ -100,6 +101,9 @@ export function AutoSaveTextarea({
           onPaste: handlePaste,
         } : {})}
       />
+      
+      {/* Image Preview - Only show when image upload is enabled */}
+      {enableImageUpload && featureId && <ImagePreview content={value} />}
     </div>
   );
 }
