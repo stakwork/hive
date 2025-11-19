@@ -54,6 +54,15 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   simulationVersion: 0,
   simulationInProgress: false,
   isSleeping: false,
+  resetSimulation: () => {
+    const { simulation } = get()
+    if (!simulation) {
+      return
+    }
+    simulation.stop()
+    simulation.nodes([])
+    simulation.force('link').links([])
+  },
   simulationCreate: (nodes) => {
     const structuredNodes = structuredClone(nodes)
 
@@ -124,12 +133,12 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   setForces: () => {
-    const { simulationRestart, addRadialForce, addClusterForce, addSplitForce } = get()
+    const { simulationRestart, addLinkForce, addClusterForce, addSplitForce } = get()
     const { graphStyle } = useGraphStore.getState()
 
     switch (graphStyle) {
       case 'sphere':
-        addRadialForce()
+        addLinkForce()
         break
       case 'force':
         addClusterForce()
@@ -138,7 +147,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
         addSplitForce()
         break
       default:
-        addRadialForce()
+        addLinkForce()
         break
     }
 
