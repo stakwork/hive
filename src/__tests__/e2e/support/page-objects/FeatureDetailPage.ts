@@ -21,8 +21,16 @@ export class FeatureDetailPage {
    */
   async waitForLoad(): Promise<void> {
     await this.page.waitForURL(/\/w\/.*\/roadmap\/.*/, { timeout: 10000 });
-    // Wait for the brief section or form to be visible
-    await waitForElement(this.page, '#brief', { timeout: 10000 });
+
+    // First, wait for the page to finish loading (no more loading skeletons)
+    await this.page.waitForFunction(() => {
+      // Check if there are any loading skeletons visible
+      const skeletons = document.querySelectorAll('[class*="skeleton"], .animate-pulse');
+      return skeletons.length === 0;
+    }, { timeout: 15000 });
+
+    // Then wait for the actual form elements to be present
+    await this.page.waitForSelector('#brief', { state: 'visible', timeout: 10000 });
   }
 
   /**
