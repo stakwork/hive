@@ -174,7 +174,7 @@ const GraphComponentInner = ({
           y: 0,
           z: 0,
           edge_count: 0,
-        })).splice(0, 10);
+        }));
 
         addNewNode({
           nodes: nodesWithPosition,
