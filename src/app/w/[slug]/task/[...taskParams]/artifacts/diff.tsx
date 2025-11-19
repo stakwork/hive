@@ -41,7 +41,6 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const [allExpanded, setAllExpanded] = useState(true);
   const [viewType, setViewType] = useState<"split" | "unified">(initialViewType);
 
   // Get all diffs from all artifacts
@@ -115,11 +114,29 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
     });
   }, [allDiffs]);
 
-  // Initialize expanded state
+  // Initialize expanded state for new files
+  const prevFilesRef = React.useRef<Set<string>>(new Set());
+
   React.useEffect(() => {
-    const initialExpanded = new Set(parsedFiles.map(f => f.fileName));
-    setExpandedFiles(initialExpanded);
+    const prevFiles = prevFilesRef.current;
+    const currentFiles = new Set(parsedFiles.map(f => f.fileName));
+
+    // Find files that are new in this render
+    const newFiles = parsedFiles.filter(f => !prevFiles.has(f.fileName));
+
+    if (newFiles.length > 0) {
+      setExpandedFiles(prev => {
+        const next = new Set(prev);
+        newFiles.forEach(f => next.add(f.fileName));
+        return next;
+      });
+    }
+
+    // Update ref for next render
+    prevFilesRef.current = currentFiles;
   }, [parsedFiles]);
+
+  const allExpanded = parsedFiles.length > 0 && expandedFiles.size === parsedFiles.length;
 
   const toggleFile = (fileName: string) => {
     const newExpanded = new Set(expandedFiles);
@@ -129,7 +146,6 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
       newExpanded.add(fileName);
     }
     setExpandedFiles(newExpanded);
-    setAllExpanded(newExpanded.size === parsedFiles.length);
   };
 
   const toggleAll = () => {
@@ -138,7 +154,6 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
     } else {
       setExpandedFiles(new Set(parsedFiles.map(f => f.fileName)));
     }
-    setAllExpanded(!allExpanded);
   };
 
   // Get action icon and color
