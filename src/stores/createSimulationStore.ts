@@ -1,10 +1,11 @@
 import { nodeSize } from '@Universe/Graph/Cubes/constants';
-import { Node } from '@Universe/types';
+import { Node, NodeExtended } from '@Universe/types';
 import {
   forceCenter,
   forceCollide,
   forceLink,
   forceManyBody,
+  forceRadial,
   forceSimulation,
   forceX,
   forceY,
@@ -14,6 +15,7 @@ import { create } from "zustand";
 import { createDataStore } from "./createDataStore";
 import { type SimulationStore } from "./useSimulationStore";
 import { distributeNodesOnSphere } from './useSimulationStore/utils/distributeNodesOnSphere';
+
 
 // --- HELPER: Pure Grid Logic ---
 // Calculates target positions but does NOT modify the simulation directly.
@@ -130,7 +132,7 @@ export const createSimulationStore = (
 
       // 2. Apply Style
       switch (graphStyle) {
-        case 'sphere': // This is your Organic/Connected mode
+        case 'sphere': // Organic / Connected Subgraphs
           addLinkForce();
           break;
         case 'force':
@@ -144,8 +146,11 @@ export const createSimulationStore = (
           break;
       }
 
-      // 3. Restart Physics
-      simulation.alpha(0.5).restart();
+      const alpha = graphStyle === 'split' ? 0.01 : 1;
+
+      // 3. HIGH ENERGY RESTART
+      // Use alpha(1) to violently break the grid shape when switching modes
+      simulation.alpha(alpha).restart();
     },
 
     // Helper to clear pollution from previous modes
@@ -163,10 +168,13 @@ export const createSimulationStore = (
 
       // UNLOCK NODES: Crucial for switching from Split -> Organic
       // We must set fx/fy/fz to null so physics can move them again.
-      simulation.nodes().forEach((n: Node) => {
-        n.fx = null;
-        n.fy = null;
-        n.fz = null;
+      simulation.nodes().forEach((n: NodeExtended) => {
+        n.fx = undefined;
+        n.fy = undefined;
+        n.fz = undefined;
+        n.x = 0;
+        n.y = 0;
+        n.z = 0;
       });
     },
 
@@ -179,29 +187,34 @@ export const createSimulationStore = (
       const currentLinks = linkForce ? linkForce.links() : [];
 
       simulation
-        .force('center', forceCenter().strength(0.05))
-        // Strong negative charge spreads unconnected nodes apart
+        // Strong center force pulls the wide "Grid" shape back into a blob
+        .force('center', forceCenter().strength(0.1))
+
+        // Strong negative charge pushes nodes apart to create clarity
         .force(
           'charge',
           forceManyBody()
-            .strength((d) => (d.scale || 1) * -120)
-            .distanceMax(2000)
+            .strength((_d: NodeExtended) => -2)
         )
-        // Strong links pull connected nodes together tightly
+
+        // Longer links to create space between connected nodes
         .force(
           'link',
           forceLink()
             .links(currentLinks)
             .id((d: Node) => d.ref_id)
-            .distance(40)
-            .strength(1)
+            .distance(10)
+            .strength(0.5)
         )
+
+        // Large collision radius to prevent tight bunching
         .force(
           'collide',
           forceCollide()
-            .radius((d) => (d.scale || 1) * nodeSize * 1.2)
-            .strength(0.5)
-        );
+            .radius((d: NodeExtended) => (d.scale || 1) * nodeSize * 4)
+            .strength(0.7)
+        )
+        .force('radial', forceRadial(900, 0, 0, 0).strength(0.1))
     },
 
     // --- STYLE 2: CLUSTER FORCE (Data Grouping) ---
@@ -220,22 +233,22 @@ export const createSimulationStore = (
         .force('charge', forceManyBody().strength(-30))
         .force(
           'x',
-          forceX((n: Node) => {
-            const c = centers[n.neighbourHood];
+          forceX((n: NodeExtended) => {
+            const c = centers[n.neighbourHood || ''];
             return c ? c.x : 0;
           }).strength(0.3)
         )
         .force(
           'y',
-          forceY((n: Node) => {
-            const c = centers[n.neighbourHood];
+          forceY((n: NodeExtended) => {
+            const c = centers[n.neighbourHood || ''];
             return c ? c.y : 0;
           }).strength(0.3)
         )
         .force(
           'z',
-          forceZ((n: Node) => {
-            const c = centers[n.neighbourHood];
+          forceZ((n: NodeExtended) => {
+            const c = centers[n.neighbourHood || ''];
             return c ? c.z : 0;
           }).strength(0.3)
         )
@@ -260,7 +273,7 @@ export const createSimulationStore = (
       const gridMap = calculateGridMap(nodes, nodeTypes);
 
       // 2. Lock Positions
-      nodes.forEach(n => {
+      nodes.forEach((n: NodeExtended) => {
         const pos = gridMap.get(n.ref_id);
         if (pos) {
           n.fx = pos.x;
@@ -281,7 +294,8 @@ export const createSimulationStore = (
         linkForce.strength(0);
       }
 
-      simulation.alpha(0.3);
+      // Use minimal alpha since positions are deterministic/linear
+      simulation.alpha(0.01);
     },
 
     // --- GETTERS / SETTERS ---
@@ -317,4 +331,5 @@ export const createSimulationStore = (
     setIsSleeping: (isSleeping: boolean) => {
       set({ isSleeping });
     },
+
   }));

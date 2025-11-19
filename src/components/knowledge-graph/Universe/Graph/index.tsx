@@ -240,19 +240,6 @@ export const Graph = () => {
             }
           })
         }
-
-        if (gr) {
-          if (selectedNode) {
-            return
-          }
-
-          const newRadius = calculateRadius(gr)
-
-          if (prevRadius.current === 0 || Math.abs(prevRadius.current - newRadius) > 200) {
-            setGraphRadius(newRadius)
-            prevRadius.current = newRadius
-          }
-        }
       }
     })
 

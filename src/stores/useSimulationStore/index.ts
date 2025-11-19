@@ -38,6 +38,7 @@ export interface SimulationStore {
   removeSimulation: () => void
   addNodesAndLinks: (nodes: Node[], links: Link[], replace: boolean) => void
   setForces: () => void
+  resetSimulation: () => void
   addLinkForce: () => void
   addClusterForce: () => void
   addSplitForce: () => void
