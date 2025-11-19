@@ -2,11 +2,11 @@
 
 import { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
+import { ArtifactsHeader } from "./ArtifactsHeader";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -59,52 +59,18 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
       transition={{ duration: 0.3, ease: [0.4, 0.0, 0.2, 1] }}
       className="h-full flex-1 min-w-0 min-h-0 bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
     >
-      <Tabs
-        value={activeTab as string}
-        className="flex-1 flex flex-col min-h-0"
-        onValueChange={(value) => {
-          setActiveTab(value as ArtifactType);
-        }}
-      >
+      <div className="flex-1 flex flex-col min-h-0">
         {!isMobile && (
           <motion.div
-            className="border-b bg-background/80 backdrop-blur"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4 }}
           >
-            <TabsList className="w-full flex">
-              {browserArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="BROWSER">
-                  Live Preview
-                </TabsTrigger>
-              )}
-              {workflowArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="WORKFLOW">
-                  Workflow
-                </TabsTrigger>
-              )}
-              {graphArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="GRAPH">
-                  Graph
-                </TabsTrigger>
-              )}
-              {diffArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="DIFF">
-                  Changes
-                </TabsTrigger>
-              )}
-              {codeArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="CODE">
-                  Code / Files
-                </TabsTrigger>
-              )}
-              {ideArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="IDE">
-                  IDE
-                </TabsTrigger>
-              )}
-            </TabsList>
+            <ArtifactsHeader
+              availableArtifacts={availableTabs}
+              activeArtifact={activeTab}
+              onArtifactChange={setActiveTab}
+            />
           </motion.div>
         )}
         {isMobile && onTogglePreview && (
@@ -133,22 +99,12 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
           transition={{ delay: 0.4 }}
         >
           {codeArtifacts.length > 0 && (
-            <TabsContent
-              value="CODE"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "CODE"}
-            >
+            <div className="h-full" hidden={activeTab !== "CODE"}>
               <CodeArtifactPanel artifacts={codeArtifacts} />
-            </TabsContent>
+            </div>
           )}
           {browserArtifacts.length > 0 && (
-            <TabsContent
-              value="BROWSER"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "BROWSER"}
-            >
+            <div className="h-full" hidden={activeTab !== "BROWSER"}>
               <BrowserArtifactPanel
                 artifacts={browserArtifacts}
                 workspaceId={workspaceId}
@@ -156,15 +112,10 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />
-            </TabsContent>
+            </div>
           )}
           {ideArtifacts.length > 0 && (
-            <TabsContent
-              value="IDE"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "IDE"}
-            >
+            <div className="h-full" hidden={activeTab !== "IDE"}>
               <BrowserArtifactPanel
                 artifacts={ideArtifacts}
                 ide={true}
@@ -173,43 +124,28 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />
-            </TabsContent>
+            </div>
           )}
           {graphArtifacts.length > 0 && (
-            <TabsContent
-              value="GRAPH"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "GRAPH"}
-            >
+            <div className="h-full" hidden={activeTab !== "GRAPH"}>
               <GraphArtifactPanel artifacts={graphArtifacts} />
-            </TabsContent>
+            </div>
           )}
           {workflowArtifacts.length > 0 && (
-            <TabsContent
-              value="WORKFLOW"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "WORKFLOW"}
-            >
+            <div className="h-full" hidden={activeTab !== "WORKFLOW"}>
               <WorkflowArtifactPanel
                 artifacts={workflowArtifacts}
                 isActive={activeTab === "WORKFLOW"}
               />
-            </TabsContent>
+            </div>
           )}
           {diffArtifacts.length > 0 && (
-            <TabsContent
-              value="DIFF"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "DIFF"}
-            >
+            <div className="h-full" hidden={activeTab !== "DIFF"}>
               <DiffArtifactPanel artifacts={diffArtifacts} />
-            </TabsContent>
+            </div>
           )}
         </motion.div>
-      </Tabs>
+      </div>
     </motion.div>
   );
 }
