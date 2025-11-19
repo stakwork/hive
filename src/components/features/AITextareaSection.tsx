@@ -18,7 +18,7 @@ import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import { Brain, Check, Edit, Eye, Loader2, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SaveIndicator } from "./SaveIndicator";
 
 interface GeneratedContent {
