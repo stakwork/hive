@@ -87,8 +87,12 @@ export async function POST(request: NextRequest) {
       300 // 5 minutes
     )
 
-    // Generate the public URL that will be used in markdown
-    const publicUrl = `${process.env.NEXT_PUBLIC_S3_URL || ''}/${s3Path}`
+    // Generate a long-lived presigned download URL for viewing the image
+    // Using 1 year expiry since these are meant to be persistent image links
+    const publicUrl = await getS3Service().generatePresignedDownloadUrl(
+      s3Path,
+      31536000 // 1 year in seconds
+    )
 
     return NextResponse.json({
       presignedUrl,
