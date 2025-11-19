@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
 
@@ -14,12 +14,15 @@ export async function POST(request: NextRequest) {
 
     const url = new URL(request.url);
     const taskIdFromQuery = url.searchParams.get("task_id");
+    const runIdFromQuery = url.searchParams.get("run_id");
     const finalTaskId = task_id || taskIdFromQuery;
+    const finalRunId = runIdFromQuery;
 
-    if (!finalTaskId) {
-      console.error("No task_id provided in webhook");
+    // Must provide either task_id or run_id
+    if (!finalTaskId && !finalRunId) {
+      console.error("No task_id or run_id provided in webhook");
       return NextResponse.json(
-        { error: "task_id is required" },
+        { error: "Either task_id or run_id is required" },
         { status: 400 },
       );
     }
@@ -29,6 +32,87 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "project_status is required" },
         { status: 400 },
+      );
+    }
+
+    const workflowStatus = mapStakworkStatus(project_status);
+
+    if (workflowStatus === null) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: `Unknown status '${project_status}' - no update performed`,
+          data: {
+            taskId: finalTaskId,
+            runId: finalRunId,
+            receivedStatus: project_status,
+            action: "ignored",
+          },
+        },
+        { status: 200 },
+      );
+    }
+
+    // Handle StakworkRun updates
+    if (finalRunId) {
+      const run = await db.stakworkRun.findFirst({
+        where: {
+          id: finalRunId,
+        },
+        include: {
+          workspace: {
+            select: {
+              slug: true,
+            },
+          },
+        },
+      });
+
+      if (!run) {
+        console.error(`StakworkRun not found: ${finalRunId}`);
+        return NextResponse.json({ error: "Run not found" }, { status: 404 });
+      }
+
+      const updatedRun = await db.stakworkRun.update({
+        where: { id: finalRunId },
+        data: {
+          status: workflowStatus,
+          updatedAt: new Date(),
+        },
+      });
+
+      // Broadcast via Pusher
+      try {
+        const channelName = getWorkspaceChannelName(run.workspace.slug);
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+          runId: finalRunId,
+          type: updatedRun.type,
+          status: workflowStatus,
+          featureId: updatedRun.featureId,
+          timestamp: new Date(),
+        });
+      } catch (error) {
+        console.error("Error broadcasting to Pusher:", error);
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            runId: finalRunId,
+            workflowStatus,
+            previousStatus: run.status,
+          },
+        },
+        { status: 200 },
+      );
+    }
+
+    // Handle Task updates (existing logic)
+    if (!finalTaskId) {
+      return NextResponse.json(
+        { error: "task_id is required for task updates" },
+        { status: 400 }
       );
     }
 
@@ -42,23 +126,6 @@ export async function POST(request: NextRequest) {
     if (!task) {
       console.error(`Task not found: ${finalTaskId}`);
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    const workflowStatus = mapStakworkStatus(project_status);
-
-    if (workflowStatus === null) {
-      return NextResponse.json(
-        {
-          success: true,
-          message: `Unknown status '${project_status}' - no update performed`,
-          data: {
-            taskId: finalTaskId,
-            receivedStatus: project_status,
-            action: "ignored",
-          },
-        },
-        { status: 200 },
-      );
     }
 
     const updateData: Record<string, unknown> = {

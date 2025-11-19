@@ -150,17 +150,27 @@ export async function createStakworkRun(
 
   // Step 1: Create DB record with PENDING status
   const baseUrl = getBaseUrl();
-  const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${input.type}&workspace_id=${input.workspaceId}${input.featureId ? `&feature_id=${input.featureId}` : ""}`;
 
+  // Create initial run to get ID
   let run = await db.stakworkRun.create({
     data: {
       type: input.type,
       workspaceId: input.workspaceId,
       featureId: input.featureId || null,
       status: WorkflowStatus.PENDING,
-      webhookUrl,
+      webhookUrl: "", // Will be updated below
       dataType: "string", // Default, will be updated by webhook based on actual result type
     },
+  });
+
+  // Build webhook URLs (now that we have run.id)
+  const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${run.id}`;
+  const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=${input.type}&workspace_id=${input.workspaceId}${input.featureId ? `&feature_id=${input.featureId}` : ""}`;
+
+  // Update run with webhookUrl
+  await db.stakworkRun.update({
+    where: { id: run.id },
+    data: { webhookUrl },
   });
 
   try {
@@ -207,6 +217,7 @@ export async function createStakworkRun(
     const stakworkPayload = {
       name: `ai-gen-${input.type.toLowerCase()}-${Date.now()}`,
       workflow_id: parseInt(workflowId),
+      webhook_url: workflowWebhookUrl,
       workflow_params: {
         set_var: {
           attributes: {
