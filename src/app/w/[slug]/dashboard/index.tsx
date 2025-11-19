@@ -33,7 +33,7 @@ function DashboardInner() {
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
 
   useGraphPolling({
-    enabled: false && activeFilterTab === 'all',
+    enabled: activeFilterTab === 'all',
     interval: 5000
   });
 
