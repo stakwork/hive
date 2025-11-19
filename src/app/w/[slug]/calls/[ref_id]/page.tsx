@@ -102,7 +102,7 @@ export default function CallPage() {
 
         // Extract transcript from video nodes
         const videoNodes = data.data.nodes.filter((node: any) =>
-          node.node_type === "Video" && node.properties?.text && node.properties?.timestamp
+          (node.node_type === "Video" || node.node_type === "Clip") && node.properties?.text && node.properties?.timestamp
         );
 
         const transcriptSegments = videoNodes.map((node: any) => {
