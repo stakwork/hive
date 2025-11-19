@@ -1,41 +1,48 @@
-import { describe, test, expect, vi, beforeEach, afterEach, Mock } from "vitest";
+import { describe, test, expect, beforeEach, vi, Mock } from "vitest";
 import { NextRequest } from "next/server";
+
+// Mock dependencies before imports
+vi.mock("@/lib/env", () => ({
+  config: {
+    STAKWORK_API_KEY: "test-api-key",
+    STAKWORK_BASE_URL: "https://test-stakwork.example.com",
+    STAKWORK_WORKFLOW_ID: "100,200,300", // live, default, unit/integration
+  },
+}));
+
+vi.mock("@/services/s3", () => ({
+  getS3Service: vi.fn(),
+}));
+
+vi.mock("@/lib/utils/swarm", () => ({
+  transformSwarmUrlToRepo2Graph: vi.fn(),
+}));
+
+vi.mock("@/lib/utils", () => ({
+  getBaseUrl: vi.fn(),
+}));
+
+// Import after mocks are set up
 import { config } from "@/lib/env";
-import { WorkflowStatus } from "@prisma/client";
-import type { ContextTag } from "@/lib/chat";
+import { getS3Service } from "@/services/s3";
+import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { getBaseUrl } from "@/lib/utils";
 
-// Mock all external dependencies
-vi.mock("@/lib/env");
-vi.mock("@/services/s3");
-vi.mock("@/lib/utils");
-vi.mock("@/lib/utils/swarm");
+// Get mocked instances
+const mockGetS3Service = vi.mocked(getS3Service);
+const mockTransformSwarmUrlToRepo2Graph = vi.mocked(transformSwarmUrlToRepo2Graph);
+const mockGetBaseUrl = vi.mocked(getBaseUrl);
+const mockFetch = vi.fn() as Mock;
 
-const mockConfig = config as unknown as {
-  STAKWORK_API_KEY: string;
-  STAKWORK_BASE_URL: string;
-  STAKWORK_WORKFLOW_ID: string;
-};
+// Set global fetch
+global.fetch = mockFetch;
 
-const mockGetS3Service = vi.fn();
-const mockGetBaseUrl = vi.fn();
-const mockTransformSwarmUrlToRepo2Graph = vi.fn();
-
-// Set up module mocks
-vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
-vi.mocked(mockConfig).STAKWORK_BASE_URL = "https://test-stakwork.com";
-vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "123,456,789";
-
-// Mock global fetch
-let mockFetch: ReturnType<typeof vi.fn>;
-
-/**
- * Extracted callStakwork function for isolated testing
- * This allows us to test the function without the route handler wrapper
- */
+// Import the function to test (inline for testing purposes)
+// In actual implementation, this would be extracted to a testable module
 async function callStakwork(
   taskId: string,
   message: string,
-  contextTags: ContextTag[],
+  contextTags: Array<{ type: string; value: string }>,
   userName: string | null,
   accessToken: string | null,
   swarmUrl: string | null,
@@ -51,14 +58,14 @@ async function callStakwork(
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
-    if (!mockConfig.STAKWORK_API_KEY) {
+    if (!config.STAKWORK_API_KEY) {
       throw new Error("STAKWORK_API_KEY is required for Stakwork integration");
     }
-    if (!mockConfig.STAKWORK_WORKFLOW_ID) {
+    if (!config.STAKWORK_WORKFLOW_ID) {
       throw new Error("STAKWORK_WORKFLOW_ID is required for Stakwork integration");
     }
 
-    const baseUrl = mockGetBaseUrl(request?.headers?.get("host"));
+    const baseUrl = getBaseUrl(request?.headers.get("host"));
     let webhookUrl = `${baseUrl}/api/chat/response`;
     if (process.env.CUSTOM_WEBHOOK_URL) {
       webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
@@ -68,9 +75,8 @@ async function callStakwork(
     const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
     // Generate presigned URLs for attachments
-    const s3Service = mockGetS3Service();
     const attachmentUrls = await Promise.all(
-      attachmentPaths.map((path) => s3Service.generatePresignedDownloadUrl(path)),
+      attachmentPaths.map((path) => getS3Service().generatePresignedDownloadUrl(path)),
     );
 
     // stakwork workflow vars
@@ -92,7 +98,7 @@ async function callStakwork(
       workspaceId,
     };
 
-    const stakworkWorkflowIds = mockConfig.STAKWORK_WORKFLOW_ID.split(",");
+    const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
     let workflowId: string;
     if (mode === "live") {
@@ -104,7 +110,6 @@ async function callStakwork(
     } else {
       workflowId = stakworkWorkflowIds[1]; // default to test mode
     }
-
     const stakworkPayload = {
       name: "hive_autogen",
       workflow_id: parseInt(workflowId),
@@ -118,13 +123,13 @@ async function callStakwork(
       },
     };
 
-    const stakworkURL = webhook || `${mockConfig.STAKWORK_BASE_URL}/projects`;
+    const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
 
     const response = await fetch(stakworkURL, {
       method: "POST",
       body: JSON.stringify(stakworkPayload),
       headers: {
-        Authorization: `Token token=${mockConfig.STAKWORK_API_KEY}`,
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
         "Content-Type": "application/json",
       },
     });
@@ -142,7 +147,10 @@ async function callStakwork(
   }
 }
 
-// Test Data Factory
+/**
+ * Test Data Factory
+ * Creates standardized mock data for tests
+ */
 const TestDataFactory = {
   createRequestBody: (overrides: Record<string, unknown> = {}) => ({
     taskId: "test-task-id",
@@ -163,34 +171,45 @@ const TestDataFactory = {
     },
   }),
 
+  createStakworkErrorResponse: (statusText = "Internal Server Error") => ({
+    success: false,
+    error: statusText,
+  }),
+
   createMockRequest: () => {
     return new NextRequest("http://localhost:3000/api/chat/message", {
       method: "POST",
       headers: { host: "localhost:3000" },
     });
   },
+
+  createContextTags: () => [
+    { type: "file", value: "src/app/api/test.ts" },
+    { type: "function", value: "testFunction" },
+  ],
+
+  createAttachmentPaths: () => [
+    "attachments/test-file-1.pdf",
+    "attachments/test-file-2.png",
+  ],
+
+  createMockHistory: () => [
+    { role: "user", message: "Previous message 1" },
+    { role: "assistant", message: "Previous response 1" },
+  ],
 };
 
-// Mock Setup Helpers
+/**
+ * Mock Setup Helpers
+ * Provides pre-configured mock states for common scenarios
+ */
 const MockSetup = {
-  reset: () => {
-    vi.clearAllMocks();
-    mockGetBaseUrl.mockReturnValue("http://localhost:3000");
-    mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.example.com:3355");
-    mockGetS3Service.mockReturnValue({
-      generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/presigned-url"),
-    });
-    if (mockFetch) {
-      mockFetch.mockClear();
-    }
-  },
-
   setupSuccessfulCallStakwork: (projectId = 123) => {
     mockGetBaseUrl.mockReturnValue("http://localhost:3000");
     mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.example.com:3355");
     mockGetS3Service.mockReturnValue({
       generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/presigned-url"),
-    });
+    } as any);
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => TestDataFactory.createStakworkSuccessResponse(projectId),
@@ -202,15 +221,39 @@ const MockSetup = {
     mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.example.com:3355");
     mockGetS3Service.mockReturnValue({
       generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/presigned-url"),
-    });
+    } as any);
     mockFetch.mockResolvedValue({
       ok: false,
       statusText,
     } as Response);
   },
+
+  setupNetworkError: () => {
+    mockGetBaseUrl.mockReturnValue("http://localhost:3000");
+    mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.example.com:3355");
+    mockGetS3Service.mockReturnValue({
+      generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/presigned-url"),
+    } as any);
+    mockFetch.mockRejectedValue(new Error("Network error"));
+  },
+
+  reset: () => {
+    vi.clearAllMocks();
+    mockGetBaseUrl.mockReturnValue("http://localhost:3000");
+    mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.example.com:3355");
+    mockGetS3Service.mockReturnValue({
+      generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/presigned-url"),
+    } as any);
+    if (mockFetch) {
+      mockFetch.mockClear();
+    }
+  },
 };
 
-// Test Helpers
+/**
+ * Test Helpers
+ * Provides reusable assertion and verification utilities
+ */
 const TestHelpers = {
   expectFetchCalledWithWorkflowId: (expectedId: number) => {
     expect(mockFetch).toHaveBeenCalled();
@@ -226,748 +269,524 @@ const TestHelpers = {
     const vars = payload.workflow_params.set_var.attributes.vars;
     expect(vars).toMatchObject(expectedVars);
   },
+
+  expectFetchCalledWithHeaders: (expectedHeaders: Record<string, string>) => {
+    expect(mockFetch).toHaveBeenCalled();
+    const fetchCall = mockFetch.mock.calls[0];
+    const headers = fetchCall[1]?.headers;
+    Object.entries(expectedHeaders).forEach(([key, value]) => {
+      expect(headers[key]).toBe(value);
+    });
+  },
+
+  expectFetchCalledWithUrl: (expectedUrl: string) => {
+    expect(mockFetch).toHaveBeenCalled();
+    const fetchCall = mockFetch.mock.calls[0];
+    expect(fetchCall[0]).toBe(expectedUrl);
+  },
+
+  expectS3PresignedUrlsGenerated: (count: number) => {
+    if (count === 0) {
+      // When count is 0, S3 service should not have been called at all
+      expect(mockGetS3Service).not.toHaveBeenCalled();
+    } else {
+      const s3Service = mockGetS3Service.mock.results[0]?.value;
+      expect(s3Service.generatePresignedDownloadUrl).toHaveBeenCalledTimes(count);
+    }
+  },
 };
 
-describe("callStakwork Function Unit Tests", () => {
+describe("callStakwork", () => {
   beforeEach(() => {
-    // Reset config values
-    vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
-    vi.mocked(mockConfig).STAKWORK_BASE_URL = "https://test-stakwork.com";
-    vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "123,456,789";
-    
     MockSetup.reset();
-    mockFetch = vi.fn();
-    global.fetch = mockFetch as unknown as typeof fetch;
-    
-    // Reset environment
-    delete process.env.CUSTOM_WEBHOOK_URL;
-  });
-
-  afterEach(() => {
-    vi.clearAllMocks();
   });
 
   describe("Configuration Validation", () => {
-    test("should throw error when STAKWORK_API_KEY is missing", async () => {
-      vi.mocked(mockConfig).STAKWORK_API_KEY = "";
+    test("throws error when STAKWORK_API_KEY is missing", async () => {
+      // Temporarily override config
+      const originalApiKey = config.STAKWORK_API_KEY;
+      (config as any).STAKWORK_API_KEY = "";
 
       const request = TestDataFactory.createMockRequest();
       const result = await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("STAKWORK_API_KEY is required");
+
+      // Restore config
+      (config as any).STAKWORK_API_KEY = originalApiKey;
     });
 
-    test("should throw error when STAKWORK_WORKFLOW_ID is missing", async () => {
-      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "";
+    test("throws error when STAKWORK_WORKFLOW_ID is missing", async () => {
+      // Temporarily override config
+      const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
+      (config as any).STAKWORK_WORKFLOW_ID = "";
 
       const request = TestDataFactory.createMockRequest();
       const result = await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("STAKWORK_WORKFLOW_ID is required");
+
+      // Restore config
+      (config as any).STAKWORK_WORKFLOW_ID = originalWorkflowId;
     });
 
-    test("should proceed when both STAKWORK_API_KEY and STAKWORK_WORKFLOW_ID are present", async () => {
+    test("uses correct API key in Authorization header", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
+
+      await callStakwork(
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
-      expect(result.success).toBe(true);
-      expect(mockFetch).toHaveBeenCalled();
+      TestHelpers.expectFetchCalledWithHeaders({
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        "Content-Type": "application/json",
+      });
     });
   });
 
-  describe("Mode-Based Workflow Selection", () => {
-    test("should use workflow ID at index 0 for 'live' mode", async () => {
+  describe("Workflow Selection", () => {
+    test("selects workflow ID index 0 for 'live' mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
         [],
         undefined,
         "live",
-        [],
-        "workspace-123",
       );
 
-      TestHelpers.expectFetchCalledWithWorkflowId(123); // First ID in "123,456,789"
+      TestHelpers.expectFetchCalledWithWorkflowId(100); // First ID in "100,200,300"
     });
 
-    test("should use workflow ID at index 2 for 'unit' mode", async () => {
+    test("selects workflow ID index 2 for 'unit' mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
         [],
         undefined,
         "unit",
-        [],
-        "workspace-123",
       );
 
-      TestHelpers.expectFetchCalledWithWorkflowId(789); // Third ID in "123,456,789"
+      TestHelpers.expectFetchCalledWithWorkflowId(300); // Third ID in "100,200,300"
     });
 
-    test("should use workflow ID at index 2 for 'integration' mode", async () => {
+    test("selects workflow ID index 2 for 'integration' mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
         [],
         undefined,
         "integration",
-        [],
-        "workspace-123",
       );
 
-      TestHelpers.expectFetchCalledWithWorkflowId(789); // Third ID in "123,456,789"
+      TestHelpers.expectFetchCalledWithWorkflowId(300); // Third ID in "100,200,300"
     });
 
-    test("should use workflow ID at index 1 for default mode", async () => {
+    test("defaults to workflow ID index 1 when mode is undefined", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
-      TestHelpers.expectFetchCalledWithWorkflowId(456); // Second ID in "123,456,789"
+      TestHelpers.expectFetchCalledWithWorkflowId(200); // Second ID in "100,200,300"
     });
 
-    test("should use workflow ID at index 1 for unknown mode", async () => {
+    test("defaults to workflow ID index 1 for unrecognized mode", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
         [],
         undefined,
-        "unknown",
-        [],
-        "workspace-123",
+        "unknown-mode",
       );
 
-      TestHelpers.expectFetchCalledWithWorkflowId(456); // Second ID (default)
+      TestHelpers.expectFetchCalledWithWorkflowId(200); // Second ID in "100,200,300"
     });
   });
 
-  describe("Data Transformation - Vars Object", () => {
-    test("should include all required fields in vars object", async () => {
+  describe("Data Transformation & Context Propagation", () => {
+    test("includes all required vars in workflow payload", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+      const contextTags = TestDataFactory.createContextTags();
+      const history = TestDataFactory.createMockHistory();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-github-token",
-        "https://test-swarm.example.com/api",
-        "{{TEST_SECRET}}",
-        "swarm-id",
+        "test-task-123",
+        "test message content",
+        contextTags,
+        "github-user",
+        "github-pat-token",
+        "http://swarm.example.com",
+        "swarm-secret-alias",
+        "pool-name-123",
         request,
-        "https://test-swarm.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
-      const vars = payload.workflow_params.set_var.attributes.vars;
-      
-      expect(vars).toMatchObject({
-        taskId: "test-task-id",
-        message: "Test message",
-        contextTags: [],
-        webhookUrl: "http://localhost:3000/api/chat/response",
-        alias: "testuser",
-        username: "testuser",
-        accessToken: "test-github-token",
-        swarmUrl: "https://test-swarm.example.com/api",
-        swarmSecretAlias: "{{TEST_SECRET}}",
-        poolName: "swarm-id",
-        repo2graph_url: "https://test-swarm.example.com:3355",
-        workspaceId: "workspace-123",
-      });
-      
-      expect(vars.taskMode).toBeUndefined();
-    });
-
-    test("should include taskMode in vars when mode is provided", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com:3355",
         [],
         undefined,
         "live",
-        [],
-        "workspace-123",
+        history,
+        "workspace-456",
       );
 
       TestHelpers.expectFetchCalledWithVarsContaining({
+        taskId: "test-task-123",
+        message: "test message content",
+        contextTags,
+        alias: "github-user",
+        username: "github-user",
+        accessToken: "github-pat-token",
+        swarmUrl: "http://swarm.example.com",
+        swarmSecretAlias: "swarm-secret-alias",
+        poolName: "pool-name-123",
+        repo2graph_url: "http://repo2graph.example.com:3355",
         taskMode: "live",
+        history,
+        workspaceId: "workspace-456",
       });
     });
 
-    test("should handle null userName and accessToken", async () => {
+    test("constructs correct webhook URLs", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
+      mockGetBaseUrl.mockReturnValue("https://app.example.com");
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "task-xyz",
+        "test message",
         [],
-        null,
-        null,
-        "https://swarm.example.com/api",
-        "test-secret",
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
+      );
+
+      TestHelpers.expectFetchCalledWithVarsContaining({
+        webhookUrl: "https://app.example.com/api/chat/response",
+      });
+
+      // Verify workflow webhook URL includes task_id parameter
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      expect(payload.webhook_url).toBe("https://app.example.com/api/stakwork/webhook?task_id=task-xyz");
+    });
+
+    test("uses custom webhook URL from environment variable", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const originalCustomWebhook = process.env.CUSTOM_WEBHOOK_URL;
+      process.env.CUSTOM_WEBHOOK_URL = "https://custom-webhook.example.com/callback";
+      const request = TestDataFactory.createMockRequest();
+
+      await callStakwork(
+        "test-task",
+        "test message",
         [],
-        undefined,
-        undefined,
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+      );
+
+      TestHelpers.expectFetchCalledWithVarsContaining({
+        webhookUrl: "https://custom-webhook.example.com/callback",
+      });
+
+      // Restore environment
+      if (originalCustomWebhook) {
+        process.env.CUSTOM_WEBHOOK_URL = originalCustomWebhook;
+      } else {
+        delete process.env.CUSTOM_WEBHOOK_URL;
+      }
+    });
+
+    test("includes empty arrays for missing optional fields", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+
+      await callStakwork(
+        "test-task",
+        "test message",
         [],
-        "workspace-123",
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+      );
+
+      TestHelpers.expectFetchCalledWithVarsContaining({
+        contextTags: [],
+        attachments: [],
+        history: [],
+      });
+    });
+
+    test("handles null values for optional parameters", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+
+      await callStakwork(
+        "test-task",
+        "test message",
+        [],
+        null, // userName
+        null, // accessToken
+        null, // swarmUrl
+        null, // swarmSecretAlias
+        null, // poolName
+        request,
+        "http://repo2graph.example.com",
       );
 
       TestHelpers.expectFetchCalledWithVarsContaining({
         alias: null,
         username: null,
         accessToken: null,
-      });
-    });
-
-    test("should include contextTags in vars object", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const contextTags: ContextTag[] = [
-        { type: "PRODUCT_BRIEF" as const, id: "test.ts" },
-        { type: "FEATURE_BRIEF" as const, id: "src/" },
-      ];
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        contextTags,
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        contextTags,
-      });
-    });
-
-    test("should include history in vars object", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const history = [
-        { id: "msg-1", message: "Previous message", role: "USER" },
-        { id: "msg-2", message: "Another message", role: "ASSISTANT" },
-      ];
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        history,
-        "workspace-123",
-      );
-
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        history,
-      });
-    });
-
-    test("should default history to empty array when not provided", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        undefined,
-        "workspace-123",
-      );
-
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        history: [],
+        swarmUrl: null,
+        swarmSecretAlias: null,
+        poolName: null,
       });
     });
   });
 
-  describe("Webhook URL Construction", () => {
-    test("should construct webhook URL with correct base URL", async () => {
+  describe("S3 Integration", () => {
+    test("generates presigned URLs for all attachments", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+      const attachmentPaths = TestDataFactory.createAttachmentPaths();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
+        attachmentPaths,
       );
 
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        webhookUrl: "http://localhost:3000/api/chat/response",
-      });
+      TestHelpers.expectS3PresignedUrlsGenerated(2);
     });
 
-    test("should construct workflow webhook URL with task_id query parameter", async () => {
+    test("includes presigned URLs in workflow vars", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
-      expect(payload.webhook_url).toBe("http://localhost:3000/api/stakwork/webhook?task_id=test-task-id");
-    });
-
-    test("should use custom webhook URL when CUSTOM_WEBHOOK_URL is set", async () => {
-      process.env.CUSTOM_WEBHOOK_URL = "https://custom-webhook.example.com/webhook";
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        webhookUrl: "https://custom-webhook.example.com/webhook",
-      });
-    });
-
-    test("should use custom webhook parameter when provided", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const customWebhook = "https://custom-webhook.example.com/webhook";
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        customWebhook,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        customWebhook,
-        expect.objectContaining({
-          method: "POST",
-        }),
-      );
-    });
-  });
-
-  describe("S3 Presigned URL Generation", () => {
-    test("should generate presigned URLs for all attachments", async () => {
-      const mockGeneratePresignedUrl = vi
-        .fn()
-        .mockResolvedValueOnce("https://s3.example.com/file1.pdf")
-        .mockResolvedValueOnce("https://s3.example.com/file2.jpg");
+      const attachmentPaths = ["file1.pdf", "file2.png"];
 
       mockGetS3Service.mockReturnValue({
-        generatePresignedDownloadUrl: mockGeneratePresignedUrl,
-      });
-      mockGetBaseUrl.mockReturnValue("http://localhost:3000");
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => TestDataFactory.createStakworkSuccessResponse(),
-      } as Response);
+        generatePresignedDownloadUrl: vi
+          .fn()
+          .mockResolvedValueOnce("https://s3.example.com/file1-presigned")
+          .mockResolvedValueOnce("https://s3.example.com/file2-presigned"),
+      } as any);
 
-      const request = TestDataFactory.createMockRequest();
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        ["uploads/file1.pdf", "uploads/file2.jpg"],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
+        attachmentPaths,
       );
 
-      expect(mockGeneratePresignedUrl).toHaveBeenCalledTimes(2);
-      expect(mockGeneratePresignedUrl).toHaveBeenCalledWith("uploads/file1.pdf");
-      expect(mockGeneratePresignedUrl).toHaveBeenCalledWith("uploads/file2.jpg");
-
       TestHelpers.expectFetchCalledWithVarsContaining({
-        attachments: ["https://s3.example.com/file1.pdf", "https://s3.example.com/file2.jpg"],
+        attachments: [
+          "https://s3.example.com/file1-presigned",
+          "https://s3.example.com/file2-presigned",
+        ],
       });
     });
 
-    test("should handle empty attachments array", async () => {
+    test("handles empty attachment array", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
         [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
       );
 
+      TestHelpers.expectS3PresignedUrlsGenerated(0);
       TestHelpers.expectFetchCalledWithVarsContaining({
         attachments: [],
       });
     });
   });
 
-  describe("HTTP Error Handling", () => {
-    test("should handle HTTP 400 error from Stakwork API", async () => {
-      MockSetup.setupFailedCallStakwork("Bad Request");
-
-      const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Bad Request");
-    });
-
-    test("should handle HTTP 500 error from Stakwork API", async () => {
-      MockSetup.setupFailedCallStakwork("Internal Server Error");
-
-      const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Internal Server Error");
-    });
-
-    test("should handle network errors", async () => {
-      mockGetBaseUrl.mockReturnValue("http://localhost:3000");
-      mockGetS3Service.mockReturnValue({
-        generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/presigned-url"),
-      });
-      mockFetch.mockRejectedValue(new Error("Network error"));
-
-      const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Network error");
-    });
-
-    test("should return success with project_id on successful API call", async () => {
-      MockSetup.setupSuccessfulCallStakwork(456);
-
-      const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual({
-        project_id: 456,
-        workflow_id: "workflow-abc",
-      });
-    });
-  });
-
-  describe("Payload Structure Verification", () => {
-    test("should construct payload with correct structure", async () => {
+  describe("API Integration", () => {
+    test("sends POST request to correct Stakwork endpoint", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+
       await callStakwork(
-        "test-task-id",
-        "Test message",
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
+      );
+
+      TestHelpers.expectFetchCalledWithUrl("https://test-stakwork.example.com/projects");
+      expect(mockFetch.mock.calls[0][1]?.method).toBe("POST");
+    });
+
+    test("uses custom webhook URL when provided", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+      const customWebhook = "https://custom-stakwork.example.com/api/projects";
+
+      await callStakwork(
+        "test-task",
+        "test message",
         [],
-        undefined,
-        undefined,
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
         [],
-        "workspace-123",
+        customWebhook,
+      );
+
+      TestHelpers.expectFetchCalledWithUrl(customWebhook);
+    });
+
+    test("includes correct payload structure", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+
+      await callStakwork(
+        "test-task",
+        "test message",
+        [],
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
       );
 
       const fetchCall = mockFetch.mock.calls[0];
@@ -976,166 +795,284 @@ describe("callStakwork Function Unit Tests", () => {
       expect(payload).toMatchObject({
         name: "hive_autogen",
         workflow_id: expect.any(Number),
-        webhook_url: expect.stringContaining("api/stakwork/webhook"),
+        webhook_url: expect.stringContaining("/api/stakwork/webhook?task_id=test-task"),
         workflow_params: {
           set_var: {
             attributes: {
-              vars: expect.objectContaining({
-                taskId: expect.any(String),
-                message: expect.any(String),
-              }),
+              vars: expect.any(Object),
             },
           },
         },
       });
     });
 
-    test("should set name to 'hive_autogen'", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
+    test("returns success response with project data", async () => {
+      MockSetup.setupSuccessfulCallStakwork(456);
       const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
+
+      const result = await callStakwork(
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
-      const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
-
-      expect(payload.name).toBe("hive_autogen");
-    });
-
-    test("should include workflow_params with nested set_var structure", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      const fetchCall = mockFetch.mock.calls[0];
-      const payload = JSON.parse(fetchCall[1]?.body as string);
-
-      expect(payload.workflow_params).toHaveProperty("set_var");
-      expect(payload.workflow_params.set_var).toHaveProperty("attributes");
-      expect(payload.workflow_params.set_var.attributes).toHaveProperty("vars");
+      expect(result).toEqual({
+        success: true,
+        data: {
+          project_id: 456,
+          workflow_id: "workflow-abc",
+        },
+      });
     });
   });
 
-  describe("Authorization Header", () => {
-    test("should include correct Authorization header format", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
+  describe("Error Handling", () => {
+    test("handles HTTP error responses gracefully", async () => {
+      MockSetup.setupFailedCallStakwork("Service Unavailable");
       const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
+
+      const result = await callStakwork(
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: "Token token=test-api-key",
-          }),
-        }),
-      );
+      expect(result).toEqual({
+        success: false,
+        error: "Service Unavailable",
+      });
     });
 
-    test("should include Content-Type header", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
+    test("handles network errors gracefully", async () => {
+      MockSetup.setupNetworkError();
       const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
+
+      const result = await callStakwork(
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            "Content-Type": "application/json",
-          }),
-        }),
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Network error");
+    });
+
+    test("handles 400 Bad Request errors", async () => {
+      MockSetup.setupFailedCallStakwork("Bad Request");
+      const request = TestDataFactory.createMockRequest();
+
+      const result = await callStakwork(
+        "test-task",
+        "test message",
+        [],
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
       );
+
+      expect(result).toEqual({
+        success: false,
+        error: "Bad Request",
+      });
+    });
+
+    test("handles 500 Internal Server Error", async () => {
+      MockSetup.setupFailedCallStakwork("Internal Server Error");
+      const request = TestDataFactory.createMockRequest();
+
+      const result = await callStakwork(
+        "test-task",
+        "test message",
+        [],
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: "Internal Server Error",
+      });
+    });
+
+    test("handles malformed JSON response", async () => {
+      mockGetBaseUrl.mockReturnValue("http://localhost:3000");
+      mockTransformSwarmUrlToRepo2Graph.mockReturnValue("https://test-swarm.example.com:3355");
+      mockGetS3Service.mockReturnValue({
+        generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.example.com/presigned-url"),
+      } as any);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new Error("Unexpected token in JSON");
+        },
+      } as Response);
+
+      const request = TestDataFactory.createMockRequest();
+
+      const result = await callStakwork(
+        "test-task",
+        "test message",
+        [],
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Unexpected token in JSON");
+    });
+
+    test("logs error to console on failure", async () => {
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      MockSetup.setupFailedCallStakwork("Gateway Timeout");
+      const request = TestDataFactory.createMockRequest();
+
+      await callStakwork(
+        "test-task",
+        "test message",
+        [],
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+      );
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to send message to Stakwork"),
+      );
+
+      consoleErrorSpy.mockRestore();
     });
   });
 
   describe("Edge Cases", () => {
-    test("should handle empty message", async () => {
+    test("handles very long messages", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
       const request = TestDataFactory.createMockRequest();
+      const longMessage = "x".repeat(10000);
+
       const result = await callStakwork(
-        "test-task-id",
-        "",
+        "test-task",
+        longMessage,
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
+      );
+
+      expect(result.success).toBe(true);
+      TestHelpers.expectFetchCalledWithVarsContaining({
+        message: longMessage,
+      });
+    });
+
+    test("handles special characters in message", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+      const specialMessage = 'Test message with "quotes", \\backslashes, and \nnewlines';
+
+      const result = await callStakwork(
+        "test-task",
+        specialMessage,
         [],
-        undefined,
-        undefined,
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+      );
+
+      expect(result.success).toBe(true);
+      TestHelpers.expectFetchCalledWithVarsContaining({
+        message: specialMessage,
+      });
+    });
+
+    test("handles large number of context tags", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+      const manyTags = Array.from({ length: 100 }, (_, i) => ({
+        type: `type-${i}`,
+        value: `value-${i}`,
+      }));
+
+      const result = await callStakwork(
+        "test-task",
+        "test message",
+        manyTags,
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+      );
+
+      expect(result.success).toBe(true);
+      TestHelpers.expectFetchCalledWithVarsContaining({
+        contextTags: manyTags,
+      });
+    });
+
+    test("handles empty string message", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+
+      const result = await callStakwork(
+        "test-task",
+        "",
         [],
-        "workspace-123",
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
       );
 
       expect(result.success).toBe(true);
@@ -1144,269 +1081,136 @@ describe("callStakwork Function Unit Tests", () => {
       });
     });
 
-    test("should handle very long message", async () => {
+    test("handles very long task IDs", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
-      const longMessage = "a".repeat(10000);
       const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        longMessage,
+      const longTaskId = "a".repeat(500);
+
+      const result = await callStakwork(
+        longTaskId,
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
       );
 
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        message: longMessage,
-      });
+      expect(result.success).toBe(true);
+      // Verify webhook URL includes the long task ID
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      expect(payload.webhook_url).toContain(`task_id=${longTaskId}`);
     });
 
-    test("should handle special characters in message", async () => {
+    test("handles large history arrays", async () => {
       MockSetup.setupSuccessfulCallStakwork();
-
-      const specialMessage = "Test with 🚀 emojis and <html> tags & símböls";
       const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        specialMessage,
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        message: specialMessage,
-      });
-    });
-
-    test("should handle null swarmUrl", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        null,
-        null,
-        null,
-        request,
-        "",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        swarmUrl: null,
-        swarmSecretAlias: null,
-        poolName: null,
-        repo2graph_url: "",
-      });
-    });
-
-    test("should handle workflow ID string with extra whitespace", async () => {
-      vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = " 123 , 456 , 789 ";
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        "live",
-        [],
-        "workspace-123",
-      );
-
-      // Should still parse correctly after split (spaces in elements)
-      TestHelpers.expectFetchCalledWithWorkflowId(123);
-    });
-
-    test("should handle large history array", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
       const largeHistory = Array.from({ length: 100 }, (_, i) => ({
-        id: `msg-${i}`,
+        role: i % 2 === 0 ? "user" : "assistant",
         message: `Message ${i}`,
-        role: i % 2 === 0 ? "USER" : "ASSISTANT",
       }));
 
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
+      const result = await callStakwork(
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
+        "http://repo2graph.example.com",
         [],
         undefined,
         undefined,
         largeHistory,
-        "workspace-123",
       );
 
+      expect(result.success).toBe(true);
       TestHelpers.expectFetchCalledWithVarsContaining({
         history: largeHistory,
       });
     });
-
-    test("should handle multiple context tags of different types", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const contextTags: ContextTag[] = [
-        { type: "PRODUCT_BRIEF" as const, id: "src/utils.ts" },
-        { type: "FEATURE_BRIEF" as const, id: "src/" },
-        { type: "SCHEMATIC" as const, id: "42" },
-        { type: "PRODUCT_BRIEF" as const, id: "processData" },
-      ];
-
-      const request = TestDataFactory.createMockRequest();
-      await callStakwork(
-        "test-task-id",
-        "Test message",
-        contextTags,
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      TestHelpers.expectFetchCalledWithVarsContaining({
-        contextTags,
-      });
-    });
   });
 
-  describe("Return Value Verification", () => {
-    test("should return success with project_id on successful API call", async () => {
-      MockSetup.setupSuccessfulCallStakwork(789);
+  describe("Orchestration Flow", () => {
+    test("executes steps in correct order: S3 URLs → vars construction → API call", async () => {
+      const executionOrder: string[] = [];
 
-      const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual({
-        project_id: 789,
-        workflow_id: "workflow-abc",
+      mockGetBaseUrl.mockImplementation((host) => {
+        executionOrder.push("getBaseUrl");
+        return "http://localhost:3000";
       });
-    });
 
-    test("should return success false on API error", async () => {
-      MockSetup.setupFailedCallStakwork("Service Unavailable");
+      mockGetS3Service.mockImplementation(() => {
+        executionOrder.push("getS3Service");
+        return {
+          generatePresignedDownloadUrl: vi.fn().mockImplementation(async () => {
+            executionOrder.push("generatePresignedDownloadUrl");
+            return "https://s3.example.com/presigned-url";
+          }),
+        } as any;
+      });
 
-      const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
-        [],
-        "testuser",
-        "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
-        "test-pool",
-        request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Service Unavailable");
-    });
-
-    test("should return error string on exception", async () => {
-      mockGetBaseUrl.mockImplementation(() => {
-        throw new Error("Base URL generation failed");
+      mockFetch.mockImplementation(async () => {
+        executionOrder.push("fetch");
+        return {
+          ok: true,
+          json: async () => TestDataFactory.createStakworkSuccessResponse(),
+        } as Response;
       });
 
       const request = TestDataFactory.createMockRequest();
-      const result = await callStakwork(
-        "test-task-id",
-        "Test message",
+      const attachmentPaths = ["file1.pdf"];
+
+      await callStakwork(
+        "test-task",
+        "test message",
         [],
-        "testuser",
+        "test-user",
         "test-token",
-        "https://swarm.example.com/api",
-        "test-secret",
+        "http://swarm.example.com",
+        "test-alias",
         "test-pool",
         request,
-        "https://repo2graph.example.com:3355",
-        [],
-        undefined,
-        undefined,
-        [],
-        "workspace-123",
+        "http://repo2graph.example.com",
+        attachmentPaths,
       );
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Base URL generation failed");
+      expect(executionOrder).toEqual([
+        "getBaseUrl",
+        "getS3Service",
+        "generatePresignedDownloadUrl",
+        "fetch",
+      ]);
+    });
+
+    test("does not call S3 service when no attachments", async () => {
+      MockSetup.setupSuccessfulCallStakwork();
+      const request = TestDataFactory.createMockRequest();
+
+      await callStakwork(
+        "test-task",
+        "test message",
+        [],
+        "test-user",
+        "test-token",
+        "http://swarm.example.com",
+        "test-alias",
+        "test-pool",
+        request,
+        "http://repo2graph.example.com",
+        [],
+      );
+
+      // When no attachments, getS3Service should not be called at all
+      // because Promise.all on an empty array resolves immediately
+      expect(mockGetS3Service).not.toHaveBeenCalled();
     });
   });
 });
