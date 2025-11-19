@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUp, Mic, MicOff } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { ArrowUp, Mic, MicOff, Zap, Workflow, Beaker } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -82,6 +83,22 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
     }
   };
 
+  const getModeConfig = (mode: string) => {
+    switch (mode) {
+      case "live":
+        return { icon: Zap, label: "Agent" };
+      case "agent":
+        return { icon: Workflow, label: "Workflow" };
+      case "test":
+        return { icon: Beaker, label: "Test" };
+      default:
+        return { icon: Zap, label: "Agent" };
+    }
+  };
+
+  const modeConfig = getModeConfig(taskMode);
+  const ModeIcon = modeConfig.icon;
+
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
       <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
@@ -98,6 +115,38 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
           autoFocus
           data-testid="task-start-input"
         />
+        <div className="absolute bottom-6 left-8 z-10">
+          <Select value={taskMode} onValueChange={onModeChange}>
+            <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
+              <div className="flex items-center gap-2">
+                <ModeIcon className="h-4 w-4" />
+                <span>{modeConfig.label}</span>
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="live">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-3.5 w-3.5" />
+                  <span>Agent</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="agent">
+                <div className="flex items-center gap-2">
+                  <Workflow className="h-3.5 w-3.5" />
+                  <span>Workflow</span>
+                </div>
+              </SelectItem>
+              {devMode && (
+                <SelectItem value="test">
+                  <div className="flex items-center gap-2">
+                    <Beaker className="h-3.5 w-3.5" />
+                    <span>Test</span>
+                  </div>
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="absolute bottom-6 right-8 z-10 flex gap-2">
           {isSupported && (
             <TooltipProvider>
@@ -136,55 +185,6 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
           </Button>
         </div>
       </Card>
-      <div className="flex justify-center mt-6">
-        <fieldset className="flex gap-6 items-center bg-muted rounded-xl px-4 py-2">
-          <legend className="sr-only">Mode</legend>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="live"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={taskMode === "live"}
-              onChange={() => onModeChange("live")}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Live</span>
-          </label>
-          {devMode && (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="mode"
-                value="test"
-                style={{
-                  accentColor: "var(--color-green-500)",
-                }}
-                checked={taskMode === "test"}
-                onChange={() => onModeChange("test")}
-                className="accent-primary"
-              />
-              <span className="text-sm text-foreground">Artifact Test</span>
-            </label>
-          )}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="mode"
-              value="agent"
-              style={{
-                accentColor: "var(--color-green-500)",
-              }}
-              checked={taskMode === "agent"}
-              onChange={() => onModeChange("agent")}
-              className="accent-primary"
-            />
-            <span className="text-sm text-foreground">Agent</span>
-          </label>
-        </fieldset>
-      </div>
     </div>
   );
 }
