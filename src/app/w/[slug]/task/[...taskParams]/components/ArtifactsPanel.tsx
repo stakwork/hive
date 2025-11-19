@@ -99,12 +99,12 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
           transition={{ delay: 0.4 }}
         >
           {codeArtifacts.length > 0 && (
-            <div className="h-full" hidden={activeTab !== "CODE"}>
+            <div className={`h-full ${activeTab !== "CODE" ? "hidden" : ""}`}>
               <CodeArtifactPanel artifacts={codeArtifacts} />
             </div>
           )}
           {browserArtifacts.length > 0 && (
-            <div className="h-full" hidden={activeTab !== "BROWSER"}>
+            <div className={`h-full ${activeTab !== "BROWSER" ? "hidden" : ""}`}>
               <BrowserArtifactPanel
                 artifacts={browserArtifacts}
                 workspaceId={workspaceId}
@@ -115,7 +115,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
             </div>
           )}
           {ideArtifacts.length > 0 && (
-            <div className="h-full" hidden={activeTab !== "IDE"}>
+            <div className={`h-full ${activeTab !== "IDE" ? "hidden" : ""}`}>
               <BrowserArtifactPanel
                 artifacts={ideArtifacts}
                 ide={true}
@@ -127,12 +127,12 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
             </div>
           )}
           {graphArtifacts.length > 0 && (
-            <div className="h-full" hidden={activeTab !== "GRAPH"}>
+            <div className={`h-full ${activeTab !== "GRAPH" ? "hidden" : ""}`}>
               <GraphArtifactPanel artifacts={graphArtifacts} />
             </div>
           )}
           {workflowArtifacts.length > 0 && (
-            <div className="h-full" hidden={activeTab !== "WORKFLOW"}>
+            <div className={`h-full ${activeTab !== "WORKFLOW" ? "hidden" : ""}`}>
               <WorkflowArtifactPanel
                 artifacts={workflowArtifacts}
                 isActive={activeTab === "WORKFLOW"}
@@ -140,7 +140,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
             </div>
           )}
           {diffArtifacts.length > 0 && (
-            <div className="h-full" hidden={activeTab !== "DIFF"}>
+            <div className={`h-full ${activeTab !== "DIFF" ? "hidden" : ""}`}>
               <DiffArtifactPanel artifacts={diffArtifacts} />
             </div>
           )}
