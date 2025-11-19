@@ -14,6 +14,14 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
 
   const simulationNodes = simulation?.nodes() || []
 
+  // Helper function to determine font size based on name length
+  const getFontSizeClass = (name: string) => {
+    const length = name.length
+    if (length <= 20) return 'text-sm'       // 14px for short names
+    if (length <= 35) return 'text-xs'       // 12px for medium names
+    return 'text-[11px]'                     // 11px for long names (hard minimum)
+  }
+
   // Filter nodes by the specified types
   const filteredNodes = useMemo(() => {
     if (!enabled || nodeTypes.length === 0) return []
@@ -40,7 +48,7 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
             <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-primary/30 to-primary/20 rounded-lg blur-sm animate-pulse"></div>
 
             {/* Main card */}
-            <div className="relative bg-gradient-to-br from-background via-background/95 to-background/90 text-foreground px-3 py-2 rounded-lg border border-primary/30 shadow-xl backdrop-blur-md text-xs max-w-[140px] transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:border-primary/50">
+            <div className="relative bg-gradient-to-br from-background via-background/95 to-background/90 text-foreground px-3 py-2 rounded-lg border border-primary/30 shadow-xl backdrop-blur-md text-xs min-w-[140px] max-w-[220px] transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:border-primary/50">
               {/* Node type indicator */}
               <div className="flex items-center gap-2 mb-1">
                 <div className={`w-2 h-2 rounded-full ${node.node_type === 'Feature' ? 'bg-emerald-400' :
@@ -55,7 +63,7 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
               </div>
 
               {/* Node name */}
-              <div className="font-semibold truncate text-sm leading-tight text-foreground group-hover:text-primary transition-colors duration-200">
+              <div className={`font-semibold break-words line-clamp-2 ${getFontSizeClass(node.name || node.properties?.name || node.properties?.title || '')} leading-tight text-foreground group-hover:text-primary transition-colors duration-200`}>
                 {node.name || node.properties?.name || node.properties?.title || 'Unnamed'}
               </div>
 
