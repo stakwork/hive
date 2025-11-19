@@ -48,31 +48,33 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <div className={`flex items-end gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-        <div
-          className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
-            isUser
-              ? "bg-primary text-primary-foreground rounded-br-md"
-              : "bg-background text-foreground rounded-bl-md border"
-          }`}
-        >
-          {isUser ? (
-            <MarkdownRenderer variant="user">{textContent}</MarkdownRenderer>
-          ) : showThinking ? (
-            <ThinkingIndicator />
-          ) : isStreamingMessage ? (
-            <StreamErrorBoundary>
-              <StreamingMessage
-                message={message as AgentStreamingMessage}
-                finalTextPartId={FINAL_ANSWER_ID}
-                toolCallsExpectOutput={false}
-              />
-            </StreamErrorBoundary>
-          ) : (
-            <MarkdownRenderer variant="assistant">{textContent}</MarkdownRenderer>
-          )}
+      {textContent && (
+        <div className={`flex items-end gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
+          <div
+            className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
+              isUser
+                ? "bg-primary text-primary-foreground rounded-br-md"
+                : "bg-background text-foreground rounded-bl-md border"
+            }`}
+          >
+            {isUser ? (
+              <MarkdownRenderer variant="user">{textContent}</MarkdownRenderer>
+            ) : showThinking ? (
+              <ThinkingIndicator />
+            ) : isStreamingMessage ? (
+              <StreamErrorBoundary>
+                <StreamingMessage
+                  message={message as AgentStreamingMessage}
+                  finalTextPartId={FINAL_ANSWER_ID}
+                  toolCallsExpectOutput={false}
+                />
+              </StreamErrorBoundary>
+            ) : (
+              <MarkdownRenderer variant="assistant">{textContent}</MarkdownRenderer>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Render PULL_REQUEST artifacts */}
       {chatMessage?.artifacts
