@@ -9,6 +9,7 @@ import { AIButton } from "@/components/ui/ai-button";
 import { SaveIndicator } from "./SaveIndicator";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useImageUpload } from "@/hooks/useImageUpload";
+import { ImagePreview } from "@/components/ui/image-preview";
 import { cn } from "@/lib/utils";
 
 interface GeneratedContent {
@@ -151,6 +152,7 @@ export function AITextareaSection({
         </div>
       ) : (
         /* Content Area - Toggle between Edit and Preview */
+        <div className="space-y-2">
         <div className="relative">
         {mode === "edit" ? (
           <Textarea
@@ -205,6 +207,10 @@ export function AITextareaSection({
             <Edit className="h-3.5 w-3.5" />
           </Button>
         </div>
+        </div>
+
+        {/* Image Preview - Only show in edit mode */}
+        {mode === "edit" && <ImagePreview content={value} />}
         </div>
       )}
     </div>
