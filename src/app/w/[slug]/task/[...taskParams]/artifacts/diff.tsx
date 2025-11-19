@@ -43,6 +43,14 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [viewType, setViewType] = useState<"split" | "unified">(initialViewType);
 
+  // Load view preference from localStorage on mount
+  React.useEffect(() => {
+    const saved = localStorage.getItem("diff_view_preference");
+    if (saved === "split" || saved === "unified") {
+      setViewType(saved);
+    }
+  }, []);
+
   // Get all diffs from all artifacts
   const allDiffs = useMemo(() => {
     return artifacts.flatMap((artifact) => {
@@ -218,13 +226,19 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
         <div className="flex items-center gap-2">
           <div className="flex items-center bg-muted rounded-md p-0.5 border border-border">
             <button
-              onClick={() => setViewType("unified")}
+              onClick={() => {
+                setViewType("unified");
+                localStorage.setItem("diff_view_preference", "unified");
+              }}
               className={`px-2 py-1 text-xs font-medium rounded-sm transition-colors ${viewType === "unified" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               Unified
             </button>
             <button
-              onClick={() => setViewType("split")}
+              onClick={() => {
+                setViewType("split");
+                localStorage.setItem("diff_view_preference", "split");
+              }}
               className={`px-2 py-1 text-xs font-medium rounded-sm transition-colors ${viewType === "split" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               Split
