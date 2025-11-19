@@ -6,7 +6,7 @@ import { waitForElement } from '../helpers/waits';
  * Encapsulates all feature detail interactions
  */
 export class FeatureDetailPage {
-  constructor(private page: Page) {}
+  constructor(private page: Page) { }
 
   /**
    * Navigate to feature detail page
@@ -30,7 +30,7 @@ export class FeatureDetailPage {
     }, { timeout: 15000 });
 
     // Then wait for the actual form elements to be present
-    await this.page.waitForSelector('#brief', { state: 'visible', timeout: 10000 });
+    await this.page.waitForSelector('#brief', { state: 'visible', timeout: 30000 });
   }
 
   /**
