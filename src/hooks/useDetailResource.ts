@@ -9,7 +9,7 @@ interface UseDetailResourceParams<T> {
 
 export function useDetailResource<T>({ resourceId, fetchFn }: UseDetailResourceParams<T>) {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
