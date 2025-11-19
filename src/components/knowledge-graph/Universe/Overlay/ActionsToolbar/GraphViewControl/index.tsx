@@ -14,7 +14,7 @@ const IconsMapper: Record<VisibleGraphStyle, ReactElement> = {
   sphere: <BubbleChartIcon />,
 }
 
-const graphStyleLabels: Record<GraphStyle, string> = {
+const graphStyleLabels: Record<VisibleGraphStyle, string> = {
   sphere: 'Sphere',
   // force: 'Force',
   split: 'Layered',
