@@ -468,6 +468,8 @@ export default function FeatureDetailPage() {
             saved={saved}
             onChange={(value) => updateFeature({ brief: value })}
             onBlur={(value) => handleFieldBlur("brief", value)}
+            featureId={featureId}
+            enableImageUpload={true}
           />
 
           <PersonasSection
