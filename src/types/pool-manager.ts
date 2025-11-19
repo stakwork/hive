@@ -155,12 +155,11 @@ export interface VMData {
   resource_usage: VMResourceUsage;
   marked_at: string | null;
   url?: string;
-  fqdn?: string;
   created?: string;
   repoName?: string;
   primaryRepo?: string;
+  repositories?: string[];
   branches?: string[];
-  flagged_for_recreation?: boolean;
 }
 
 export interface PoolWorkspacesResponse {
