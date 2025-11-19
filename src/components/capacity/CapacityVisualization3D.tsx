@@ -104,6 +104,10 @@ export const CapacityVisualization3D = forwardRef<CapacityVisualization3DRef, Ca
                                     cpuUsage={vm.resource_usage?.usage?.cpu}
                                     memoryUsage={vm.resource_usage?.usage?.memory}
                                     name={vm.id.substring(0, 8)}
+                                    subdomain={vm.subdomain}
+                                    userInfo={vm.user_info}
+                                    created={vm.created}
+                                    repoName={vm.repoName}
                                     selected={isSelected}
                                     onClick={() => {
                                         setSelectedId(isSelected ? null : vm.id);
