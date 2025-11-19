@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Sparkles, Check, X, Eye, Edit } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { AIButton } from "@/components/ui/ai-button";
 import { SaveIndicator } from "./SaveIndicator";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { useImageUpload } from "@/hooks/useImageUpload";
+import { ImagePreview } from "@/components/ui/image-preview";
 import { cn } from "@/lib/utils";
 
 interface GeneratedContent {
@@ -45,9 +47,29 @@ export function AITextareaSection({
   rows = 8,
   className,
 }: AITextareaSectionProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [generatedContent, setGeneratedContent] = useState<string>("");
   // Default to edit mode when empty, preview mode when has content
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
+
+  const {
+    isDragging,
+    isUploading,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    handlePaste,
+  } = useImageUpload({
+    featureId,
+    onImageInserted: (markdownImage) => {
+      console.log('Image inserted:', markdownImage);
+    },
+    onError: (error) => {
+      console.error('Image upload error:', error);
+      // TODO: Show toast notification
+    },
+  });
 
   const handleAccept = () => {
     if (generatedContent) {
@@ -130,9 +152,11 @@ export function AITextareaSection({
         </div>
       ) : (
         /* Content Area - Toggle between Edit and Preview */
+        <div className="space-y-2">
         <div className="relative">
         {mode === "edit" ? (
           <Textarea
+            ref={textareaRef}
             id={id}
             placeholder={`Type your ${label.toLowerCase()} here...`}
             value={value || ""}
@@ -140,6 +164,13 @@ export function AITextareaSection({
             onBlur={(e) => onBlur(e.target.value || null)}
             rows={rows}
             className={cn("resize-y font-mono text-sm min-h-[200px] pr-10", className)}
+            isDragging={isDragging}
+            isUploading={isUploading}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onPaste={handlePaste}
           />
         ) : (
           <div className={cn(
@@ -176,6 +207,10 @@ export function AITextareaSection({
             <Edit className="h-3.5 w-3.5" />
           </Button>
         </div>
+        </div>
+
+        {/* Image Preview - Only show in edit mode */}
+        {mode === "edit" && <ImagePreview content={value} />}
         </div>
       )}
     </div>
