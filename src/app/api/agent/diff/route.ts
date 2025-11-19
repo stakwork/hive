@@ -88,7 +88,7 @@ index 1234567..abcdefg 100644
       const mockMessage = {
         id: "mock-message-id",
         taskId,
-        message: "Diff retrieved successfully (mock)",
+        message: "Changes have been applied",
         role: ChatRole.ASSISTANT,
         timestamp: new Date(),
         contextTags: [],
@@ -207,7 +207,7 @@ index 1234567..abcdefg 100644
     const chatMessage = await db.chatMessage.create({
       data: {
         taskId,
-        message: "Diff retrieved successfully",
+        message: "Changes have been applied",
         role: ChatRole.ASSISTANT,
         contextTags: JSON.stringify([]),
         status: ChatStatus.SENT,
