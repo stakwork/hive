@@ -31,60 +31,6 @@
     line-height: 1.5;
 }
 
-.diff-artifact-file {
-    margin-bottom: 24px;
-    border: 1px solid #d0d7de;
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.diff-artifact-file-header {
-    padding: 8px 16px;
-    background-color: #f6f8fa;
-    border-bottom: 1px solid #d0d7de;
-    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-    font-size: 12px;
-    font-weight: 600;
-    color: #24292e;
-}
-
-.diff-artifact-file-path {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.diff-artifact-action-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.diff-artifact-action-create {
-    background-color: #dafbe1;
-    color: #1a7f37;
-}
-
-.diff-artifact-action-modify {
-    background-color: #fff8c5;
-    color: #9a6700;
-}
-
-.diff-artifact-action-rewrite {
-    background-color: #ddf4ff;
-    color: #0969da;
-}
-
-.diff-artifact-action-delete {
-    background-color: #ffebe9;
-    color: #cf222e;
-}
-
 /* Dark mode styles */
 .diff-artifact-container.dark-mode {
     --diff-background-color: #0d1117;
@@ -106,36 +52,6 @@
     --diff-code-selected-background-color: #1f6feb;
     --diff-code-selected-text-color: #ffffff;
     --diff-omit-gutter-line-color: #f85149;
-}
-
-.diff-artifact-container.dark-mode .diff-artifact-file {
-    border-color: #30363d;
-}
-
-.diff-artifact-container.dark-mode .diff-artifact-file-header {
-    background-color: #161b22;
-    border-bottom-color: #30363d;
-    color: #c9d1d9;
-}
-
-.diff-artifact-container.dark-mode .diff-artifact-action-create {
-    background-color: #1a4d2e;
-    color: #7ee787;
-}
-
-.diff-artifact-container.dark-mode .diff-artifact-action-modify {
-    background-color: #3d2c00;
-    color: #f0b72f;
-}
-
-.diff-artifact-container.dark-mode .diff-artifact-action-rewrite {
-    background-color: #0c2d6b;
-    color: #79c0ff;
-}
-
-.diff-artifact-container.dark-mode .diff-artifact-action-delete {
-    background-color: #5c0f15;
-    color: #ff7b72;
 }
 
 /* Force dark mode styles with higher specificity */
@@ -218,31 +134,31 @@
     border-color: #30363d;
 }
 
-/* Empty state */
-.diff-artifact-empty {
-    padding: 32px;
-    text-align: center;
-    color: #57606a;
-    font-size: 14px;
+/* Custom Scrollbar for the diff container */
+.diff-artifact-container ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
 }
 
-.diff-artifact-container.dark-mode .diff-artifact-empty {
-    color: #8b949e;
+.diff-artifact-container ::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-/* Error state */
-.diff-artifact-error {
-    padding: 16px;
-    background-color: #ffebe9;
-    border: 1px solid #ff8182;
-    border-radius: 6px;
-    color: #cf222e;
-    font-size: 14px;
-    margin-bottom: 16px;
+.diff-artifact-container ::-webkit-scrollbar-thumb {
+    background: #d0d7de;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: content-box;
 }
 
-.diff-artifact-container.dark-mode .diff-artifact-error {
-    background-color: #5c0f15;
-    border-color: #f85149;
-    color: #ff7b72;
+.diff-artifact-container ::-webkit-scrollbar-thumb:hover {
+    background-color: #a3aab1;
+}
+
+.diff-artifact-container.dark-mode ::-webkit-scrollbar-thumb {
+    background: #30363d;
+}
+
+.diff-artifact-container.dark-mode ::-webkit-scrollbar-thumb:hover {
+    background-color: #484f58;
 }
