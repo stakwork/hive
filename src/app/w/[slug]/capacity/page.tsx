@@ -4,13 +4,15 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
-import { VMGrid } from "@/components/capacity/VMGrid";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, AlertCircle, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 
 import { VMData } from "@/types/pool-manager";
+import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
+import { CapacityControls } from "@/components/capacity/CapacityControls";
+import { VMGrid } from "@/components/capacity/VMGrid";
 
 export default function CapacityPage() {
   const { workspace, slug } = useWorkspace();
@@ -20,6 +22,15 @@ export default function CapacityPage() {
   const [vmData, setVmData] = useState<VMData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>(() => {
+    const saved = localStorage.getItem("capacity-view-preference");
+    return saved === "3d" ? "3d" : "2d";
+  });
+
+  const handleViewChange = (mode: '2d' | '3d') => {
+    setViewMode(mode);
+    localStorage.setItem("capacity-view-preference", mode);
+  };
 
   // Fetch VM details from internal API
   useEffect(() => {
@@ -45,7 +56,6 @@ export default function CapacityPage() {
           throw new Error(result.message || "Failed to load VM details");
         }
       } catch (err) {
-        console.error("Error fetching VM data:", err);
         setError(err instanceof Error ? err.message : "Failed to load VM details");
       } finally {
         setLoading(false);
@@ -134,31 +144,39 @@ export default function CapacityPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Capacity"
-      />
+      <PageHeader title="Capacity" />
 
-      <div className="space-y-6">
-        {/* Pods */}
-        {vmData.length > 0 && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4">Pods</h3>
+      {vmData.length > 0 && (
+        <>
+          {/* Controls */}
+          <CapacityControls
+            viewMode={viewMode}
+            onViewModeChange={handleViewChange}
+          />
+
+          {/* 3D View */}
+          {viewMode === '3d' && (
+            <CapacityVisualization3D vmData={vmData} />
+          )}
+
+          {/* 2D View */}
+          {viewMode === '2d' && (
             <VMGrid vms={vmData} />
-          </div>
-        )}
+          )}
+        </>
+      )}
 
-        {/* Empty State */}
-        {vmData.length === 0 && (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center text-muted-foreground">
-                <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No pods found in this pool</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+      {/* Empty State */}
+      {vmData.length === 0 && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center text-muted-foreground">
+              <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No pods found in this pool</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
