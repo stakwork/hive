@@ -91,7 +91,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
               )}
               {diffArtifacts.length > 0 && (
                 <TabsTrigger className="cursor-pointer" value="DIFF">
-                  Diff
+                  Changes
                 </TabsTrigger>
               )}
               {codeArtifacts.length > 0 && (

@@ -14,8 +14,6 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const nodeTypes = ['-Clip', '-Episode']
-const nodeTypeParam = JSON.stringify(nodeTypes)
 
 export default function CallPage() {
   const params = useParams();
@@ -104,7 +102,7 @@ export default function CallPage() {
 
         // Extract transcript from video nodes
         const videoNodes = data.data.nodes.filter((node: any) =>
-          node.node_type === "Video" && node.properties?.text && node.properties?.timestamp
+          (node.node_type === "Video" || node.node_type === "Clip") && node.properties?.text && node.properties?.timestamp
         );
 
         const transcriptSegments = videoNodes.map((node: any) => {
@@ -246,7 +244,7 @@ export default function CallPage() {
             <div className="h-full w-full">
               <StoreProvider storeId={storeId}>
                 <SynchronizedGraphComponent
-                  endpoint={`/graph/subgraph?node_type=${encodeURIComponent(nodeTypeParam)}&include_properties=true&start_node=${call.ref_id}&depth=2&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
+                  endpoint={`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Call","Clip","Video"]&depth=2&include_properties=true`}
                   height="h-full"
                   width="w-full"
                   currentTime={currentTime}
