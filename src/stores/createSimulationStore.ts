@@ -87,23 +87,68 @@ export const createSimulationStore = (
           nodes.some((n: NodeExtended) => n.ref_id === i.target),
       )
 
-      const nodesPositioned = graphStyle === 'split' ? nodes.map((n: Node) => {
-        const index = nodeTypes.indexOf(n.node_type) + 1
-        const yOffset = Math.floor(index / 2) * 500
+      const nodesPositioned = graphStyle === 'split' ? (() => {
+        // Group nodes by type for grid positioning
+        const nodesByType: Record<string, Node[]> = {}
+        nodes.forEach((node: Node) => {
+          if (!nodesByType[node.node_type]) {
+            nodesByType[node.node_type] = []
+          }
+          nodesByType[node.node_type].push(node)
+        })
 
-        return {
-          ...n,
-          fy: index % 2 === 0 ? yOffset : -yOffset,
-        }
-      }) : nodes;
+        return nodes.map((n: Node) => {
+          const typeIndex = nodeTypes.indexOf(n.node_type) + 1
+          const yLayer = Math.floor(typeIndex / 2) * 500
+          const isEvenLayer = typeIndex % 2 === 0
+          const yOffset = isEvenLayer ? yLayer : -yLayer
+
+          // Get nodes of same type for grid positioning
+          const sameTypeNodes = nodesByType[n.node_type]
+          const nodeIndexInType = sameTypeNodes.findIndex(node => node.ref_id === n.ref_id)
+
+          // Grid layout calculations
+          const nodesPerRow = Math.ceil(Math.sqrt(sameTypeNodes.length))
+          const row = Math.floor(nodeIndexInType / nodesPerRow)
+          const col = nodeIndexInType % nodesPerRow
+
+          // Grid spacing
+          const spacing = 300
+          const gridWidth = (nodesPerRow - 1) * spacing
+          const gridHeight = (Math.ceil(sameTypeNodes.length / nodesPerRow) - 1) * spacing
+
+          // Center the grid around origin
+          const x = col * spacing - gridWidth / 2
+          const z = row * spacing - gridHeight / 2
+
+          return {
+            ...n,
+            fx: x,
+            fy: yOffset,
+            fz: z,
+            x: x,
+            y: yOffset,
+            z: z,
+          }
+        })
+      })() : nodes;
 
       try {
         simulation.nodes(nodesPositioned)
-        simulation.force('link').links(filteredLinks)
+
+        // For split mode, disable links to avoid positioning conflicts
+        if (graphStyle === 'split') {
+          simulation.force('link').links([])
+        } else {
+          simulation.force('link').links(filteredLinks)
+        }
 
         simulationRestart()
       } catch (error) {
-        console.error(error)
+        console.error('Error in addNodesAndLinks:', error)
+        // Fallback: try without links if there's an error
+        simulation.force('link').links([])
+        simulationRestart()
       }
     },
 
@@ -225,33 +270,17 @@ export const createSimulationStore = (
 
     addSplitForce: () => {
       const { simulation } = get()
-      const { nodeTypes } = dataStore.getState()
 
+      // Disable all forces for fixed positioning (nodes already positioned in addNodesAndLinks)
       simulation
-        .force('cluster', null)
-        .nodes(
-          simulation.nodes().map((n: Node) => {
-            const index = nodeTypes.indexOf(n.node_type) + 1
-            const yOffset = Math.floor(index / 2) * 500
-
-            return {
-              ...n,
-              ...resetPosition,
-              fy: index % 2 === 0 ? yOffset : -yOffset,
-            }
-          }),
-        )
-        .force('center', forceCenter().strength(1))
-        .force('x', forceX().strength(1))
-        .force('y', forceY().strength(1))
-        .force('z', forceZ().strength(1))
-        .force(
-          'collide',
-          forceCollide()
-            .radius(() => 200)
-            .strength(1)
-            .iterations(1),
-        )
+        .force('center', null)
+        .force('charge', null)
+        .force('link', forceLink().strength(0).links([]))
+        .force('collide', null)
+        .force('x', null)
+        .force('y', null)
+        .force('z', null)
+        .alpha(0.1) // Low alpha for quick settling
     },
 
     getLinks: () => {

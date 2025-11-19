@@ -279,6 +279,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   simulationRestart: () => {
+    console.log('simulationRestart-start')
     const { simulation, setSimulationInProgress } = get()
 
     if (!simulation) {
