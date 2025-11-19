@@ -47,15 +47,17 @@ export function FireParticles({ position }: { position: [number, number, number]
             dummy.rotation.set(s * 5, s * 5, s * 5);
             dummy.updateMatrix();
 
-            mesh.current.setMatrixAt(i, dummy.matrix);
+            if (mesh.current) {
+                mesh.current.setMatrixAt(i, dummy.matrix);
 
-            // Color gradient from yellow to red to smoke
-            const color = new THREE.Color();
-            if (particle.my < 0.3) color.set('#fbbf24'); // Yellow
-            else if (particle.my < 0.8) color.set('#ef4444'); // Red
-            else color.set('#57534e'); // Smoke
+                // Color gradient from yellow to red to smoke
+                const color = new THREE.Color();
+                if (particle.my < 0.3) color.set('#fbbf24'); // Yellow
+                else if (particle.my < 0.8) color.set('#ef4444'); // Red
+                else color.set('#57534e'); // Smoke
 
-            mesh.current.setColorAt(i, color);
+                mesh.current.setColorAt(i, color);
+            }
         });
         mesh.current.instanceMatrix.needsUpdate = true;
         if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true;
