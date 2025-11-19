@@ -6,21 +6,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { GraphStyle, graphStyles, useGraphStore } from '@/stores/useStores'
 import { ReactElement } from 'react'
 
-type VisibleGraphStyle = 'split' | 'sphere' | 'force'
+type VisibleGraphStyle = 'split' | 'sphere' // | 'force'
 
 const IconsMapper: Record<VisibleGraphStyle, ReactElement> = {
   split: <GrainIcon />,
-  force: <CommunitiesIcon />,
+  // force: <CommunitiesIcon />,
   sphere: <BubbleChartIcon />,
 }
 
-const graphStyleLabels: Record<GraphStyle, string> = {
+const graphStyleLabels: Record<VisibleGraphStyle, string> = {
   sphere: 'Sphere',
-  force: 'Force',
+  // force: 'Force',
   split: 'Layered',
 }
 
-const styleOrder: VisibleGraphStyle[] = ['split', 'sphere', 'force']
+const styleOrder: VisibleGraphStyle[] = ['split', 'sphere'] // , 'force']
 
 export const GraphViewControl = () => {
 

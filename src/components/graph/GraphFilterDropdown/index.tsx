@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FilterTab } from "@/stores/useGraphStore";
-import { Code2, MessageSquare, CheckSquare, Layers } from "lucide-react";
+import { BrainCog, CheckSquare, Code2, Layers, MessageSquare } from "lucide-react";
 
 interface GraphFilterDropdownProps {
   value: FilterTab;
@@ -20,6 +20,7 @@ const filterLabels: Record<FilterTab, string> = {
   code: "Code",
   comms: "Comms",
   tasks: "Tasks",
+  concepts: "Concepts",
 };
 
 const filterIcons: Record<FilterTab, React.ReactNode> = {
@@ -27,6 +28,7 @@ const filterIcons: Record<FilterTab, React.ReactNode> = {
   code: <Code2 className="w-4 h-4" />,
   comms: <MessageSquare className="w-4 h-4" />,
   tasks: <CheckSquare className="w-4 h-4" />,
+  concepts: <BrainCog className="w-4 h-4" />,
 };
 
 export function GraphFilterDropdown({ value, onValueChange }: GraphFilterDropdownProps) {
@@ -58,6 +60,12 @@ export function GraphFilterDropdown({ value, onValueChange }: GraphFilterDropdow
           <div className="flex items-center gap-2">
             {filterIcons.tasks}
             <span>{filterLabels.tasks}</span>
+          </div>
+        </SelectItem>
+        <SelectItem value="concepts">
+          <div className="flex items-center gap-2">
+            {filterIcons.concepts}
+            <span>{filterLabels.concepts}</span>
           </div>
         </SelectItem>
       </SelectContent>

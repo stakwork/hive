@@ -1,5 +1,5 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse } from "@/types";
+import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse, VMData } from "@/types";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
 import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";
@@ -133,7 +133,26 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
       }
 
       const data = await response.json();
-      return data;
+
+      return {
+        pool_name: data.pool_name,
+        workspaces: data.workspaces.map((vm: any) => ({
+          id: vm.id,
+          subdomain: vm.subdomain,
+          state: vm.state,
+          internal_state: vm.internal_state,
+          usage_status: vm.usage_status,
+          user_info: vm.user_info || null,
+          resource_usage: vm.resource_usage,
+          marked_at: vm.marked_at || null,
+          url: vm.url,
+          created: vm.created,
+          repoName: vm.repoName,
+          primaryRepo: vm.primaryRepo,
+          repositories: vm.repositories,
+          branches: vm.branches,
+        })),
+      };
     } catch (error) {
       if (error instanceof Error && error.message.includes("fetch")) {
         throw new Error("Unable to connect to pool service");
