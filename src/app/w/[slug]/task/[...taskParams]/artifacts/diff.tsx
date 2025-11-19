@@ -43,17 +43,22 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [viewType, setViewType] = useState<"split" | "unified">(initialViewType);
 
-  // Get all diffs from all artifacts
+  // Get diffs from the latest artifact only (to avoid duplicates)
   const allDiffs = useMemo(() => {
-    return artifacts.flatMap((artifact) => {
-      const content = artifact.content as DiffContent;
-      return content?.diffs || [];
-    });
+    if (artifacts.length === 0) return [];
+
+    // Sort by createdAt descending and take the first (most recent)
+    const latestArtifact = [...artifacts].sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )[0];
+
+    const content = latestArtifact.content as DiffContent;
+    return content?.diffs || [];
   }, [artifacts]);
 
   // Parse all diffs and handle errors
   const parsedFiles = useMemo<ParsedFile[]>(() => {
-    return allDiffs.flatMap((diff: ActionResult): ParsedFile[] => {
+    const allParsedFiles = allDiffs.flatMap((diff: ActionResult): ParsedFile[] => {
       try {
         if (!diff.content || diff.content.trim() === "") {
           return [
@@ -112,6 +117,14 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
         ];
       }
     });
+
+    // Deduplicate by filename (keep only the last occurrence of each file)
+    const fileMap = new Map<string, ParsedFile>();
+    allParsedFiles.forEach(file => {
+      fileMap.set(file.fileName, file);
+    });
+
+    return Array.from(fileMap.values());
   }, [allDiffs]);
 
   // Initialize expanded state for new files
