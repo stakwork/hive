@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '@/__tests__/e2e/support/fixtures/test-hooks';
 import { AuthPage, DashboardPage } from '../../support/page-objects';
 import { selectors } from '../../support/fixtures/selectors';
 
