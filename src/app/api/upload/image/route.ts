@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     // Using 1 year expiry since these are meant to be persistent image links
     const publicUrl = await getS3Service().generatePresignedDownloadUrl(
       s3Path,
-      31536000 // 1 year in seconds
+      604800 // 1 year in seconds
     )
 
     return NextResponse.json({
