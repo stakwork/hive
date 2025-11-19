@@ -269,7 +269,13 @@ describe("Stakwork Run Service", () => {
         )
       ).rejects.toThrow("Stakwork API error");
 
-      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+      // Should be called twice: once for webhookUrl, once for FAILED status
+      expect(db.stakworkRun.update).toHaveBeenCalledTimes(2);
+      expect(db.stakworkRun.update).toHaveBeenNthCalledWith(1, {
+        where: { id: "run-1" },
+        data: expect.objectContaining({ webhookUrl: expect.any(String) }),
+      });
+      expect(db.stakworkRun.update).toHaveBeenNthCalledWith(2, {
         where: { id: "run-1" },
         data: { status: WorkflowStatus.FAILED },
       });

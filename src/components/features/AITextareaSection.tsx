@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, Check, X, Eye, Edit } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Sparkles, Check, X, Eye, Edit, Brain, Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { AIButton } from "@/components/ui/ai-button";
 import { SaveIndicator } from "./SaveIndicator";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
+import type { StakworkRunType } from "@prisma/client";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface GeneratedContent {
   content: string;
@@ -46,26 +56,96 @@ export function AITextareaSection({
   className,
 }: AITextareaSectionProps) {
   const [generatedContent, setGeneratedContent] = useState<string>("");
+  const [isStakworkResult, setIsStakworkResult] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [quickGenerating, setQuickGenerating] = useState(false);
   // Default to edit mode when empty, preview mode when has content
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
 
-  const handleAccept = () => {
-    if (generatedContent) {
-      // Use the complete content from AI (no appending)
-      onChange(generatedContent);
-      onBlur(generatedContent);
-      setGeneratedContent("");
+  const { workspace } = useWorkspace();
+  const {
+    latestRun,
+    loading: stakworkLoading,
+    createRun,
+    acceptRun,
+    rejectRun,
+  } = useStakworkGeneration({
+    featureId,
+    type: "ARCHITECTURE", // Only valid type currently
+    enabled: type === "architecture",
+  });
+
+  // When stakwork run completes, display result
+  useEffect(() => {
+    if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
+      setGeneratedContent(latestRun.result);
+      setIsStakworkResult(true);
+      setCurrentRunId(latestRun.id);
     }
+  }, [latestRun]);
+
+  const handleAccept = async () => {
+    if (!generatedContent) return;
+
+    // Optimistic update: Update UI immediately for instant feedback
+    onChange(generatedContent);
+    onBlur(generatedContent);
+
+    // If stakwork, persist decision to database (async in background)
+    if (isStakworkResult && currentRunId) {
+      await acceptRun(currentRunId, featureId);
+    }
+
+    // Clear state
+    setGeneratedContent("");
+    setIsStakworkResult(false);
+    setCurrentRunId(null);
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
+    if (isStakworkResult && currentRunId) {
+      // Stakwork flow: call decision endpoint
+      await rejectRun(currentRunId);
+    }
+
+    // Clear state
     setGeneratedContent("");
+    setIsStakworkResult(false);
+    setCurrentRunId(null);
   };
 
   const handleGenerated = (results: GeneratedContent[]) => {
     if (results.length > 0) {
       setGeneratedContent(results[0].content);
+      setIsStakworkResult(false);
+      setCurrentRunId(null);
     }
+  };
+
+  const handleDeepThink = async () => {
+    if (!workspace?.id) return;
+
+    await createRun({
+      type: "ARCHITECTURE",
+      featureId,
+      workspaceId: workspace.id,
+    });
+  };
+
+  const handleRetry = async () => {
+    if (!workspace?.id) return;
+
+    // Mark old run as rejected (cleanup)
+    if (currentRunId) {
+      await rejectRun(currentRunId, "Retrying after failure");
+    }
+
+    // Create new run
+    await createRun({
+      type: "ARCHITECTURE",
+      featureId,
+      workspaceId: workspace.id,
+    });
   };
 
   const handleModeSwitch = (newMode: "edit" | "preview") => {
@@ -75,6 +155,19 @@ export function AITextareaSection({
     }
     setMode(newMode);
   };
+
+  const isErrorState = latestRun?.status &&
+    ["FAILED", "ERROR", "HALTED"].includes(latestRun.status);
+
+  const isLoadingState = latestRun?.status &&
+    ["PENDING", "IN_PROGRESS"].includes(latestRun.status);
+
+  // Only show badge for error states (not loading states)
+  const showWorkflowBadge = !!(
+    latestRun &&
+    !latestRun.decision &&
+    isErrorState
+  );
 
   return (
     <div className="space-y-2">
@@ -86,9 +179,54 @@ export function AITextareaSection({
           endpoint={`/api/features/${featureId}/generate`}
           params={{ type }}
           onGenerated={handleGenerated}
-          tooltip="Generate with AI"
+          onGeneratingChange={setQuickGenerating}
+          disabled={isLoadingState || showWorkflowBadge}
           iconOnly
         />
+        {type === "architecture" && (
+          <>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDeepThink}
+                    disabled={stakworkLoading || isLoadingState || showWorkflowBadge || quickGenerating}
+                    className="h-6 w-6 p-0"
+                  >
+                    {isLoadingState ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
+                    ) : (
+                      <Brain className="h-3.5 w-3.5 text-purple-600" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Deep Research</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {showWorkflowBadge && (
+              <div className="flex items-center gap-2">
+                <WorkflowStatusBadge
+                  status={isErrorState ? "FAILED" : latestRun.status}
+                />
+                {isErrorState && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRetry}
+                    disabled={stakworkLoading}
+                    className="h-6 text-xs px-2"
+                  >
+                    Retry
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
+        )}
         <SaveIndicator
           field={id}
           savedField={savedField}
