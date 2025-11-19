@@ -11,10 +11,11 @@ export async function fetchStakgraphServices(
     username?: string;
     pat?: string;
   },
+  endpoint: string = "/services",
 ): Promise<{ services: ServiceConfig[]; environmentVariables?: Array<{ name: string; value: string }> }> {
   const apiResult = await swarmApiRequestAuth({
     swarmUrl: swarmUrl,
-    endpoint: "/services",
+    endpoint: endpoint,
     method: "GET",
     params,
     apiKey: decryptedApiKey,
