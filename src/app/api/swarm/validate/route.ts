@@ -31,15 +31,33 @@ export async function GET(request: NextRequest) {
         const apiResult = await swarmService.validateUri(uri);
 
 
-        return NextResponse.json(
-            {
-                success: apiResult.success,
-                message: apiResult.message,
-                data: apiResult.data,
-            },
-            { status: 200 },
-        );
-    } catch {
+        return NextResponse.json({
+            success: apiResult.success,
+            message: apiResult.message,
+            data: apiResult.data,
+        });
+    } catch (error: unknown) {
+        console.error("[SWARM_VALIDATE] Error:", error);
+
+        // Preserve status codes from ApiError
+        if (
+            typeof error === "object" &&
+            error !== null &&
+            "status" in error &&
+            typeof (error as { status: number }).status === "number"
+        ) {
+            const status = (error as { status: number }).status;
+            const errorMessage =
+                "message" in error
+                    ? (error as any).message
+                    : "Failed to validate uri";
+
+            return NextResponse.json(
+                { success: false, message: errorMessage },
+                { status },
+            );
+        }
+
         return NextResponse.json(
             { success: false, message: "Failed to validate uri" },
             { status: 500 },

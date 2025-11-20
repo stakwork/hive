@@ -78,6 +78,13 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       message,
       data: null,
     }),
+
+    createApiError: (status: number, message: string, details: any = {}) => ({
+      message,
+      status,
+      service: "swarm",
+      details,
+    }),
   };
 
   // Test Helpers
@@ -577,6 +584,98 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       const response = await GET(request);
 
       await TestHelpers.expectValidationError(response, 500, "Failed to validate uri");
+    });
+
+    test.each([
+      {
+        description: "404 status code from ApiError (domain not found)",
+        status: 404,
+        message: "Domain not found",
+        details: { error: "Domain does not exist" },
+        uri: "nonexistent-swarm.sphinx.chat",
+      },
+      {
+        description: "400 status code from ApiError (bad request)",
+        status: 400,
+        message: "Invalid domain format",
+        details: { error: "Malformed URI" },
+        uri: "invalid@domain.com",
+      },
+      {
+        description: "408 status code from ApiError (timeout)",
+        status: 408,
+        message: "Request timeout",
+        details: { error: "External API timeout" },
+        uri: "test-swarm.sphinx.chat",
+      },
+      {
+        description: "500 status code from ApiError (server error)",
+        status: 500,
+        message: "Super Admin API internal error",
+        details: { error: "Database connection failed" },
+        uri: "test-swarm.sphinx.chat",
+      },
+    ])("should preserve $description", async ({ status, message, details, uri }) => {
+      const apiError = TestDataFactory.createApiError(status, message, details);
+      mockSwarmServiceInstance.validateUri.mockRejectedValue(apiError);
+
+      const request = TestHelpers.createGetRequest(uri);
+      const response = await GET(request);
+
+      expect(response.status).toBe(status);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toBe(message);
+    });
+
+    test("should handle ApiError without message field", async () => {
+      const apiError = {
+        status: 503,
+        service: "swarm",
+        details: { error: "Service unavailable" }
+      };
+      mockSwarmServiceInstance.validateUri.mockRejectedValue(apiError);
+
+      const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
+      const response = await GET(request);
+
+      expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Failed to validate uri");
+    });
+
+    test("should return 500 for error without status property", async () => {
+      const genericError = {
+        message: "Something went wrong",
+        code: "ERR_GENERIC"
+      };
+      mockSwarmServiceInstance.validateUri.mockRejectedValue(genericError);
+
+      const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
+      const response = await GET(request);
+
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Failed to validate uri");
+    });
+
+    test("should return 500 for error with non-numeric status", async () => {
+      const invalidError = {
+        message: "Invalid error",
+        status: "not-a-number",
+        service: "swarm"
+      };
+      mockSwarmServiceInstance.validateUri.mockRejectedValue(invalidError);
+
+      const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
+      const response = await GET(request);
+
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Failed to validate uri");
     });
 
     test("should handle SwarmService instantiation failure", async () => {
