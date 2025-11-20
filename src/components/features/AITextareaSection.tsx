@@ -2,6 +2,8 @@
 
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { GenerationControls } from "@/components/features/GenerationControls";
+import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { AIButton } from "@/components/ui/ai-button";
 import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
@@ -13,6 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAIGeneration } from "@/hooks/useAIGeneration";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -57,34 +60,28 @@ export function AITextareaSection({
   className,
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [generatedContent, setGeneratedContent] = useState<string>("");
-  const [isStakworkResult, setIsStakworkResult] = useState(false);
-  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [quickGenerating, setQuickGenerating] = useState(false);
-  // Default to edit mode when empty, preview mode when has content
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
 
   const { workspace } = useWorkspace();
-  const {
-    latestRun,
-    loading: stakworkLoading,
-    createRun,
-    acceptRun,
-    rejectRun,
-  } = useStakworkGeneration({
+  const { latestRun } = useStakworkGeneration({
     featureId,
-    type: "ARCHITECTURE", // Only valid type currently
+    type: "ARCHITECTURE",
     enabled: type === "architecture",
   });
 
-  // When stakwork run completes, display result
+  const aiGeneration = useAIGeneration({
+    featureId,
+    workspaceId: workspace?.id || "",
+    type: "ARCHITECTURE",
+    enabled: type === "architecture",
+  });
+
   useEffect(() => {
     if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
-      setGeneratedContent(latestRun.result);
-      setIsStakworkResult(true);
-      setCurrentRunId(latestRun.id);
+      aiGeneration.setContent(latestRun.result, "deep");
     }
-  }, [latestRun]);
+  }, [latestRun, aiGeneration]);
 
   const {
     isDragging,
@@ -101,76 +98,47 @@ export function AITextareaSection({
     },
     onError: (error) => {
       console.error('Image upload error:', error);
-      // TODO: Show toast notification
     },
   });
 
   const handleAccept = async () => {
-    if (!generatedContent) return;
+    if (!aiGeneration.content) return;
 
-    // Optimistic update: Update UI immediately for instant feedback
-    onChange(generatedContent);
-    onBlur(generatedContent);
+    onChange(aiGeneration.content);
+    onBlur(aiGeneration.content);
 
-    // If stakwork, persist decision to database (async in background)
-    if (isStakworkResult && currentRunId) {
-      await acceptRun(currentRunId, featureId);
-    }
-
-    // Clear state
-    setGeneratedContent("");
-    setIsStakworkResult(false);
-    setCurrentRunId(null);
+    await aiGeneration.accept();
   };
 
   const handleReject = async () => {
-    if (isStakworkResult && currentRunId) {
-      // Stakwork flow: call decision endpoint
-      await rejectRun(currentRunId);
-    }
-
-    // Clear state
-    setGeneratedContent("");
-    setIsStakworkResult(false);
-    setCurrentRunId(null);
+    await aiGeneration.reject();
   };
 
   const handleGenerated = (results: GeneratedContent[]) => {
     if (results.length > 0) {
-      setGeneratedContent(results[0].content);
-      setIsStakworkResult(false);
-      setCurrentRunId(null);
+      aiGeneration.setContent(results[0].content, "quick");
     }
   };
 
   const handleDeepThink = async () => {
     if (!workspace?.id) return;
 
-    await createRun({
-      type: "ARCHITECTURE",
-      featureId,
-      workspaceId: workspace.id,
+    const response = await fetch("/api/stakwork/ai/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "ARCHITECTURE",
+        featureId,
+        workspaceId: workspace.id,
+      }),
     });
-  };
 
-  const handleRetry = async () => {
-    if (!workspace?.id) return;
-
-    // Mark old run as rejected (cleanup)
-    if (currentRunId) {
-      await rejectRun(currentRunId, "Retrying after failure");
+    if (!response.ok) {
+      console.error("Failed to create stakwork run");
     }
-
-    // Create new run
-    await createRun({
-      type: "ARCHITECTURE",
-      featureId,
-      workspaceId: workspace.id,
-    });
   };
 
   const handleModeSwitch = (newMode: "edit" | "preview") => {
-    // If switching from edit to preview, trigger save
     if (mode === "edit" && newMode === "preview") {
       onBlur(value);
     }
@@ -183,7 +151,6 @@ export function AITextareaSection({
   const isLoadingState = latestRun?.status &&
     ["PENDING", "IN_PROGRESS"].includes(latestRun.status);
 
-  // Only show badge for error states (not loading states)
   const showWorkflowBadge = !!(
     latestRun &&
     !latestRun.decision &&
@@ -205,48 +172,16 @@ export function AITextareaSection({
           iconOnly
         />
         {type === "architecture" && (
-          <>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleDeepThink}
-                    disabled={stakworkLoading || isLoadingState || showWorkflowBadge || quickGenerating}
-                    className="h-6 w-6 p-0"
-                  >
-                    {isLoadingState ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
-                    ) : (
-                      <Brain className="h-3.5 w-3.5 text-purple-600" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Deep Research</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {showWorkflowBadge && (
-              <div className="flex items-center gap-2">
-                <WorkflowStatusBadge
-                  status={isErrorState ? "FAILED" : latestRun.status}
-                />
-                {isErrorState && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleRetry}
-                    disabled={stakworkLoading}
-                    className="h-6 text-xs px-2"
-                  >
-                    Retry
-                  </Button>
-                )}
-              </div>
-            )}
-          </>
+          <GenerationControls
+            onQuickGenerate={() => {}}
+            onDeepThink={handleDeepThink}
+            onRetry={aiGeneration.regenerate}
+            status={latestRun?.status}
+            isLoading={aiGeneration.isLoading}
+            isQuickGenerating={quickGenerating}
+            disabled={false}
+            showDeepThink={true}
+          />
         )}
         <SaveIndicator
           field={id}
@@ -259,34 +194,14 @@ export function AITextareaSection({
         {description}
       </p>
 
-      {/* AI Suggestion Preview */}
-      {generatedContent ? (
-        <div className="rounded-md border border-border bg-muted/50 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex items-start gap-3">
-            <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-1" />
-            <div className="flex-1 text-sm whitespace-pre-wrap">
-              {generatedContent}
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAccept}
-            >
-              <Check className="h-4 w-4 mr-2 text-green-600" />
-              Accept
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleReject}
-            >
-              <X className="h-4 w-4 mr-2 text-red-600" />
-              Reject
-            </Button>
-          </div>
-        </div>
+      {aiGeneration.content ? (
+        <GenerationPreview
+          content={aiGeneration.content}
+          source={aiGeneration.source || "quick"}
+          onAccept={handleAccept}
+          onReject={handleReject}
+          isLoading={aiGeneration.isLoading}
+        />
       ) : (
         /* Content Area - Toggle between Edit and Preview */
         <div className="space-y-2">
