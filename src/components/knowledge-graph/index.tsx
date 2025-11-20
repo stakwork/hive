@@ -5,7 +5,7 @@ import { FilterTab } from "@/stores/graphStore.types";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Universe } from "./Universe";
 interface ApiResponse {
   success: boolean;
@@ -72,6 +72,7 @@ const GraphComponentInner = ({
 }: Props) => {
   const { id: workspaceId, slug } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
+  const currentRequestRef = useRef<AbortController | null>(null);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
@@ -97,8 +98,17 @@ const GraphComponentInner = ({
   const fetchFilteredData = useCallback(async (tab: FilterTab) => {
     if (!workspaceId) return;
 
+    // Cancel previous request if it exists
+    if (currentRequestRef.current) {
+      currentRequestRef.current.abort();
+    }
+
     resetData();
     setNodesLoading(true);
+
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    currentRequestRef.current = abortController;
 
     try {
       let requestUrl: string;
@@ -132,7 +142,7 @@ const GraphComponentInner = ({
         case 'tasks':
           // Fetch latest 10 tasks from tasks API
           requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=1000`;
-          const tasksResponse = await fetch(requestUrl);
+          const tasksResponse = await fetch(requestUrl, { signal: abortController.signal });
           const tasksData = await tasksResponse.json();
 
           if (tasksData.success && Array.isArray(tasksData.data)) {
@@ -170,7 +180,7 @@ const GraphComponentInner = ({
 
       console.log('requestUrl', requestUrl);
 
-      const response = await fetch(requestUrl);
+      const response = await fetch(requestUrl, { signal: abortController.signal });
       const data: ApiResponse = await response.json();
 
       if (!data.success) throw new Error("Failed to fetch filtered data");
@@ -189,9 +199,19 @@ const GraphComponentInner = ({
           edges: data.data.edges || [],
         });
       }
-    } catch {
+    } catch (error) {
+      // If the request was aborted, don't show error or set loading to false
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Request was cancelled');
+        return;
+      }
+      console.error('Failed to fetch graph data:', error);
     } finally {
-      setNodesLoading(false);
+      // Only set loading to false if this request wasn't aborted
+      if (currentRequestRef.current === abortController) {
+        setNodesLoading(false);
+        currentRequestRef.current = null;
+      }
     }
   }, [workspaceId, resetData, addNewNode, propEndpoint, slug]);
 
