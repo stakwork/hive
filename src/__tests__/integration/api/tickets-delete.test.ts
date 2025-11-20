@@ -1,27 +1,24 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { DELETE } from '@/app/api/tickets/[ticketId]/route';
 import { db } from '@/lib/db';
-import {
-  createTestUser,
-  createTestWorkspace,
-  createTestTask,
-  findTestTask,
-  updateTestTask
-} from '@/__tests__/support/fixtures';
-import {
-  createDeleteRequest,
-  createAuthenticatedDeleteRequest,
-  getMockedSession,
-  createAuthenticatedSession,
-  expectSuccess,
-  expectNotFound,
-  expectUnauthorized,
-  expectError,
-  expectTaskDeleted
-} from '@/__tests__/support/helpers';
+import { createTestUser } from '@/__tests__/support/fixtures/user';
+import { createTestWorkspace } from '@/__tests__/support/fixtures/workspace';
+import { createTestTask, updateTestTask, findTestTask } from '@/__tests__/support/fixtures/task';
+import { createAuthenticatedDeleteRequest, createDeleteRequest } from '@/__tests__/support/helpers/request-builders';
+import { expectSuccess, expectUnauthorized, expectNotFound, expectError } from '@/__tests__/support/helpers/api-assertions';
+import { expectTaskDeleted } from '@/__tests__/support/helpers/database-assertions';
 
-
-describe('DELETE /api/tasks/[taskId]', () => {
+/**
+ * Integration Tests for DELETE /api/tickets/[ticketId]
+ * 
+ * Tests the complete deletion flow including:
+ * - Authentication and authorization enforcement
+ * - Soft-delete pattern with data preservation
+ * - Orphaned dependency cleanup
+ * - Error handling and status codes
+ * - Cascade behavior with related entities
+ */
+describe('DELETE /api/tickets/[ticketId]', () => {
   let user: any;
   let workspace: any;
   let feature: any;
@@ -54,7 +51,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
 
   describe('Success Scenarios', () => {
     test('should soft-delete task successfully', async () => {
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
 
       await expectSuccess(response);
@@ -65,7 +62,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
 
     test('should set deletedAt timestamp when deleting', async () => {
       const beforeDelete = new Date();
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       const afterDelete = new Date();
       
@@ -76,7 +73,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
     });
 
     test('should preserve task data after soft-delete', async () => {
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       // Verify task still exists with original data
@@ -90,7 +87,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
 
   describe('Authorization', () => {
     test('should return 401 if user is not authenticated', async () => {
-      const request = createDeleteRequest(`/api/tasks/${task.id}`);
+      const request = createDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`);
       const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       await expectUnauthorized(response);
@@ -104,7 +101,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
     test('should return 403 if user is not a workspace member', async () => {
       const otherUser = await createTestUser({ email: 'other@test.com' });
       
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, otherUser);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, otherUser);
       const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       await expectError(response, "Access denied", 403);
@@ -124,7 +121,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
         }
       });
       
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, adminUser);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, adminUser);
       const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       await expectSuccess(response);
@@ -134,7 +131,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
 
   describe('Error Handling', () => {
     test('should return 404 for non-existent task', async () => {
-      const request = createAuthenticatedDeleteRequest('/api/tasks/non-existent-id', user);
+      const request = createAuthenticatedDeleteRequest('http://localhost:3000/api/tickets/non-existent-id', user);
       const response = await DELETE(request, { params: Promise.resolve({ ticketId: 'non-existent-id' })});
       
       await expectNotFound(response);
@@ -142,11 +139,11 @@ describe('DELETE /api/tasks/[taskId]', () => {
 
     test('should return 404 for already deleted task', async () => {
       // First deletion
-      const request1 = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request1 = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       await DELETE(request1, { params: Promise.resolve({ ticketId: task.id })});
       
       // Attempt second deletion
-      const request2 = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request2 = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       const response = await DELETE(request2, { params: Promise.resolve({ ticketId: task.id })});
       
       await expectNotFound(response);
@@ -154,7 +151,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
 
     test('should handle malformed task ID gracefully', async () => {
       const invalidId = 'invalid-uuid-format';
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${invalidId}`, user);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${invalidId}`, user);
       const response = await DELETE(request, { params: Promise.resolve({ ticketId: invalidId })});
       
       const json = await response.json();
@@ -176,7 +173,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
       await updateTestTask(dependentTask.id, { dependsOnTaskIds: [task.id] });
       
       // Delete the parent task
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       // Verify parent task is deleted
@@ -206,7 +203,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
       });
       await updateTestTask(dependent2.id, { dependsOnTaskIds: [task.id] });
       
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       // Verify both dependent tasks have cleaned up references
@@ -238,7 +235,7 @@ describe('DELETE /api/tasks/[taskId]', () => {
       await updateTestTask(dependentTask.id, { dependsOnTaskIds: [task.id, anotherTask.id] });
       
       // Delete the first task
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
       await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       // Verify dependent only has the valid reference remaining
@@ -251,9 +248,8 @@ describe('DELETE /api/tasks/[taskId]', () => {
 
   describe('Cascade Behavior', () => {
     test('should NOT affect related feature when task is deleted', async () => {
-      // This test doesn't require API calls - just database operations
-      // Manually perform delete to verify cascade behavior
-      await updateTestTask(task.id, { deleted: true, deletedAt: new Date() });
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/tickets/${task.id}`, user);
+      await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
       
       // Verify feature still exists
       const existingFeature = await db.feature.findUnique({ where: { id: feature.id }});
