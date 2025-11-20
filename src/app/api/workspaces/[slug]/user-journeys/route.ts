@@ -152,7 +152,19 @@ function calculateBadge(
     };
   } | null,
 ): BadgeMetadata {
-  // Check PR artifact first (highest priority)
+  // Check if deployed to graph first (highest priority)
+  if (task.status === TaskStatus.DONE && task.workflowStatus === WorkflowStatus.COMPLETED) {
+    return {
+      type: "LIVE",
+      text: "Live",
+      color: "#10b981",
+      borderColor: "#10b981",
+      icon: null,
+      hasExternalLink: false,
+    };
+  }
+
+  // Check PR artifact (second priority)
   if (prArtifact?.content) {
     const prStatus = prArtifact.content.status;
     const prUrl = prArtifact.content.url;
@@ -192,18 +204,6 @@ function calculateBadge(
         hasExternalLink: true,
       };
     }
-  }
-
-  // Check if deployed to graph (no PR artifact but status=DONE)
-  if (task.status === TaskStatus.DONE && task.workflowStatus === WorkflowStatus.COMPLETED) {
-    return {
-      type: "LIVE",
-      text: "Live",
-      color: "#10b981",
-      borderColor: "#10b981",
-      icon: null,
-      hasExternalLink: false,
-    };
   }
 
   // Fallback to workflow status
