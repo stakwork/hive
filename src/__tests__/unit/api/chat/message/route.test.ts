@@ -913,7 +913,8 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       await POST(request);
 
-      expect(vi.mocked(getBaseUrl)).toHaveBeenCalledWith("production.example.com");
+      // Service layer calls getBaseUrl without arguments (no request context)
+      expect(vi.mocked(getBaseUrl)).toHaveBeenCalledWith();
 
       const fetchCall = mockFetch.mock.calls[0];
       const requestBody = JSON.parse(fetchCall[1].body as string);
