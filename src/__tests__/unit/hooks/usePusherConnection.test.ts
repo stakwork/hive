@@ -164,7 +164,9 @@ describe("usePusherConnection Hook", () => {
       )?.[1];
       
       expect(subscriptionSuccessCallback).toBeDefined();
-      subscriptionSuccessCallback?.();
+      act(() => {
+        subscriptionSuccessCallback?.();
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
@@ -188,7 +190,9 @@ describe("usePusherConnection Hook", () => {
       )?.[1];
       
       expect(subscriptionErrorCallback).toBeDefined();
-      subscriptionErrorCallback?.(error);
+      act(() => {
+        subscriptionErrorCallback?.(error);
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(false);
@@ -263,7 +267,9 @@ describe("usePusherConnection Hook", () => {
         (call) => call[0] === "pusher:subscription_succeeded"
       )?.[1];
       
-      subscriptionSuccessCallback?.();
+      act(() => {
+        subscriptionSuccessCallback?.();
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
@@ -492,7 +498,9 @@ describe("usePusherConnection Hook", () => {
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
         (call) => call[0] === "pusher:subscription_succeeded"
       )?.[1];
-      subscriptionSuccessCallback?.();
+      act(() => {
+        subscriptionSuccessCallback?.();
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
@@ -857,7 +865,9 @@ describe("usePusherConnection Hook", () => {
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
         (call) => call[0] === "pusher:subscription_succeeded"
       )?.[1];
-      subscriptionSuccessCallback?.();
+      act(() => {
+        subscriptionSuccessCallback?.();
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
@@ -900,7 +910,9 @@ describe("usePusherConnection Hook", () => {
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
         (call) => call[0] === "pusher:subscription_succeeded"
       )?.[1];
-      subscriptionSuccessCallback?.();
+      act(() => {
+        subscriptionSuccessCallback?.();
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
@@ -950,7 +962,9 @@ describe("usePusherConnection Hook", () => {
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
         (call) => call[0] === "pusher:subscription_succeeded"
       )?.[1];
-      subscriptionSuccessCallback?.();
+      act(() => {
+        subscriptionSuccessCallback?.();
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
