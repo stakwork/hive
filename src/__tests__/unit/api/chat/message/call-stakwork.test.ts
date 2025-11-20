@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
@@ -76,7 +76,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
     vi.clearAllMocks();
 
     // Setup authenticated session
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(auth).mockResolvedValue({
       user: { id: mockUserId, name: "Test User", email: "test@example.com" },
     } as any);
 
@@ -631,7 +631,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
   describe("3. Authentication and Authorization", () => {
     describe("Session Validation", () => {
       it("should reject requests without authentication session", async () => {
-        vi.mocked(getServerSession).mockResolvedValue(null);
+        vi.mocked(auth).mockResolvedValue(null);
 
         const request = new NextRequest("http://localhost/api/chat/message", {
           method: "POST",
@@ -649,7 +649,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
       });
 
       it("should reject requests with session but no user", async () => {
-        vi.mocked(getServerSession).mockResolvedValue({ user: null } as any);
+        vi.mocked(auth).mockResolvedValue({ user: null } as any);
 
         const request = new NextRequest("http://localhost/api/chat/message", {
           method: "POST",
@@ -667,7 +667,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
       });
 
       it("should reject requests with user but no user ID", async () => {
-        vi.mocked(getServerSession).mockResolvedValue({
+        vi.mocked(auth).mockResolvedValue({
           user: { email: "test@example.com" }, // Missing id
         } as any);
 

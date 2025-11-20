@@ -14,9 +14,9 @@ import {
 import { generateUniqueSlug, generateUniqueId } from "@/__tests__/support/helpers/ids";
 import type { User, Workspace, Task } from "@prisma/client";
 
-// Mock NextAuth for GET tests that use getServerSession
+// Mock NextAuth for GET tests that use auth
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({

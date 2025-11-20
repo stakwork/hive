@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/client";
 
 // Mock all dependencies at module level
@@ -50,7 +50,7 @@ vi.mock("@/lib/utils", () => ({
 global.fetch = vi.fn();
 
 // Import mocked modules
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
+const { auth: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/lib/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");

@@ -25,7 +25,7 @@ vi.mock("@/services/s3", () => ({
 
 // Mock NextAuth
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({

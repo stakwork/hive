@@ -1,12 +1,12 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/stakwork/create-project/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { type ApiError } from "@/types";
 
 // Mock dependencies
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
 const mockCreateProject = vi.fn();
@@ -21,7 +21,7 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
-const mockGetServerSession = getServerSession as Mock;
+const mockGetServerSession = auth as Mock;
 
 // Test Data Factories
 const TestDataFactory = {

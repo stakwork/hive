@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/swarm/stakgraph/ingest/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { RepositoryStatus } from "@prisma/client";
 
 // Mock dependencies
@@ -59,7 +59,7 @@ const mockGithubProfile = { username: "user", token: "token" };
 describe("POST /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getServerSession).mockResolvedValue(mockSession);
+    vi.mocked(auth).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findFirst).mockResolvedValue(mockSwarm);
     vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepository);
     vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
@@ -70,7 +70,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 401 when not authenticated", async () => {
-    vi.mocked(getServerSession).mockResolvedValue(null);
+    vi.mocked(auth).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
@@ -130,7 +130,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 describe("GET /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getServerSession).mockResolvedValue(mockSession);
+    vi.mocked(auth).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(swarmApiRequest).mockResolvedValue({ ok: true, status: 200, data: {} });
   });

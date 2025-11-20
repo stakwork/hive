@@ -1,11 +1,11 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/github/webhook/ensure/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 
 // Mock dependencies
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -38,7 +38,7 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { getServiceConfig } from "@/config/services";
 
-const mockGetServerSession = getServerSession as Mock;
+const mockGetServerSession = auth as Mock;
 const mockDbRepositoryFindUnique = db.repository.findUnique as Mock;
 const mockWebhookService = WebhookService as Mock;
 const mockGetGithubWebhookCallbackUrl = getGithubWebhookCallbackUrl as Mock;

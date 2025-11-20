@@ -1,12 +1,12 @@
 import type { User, Workspace } from "@prisma/client";
 import type { Session } from "next-auth";
 import type { WorkspaceRole } from "@/lib/auth/roles";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { vi } from "vitest";
 
 /**
  * Create a mock authenticated session for a user
- * Use this to mock NextAuth's getServerSession in tests
+ * Use this to mock NextAuth's auth in tests
  */
 export function createAuthenticatedSession(user: Pick<User, "id" | "email">): Session {
   return {
@@ -19,11 +19,11 @@ export function createAuthenticatedSession(user: Pick<User, "id" | "email">): Se
 }
 
 /**
- * Get mocked getServerSession function for integration tests
+ * Get mocked auth function for integration tests
  * Use this after global mock is set up in setup/global.ts
  */
 export function getMockedSession() {
-  return getServerSession as vi.MockedFunction<typeof getServerSession>;
+  return auth as vi.MockedFunction<typeof auth>;
 }
 
 /**

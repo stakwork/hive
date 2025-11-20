@@ -19,7 +19,7 @@ import type { User, Workspace, Task, Repository } from "@prisma/client";
 
 // Mock NextAuth
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/nextauth", () => ({

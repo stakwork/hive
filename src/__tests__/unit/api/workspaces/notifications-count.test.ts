@@ -1,11 +1,11 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { GET } from "@/app/api/workspaces/[slug]/tasks/notifications-count/route";
 
 // Mock next-auth
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
 // Mock authOptions
@@ -25,7 +25,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
+const { auth: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
 
 // Test Data Factories

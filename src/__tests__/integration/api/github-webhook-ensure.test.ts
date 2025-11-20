@@ -17,10 +17,10 @@ vi.mock("@/lib/auth/nextauth", () => ({
 
 // Mock next-auth session
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 
 describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ensure", () => {
   const endpointUrl = "http://localhost:3000/api/github/webhook/ensure";
@@ -31,7 +31,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   // Helper to create authenticated request
   const createAuthenticatedRequest = (body: object, userId: string = "user-123") => {
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(auth).mockResolvedValue({
       user: { id: userId, email: "test@example.com", name: "Test User" },
       expires: new Date(Date.now() + 86400000).toISOString(),
     });
@@ -45,7 +45,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   // Helper to create unauthenticated request
   const createUnauthenticatedRequest = (body: object) => {
-    vi.mocked(getServerSession).mockResolvedValue(null);
+    vi.mocked(auth).mockResolvedValue(null);
 
     return new NextRequest(endpointUrl, {
       method: "POST",

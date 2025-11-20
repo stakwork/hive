@@ -20,7 +20,7 @@ global.fetch = mockFetch;
 
 // Mock NextAuth for testing callback behavior
 vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }));
 
 describe("GitHub OAuth Callback Flow Integration Tests", () => {
