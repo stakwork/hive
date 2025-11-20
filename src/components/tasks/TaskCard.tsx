@@ -62,7 +62,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
       transition={{ duration: 0.15 }}
     >
       {/* Title row */}
-      <div className="mb-2 pr-10">
+      <div className="mb-2 pr-10 flex items-center gap-2">
         <AnimatePresence mode="wait">
           <motion.h4
             key={task.title}
@@ -70,13 +70,13 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 10 }}
             transition={{ duration: 0.25, ease: "easeInOut" }}
-            className="text-sm font-medium line-clamp-1"
+            className="text-sm font-medium line-clamp-1 flex-1"
           >
             {task.title}
           </motion.h4>
         </AnimatePresence>
         {task.hasActionArtifact && (
-          <Badge className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200 mt-1 inline-block">
+          <Badge className="px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200 flex-shrink-0">
             Waiting for input
           </Badge>
         )}

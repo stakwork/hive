@@ -64,7 +64,7 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    // Count tasks waiting for user input (tasks with FORM artifacts in latest message only)
+    // Count tasks waiting for user input (tasks where LATEST artifact in latest message is a FORM)
     // Only count tasks that are IN_PROGRESS or PENDING
     const tasksWithLatestMessage = await db.task.findMany({
       where: {
@@ -83,6 +83,10 @@ export async function GET(
           take: 1,
           select: {
             artifacts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+              take: 1,
               select: {
                 type: true,
               },
@@ -92,12 +96,13 @@ export async function GET(
       },
     });
 
-    // Count tasks where the latest message has FORM artifacts
+    // Count tasks where the LATEST artifact in the latest message is a FORM
     const waitingForInputCount = tasksWithLatestMessage.filter(task => {
       if (!task.chatMessages || task.chatMessages.length === 0) return false;
-      
-      const latestMessage = task.chatMessages[0];
-      return latestMessage.artifacts?.some(artifact => artifact.type === 'FORM') || false;
+      if (!task.chatMessages[0].artifacts || task.chatMessages[0].artifacts.length === 0) return false;
+
+      const latestArtifact = task.chatMessages[0].artifacts[0];
+      return latestArtifact.type === 'FORM';
     }).length;
 
     return NextResponse.json(
