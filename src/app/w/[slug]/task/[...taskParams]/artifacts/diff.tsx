@@ -116,12 +116,14 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
     }
   }, []);
 
-  // Get all diffs from all artifacts
+  // Get diffs from the latest diff artifact (already filtered by parent)
   const allDiffs = useMemo(() => {
-    return artifacts.flatMap((artifact) => {
-      const content = artifact.content as DiffContent;
-      return content?.diffs || [];
-    });
+    // Since parent already filters to latest diff artifact, just extract diffs
+    const diffArtifact = artifacts.find((artifact) => artifact.type === "DIFF");
+    if (!diffArtifact) return [];
+
+    const content = diffArtifact.content as DiffContent;
+    return content?.diffs || [];
   }, [artifacts]);
 
   // Parse all diffs and handle errors

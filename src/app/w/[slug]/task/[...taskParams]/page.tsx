@@ -754,8 +754,20 @@ export default function TaskChatPage() {
 
   // Separate artifacts by type
   const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
-  const hasNonFormArtifacts = allArtifacts.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
-  const browserArtifact = allArtifacts.find((a) => a.type === "BROWSER");
+
+  // Only keep the LATEST diff artifact, filter out earlier diffs
+  const latestDiffArtifact = allArtifacts.reverse().find((a) => a.type === "DIFF");
+  const artifactsWithoutOldDiffs = allArtifacts
+    .reverse() // Reverse back to original order
+    .filter((a) => {
+      if (a.type === "DIFF") {
+        return a === latestDiffArtifact; // Only keep the latest diff
+      }
+      return true; // Keep all other artifact types
+    });
+
+  const hasNonFormArtifacts = artifactsWithoutOldDiffs.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
+  const browserArtifact = artifactsWithoutOldDiffs.find((a) => a.type === "BROWSER");
 
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {
@@ -843,7 +855,7 @@ export default function TaskChatPage() {
                 <ResizablePanel defaultSize={60} minSize={25}>
                   <div className="h-full min-h-0 min-w-0">
                     <ArtifactsPanel
-                      artifacts={allArtifacts}
+                      artifacts={artifactsWithoutOldDiffs}
                       workspaceId={effectiveWorkspaceId || undefined}
                       taskId={currentTaskId || undefined}
                       onDebugMessage={handleDebugMessage}
@@ -931,7 +943,7 @@ export default function TaskChatPage() {
                 <ResizablePanel defaultSize={60} minSize={25}>
                   <div className="h-full min-h-0 min-w-0">
                     <ArtifactsPanel
-                      artifacts={allArtifacts}
+                      artifacts={artifactsWithoutOldDiffs}
                       workspaceId={effectiveWorkspaceId || undefined}
                       taskId={currentTaskId || undefined}
                       onDebugMessage={handleDebugMessage}
