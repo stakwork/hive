@@ -5,7 +5,6 @@ import {
   forceCollide,
   forceLink,
   forceManyBody,
-  forceRadial,
   forceSimulation,
   forceX,
   forceY,
@@ -217,7 +216,7 @@ export const createSimulationStore = (
         .force(
           'charge',
           forceManyBody()
-            .strength((_d: NodeExtended) => -2)
+            .strength((_d: NodeExtended) => -4)
         )
 
         // Longer links to create space between connected nodes
@@ -227,7 +226,7 @@ export const createSimulationStore = (
             .links(currentLinks)
             .id((d: Node) => d.ref_id)
             .distance(10)
-            .strength(0.5)
+            .strength(1)
         )
 
         // Large collision radius to prevent tight bunching
@@ -237,7 +236,7 @@ export const createSimulationStore = (
             .radius((d: NodeExtended) => (d.scale || 1) * nodeSize * 4)
             .strength(0.7)
         )
-        .force('radial', forceRadial(900, 0, 0, 0).strength(0.1))
+      // .force('radial', forceRadial(900, 0, 0, 0).strength(0.1))
     },
 
     // --- STYLE 2: CLUSTER FORCE (Data Grouping) ---
