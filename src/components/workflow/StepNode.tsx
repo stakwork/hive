@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { Handle, Position, useHandleConnections, NodeProps } from '@xyflow/react';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
 interface StepNodeData {
   id: string;
@@ -68,9 +69,9 @@ export default function StepNode({ data: rawData }: NodeProps) {
           borderColor: data.borderColor as React.CSSProperties['borderColor'],
           color: data.textColor as React.CSSProperties['color']
       }}>
-        <div dangerouslySetInnerHTML={{__html: data.data.html}}>
-
-        </div>
+        <MarkdownRenderer size="compact">
+          {data.data.html}
+        </MarkdownRenderer>
       </div>
       { (data.id !== 'system.fail' && data.id !== 'system.succeed') &&
         <Handle
