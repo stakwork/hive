@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { Users } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, ChevronLeft } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -33,6 +32,7 @@ export function WorkspaceMembersPreview({
   workspaceSlug,
   maxDisplay = 4,
 }: WorkspaceMembersPreviewProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const { members, loading } = useWorkspaceMembers(workspaceSlug, {
     includeSystemAssignees: false,
   });
@@ -48,20 +48,37 @@ export function WorkspaceMembersPreview({
     return new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
   });
 
-  const previewMembers = sortedMembers.slice(0, maxDisplay);
+  const displayMembers = isExpanded ? sortedMembers : sortedMembers.slice(0, maxDisplay);
   const remainingCount = members.length - maxDisplay;
   const hasMore = remainingCount > 0;
 
+  const handleToggleExpand = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExpanded(!isExpanded);
+  };
+
   return (
-    <Link href={`/w/${workspaceSlug}/settings#members`}>
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm hover:bg-accent/95 transition-all duration-300 cursor-pointer ${loading ? 'opacity-0' : 'opacity-100'}`}>
-        {/* Avatar list */}
-        <div className="flex items-center gap-2">
-          {previewMembers.map((member) => (
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm transition-all duration-300 max-h-[120px] overflow-y-auto ${loading ? 'opacity-0' : 'opacity-100'}`}>
+      {/* Avatar list */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {displayMembers.map((member, index) => {
+          const isAdditional = index >= maxDisplay;
+          const staggerDelay = isAdditional ? (index - maxDisplay) * 50 : 0;
+
+          return (
             <Tooltip key={member.id}>
               <TooltipTrigger asChild>
                 <Avatar
-                  className="w-8 h-8 border-2 border-card hover:scale-110 transition-transform"
+                  className={`w-8 h-8 border-2 border-card hover:scale-110 transition-all duration-200 ${
+                    isAdditional && isExpanded
+                      ? 'animate-slide-in'
+                      : ''
+                  }`}
+                  style={
+                    isAdditional && isExpanded
+                      ? { animationDelay: `${staggerDelay}ms` }
+                      : undefined
+                  }
                 >
                   <AvatarImage
                     src={member.user.image || undefined}
@@ -76,18 +93,24 @@ export function WorkspaceMembersPreview({
                 <p>{member.user.name || member.user.email || "Unknown user"}</p>
               </TooltipContent>
             </Tooltip>
-          ))}
+          );
+        })}
 
-          {/* +N badge if more than 4 members */}
-          {hasMore && (
-            <div className="w-8 h-8 rounded-full border-2 border-card bg-muted flex items-center justify-center">
-              <span className="text-xs font-medium text-muted-foreground">
-                +{remainingCount}
-              </span>
-            </div>
-          )}
-        </div>
+        {/* Expand/collapse button */}
+        {hasMore && (
+          <button
+            onClick={handleToggleExpand}
+            className="w-8 h-8 rounded-full border-2 border-card bg-muted flex items-center justify-center hover:scale-105 hover:bg-muted/80 transition-all duration-200 cursor-pointer"
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+          >
+            {isExpanded ? (
+              <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            )}
+          </button>
+        )}
       </div>
-    </Link>
+    </div>
   );
 }

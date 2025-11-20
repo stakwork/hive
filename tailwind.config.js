@@ -32,6 +32,15 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      keyframes: {
+        "slide-in": {
+          "0%": { transform: "translateX(16px)", opacity: "0" },
+          "100%": { transform: "translateX(0)", opacity: "1" },
+        },
+      },
+      animation: {
+        "slide-in": "slide-in 200ms ease-out forwards",
+      },
     },
   },
   plugins: [],
