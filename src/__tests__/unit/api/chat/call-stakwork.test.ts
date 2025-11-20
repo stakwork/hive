@@ -33,7 +33,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 vi.mock("@/auth", () => ({
-  authOptions: {},
+  auth: vi.fn(),
   getGithubUsernameAndPAT: vi.fn(),
 }));
 vi.mock("@/services/s3", () => ({

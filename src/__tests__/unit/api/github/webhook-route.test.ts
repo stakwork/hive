@@ -55,6 +55,7 @@ vi.mock("@/services/swarm/stakgraph-actions", () => ({
 
 vi.mock("@/auth", () => ({
   getGithubUsernameAndPAT: vi.fn(),
+  auth: vi.fn(),
 }));
 
 describe("GitHub Webhook Route - POST /api/github/webhook", () => {
@@ -655,7 +656,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         "sk_test_swarm_123", // decrypted API key
         "https://github.com/test-owner/test-repo",
         { username: "testuser", pat: "github_pat_123" },
-        expect.stringContaining("/api/swarm/stakgraph/webhook"),
+        expect.stringContaining("/api/swarm/stakgraph/webhook")
       );
     });
 
@@ -754,7 +755,7 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
         expect.any(String),
         expect.any(String),
         undefined, // No credentials
-        expect.any(String),
+        expect.any(String)
       );
     });
   });

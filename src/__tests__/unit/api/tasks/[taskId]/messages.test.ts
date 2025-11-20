@@ -12,7 +12,7 @@ vi.mock("next-auth/next", () => ({
 
 // Mock authOptions
 vi.mock("@/auth", () => ({
-  authOptions: {},
+  auth: vi.fn(),
 }));
 
 // Mock the database

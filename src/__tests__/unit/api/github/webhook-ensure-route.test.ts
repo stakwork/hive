@@ -29,7 +29,7 @@ vi.mock("@/config/services", () => ({
 }));
 
 vi.mock("@/auth", () => ({
-  authOptions: {},
+  auth: vi.fn(),
 }));
 
 // Import mocked modules

@@ -10,7 +10,7 @@ vi.mock("next-auth/next", () => ({
 
 // Mock authOptions
 vi.mock("@/auth", () => ({
-  authOptions: {},
+  auth: vi.fn(),
 }));
 
 // Mock the database
@@ -425,7 +425,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
               in: ["IN_PROGRESS", "PENDING"],
             },
           }),
-        }),
+        })
       );
     });
 
@@ -438,7 +438,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
           where: expect.objectContaining({
             deleted: false,
           }),
-        }),
+        })
       );
     });
 
@@ -456,7 +456,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
               take: 1,
             }),
           }),
-        }),
+        })
       );
     });
   });

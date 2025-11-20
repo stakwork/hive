@@ -29,7 +29,7 @@ vi.mock("@/lib/env", () => ({
   config: {},
 }));
 vi.mock("@/auth", () => ({
-  authOptions: {},
+  auth: vi.fn(),
   getGithubUsernameAndPAT: vi.fn(),
 }));
 vi.mock("@/services/s3", () => ({
