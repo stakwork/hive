@@ -1,9 +1,27 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { parseDiff, Diff, Hunk, DiffType, HunkData } from "react-diff-view";
+import { parseDiff, Diff, Hunk, DiffType, HunkData, tokenize } from "react-diff-view";
 import { Artifact, DiffContent, Action, ActionResult } from "@/lib/chat";
 import { useTheme } from "@/hooks/use-theme";
+import { getLanguageFromFile } from "@/lib/syntax-utils";
+import refractor from "refractor/core.js";
+import javascript from "refractor/lang/javascript.js";
+import typescript from "refractor/lang/typescript.js";
+import jsx from "refractor/lang/jsx.js";
+import tsx from "refractor/lang/tsx.js";
+import css from "refractor/lang/css.js";
+import python from "refractor/lang/python.js";
+import json from "refractor/lang/json.js";
+
+// Register languages with refractor
+refractor.register(javascript);
+refractor.register(typescript);
+refractor.register(jsx);
+refractor.register(tsx);
+refractor.register(css);
+refractor.register(python);
+refractor.register(json);
 import {
   FilePlus,
   FileEdit,
@@ -33,9 +51,37 @@ interface ParsedFile {
   errorMessage?: string;
   additions: number;
   deletions: number;
+  language: string;
+  tokens: any;
 }
 
 const EMPTY_HUNKS: HunkData[] = [];
+
+/**
+ * Create tokens for syntax highlighting using refractor
+ */
+const createTokens = (hunks: HunkData[], language: string) => {
+  if (!hunks || hunks.length === 0) {
+    return null;
+  }
+
+  // Check if language is supported by refractor
+  if (!refractor.listLanguages().includes(language)) {
+    return null;
+  }
+
+  try {
+    // Use react-diff-view's tokenize with refractor
+    return tokenize(hunks, {
+      highlight: true,
+      refractor: refractor as any,
+      language,
+    });
+  } catch (error) {
+    console.error(`Failed to tokenize diff for ${language}:`, error);
+    return null;
+  }
+};
 
 export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unified", className = "" }: DiffArtifactPanelProps) {
   const { resolvedTheme } = useTheme();
@@ -64,6 +110,7 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
     return allDiffs.flatMap((diff: ActionResult): ParsedFile[] => {
       try {
         if (!diff.content || diff.content.trim() === "") {
+          const language = getLanguageFromFile(diff.file);
           return [
             {
               fileName: diff.file,
@@ -75,6 +122,8 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
               errorMessage: "No diff content available",
               additions: 0,
               deletions: 0,
+              language,
+              tokens: null,
             },
           ];
         }
@@ -92,6 +141,10 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
             deletions += hunk.changes.filter(c => c.type === 'delete').length;
           });
 
+          // Detect language and create tokens for syntax highlighting
+          const language = getLanguageFromFile(diff.file);
+          const tokens = createTokens(file.hunks || [], language);
+
           return {
             fileName: diff.file,
             action: diff.action,
@@ -101,10 +154,13 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
             hasError: false as boolean,
             additions,
             deletions,
+            language,
+            tokens,
           };
         });
       } catch (error) {
         console.error("Failed to parse diff for file:", diff.file, error);
+        const language = getLanguageFromFile(diff.file);
         return [
           {
             fileName: diff.file,
@@ -116,6 +172,8 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
             errorMessage: error instanceof Error ? error.message : "Failed to parse diff",
             additions: 0,
             deletions: 0,
+            language,
+            tokens: null,
           },
         ];
       }
@@ -297,7 +355,12 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
                   {/* Diff content */}
                   {!file.hasError && file.hunks.length > 0 && (
                     <div className="overflow-x-auto">
-                      <Diff viewType={viewType} diffType={file.type} hunks={file.hunks}>
+                      <Diff
+                        viewType={viewType}
+                        diffType={file.type}
+                        hunks={file.hunks}
+                        tokens={file.tokens}
+                      >
                         {(hunks) =>
                           hunks.map((hunk) => (
                             <Hunk key={hunk.content} hunk={hunk} />
