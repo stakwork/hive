@@ -30,7 +30,7 @@ const calculateGridMap = (nodes: Node[], nodeTypes: string[]) => {
 
   const positionMap = new Map<string, { x: number, y: number, z: number }>();
 
-  // 2. Calculate positions
+  // 2. Calculate positions for each type
   nodes.forEach((n) => {
     const typeIndex = nodeTypes.indexOf(n.node_type) + 1;
     // Separate layers by 500 units on Y axis
@@ -55,6 +55,29 @@ const calculateGridMap = (nodes: Node[], nodeTypes: string[]) => {
 
     positionMap.set(n.ref_id, { x, y: yOffset, z });
   });
+
+  // 3. Center the entire grid around (0,0,0)
+  const positions = Array.from(positionMap.values());
+  if (positions.length > 0) {
+    // Calculate bounds
+    const minX = Math.min(...positions.map(p => p.x));
+    const maxX = Math.max(...positions.map(p => p.x));
+    const minZ = Math.min(...positions.map(p => p.z));
+    const maxZ = Math.max(...positions.map(p => p.z));
+
+    // Calculate center offset
+    const centerX = (minX + maxX) / 2;
+    const centerZ = (minZ + maxZ) / 2;
+
+    // Apply center offset to all positions
+    for (const [nodeId, pos] of positionMap.entries()) {
+      positionMap.set(nodeId, {
+        x: pos.x - centerX,
+        y: pos.y, // Y is already centered around 0 with positive/negative layers
+        z: pos.z - centerZ
+      });
+    }
+  }
 
   return positionMap;
 };
