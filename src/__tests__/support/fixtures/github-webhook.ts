@@ -232,3 +232,39 @@ export const testRepositoryUrls = {
   withGit: "https://github.com/test-owner/test-repo.git",
   different: "https://github.com/another-org/different-repo",
 };
+
+/**
+ * GitHub App authorization event payload structure
+ */
+interface GitHubAppAuthPayload {
+  action: "revoked";
+  sender: {
+    login: string;
+    id: number;
+    type: string;
+  };
+}
+
+/**
+ * Creates a valid GitHub App authorization event payload
+ */
+export function createGitHubAppAuthPayload(
+  action: "revoked" = "revoked",
+  senderLogin: string = "test-user"
+): GitHubAppAuthPayload {
+  return {
+    action,
+    sender: {
+      login: senderLogin,
+      id: 12345678,
+      type: "User",
+    },
+  };
+}
+
+/**
+ * Mock GitHub App webhook event types for testing
+ */
+export const mockGitHubAppEvents = {
+  authorization: "github_app_authorization",
+};
