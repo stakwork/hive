@@ -130,7 +130,7 @@ export const createDataStore = () =>
 
         const nodeTypes = [...new Set(updatedNodes.map((node) => node.node_type))]
         const linkTypes = [...new Set(updatedLinks.map((node) => node.edge_type))]
-        const sidebarFilters = ['all', ...nodeTypes.map((type) => type.toLowerCase())]
+        const sidebarFilters = ['all', ...nodeTypes.filter(Boolean).map((type) => type.toLowerCase())]
 
         const sidebarFilterCounts = sidebarFilters.map((filter) => ({
           name: filter,
@@ -138,6 +138,7 @@ export const createDataStore = () =>
         }))
 
         if (!newNodes.length && !newLinks.length) {
+          set({ dataNew: null })
           return
         }
 
@@ -171,6 +172,7 @@ export const createDataStore = () =>
           dataNew: null,
           runningProjectId: '',
           nodeTypes: [],
+          linkTypes: [],
           nodesNormalized: new Map<string, NodeExtended>(),
           linksNormalized: new Map<string, Link>(),
           nodeLinksNormalized: {},
