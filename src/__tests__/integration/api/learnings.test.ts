@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { GET } from "@/app/api/learnings/route";
+import { GET, POST } from "@/app/api/learnings/route";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
@@ -205,6 +206,606 @@ describe("GET /api/learnings - Authorization", () => {
 
     expect(response.status).toBe(200);
     fetchSpy.mockRestore();
+  });
+});
+
+describe("POST /api/learnings - Authentication & Authorization", () => {
+  let owner: User;
+  let workspace: Workspace;
+  let swarm: Swarm;
+  let memberViewer: User;
+  let memberDeveloper: User;
+  let memberAdmin: User;
+  let nonMember: User;
+
+  beforeEach(async () => {
+    await db.$transaction(async (tx) => {
+      const scenario = await createTestWorkspaceScenario({
+        owner: {
+          name: "Test Owner",
+        },
+        members: [
+          { role: "VIEWER" },
+          { role: "DEVELOPER" },
+          { role: "ADMIN" },
+        ],
+      });
+
+      owner = scenario.owner;
+      workspace = scenario.workspace;
+      memberViewer = scenario.members[0];
+      memberDeveloper = scenario.members[1];
+      memberAdmin = scenario.members[2];
+
+      nonMember = await tx.user.create({
+        data: {
+          name: "Non Member",
+          email: `non-member-${generateUniqueId("user")}@example.com`,
+        },
+      });
+
+      const encryptionService = EncryptionService.getInstance();
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-swarm-api-key");
+
+      swarm = await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "Test Swarm",
+        status: "ACTIVE",
+      });
+
+      await tx.swarm.update({
+        where: { id: swarm.id },
+        data: {
+          swarmUrl: "https://test-swarm.sphinx.chat",
+          swarmApiKey: JSON.stringify(encryptedApiKey),
+        },
+      });
+    });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+  });
+
+  it("should return 401 for unauthenticated request", async () => {
+    const request = createGetRequest(`/api/learnings?workspace=${workspace.slug}&budget=100`);
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe("Unauthorized");
+  });
+
+  it("should return 403 for non-workspace member", async () => {
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      nonMember
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error).toBe("Workspace not found or access denied");
+  });
+
+  it("should allow VIEWER role to initiate seed", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      memberViewer
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.message).toBe("Seed knowledge request initiated");
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("should allow DEVELOPER role to initiate seed", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      memberDeveloper
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("should allow ADMIN role to initiate seed", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      memberAdmin
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("should allow OWNER role to initiate seed", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("should return 403 for deleted workspace", async () => {
+    await db.$transaction(async (tx) => {
+      await tx.workspace.update({
+        where: { id: workspace.id },
+        data: { deleted: true, deletedAt: new Date() },
+      });
+    });
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(data.error).toBe("Workspace not found or access denied");
+  });
+});
+
+describe("POST /api/learnings - Parameter Validation", () => {
+  let owner: User;
+  let workspace: Workspace;
+  let swarm: Swarm;
+
+  beforeEach(async () => {
+    await db.$transaction(async (tx) => {
+      const scenario = await createTestWorkspaceScenario({
+        owner: {
+          name: "Test Owner",
+        },
+      });
+
+      owner = scenario.owner;
+      workspace = scenario.workspace;
+
+      const encryptionService = EncryptionService.getInstance();
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-swarm-api-key");
+
+      swarm = await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "Test Swarm",
+        status: "ACTIVE",
+      });
+
+      await tx.swarm.update({
+        where: { id: swarm.id },
+        data: {
+          swarmUrl: "https://test-swarm.sphinx.chat",
+          swarmApiKey: JSON.stringify(encryptedApiKey),
+        },
+      });
+    });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+  });
+
+  it("should return 400 for missing workspace parameter", async () => {
+    const request = createAuthenticatedGetRequest(`/api/learnings?budget=100`, owner);
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("Missing required parameter: workspace");
+  });
+
+  it("should return 400 for missing budget parameter", async () => {
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("Missing required parameter: budget");
+  });
+
+  it("should return 400 when both workspace and budget are missing", async () => {
+    const request = createAuthenticatedGetRequest(`/api/learnings`, owner);
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe("Missing required parameter: workspace");
+  });
+});
+
+describe("POST /api/learnings - Swarm Configuration", () => {
+  let owner: User;
+  let workspace: Workspace;
+
+  beforeEach(async () => {
+    await db.$transaction(async (tx) => {
+      const scenario = await createTestWorkspaceScenario({
+        owner: {
+          name: "Test Owner",
+        },
+      });
+
+      owner = scenario.owner;
+      workspace = scenario.workspace;
+    });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+  });
+
+  it("should return 404 when swarm is not found for workspace", async () => {
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error).toBe("Swarm not found for this workspace");
+  });
+
+  it("should return 404 when swarmUrl is not configured", async () => {
+    await db.$transaction(async (tx) => {
+      const swarm = await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "Test-Swarm-NoUrl",
+        status: "ACTIVE",
+      });
+
+      await tx.swarm.update({
+        where: { id: swarm.id },
+        data: { swarmUrl: null },
+      });
+    });
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error).toBe("Swarm URL not configured");
+  });
+});
+
+describe("POST /api/learnings - External API Integration", () => {
+  let owner: User;
+  let workspace: Workspace;
+  let swarm: Swarm;
+
+  beforeEach(async () => {
+    await db.$transaction(async (tx) => {
+      const scenario = await createTestWorkspaceScenario({
+        owner: {
+          name: "Test Owner",
+        },
+      });
+
+      owner = scenario.owner;
+      workspace = scenario.workspace;
+
+      const encryptionService = EncryptionService.getInstance();
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-swarm-api-key");
+
+      swarm = await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "Test Swarm",
+        status: "ACTIVE",
+      });
+
+      await tx.swarm.update({
+        where: { id: swarm.id },
+        data: {
+          swarmUrl: "https://test-swarm.sphinx.chat",
+          swarmApiKey: JSON.stringify(encryptedApiKey),
+        },
+      });
+    });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+  });
+
+  it("should make external API call to swarm /seed_stories endpoint", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.message).toBe("Seed knowledge request initiated");
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("https://test-swarm.sphinx.chat:3355/seed_stories?budget=100"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "x-api-token": "test-swarm-api-key",
+        }),
+      })
+    );
+  });
+
+  it("should correctly encode budget parameter in URL", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const testBudget = "500";
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=${testBudget}`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+
+    expect(response.status).toBe(200);
+
+    const fetchCall = fetchSpy.mock.calls[0];
+    const fetchUrl = fetchCall[0] as string;
+    expect(fetchUrl).toContain(`budget=${encodeURIComponent(testBudget)}`);
+  });
+
+  it("should use decrypted API key in x-api-token header", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    await POST(request as NextRequest);
+
+    const fetchCall = fetchSpy.mock.calls[0];
+    const headers = fetchCall[1]?.headers as Record<string, string>;
+
+    expect(headers["x-api-token"]).toBe("test-swarm-api-key");
+    expect(headers["x-api-token"]).not.toContain("data");
+    expect(headers["x-api-token"]).not.toContain("iv");
+  });
+
+  it("should use correct swarm URL with port 3355", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    await POST(request as NextRequest);
+
+    const fetchCall = fetchSpy.mock.calls[0];
+    const fetchUrl = fetchCall[0] as string;
+
+    expect(fetchUrl).toContain("https://test-swarm.sphinx.chat:3355");
+    expect(fetchUrl).toContain("/seed_stories");
+  });
+
+  it("should handle localhost swarm URL with http protocol", async () => {
+    await db.$transaction(async (tx) => {
+      await tx.swarm.update({
+        where: { id: swarm.id },
+        data: {
+          swarmUrl: "http://localhost:8000",
+        },
+      });
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    await POST(request as NextRequest);
+
+    const fetchCall = fetchSpy.mock.calls[0];
+    const fetchUrl = fetchCall[0] as string;
+
+    expect(fetchUrl).toContain("http://localhost:3355");
+  });
+});
+
+describe("POST /api/learnings - Fire-and-Forget Behavior", () => {
+  let owner: User;
+  let workspace: Workspace;
+  let swarm: Swarm;
+
+  beforeEach(async () => {
+    await db.$transaction(async (tx) => {
+      const scenario = await createTestWorkspaceScenario({
+        owner: {
+          name: "Test Owner",
+        },
+      });
+
+      owner = scenario.owner;
+      workspace = scenario.workspace;
+
+      const encryptionService = EncryptionService.getInstance();
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-swarm-api-key");
+
+      swarm = await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "Test Swarm",
+        status: "ACTIVE",
+      });
+
+      await tx.swarm.update({
+        where: { id: swarm.id },
+        data: {
+          swarmUrl: "https://test-swarm.sphinx.chat",
+          swarmApiKey: JSON.stringify(encryptedApiKey),
+        },
+      });
+    });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+  });
+
+  it("should return 200 immediately even if external request fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error"));
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.message).toBe("Seed knowledge request initiated");
+  });
+
+  it("should return 200 immediately even if swarm returns error status", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.message).toBe("Seed knowledge request initiated");
+  });
+
+  it("should still make external call despite fire-and-forget", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    await POST(request as NextRequest);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("POST /api/learnings - Error Handling", () => {
+  let owner: User;
+  let workspace: Workspace;
+
+  beforeEach(async () => {
+    await db.$transaction(async (tx) => {
+      const scenario = await createTestWorkspaceScenario({
+        owner: {
+          name: "Test Owner",
+        },
+      });
+
+      owner = scenario.owner;
+      workspace = scenario.workspace;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should return 404 when swarm is not configured for workspace", async () => {
+    // Test real error scenario: workspace exists but has no swarm
+    const request = createAuthenticatedGetRequest(
+      `/api/learnings?workspace=${workspace.slug}&budget=100`,
+      owner
+    );
+    const response = await POST(request as NextRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error).toBe("Swarm not found for this workspace");
   });
 });
 
