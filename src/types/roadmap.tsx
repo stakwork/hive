@@ -174,9 +174,34 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
         featureId: true;
         createdAt: true;
         updatedAt: true;
-        _count: {
+        tasks: {
           select: {
-            tasks: true;
+            id: true;
+            title: true;
+            description: true;
+            status: true;
+            priority: true;
+            order: true;
+            featureId: true;
+            phaseId: true;
+            bountyCode: true;
+            dependsOnTaskIds: true;
+            createdAt: true;
+            updatedAt: true;
+            assignee: {
+              select: {
+                id: true;
+                name: true;
+                email: true;
+                image: true;
+              };
+            };
+            phase: {
+              select: {
+                id: true;
+                name: true;
+              };
+            };
           };
         };
       };
@@ -535,6 +560,7 @@ export interface CreateRoadmapTaskRequest {
   priority?: import("@prisma/client").Priority;
   runBuild?: boolean;
   runTestSuite?: boolean;
+  dependsOnTaskIds?: string[];
 }
 
 export interface UpdateRoadmapTaskRequest {
