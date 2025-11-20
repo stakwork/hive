@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 
@@ -10,7 +9,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user || !(session.user as { id?: string }).id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

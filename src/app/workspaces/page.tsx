@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { getUserWorkspaces } from "@/services/workspace";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,7 +10,7 @@ import { WORKSPACE_LIMITS } from "@/lib/constants";
 import { WorkspacesPageContent } from "@/components/WorkspacesPageContent";
 
 export default async function WorkspacesPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect("/auth/signin");

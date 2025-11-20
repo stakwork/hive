@@ -1,7 +1,6 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { getUserAppTokens } from "@/lib/githubApp";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -12,7 +11,7 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({
         hasPushAccess: false,

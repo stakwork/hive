@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth/nextauth";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

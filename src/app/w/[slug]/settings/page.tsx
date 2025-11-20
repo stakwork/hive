@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/auth";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { RerunIngest } from "@/components/RerunIngest";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
@@ -14,7 +13,7 @@ export default async function SettingsPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const { slug } = await params;
 
   if (!session?.user) {

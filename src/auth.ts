@@ -1,12 +1,13 @@
+import NextAuth from "next-auth";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import CredentialsProvider from "next-auth/providers/credentials";
+import GitHubProvider from "next-auth/providers/github";
+import axios from "axios";
+
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import axios from "axios";
-import { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
-import GitHubProvider from "next-auth/providers/github";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -65,7 +66,7 @@ const getProviders = () => {
         },
         async authorize(credentials) {
           // Mock authentication - accept any username in development
-          if (credentials?.username) {
+          if (credentials?.username && typeof credentials.username === 'string') {
             const username = credentials.username.trim();
             return {
               id: `mock-${username}`,
@@ -83,7 +84,7 @@ const getProviders = () => {
   return providers;
 };
 
-export const authOptions: NextAuthOptions = {
+export const { handlers, auth, signIn, signOut } = NextAuth({
   // Only use PrismaAdapter when not using credentials provider
   ...(process.env.POD_URL ? {} : { adapter: PrismaAdapter(db) }),
   providers: getProviders(),
@@ -95,10 +96,10 @@ export const authOptions: NextAuthOptions = {
           // Create or find the mock user in the database
           const existingUser = user.email
             ? await db.user.findUnique({
-              where: {
-                email: user.email,
-              },
-            })
+                where: {
+                  email: user.email,
+                },
+              })
             : null;
 
           if (!existingUser) {
@@ -161,10 +162,10 @@ export const authOptions: NextAuthOptions = {
           // Check if there's an existing user with the same email
           const existingUser = user.email
             ? await db.user.findUnique({
-              where: {
-                email: user.email,
-              },
-            })
+                where: {
+                  email: user.email,
+                },
+              })
             : null;
 
           if (existingUser) {
@@ -229,7 +230,7 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async session({ session, user, token }) {
-      const userId = user?.id ?? (token?.id as string | undefined);
+      const userId = user?.id ?? (token?.sub as string | undefined);
       const userEmail = user?.email ?? (token?.email as string | undefined);
 
       if (session.user && userId) {
@@ -239,7 +240,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         // For JWT sessions (mock provider), get data from token
         if (process.env.POD_URL && token) {
-          (session.user as { id: string }).id = token.id as string;
+          (session.user as { id: string }).id = token.sub as string;
           if (token.github) {
             (
               session.user as {
@@ -422,7 +423,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       // Initial sign-in: populate token with user data
       if (user) {
-        token.id = user.id;
+        token.sub = user.id;
         token.email = user.email;
         token.name = user.name;
         token.picture = user.image;
@@ -468,7 +469,7 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,
-};
+});
 
 interface GithubUsernameAndPAT {
   username: string;

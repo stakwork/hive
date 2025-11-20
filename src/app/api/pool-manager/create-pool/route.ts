@@ -1,4 +1,4 @@
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { poolManagerService } from "@/lib/service-factory";
@@ -6,7 +6,7 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { EnvironmentVariable } from "@/types";
 import { isApiError } from "@/types/errors";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -37,7 +37,7 @@ async function withRetry<T>(
 export async function POST(request: NextRequest) {
   const body = await request.json();
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

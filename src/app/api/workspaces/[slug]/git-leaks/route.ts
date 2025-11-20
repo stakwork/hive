@@ -3,7 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { GitLeakResult } from "@/types/git-leaks";
 
 export async function GET(

@@ -1,5 +1,4 @@
 import { getServiceConfig } from "@/config/services";
-import { authOptions } from "@/lib/auth/nextauth";
 import { SWARM_DEFAULT_INSTANCE_TYPE } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { generateSecurePassword } from "@/lib/utils/password";
@@ -8,7 +7,7 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus, SwarmStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 
@@ -23,7 +22,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
@@ -268,7 +267,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }

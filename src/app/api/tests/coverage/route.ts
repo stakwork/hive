@@ -1,10 +1,9 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { convertGlobsToRegex } from "@/lib/utils/glob";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { TestCoverageData } from "@/types/test-coverage";
 
@@ -14,7 +13,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },

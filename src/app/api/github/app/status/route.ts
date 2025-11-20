@@ -1,8 +1,7 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { checkRepositoryAccess, getUserAppTokens } from "@/lib/githubApp";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 // import { EncryptionService } from "@/lib/encryption";
 
@@ -23,7 +22,7 @@ export async function GET(request: Request) {
   console.log("[github-app-status] Request initiated", logContext);
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       console.log("[github-app-status] No authenticated user", {
         ...logContext,

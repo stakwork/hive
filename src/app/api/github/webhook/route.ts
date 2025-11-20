@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/nextauth'
+import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { getS3Service } from '@/services/s3'
@@ -15,7 +14,7 @@ const screenshotQuerySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await auth()
 
     if (!session?.user) {
       return NextResponse.json(
