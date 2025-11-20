@@ -33,9 +33,13 @@ vi.mock("@/config/services", () => ({
   })),
 }));
 
-vi.mock("@/lib/constants", () => ({
-  getSwarmVanityAddress: vi.fn((name: string) => `${name}.sphinx.chat`),
-}));
+vi.mock("@/lib/constants", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/constants")>();
+  return {
+    ...actual,
+    getSwarmVanityAddress: vi.fn((name: string) => `${name}.sphinx.chat`),
+  };
+});
 
 vi.mock("@/lib/url", () => ({
   getGithubWebhookCallbackUrl: vi.fn(() => "https://app.example.com/api/github/webhook"),
@@ -394,7 +398,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ swarmId });
+      const request = createPostRequest({ workspaceId, swarmId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);

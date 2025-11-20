@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { EncryptionService } from "@/lib/encryption";
 
 const encryptionService = EncryptionService.getInstance();
@@ -20,6 +21,13 @@ export async function GET(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ success: false, message: "Missing required fields: id" }, { status: 400 });
+    }
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        { success: false, message: "workspaceId query parameter is required" },
+        { status: 400 }
+      );
     }
 
     const where: Record<string, string> = {};
@@ -43,6 +51,22 @@ export async function GET(request: NextRequest) {
       const session = await getServerSession(authOptions);
       if (!session?.user?.id) {
         return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+      }
+
+      // Validate workspace access
+      const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+      if (!workspaceAccess.hasAccess) {
+        return NextResponse.json(
+          { success: false, message: "Workspace not found or access denied" },
+          { status: 403 }
+        );
+      }
+
+      if (!workspaceAccess.canRead) {
+        return NextResponse.json(
+          { success: false, message: "Insufficient permissions to access stakgraph status" },
+          { status: 403 }
+        );
       }
     }
 
