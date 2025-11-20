@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { ArrowUp, Mic, MicOff, Zap, Workflow, Beaker } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -88,7 +88,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
       case "live":
         return { icon: Workflow, label: "Workflow" };
       case "agent":
-        return { icon: Zap, label: "Agent" };
+        return { icon: Bot, label: "Agent" };
       case "test":
         return { icon: Beaker, label: "Test" };
       default:
@@ -132,7 +132,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
               </SelectItem>
               <SelectItem value="agent">
                 <div className="flex items-center gap-2">
-                  <Zap className="h-3.5 w-3.5" />
+                  <Bot className="h-3.5 w-3.5" />
                   <span>Agent</span>
                 </div>
               </SelectItem>
