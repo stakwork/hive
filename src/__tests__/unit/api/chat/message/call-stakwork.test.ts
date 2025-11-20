@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
 import { auth } from "@/auth";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
@@ -21,7 +21,7 @@ import {
 
 // Mock all external dependencies
 vi.mock("next-auth/next");
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/auth");
 vi.mock("@/lib/db", () => ({
   db: {
     task: {

@@ -26,7 +26,7 @@ vi.mock("@/services/workspace", () => ({
 }));
 
 // Mock GitHub auth utilities
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   getGithubUsernameAndPAT: vi.fn(),
 }));
 
@@ -208,7 +208,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should allow VIEWER role to access quick ask", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
       const { getApiKeyForProvider, getModel } = await import("aieo");
       const { askTools } = await import("@/lib/ai/askTools");
@@ -359,7 +359,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should return 404 when GitHub PAT is not found", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
 
       requireAuth.mockReturnValue({ id: owner.id, email: owner.email, name: owner.name });
@@ -393,7 +393,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should decrypt swarm API key before making AI request", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
       const { getApiKeyForProvider, getModel } = await import("aieo");
       const { askTools } = await import("@/lib/ai/askTools");
@@ -458,7 +458,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should construct correct swarm URL with port 3355 for production", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
       const { getApiKeyForProvider, getModel } = await import("aieo");
       const { askTools } = await import("@/lib/ai/askTools");
@@ -520,7 +520,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should handle localhost swarm URL correctly", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
       const { getApiKeyForProvider, getModel } = await import("aieo");
       const { askTools } = await import("@/lib/ai/askTools");
@@ -590,7 +590,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should successfully process question with valid inputs", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
       const { getApiKeyForProvider, getModel } = await import("aieo");
       const { askTools } = await import("@/lib/ai/askTools");
@@ -646,7 +646,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should call AI tools with correct parameters", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
       const { getApiKeyForProvider, getModel } = await import("aieo");
       const { askTools } = await import("@/lib/ai/askTools");
@@ -729,7 +729,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
     test("should return 500 when AI streaming fails", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       const { validateWorkspaceAccess } = await import("@/services/workspace");
-      const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+      const { getGithubUsernameAndPAT } = await import("@/auth");
       const { getPrimaryRepository } = await import("@/lib/helpers/repository");
       const { getApiKeyForProvider, getModel } = await import("aieo");
       const { askTools } = await import("@/lib/ai/askTools");

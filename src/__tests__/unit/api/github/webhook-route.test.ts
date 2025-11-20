@@ -3,7 +3,7 @@ import { POST } from "@/app/api/github/webhook/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { RepositoryStatus } from "@prisma/client";
 import {
   createGitHubPushPayload,
@@ -53,7 +53,7 @@ vi.mock("@/services/swarm/stakgraph-actions", () => ({
   triggerAsyncSync: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   getGithubUsernameAndPAT: vi.fn(),
 }));
 

@@ -32,7 +32,7 @@ vi.mock("@/lib/env", () => ({
     STAKWORK_WORKFLOW_ID: "123,456,789",
   },
 }));
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   authOptions: {},
   getGithubUsernameAndPAT: vi.fn(),
 }));
@@ -53,7 +53,7 @@ global.fetch = vi.fn();
 const { auth: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/lib/env");
-const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/auth");
 const { getS3Service: mockGetS3Service } = await import("@/services/s3");
 const { transformSwarmUrlToRepo2Graph: mockTransformSwarmUrlToRepo2Graph } = await import("@/lib/utils/swarm");
 const { getBaseUrl: mockGetBaseUrl } = await import("@/lib/utils");

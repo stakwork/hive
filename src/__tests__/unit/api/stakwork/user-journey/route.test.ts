@@ -3,7 +3,7 @@ import { invokeRoute } from "@/__tests__/harness/route";
 import { POST } from "@/app/api/stakwork/user-journey/route";
 
 // Mock all dependencies including the external Stakwork API
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/auth");
 vi.mock("@/services/workspace");
 vi.mock("@/lib/db");
 vi.mock("@/lib/utils/swarm");
@@ -11,7 +11,7 @@ vi.mock("@/lib/utils/swarm");
 // Mock fetch globally for Stakwork API calls
 global.fetch = vi.fn();
 
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { getWorkspaceById } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";

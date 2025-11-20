@@ -20,7 +20,7 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/auth");
 vi.mock("@/lib/helpers/repository");
 vi.mock("@/services/swarm/stakgraph-actions");
 vi.mock("@/services/swarm/api/swarm");
@@ -38,7 +38,7 @@ vi.mock("@/lib/constants");
 vi.mock("@/lib/url");
 
 import { db } from "@/lib/db";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";

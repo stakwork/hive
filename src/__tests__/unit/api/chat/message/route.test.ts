@@ -5,7 +5,7 @@ import { ChatRole, ChatStatus, WorkflowStatus } from "@prisma/client";
 
 // Mock all external dependencies
 vi.mock("next-auth/next");
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/auth");
 vi.mock("@/lib/db", () => ({
   db: {
     task: {
@@ -44,7 +44,7 @@ vi.mock("@/lib/utils/swarm", () => ({
 
 // Import mocked modules after vi.mock declarations
 import { auth } from "@/auth";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { getS3Service } from "@/services/s3";

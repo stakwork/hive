@@ -15,13 +15,13 @@ import {
 } from "@/__tests__/support/helpers/api-assertions";
 import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
 import { EncryptionService } from "@/lib/encryption";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
 import { createTestRepository } from "@/__tests__/support/fixtures/repository";
 import { createTestUserJourneyTask } from "@/__tests__/support/fixtures/task";
 import { createTestSwarm } from "@/__tests__/support/fixtures/swarm";
 
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/auth");
 vi.mock("next-auth");
 
 // Mock global fetch

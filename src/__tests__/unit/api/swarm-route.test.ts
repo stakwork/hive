@@ -40,7 +40,7 @@ vi.mock("@/services/swarm/fake", () => ({
   createFakeSwarm: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   authOptions: {},
 }));
 

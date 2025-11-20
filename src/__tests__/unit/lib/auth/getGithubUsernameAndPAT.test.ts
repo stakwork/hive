@@ -1,4 +1,4 @@
-import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
+import { getGithubUsernameAndPAT } from '@/auth';
 import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
 import { beforeEach, describe, expect, it, vi } from 'vitest';

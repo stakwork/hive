@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/github/webhook/ensure/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 import { NextRequest } from "next/server";
 import {
   createTestRepository,
@@ -10,7 +10,7 @@ import {
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock external services only
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   getGithubUsernameAndPAT: vi.fn(),
   authOptions: {},
 }));

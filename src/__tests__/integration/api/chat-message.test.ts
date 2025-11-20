@@ -35,7 +35,7 @@ vi.mock("@/services/s3", () => ({
 }));
 
 // Mock auth functions
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   authOptions: {},
   getGithubUsernameAndPAT: vi.fn().mockResolvedValue({
     username: "testuser",

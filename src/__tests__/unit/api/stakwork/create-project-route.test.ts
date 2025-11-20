@@ -17,7 +17,7 @@ vi.mock("@/lib/service-factory", () => ({
   }),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   authOptions: {},
 }));
 

@@ -19,7 +19,7 @@ vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   authOptions: {},
 }));
 

@@ -17,12 +17,12 @@ import { config as envConfig } from "@/lib/env";
 import { pusherServer } from "@/lib/pusher";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { janitorMocks, janitorMockSetup, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/janitor-mocks";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 
 vi.mock("@/services/workspace");
 vi.mock("@/services/task-workflow");
 vi.mock("@/lib/service-factory");
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/auth");
 vi.mock("@/lib/pusher", () => ({
   pusherServer: {
     trigger: vi.fn(),

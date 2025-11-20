@@ -5,7 +5,7 @@ import {
   generateUniqueId,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { authOptions } from "@/lib/auth/nextauth";
+import { authOptions } from "@/auth";
 
 // Mock axios for GitHub API calls (used in session callback)
 vi.mock("axios", () => ({

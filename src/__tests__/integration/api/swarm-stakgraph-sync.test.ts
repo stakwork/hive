@@ -18,8 +18,8 @@ vi.mock("@/services/swarm/stakgraph-actions", () => ({
   triggerAsyncSync: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", async () => {
-  const actual = await vi.importActual("@/lib/auth/nextauth");
+vi.mock("@/auth", async () => {
+  const actual = await vi.importActual("@/auth");
   return {
     ...actual,
     getGithubUsernameAndPAT: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("@/lib/auth/nextauth", async () => {
 });
 
 import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/auth";
 
 const mockTriggerAsyncSync = triggerAsyncSync as unknown as ReturnType<typeof vi.fn>;
 const mockGetGithubUsernameAndPAT = getGithubUsernameAndPAT as unknown as ReturnType<typeof vi.fn>;

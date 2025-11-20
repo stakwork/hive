@@ -19,7 +19,7 @@ vi.mock("next-auth/next", () => ({
   auth: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   authOptions: {},
 }));
 

@@ -52,7 +52,7 @@ export async function setupAIServiceMocks(
 ) {
   const { EncryptionService } = await import("@/lib/encryption");
   const { getPrimaryRepository } = await import("@/lib/helpers/repository");
-  const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+  const { getGithubUsernameAndPAT } = await import("@/auth");
   const { getApiKeyForProvider, getModel } = await import("aieo");
   const { askTools } = await import("@/lib/ai/askTools");
   const { streamText } = await import("ai");

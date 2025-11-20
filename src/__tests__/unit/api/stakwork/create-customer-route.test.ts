@@ -64,7 +64,7 @@ vi.mock("@/lib/db", () => {
   };
 });
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/auth", () => ({
   authOptions: {},
 }));
 
