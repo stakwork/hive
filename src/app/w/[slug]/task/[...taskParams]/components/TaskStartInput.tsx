@@ -86,13 +86,13 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
   const getModeConfig = (mode: string) => {
     switch (mode) {
       case "live":
-        return { icon: Zap, label: "Agent" };
-      case "agent":
         return { icon: Workflow, label: "Workflow" };
+      case "agent":
+        return { icon: Zap, label: "Agent" };
       case "test":
         return { icon: Beaker, label: "Test" };
       default:
-        return { icon: Zap, label: "Agent" };
+        return { icon: Workflow, label: "Workflow" };
     }
   };
 
@@ -126,14 +126,14 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
             <SelectContent>
               <SelectItem value="live">
                 <div className="flex items-center gap-2">
-                  <Zap className="h-3.5 w-3.5" />
-                  <span>Agent</span>
+                  <Workflow className="h-3.5 w-3.5" />
+                  <span>Workflow</span>
                 </div>
               </SelectItem>
               <SelectItem value="agent">
                 <div className="flex items-center gap-2">
-                  <Workflow className="h-3.5 w-3.5" />
-                  <span>Workflow</span>
+                  <Zap className="h-3.5 w-3.5" />
+                  <span>Agent</span>
                 </div>
               </SelectItem>
               {devMode && (
