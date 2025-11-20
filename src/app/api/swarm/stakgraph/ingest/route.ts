@@ -9,6 +9,7 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -30,6 +31,34 @@ export async function POST(request: NextRequest) {
     const { workspaceId, swarmId, useLsp } = body;
     console.log(`[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, swarmId: ${swarmId}, useLsp: ${useLsp}, user: ${session.user.id}`);
 
+    if (!workspaceId) {
+      console.log(`[STAKGRAPH_INGEST] Missing required field: workspaceId`);
+      return NextResponse.json(
+        { success: false, message: "workspaceId is required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate workspace access
+    console.log(`[STAKGRAPH_INGEST] Validating workspace access for workspace: ${workspaceId}, user: ${session.user.id}`);
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      console.log(`[STAKGRAPH_INGEST] Workspace access denied - workspace: ${workspaceId}, user: ${session.user.id}`);
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 }
+      );
+    }
+
+    if (!workspaceAccess.canWrite) {
+      console.log(`[STAKGRAPH_INGEST] Insufficient permissions for ingest - workspace: ${workspaceId}, user: ${session.user.id}`);
+      return NextResponse.json(
+        { success: false, message: "Insufficient permissions to trigger code ingestion" },
+        { status: 403 }
+      );
+    }
+
+    console.log(`[STAKGRAPH_INGEST] Workspace access validated - workspace: ${workspaceId}, user: ${session.user.id}`);
     console.log(`[STAKGRAPH_INGEST] Looking up swarm - swarmId: ${swarmId}, workspaceId: ${workspaceId}`);
     const where: Record<string, string> = {};
     if (swarmId) where.swarmId = swarmId;
@@ -193,6 +222,27 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Validate workspace access
+    console.log(`[STAKGRAPH_STATUS] Validating workspace access for workspace: ${workspaceId}, user: ${session.user.id}`);
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
+      console.log(`[STAKGRAPH_STATUS] Workspace access denied - workspace: ${workspaceId}, user: ${session.user.id}`);
+      return NextResponse.json(
+        { success: false, message: "Workspace not found or access denied" },
+        { status: 403 }
+      );
+    }
+
+    if (!workspaceAccess.canRead) {
+      console.log(`[STAKGRAPH_STATUS] Insufficient permissions for status - workspace: ${workspaceId}, user: ${session.user.id}`);
+      return NextResponse.json(
+        { success: false, message: "Insufficient permissions to access ingest status" },
+        { status: 403 }
+      );
+    }
+
+    console.log(`[STAKGRAPH_STATUS] Workspace access validated - workspace: ${workspaceId}, user: ${session.user.id}`);
 
     // Get the swarm for the workspace
     console.log(`[STAKGRAPH_STATUS] Looking up swarm for workspace: ${workspaceId}`);

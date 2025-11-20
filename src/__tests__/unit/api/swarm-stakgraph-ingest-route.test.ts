@@ -36,6 +36,7 @@ vi.mock("@/services/github/WebhookService");
 vi.mock("@/config/services");
 vi.mock("@/lib/constants");
 vi.mock("@/lib/url");
+vi.mock("@/services/workspace");
 
 import { db } from "@/lib/db";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -43,6 +44,7 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 
 const mockSession = { user: { id: "user-123" } };
 const mockSwarm = {
@@ -67,6 +69,12 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(mockGithubProfile);
     vi.mocked(triggerIngestAsync).mockResolvedValue({ ok: true, status: 200, data: { request_id: "req-123" } });
     vi.mocked(saveOrUpdateSwarm).mockResolvedValue({});
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+    });
   });
 
   test("should return 401 when not authenticated", async () => {
@@ -79,6 +87,56 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 
     const response = await POST(request);
     expect(response.status).toBe(401);
+  });
+
+  test("should return 400 when workspaceId is missing", async () => {
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.message).toBe("workspaceId is required");
+  });
+
+  test("should return 403 when workspace access is denied", async () => {
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+      hasAccess: false,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+    });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123" })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.message).toBe("Workspace not found or access denied");
+  });
+
+  test("should return 403 when user lacks write permissions", async () => {
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: false,
+      canAdmin: false,
+    });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123" })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.message).toBe("Insufficient permissions to trigger code ingestion");
   });
 
   test("should return 404 when swarm not found", async () => {
@@ -133,6 +191,12 @@ describe("GET /api/swarm/stakgraph/ingest", () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(swarmApiRequest).mockResolvedValue({ ok: true, status: 200, data: {} });
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+      hasAccess: true,
+      canRead: true,
+      canWrite: true,
+      canAdmin: true,
+    });
   });
 
   test("should return 400 when missing required parameters", async () => {
@@ -140,6 +204,38 @@ describe("GET /api/swarm/stakgraph/ingest", () => {
 
     const response = await GET(request);
     expect(response.status).toBe(400);
+  });
+
+  test("should return 403 when workspace access is denied", async () => {
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+      hasAccess: false,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+    });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest?id=req-123&workspaceId=workspace-123");
+
+    const response = await GET(request);
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.message).toBe("Workspace not found or access denied");
+  });
+
+  test("should return 403 when user lacks read permissions", async () => {
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+      hasAccess: true,
+      canRead: false,
+      canWrite: false,
+      canAdmin: false,
+    });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest?id=req-123&workspaceId=workspace-123");
+
+    const response = await GET(request);
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.message).toBe("Insufficient permissions to access ingest status");
   });
 
   test("should return 404 when swarm not found", async () => {
