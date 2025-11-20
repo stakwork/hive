@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff } from "lucide-react";
+import { Mic, MicOff, Bot, Workflow } from "lucide-react";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
@@ -96,10 +96,25 @@ export function ChatInput({
     // Shift+Enter will naturally insert a new line (no preventDefault)
   };
 
+  const getModeConfig = (mode: string) => {
+    switch (mode) {
+      case "live":
+        return { icon: Workflow, label: "Workflow" };
+      case "agent":
+        return { icon: Bot, label: "Agent" };
+      default:
+        return { icon: Workflow, label: "Workflow" };
+    }
+  };
+
+  const modeConfig = getModeConfig(mode);
+  const ModeIcon = modeConfig.icon;
+
   return (
     <div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>{mode}</span>
+        <ModeIcon className="h-4 w-4" />
+        <span>{modeConfig.label}</span>
         {!hasPrArtifact && (
           <>
             <span>|</span>
