@@ -454,6 +454,7 @@ export async function callStakworkAPI(params: {
   runTestSuite?: boolean;
   repoUrl?: string | null;
   baseBranch?: string | null;
+  history?: Record<string, unknown>[];
 }) {
   const {
     taskId,
@@ -475,6 +476,7 @@ export async function callStakworkAPI(params: {
     runTestSuite = true,
     repoUrl = null,
     baseBranch = null,
+    history = [],
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -483,7 +485,10 @@ export async function callStakworkAPI(params: {
 
   // Build webhook URLs (replicating the webhook URL logic)
   const appBaseUrl = getBaseUrl();
-  const webhookUrl = `${appBaseUrl}/api/chat/response`;
+  let webhookUrl = `${appBaseUrl}/api/chat/response`;
+  if (process.env.CUSTOM_WEBHOOK_URL) {
+    webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
+  }
   const workflowWebhookUrl = `${appBaseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
   // Build vars object (replicating the vars structure from chat/message route)
@@ -507,6 +512,7 @@ export async function callStakworkAPI(params: {
     runTestSuite,
     repo_url: repoUrl,
     base_branch: baseBranch,
+    history,
   };
 
   // Add optional parameters if provided
@@ -546,20 +552,25 @@ export async function callStakworkAPI(params: {
   };
 
   // Make Stakwork API call (replicating fetch call from chat/message route)
-  const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
-    method: "POST",
-    body: JSON.stringify(stakworkPayload),
-    headers: {
-      Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
+  try {
+    const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
+      method: "POST",
+      body: JSON.stringify(stakworkPayload),
+      headers: {
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-  if (!response.ok) {
-    console.error(`Failed to send message to Stakwork: ${response.statusText}`);
-    return { success: false, error: response.statusText };
+    if (!response.ok) {
+      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
+      return { success: false, error: response.statusText };
+    }
+
+    const result = await response.json();
+    return { success: result.success, data: result.data };
+  } catch (error) {
+    console.error("Error calling Stakwork:", error);
+    return { success: false, error: String(error) };
   }
-
-  const result = await response.json();
-  return { success: result.success, data: result.data };
 }

@@ -8,6 +8,7 @@ import { WorkflowStatus } from "@prisma/client";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { callStakworkAPI } from "@/services/task-workflow";
 
 export const runtime = "nodejs";
 
@@ -65,19 +66,6 @@ async function fetchChatHistory(taskId: string, excludeMessageId: string): Promi
   }));
 }
 
-export interface StakworkWorkflowPayload {
-  name: string;
-  workflow_id: number;
-  webhook_url?: string; // New webhook URL for workflow status updates
-  workflow_params: {
-    set_var: {
-      attributes: {
-        vars: Record<string, unknown>;
-      };
-    };
-  };
-}
-
 async function callMock(
   taskId: string,
   message: string,
@@ -112,114 +100,6 @@ async function callMock(
     return { success: true, data: result };
   } catch (error) {
     console.error("Error calling mock server:", error);
-    return { success: false, error: String(error) };
-  }
-}
-
-async function callStakwork(
-  taskId: string,
-  message: string,
-  contextTags: ContextTag[],
-  userName: string | null,
-  accessToken: string | null,
-  swarmUrl: string | null,
-  swarmSecretAlias: string | null,
-  poolName: string | null,
-  request: NextRequest,
-  repo2GraphUrl: string,
-  attachmentPaths: string[] = [],
-  webhook?: string,
-  mode?: string,
-  history?: Record<string, unknown>[],
-  workspaceId?: string,
-) {
-  try {
-    // Validate that all required Stakwork environment variables are set
-    if (!config.STAKWORK_API_KEY) {
-      throw new Error("STAKWORK_API_KEY is required for Stakwork integration");
-    }
-    if (!config.STAKWORK_WORKFLOW_ID) {
-      throw new Error("STAKWORK_WORKFLOW_ID is required for Stakwork integration");
-    }
-
-    const baseUrl = getBaseUrl(request?.headers.get("host"));
-    let webhookUrl = `${baseUrl}/api/chat/response`;
-    if (process.env.CUSTOM_WEBHOOK_URL) {
-      webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
-    }
-
-    // New webhook URL for workflow status updates
-    const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
-
-    // Generate presigned URLs for attachments
-    const attachmentUrls = await Promise.all(
-      attachmentPaths.map((path) => getS3Service().generatePresignedDownloadUrl(path)),
-    );
-
-    // stakwork workflow vars
-    const vars = {
-      taskId,
-      message,
-      contextTags,
-      webhookUrl,
-      alias: userName,
-      username: userName,
-      accessToken,
-      swarmUrl,
-      swarmSecretAlias,
-      poolName,
-      repo2graph_url: repo2GraphUrl,
-      attachments: attachmentUrls,
-      taskMode: mode,
-      history: history || [],
-      workspaceId,
-    };
-
-    const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
-
-    let workflowId: string;
-    if (mode === "live") {
-      workflowId = stakworkWorkflowIds[0];
-    } else if (mode === "unit") {
-      workflowId = stakworkWorkflowIds[2];
-    } else if (mode === "integration") {
-      workflowId = stakworkWorkflowIds[2];
-    } else {
-      workflowId = stakworkWorkflowIds[1]; // default to test mode
-    }
-    const stakworkPayload: StakworkWorkflowPayload = {
-      name: "hive_autogen",
-      workflow_id: parseInt(workflowId),
-      webhook_url: workflowWebhookUrl, // Add workflow status webhook URL
-      workflow_params: {
-        set_var: {
-          attributes: {
-            vars,
-          },
-        },
-      },
-    };
-
-    const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
-
-    const response = await fetch(stakworkURL, {
-      method: "POST",
-      body: JSON.stringify(stakworkPayload),
-      headers: {
-        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
-      return { success: false, error: response.statusText };
-    }
-
-    const result = await response.json();
-    return { success: result.success, data: result.data };
-  } catch (error) {
-    console.error("Error calling Stakwork:", error);
     return { success: false, error: String(error) };
   }
 }
@@ -283,6 +163,14 @@ export async function POST(request: NextRequest) {
               },
               select: {
                 role: true,
+              },
+            },
+            repositories: {
+              take: 1,
+              orderBy: { createdAt: "desc" },
+              select: {
+                repositoryUrl: true,
+                branch: true,
               },
             },
           },
@@ -388,6 +276,10 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
+    // Extract repository URL and branch from workspace repositories
+    const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
+    const baseBranch = task.workspace.repositories?.[0]?.branch || null;
+
     let stakworkData = null;
 
     if (useStakwork) {
@@ -397,7 +289,12 @@ export async function POST(request: NextRequest) {
       // Fetch chat history for this task (excluding the current message)
       const history = await fetchChatHistory(taskId, chatMessage.id);
 
-      stakworkData = await callStakwork(
+      // Generate presigned URLs for attachments
+      const attachmentUrls = await Promise.all(
+        attachmentPaths.map((path) => getS3Service().generatePresignedDownloadUrl(path)),
+      );
+
+      stakworkData = await callStakworkAPI({
         taskId,
         message,
         contextTags,
@@ -406,14 +303,14 @@ export async function POST(request: NextRequest) {
         swarmUrl,
         swarmSecretAlias,
         poolName,
-        request,
         repo2GraphUrl,
-        attachmentPaths,
-        webhook,
+        attachments: attachmentUrls,
         mode,
+        workspaceId: task.workspaceId,
+        repoUrl,
+        baseBranch,
         history,
-        task.workspaceId,
-      );
+      });
 
       if (stakworkData.success) {
         const updateData: {
