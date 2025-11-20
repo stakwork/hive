@@ -5,7 +5,7 @@ import { config } from "@/lib/env";
 import { db } from "@/lib/db";
 import { TaskSourceType } from "@prisma/client";
 import { getWorkspaceById } from "@/services/workspace";
-import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
+import { type StakworkWorkflowPayload } from "@/types/stakwork";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getBaseUrl } from "@/lib/utils";
