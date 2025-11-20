@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { StakworkWorkflowPayload } from "@/app/api/chat/message/route";
+import type { StakworkWorkflowPayload } from "@/types/stakwork";
 
 // Use shared environment mock
 import "@/__tests__/support/mocks/env";

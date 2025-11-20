@@ -20,6 +20,20 @@ export interface StakworkProjectPayload {
   workflow_params: Record<string, unknown>;
 }
 
+// Payload for Stakwork workflow with webhook support
+export interface StakworkWorkflowPayload {
+  name: string;
+  workflow_id: number;
+  webhook_url?: string;
+  workflow_params: {
+    set_var: {
+      attributes: {
+        vars: Record<string, unknown>;
+      };
+    };
+  };
+}
+
 export interface CreateProjectRequest {
   title: any;
   description: any;

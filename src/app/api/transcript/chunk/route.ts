@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/env";
-import { StakworkWorkflowPayload } from "@/app/api/chat/message/route";
+import { StakworkWorkflowPayload } from "@/types/stakwork";
 
 async function sendChunkToStakwork(chunk: string) {
   try {
