@@ -13,6 +13,15 @@ import tsx from "refractor/lang/tsx.js";
 import css from "refractor/lang/css.js";
 import python from "refractor/lang/python.js";
 import json from "refractor/lang/json.js";
+import bash from "refractor/lang/bash.js";
+import go from "refractor/lang/go.js";
+import rust from "refractor/lang/rust.js";
+import java from "refractor/lang/java.js";
+import ruby from "refractor/lang/ruby.js";
+import markdown from "refractor/lang/markdown.js";
+import yaml from "refractor/lang/yaml.js";
+import sql from "refractor/lang/sql.js";
+import html from "refractor/lang/markup.js";
 
 // Register languages with refractor
 refractor.register(javascript);
@@ -22,6 +31,15 @@ refractor.register(tsx);
 refractor.register(css);
 refractor.register(python);
 refractor.register(json);
+refractor.register(bash);
+refractor.register(go);
+refractor.register(rust);
+refractor.register(java);
+refractor.register(ruby);
+refractor.register(markdown);
+refractor.register(yaml);
+refractor.register(sql);
+refractor.register(html);
 import {
   FilePlus,
   FileEdit,
@@ -83,6 +101,7 @@ const createTokens = (hunks: HunkData[], language: string) => {
   }
 };
 
+
 export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unified", className = "" }: DiffArtifactPanelProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -143,14 +162,15 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
 
           // Detect language and create tokens for syntax highlighting
           const language = getLanguageFromFile(diff.file);
-          const tokens = createTokens(file.hunks || [], language);
+          const hunks = file.hunks || EMPTY_HUNKS;
+          const tokens = createTokens(hunks, language);
 
           return {
             fileName: diff.file,
             action: diff.action,
             repoName: diff.repoName,
             type: file.type,
-            hunks: file.hunks || EMPTY_HUNKS,
+            hunks,
             hasError: false as boolean,
             additions,
             deletions,
@@ -361,11 +381,30 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
                         hunks={file.hunks}
                         tokens={file.tokens}
                       >
-                        {(hunks) =>
-                          hunks.map((hunk) => (
-                            <Hunk key={hunk.content} hunk={hunk} />
-                          ))
-                        }
+                        {(hunks) => (
+                          <>
+                            {hunks.map((hunk, i) => {
+                              // Check if there's a gap before the next hunk
+                              const nextHunk = hunks[i + 1];
+                              const currentEnd = hunk.oldStart + hunk.oldLines;
+                              const gap = nextHunk ? nextHunk.oldStart - currentEnd : 0;
+                              const showGap = gap > 5;
+
+                              return (
+                                <React.Fragment key={hunk.content}>
+                                  <Hunk hunk={hunk} />
+                                  {showGap && (
+                                    <div className="diff-gap-indicator">
+                                      <span className="diff-gap-text">
+                                        ⋯ {gap} unchanged lines ⋯
+                                      </span>
+                                    </div>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </>
+                        )}
                       </Diff>
                     </div>
                   )}
