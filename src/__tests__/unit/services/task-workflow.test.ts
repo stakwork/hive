@@ -1705,8 +1705,13 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
-      await expect(callStakworkAPI(params)).rejects.toThrow("Network connection failed");
+
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: "Error: Network connection failed",
+      });
     });
 
     test("should handle fetch timeout error", async () => {
@@ -1715,8 +1720,13 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
-      await expect(callStakworkAPI(params)).rejects.toThrow("Request timeout");
+
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: "Error: Request timeout",
+      });
     });
 
     test("should handle JSON parsing error", async () => {
@@ -1730,8 +1740,13 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
-      await expect(callStakworkAPI(params)).rejects.toThrow("Invalid JSON");
+
+      const result = await callStakworkAPI(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: "Error: Invalid JSON",
+      });
     });
   });
 

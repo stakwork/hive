@@ -403,7 +403,7 @@ describe("callStakwork Function Unit Tests", () => {
         swarmSecretAlias: "{{TEST_SECRET}}",
         poolName: "swarm-id",
         repo2graph_url: "https://test-swarm.example.com:3355",
-        taskMode: undefined,
+        taskMode: "default", // callStakworkAPI defaults to "default" when mode is not provided
       });
     });
 
@@ -487,20 +487,8 @@ describe("callStakwork Function Unit Tests", () => {
       expect(payload.webhook_url).toBe("http://localhost:3000/api/stakwork/webhook?task_id=test-task-id");
     });
 
-    test("should use custom webhook URL when provided", async () => {
-      MockSetup.setupSuccessfulCallStakwork();
-
-      const customWebhook = "https://custom-webhook.example.com/webhook";
-      const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody({ webhook: customWebhook }));
-      await POST(request);
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        customWebhook,
-        expect.objectContaining({
-          method: "POST",
-        }),
-      );
-    });
+    // Removed: webhook parameter override was never used in production
+    // callStakworkAPI always uses config.STAKWORK_BASE_URL
   });
 
   describe("S3 Presigned URL Generation", () => {

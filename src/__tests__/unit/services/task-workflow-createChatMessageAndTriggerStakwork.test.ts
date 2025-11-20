@@ -597,7 +597,11 @@ describe("createChatMessageAndTriggerStakwork", () => {
         userId: "test-user-id",
       });
 
-      expect(result.stakworkData).toBeNull();
+      // callStakworkAPI now returns error object instead of throwing
+      expect(result.stakworkData).toEqual({
+        success: false,
+        error: expect.stringContaining("SyntaxError"),
+      });
       expect(mockDb.task.update).toHaveBeenCalledWith({
         where: { id: "test-task-id" },
         data: { workflowStatus: WorkflowStatus.FAILED },
