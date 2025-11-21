@@ -17,6 +17,8 @@ export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 export async function POST(request: NextRequest) {
+  let workspaceId: string | undefined;
+
   try {
     console.log(`[STAKGRAPH_INGEST] Starting ingest request`);
     const session = await getServerSession(authOptions);
@@ -26,8 +28,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { workspaceId, useLsp } = body;
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.log(`[STAKGRAPH_INGEST] Failed to parse request body:`, parseError);
+      return NextResponse.json({ success: false, message: "Invalid request body" }, { status: 400 });
+    }
+
+    const { useLsp } = body;
+    workspaceId = body.workspaceId;
     console.log(`[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, useLsp: ${useLsp}, user: ${session.user.id}`);
 
     if (!workspaceId) {
@@ -49,7 +59,7 @@ export async function POST(request: NextRequest) {
       }
     });
     if (!swarm) {
-      console.log(`[STAKGRAPH_INGEST] Swarm not found with criteria:`, where);
+      console.log(`[STAKGRAPH_INGEST] Swarm not found with criteria:`);
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
@@ -223,11 +233,8 @@ export async function POST(request: NextRequest) {
 
     // Try to reset ingest request flag on unexpected error
     try {
-      const body = await request.json();
-      const { workspaceId } = body;
-
       if (!workspaceId) {
-        console.log(`[STAKGRAPH_INGEST] No workspaceId in error handler`);
+        console.log(`[STAKGRAPH_INGEST] No workspaceId available in error handler`);
         return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
       }
 
