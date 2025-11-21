@@ -47,7 +47,7 @@ vi.mock("@/lib/utils", () => ({
 global.fetch = vi.fn();
 
 // Import mocked modules
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
+// Using auth from @/lib/auth instead of getServerSession
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/lib/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth");
@@ -106,7 +106,7 @@ describe("POST /api/chat/message", () => {
     vi.clearAllMocks();
 
     // Setup default mocks
-    mockGetServerSession.mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     mockDb.task.findFirst.mockResolvedValue(mockTask as any);
     mockDb.task.findUnique.mockResolvedValue({ status: "TODO" } as any);
     mockDb.user.findUnique.mockResolvedValue(mockUser as any);
@@ -134,7 +134,7 @@ describe("POST /api/chat/message", () => {
 
   describe("Authentication", () => {
     it("should return 401 if no session", async () => {
-      mockGetServerSession.mockResolvedValue(null);
+      (auth as Mock).mockResolvedValue(null);
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -149,7 +149,7 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should return 401 if no user in session", async () => {
-      mockGetServerSession.mockResolvedValue({ user: null });
+      (auth as Mock).mockResolvedValue({ user: null });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -164,7 +164,7 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should return 401 if no user id in session", async () => {
-      mockGetServerSession.mockResolvedValue({ user: { name: "Test" } });
+      (auth as Mock).mockResolvedValue({ user: { name: "Test" } });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",

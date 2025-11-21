@@ -51,7 +51,7 @@ vi.mock("@/lib/utils", () => ({
 global.fetch = vi.fn();
 
 // Import mocked modules
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
+// Using auth from @/lib/auth instead of getServerSession
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/lib/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth");
@@ -142,7 +142,7 @@ const TestHelpers = {
   },
 
   setupValidSession: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+    (auth as Mock).mockResolvedValue(TestDataFactory.createValidSession());
   },
 
   setupValidTaskAndUser: () => {

@@ -20,7 +20,7 @@ vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
 }));
 
-const mockGetServerSession = getServerSession as Mock;
+const mockAuth = auth as Mock;
 const mockSwarmService = SwarmService as Mock;
 const mockGetServiceConfig = getServiceConfig as Mock;
 
@@ -87,11 +87,11 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     },
 
     setupAuthenticatedUser: () => {
-      mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+      (auth as Mock).mockResolvedValue(TestDataFactory.createValidSession());
     },
 
     setupUnauthenticatedUser: () => {
-      mockGetServerSession.mockResolvedValue(null);
+      (auth as Mock).mockResolvedValue(null);
     },
 
     expectAuthenticationError: async (response: Response) => {
@@ -129,7 +129,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
+      (auth as Mock).mockResolvedValue({
         expires: new Date().toISOString(),
       });
 
@@ -140,7 +140,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should return 401 when session.user.id is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
+      (auth as Mock).mockResolvedValue({
         user: { email: "test@example.com" },
         expires: new Date().toISOString(),
       });
@@ -161,7 +161,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(auth).toHaveBeenCalled();
     });
   });
 

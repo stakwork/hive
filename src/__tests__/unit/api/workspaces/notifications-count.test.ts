@@ -93,15 +93,15 @@ const TestHelpers = {
   },
 
   setupAuthenticatedUser: (userId: string = "user-123") => {
-    (mockGetServerSession as Mock).mockResolvedValue(TestDataFactory.createValidSession(userId));
+    (auth as Mock).mockResolvedValue(TestDataFactory.createValidSession(userId));
   },
 
   setupUnauthenticatedUser: () => {
-    (mockGetServerSession as Mock).mockResolvedValue(null);
+    (auth as Mock).mockResolvedValue(null);
   },
 
   setupInvalidSession: () => {
-    (mockGetServerSession as Mock).mockResolvedValue({ user: {} });
+    (auth as Mock).mockResolvedValue({ user: {} });
   },
 
   expectAuthenticationError: async (response: Response) => {
@@ -153,7 +153,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      (mockGetServerSession as Mock).mockResolvedValue({ expires: new Date().toISOString() });
+      (auth as Mock).mockResolvedValue({ expires: new Date().toISOString() });
 
       const request = TestHelpers.createGetRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
@@ -181,7 +181,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(auth).toHaveBeenCalled();
     });
   });
 

@@ -35,7 +35,7 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { getServiceConfig } from "@/config/services";
 
-const mockGetServerSession = getServerSession as Mock;
+const mockAuth = auth as Mock;
 const mockDbRepositoryFindUnique = db.repository.findUnique as Mock;
 const mockWebhookService = WebhookService as Mock;
 const mockGetGithubWebhookCallbackUrl = getGithubWebhookCallbackUrl as Mock;
@@ -93,19 +93,19 @@ const TestHelpers = {
   },
 
   setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+    (auth as Mock).mockResolvedValue(TestDataFactory.createValidSession());
   },
 
   setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
+    (auth as Mock).mockResolvedValue(null);
   },
 
   setupSessionWithoutUser: () => {
-    mockGetServerSession.mockResolvedValue({ expires: new Date().toISOString() });
+    (auth as Mock).mockResolvedValue({ expires: new Date().toISOString() });
   },
 
   setupSessionWithoutUserId: () => {
-    mockGetServerSession.mockResolvedValue({
+    (auth as Mock).mockResolvedValue({
       user: { email: "test@example.com" },
       expires: new Date().toISOString(),
     });
@@ -240,7 +240,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       const response = await POST(request);
 
       expect(response.status).not.toBe(401);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(auth).toHaveBeenCalled();
     });
   });
 
@@ -744,7 +744,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       const response = await POST(request);
 
       // Verify all services were called in correct order
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(auth).toHaveBeenCalled();
       expect(mockGetGithubWebhookCallbackUrl).toHaveBeenCalled();
       expect(mockGetServiceConfig).toHaveBeenCalledWith("github");
       expect(mockWebhookService).toHaveBeenCalled();
@@ -786,7 +786,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
     test("should handle different user IDs correctly", async () => {
       const differentUserId = "user-different-456";
-      mockGetServerSession.mockResolvedValue({
+      (auth as Mock).mockResolvedValue({
         user: {
           id: differentUserId,
           email: "different@example.com",
