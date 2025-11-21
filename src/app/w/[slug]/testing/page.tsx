@@ -17,11 +17,11 @@ export default function DefenseTestingPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col space-y-6">
       <PageHeader title="Testing" />
 
-      <div className="max-w-5xl">
-        <Tabs defaultValue="coverage" className="w-full">
+      <div className="max-w-5xl flex-1 flex flex-col">
+        <Tabs defaultValue="coverage" className="w-full flex flex-col flex-1">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="coverage">Coverage</TabsTrigger>
             <TabsTrigger value="user-journeys">User Journeys</TabsTrigger>
