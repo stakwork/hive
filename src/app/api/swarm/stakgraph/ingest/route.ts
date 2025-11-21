@@ -9,7 +9,6 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
-import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -51,7 +50,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
-    console.log(`[STAKGRAPH_INGEST] Found swarm - ID: ${swarm.id}, name: ${swarm.name}, status: ${swarm.status}`);
+    console.log(`[STAKGRAPH_INGEST] Found swarm - ID: ${swarm.id}, name: ${swarm.name}`);
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
       console.log(`[STAKGRAPH_INGEST] Swarm missing required fields - swarmUrl: ${!!swarm.swarmUrl}, swarmApiKey: ${!!swarm.swarmApiKey}`);
