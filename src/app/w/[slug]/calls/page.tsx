@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, Loader2, Phone, Mic, MicOff } from "lucide-r
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
+import { TranscriptTooltip } from "./TranscriptTooltip";
 
 export default function CallsPage() {
   const { workspace, slug } = useWorkspace();
@@ -284,28 +285,33 @@ export default function CallsPage() {
           workspace?.isCodeGraphSetup ? (
             <div className="flex gap-2">
               {isVoiceSupported && (
-                <Button
-                  onClick={handleToggleRecording}
-                  disabled={processingFeature}
-                  variant={isRecording ? "destructive" : "default"}
+                <TranscriptTooltip
+                  transcript={currentTranscript}
+                  show={isRecording && currentTranscript.trim().length > 0}
                 >
-                  {processingFeature ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating Feature...
-                    </>
-                  ) : isRecording ? (
-                    <>
-                      <MicOff className="h-4 w-4 mr-2" />
-                      Stop Recording
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="h-4 w-4 mr-2" />
-                      Record
-                    </>
-                  )}
-                </Button>
+                  <Button
+                    onClick={handleToggleRecording}
+                    disabled={processingFeature}
+                    variant={isRecording ? "destructive" : "default"}
+                  >
+                    {processingFeature ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Creating Feature...
+                      </>
+                    ) : isRecording ? (
+                      <>
+                        <MicOff className="h-4 w-4 mr-2" />
+                        Stop Recording
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-4 w-4 mr-2" />
+                        Record
+                      </>
+                    )}
+                  </Button>
+                </TranscriptTooltip>
               )}
               <Button onClick={handleStartCall} disabled={generatingLink}>
                 {generatingLink ? (
