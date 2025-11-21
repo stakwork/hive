@@ -1,6 +1,5 @@
 import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth/auth'
 import { getS3Service } from '@/services/s3'
 import { db } from '@/lib/db'
 import { z } from 'zod'
