@@ -208,6 +208,17 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     expect(response.status).toBe(200);
     expect(triggerIngestAsync).toHaveBeenCalled();
 
+    // Verify repository status is updated to PENDING
+    expect(db.repository.update).toHaveBeenCalledWith({
+      where: {
+        repositoryUrl_workspaceId: {
+          repositoryUrl: mockRepository.repositoryUrl,
+          workspaceId: mockSwarm.workspaceId
+        }
+      },
+      data: { status: RepositoryStatus.PENDING }
+    });
+
     // Verify ingest request flag is set and reset
     expect(db.swarm.update).toHaveBeenCalledWith({
       where: { id: mockSwarm.id },
