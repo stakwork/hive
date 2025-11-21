@@ -30,11 +30,16 @@ vi.mock("@/services/janitor", () => ({
   acceptJanitorRecommendation: vi.fn(),
 }));
 
+vi.mock("@/services/task-workflow", () => ({
+  startTaskWorkflow: vi.fn(),
+}));
+
 // Import mocked modules
 const { db: mockDb } = await import("@/lib/db");
 const { getServiceConfig: mockGetServiceConfig } = await import("@/config/services");
 const { PoolManagerService: MockPoolManagerService } = await import("@/services/pool-manager");
 const { acceptJanitorRecommendation: mockAcceptJanitorRecommendation } = await import("@/services/janitor");
+const { startTaskWorkflow: mockStartTaskWorkflow } = await import("@/services/task-workflow");
 
 // Import function under test
 const { executeTaskCoordinatorRuns } = await import("@/services/task-coordinator-cron");
@@ -164,6 +169,8 @@ const MockSetup = {
     // Mock empty task list by default (no stale tasks)
     vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
     vi.mocked(mockDb.task.update).mockResolvedValue({} as any);
+    // Mock startTaskWorkflow to resolve successfully by default
+    vi.mocked(mockStartTaskWorkflow).mockResolvedValue(undefined);
   },
 
   setupSuccessfulExecution: (unusedVms: number = 3) => {
@@ -1152,6 +1159,9 @@ describe("executeTaskCoordinatorRuns", () => {
         phase: null,
       };
 
+      // First call: no stale tasks to halt
+      vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([]);
+      // Second call: candidate tickets for ticket sweep
       vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([taskNoDeps] as any);
 
       const result = await executeTaskCoordinatorRuns();
@@ -1194,6 +1204,7 @@ describe("executeTaskCoordinatorRuns", () => {
       };
 
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // No stale tasks to halt
         .mockResolvedValueOnce([taskWithDep] as any) // Candidate tasks
         .mockResolvedValueOnce([depTask] as any); // Dependency check
 
@@ -1289,6 +1300,7 @@ describe("executeTaskCoordinatorRuns", () => {
       };
 
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // No stale tasks to halt
         .mockResolvedValueOnce([taskWithDep] as any)
         .mockResolvedValueOnce([depTask] as any);
 
@@ -1365,6 +1377,7 @@ describe("executeTaskCoordinatorRuns", () => {
       };
 
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // No stale tasks to halt
         .mockResolvedValueOnce([taskWithDep] as any)
         .mockResolvedValueOnce([] as any); // No dependency found
 
@@ -1479,6 +1492,7 @@ describe("executeTaskCoordinatorRuns", () => {
       };
 
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // No stale tasks to halt
         .mockResolvedValueOnce([task1, task2] as any)
         .mockResolvedValueOnce([depBlocked] as any)
         .mockResolvedValueOnce([depReady] as any);
@@ -1522,6 +1536,7 @@ describe("executeTaskCoordinatorRuns", () => {
       };
 
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // No stale tasks to halt
         .mockResolvedValueOnce([taskWithDep] as any)
         .mockResolvedValueOnce([depTask] as any);
 
@@ -1706,6 +1721,7 @@ describe("executeTaskCoordinatorRuns", () => {
       };
 
       vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([]) // No stale tasks to halt
         .mockResolvedValueOnce([taskWithDeps] as any)
         .mockResolvedValueOnce([depA, depB, depC] as any);
 
