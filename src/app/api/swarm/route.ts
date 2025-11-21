@@ -8,8 +8,9 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { createFakeSwarm, isFakeMode } from "@/services/swarm/fake";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { RepositoryStatus, SwarmStatus } from "@prisma/client";
-import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   if (isFakeMode) {
@@ -219,12 +220,12 @@ export async function POST(request: NextRequest) {
         swarmPassword: swarmPassword,
       });
 
-      console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm.id} to ACTIVE status with swarmId: ${swarm_id}`);
+      console.log(`[SWARM_CREATE] Successfully updated swarm ${updatedSwarm?.id} to ACTIVE status with swarmId: ${swarm_id}`);
 
       return NextResponse.json({
         success: true,
         message: `Swarm was created successfully`,
-        data: { id: updatedSwarm.id, swarmId: swarm_id },
+        data: { id: updatedSwarm?.id, swarmId: swarm_id },
       });
 
     } catch (error) {

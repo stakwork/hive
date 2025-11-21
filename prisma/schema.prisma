@@ -283,7 +283,8 @@ model Swarm {
   services             Json      @default("[]")
 
   // ingestion status tracking
-  ingestRefId String?         @map("ingest_ref_id")
+  ingestRefId String? @map("ingest_ref_id")
+  ingestRequestInProgress Boolean @default(false) @map("ingest_request_in_progress")
 
   // Generated container files
   containerFiles Json? @map("container_files")

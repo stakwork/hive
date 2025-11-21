@@ -42,6 +42,7 @@ interface SaveOrUpdateSwarmParams {
   ingestRefId?: string;
   containerFiles?: Record<string, string>;
   poolState?: PoolState;
+  ingestRequestInProgress?: boolean;
 }
 
 export const select = {
@@ -70,6 +71,7 @@ export const select = {
   containerFilesSetUp: true,
   agentRequestId: true,
   agentStatus: true,
+  ingestRequestInProgress: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -107,6 +109,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   }
   if (params.containerFiles !== undefined) data.containerFiles = params.containerFiles;
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
+  if (params.ingestRequestInProgress !== undefined) data.ingestRequestInProgress = params.ingestRequestInProgress;
   data.updatedAt = new Date();
 
   if (swarm) {
@@ -148,6 +151,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       swarmId: params.swarmId,
       ingestRefId: params.ingestRefId,
       poolState: params.poolState || PoolState.NOT_STARTED,
+      ingestRequestInProgress: params.ingestRequestInProgress || false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
