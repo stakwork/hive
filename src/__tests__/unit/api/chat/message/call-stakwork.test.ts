@@ -20,93 +20,9 @@ import {
 } from "@/__tests__/support/helpers/chat-message-mocks";
 
 // Mock all external dependencies
-vi.mock("next-auth/next");
-vi.mock("@/lib/auth/nextauth");
-vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
-      update: vi.fn(),
-    },
-    user: {
-      findUnique: vi.fn(),
-    },
-    workspace: {
-      findUnique: vi.fn(),
-    },
-    chatMessage: {
-      create: vi.fn(),
-      findMany: vi.fn(),
-    },
-  },
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-vi.mock("@/lib/env");
-vi.mock("@/services/s3");
-vi.mock("@/lib/utils", () => ({
-  getBaseUrl: vi.fn(),
-  cn: vi.fn(),
-  formatRelativeTime: vi.fn(),
-  getRelativeUrl: vi.fn(),
-}));
-vi.mock("@/lib/utils/swarm");
-
-/**
- * Unit Tests for callStakwork Function (Chat Message Variant)
- * 
- * Tests the callStakwork function which is central to the chat message processing
- * workflow. This function integrates with the Stakwork AI service to trigger
- * automated workflows based on user chat messages.
- * 
- * Test Coverage:
- * 1. Chat Message Processing - message creation, status updates, AI workflow trigger
- * 2. Context Tag Handling - serialization, validation, passing to external API
- * 3. Authentication - session validation, workspace access control
- * 4. External Service Integration - Stakwork API calls, error handling, mode selection
- */
-describe("callStakwork Function - Chat Message Processing", () => {
-  const mockUserId = "user-123";
-  const mockTaskId = "task-456";
-  const mockWorkspaceId = "workspace-789";
-  const mockMessageId = "message-abc";
-
-  let mockFetch: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup authenticated session
-    vi.mocked(getServerSession).mockResolvedValue({
-      user: { id: mockUserId, name: "Test User", email: "test@example.com" },
-    } as any);
-
-    // Setup default config
-    vi.mocked(config).STAKWORK_API_KEY = "test-api-key";
-    vi.mocked(config).STAKWORK_BASE_URL = "https://stakwork.test.com/api";
-    vi.mocked(config).STAKWORK_WORKFLOW_ID = "101,102,103"; // live,test,unit/integration
-
-    // Mock utility functions
-    vi.mocked(getBaseUrl).mockReturnValue("http://localhost:3000");
-    vi.mocked(transformSwarmUrlToRepo2Graph).mockReturnValue("http://test-swarm.com:3355");
-
-    // Mock S3 service
-    vi.mocked(getS3Service).mockReturnValue({
-      generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://s3.test.com/file"),
-    } as any);
-
-    // Mock GitHub credentials
-    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
-      username: "testuser",
-      token: "github_pat_test",
-    } as any);
-
-    // Mock chat history as empty
-    vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
-
-    // Mock global fetch
-    mockFetch = vi.fn();
-    global.fetch = mockFetch as any;
-  });
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -631,7 +547,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
   describe("3. Authentication and Authorization", () => {
     describe("Session Validation", () => {
       it("should reject requests without authentication session", async () => {
-        vi.mocked(getServerSession).mockResolvedValue(null);
+        vi.mocked(auth).mockResolvedValue(null);
 
         const request = new NextRequest("http://localhost/api/chat/message", {
           method: "POST",
@@ -649,7 +565,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
       });
 
       it("should reject requests with session but no user", async () => {
-        vi.mocked(getServerSession).mockResolvedValue({ user: null } as any);
+        vi.mocked(auth).mockResolvedValue({ user: null } as any);
 
         const request = new NextRequest("http://localhost/api/chat/message", {
           method: "POST",
@@ -667,7 +583,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
       });
 
       it("should reject requests with user but no user ID", async () => {
-        vi.mocked(getServerSession).mockResolvedValue({
+        vi.mocked(auth).mockResolvedValue({
           user: { email: "test@example.com" }, // Missing id
         } as any);
 

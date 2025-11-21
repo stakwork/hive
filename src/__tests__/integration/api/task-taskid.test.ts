@@ -18,30 +18,9 @@ import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
 import type { User, Workspace, Task, Repository } from "@prisma/client";
 
 // Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-// Mock extractPrArtifact function (implementation not retrieved)
-const mockExtractPrArtifact = vi.fn();
-vi.mock("@/lib/helpers/tasks", () => ({
-  extractPrArtifact: (...args: any[]) => mockExtractPrArtifact(...args),
-}));
-
-// Test data factory for creating complete task setup
-async function createTaskTestSetup() {
-  const testData = await db.$transaction(async (tx) => {
-    // Create users
-    const owner = await tx.user.create({
-      data: {
-        email: `owner-${generateUniqueId()}@example.com`,
-        name: "Task Owner",
-      },
-    });
 
     const member = await tx.user.create({
       data: {

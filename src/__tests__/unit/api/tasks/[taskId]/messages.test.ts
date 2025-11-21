@@ -6,32 +6,9 @@ import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 
 // Mock next-auth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-// Mock authOptions
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-// Mock the database
-vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
-      findFirst: vi.fn(),
-    },
-    chatMessage: {
-      findMany: vi.fn(),
-    },
-  },
-}));
-
-describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.resetAllMocks();
-  });
 
   const mockTaskId = "task-123";
   const mockUserId = "user-123";
@@ -91,7 +68,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Authentication", () => {
     test("should return 401 if no session", async () => {
-      (getServerSession as Mock).mockResolvedValue(null);
+      (auth as Mock).mockResolvedValue(null);
 
       const request = new NextRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -109,7 +86,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should return 401 if no user in session", async () => {
-      (getServerSession as Mock).mockResolvedValue({ user: null });
+      (auth as Mock).mockResolvedValue({ user: null });
 
       const request = new NextRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -127,7 +104,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should return 401 if no user id in session", async () => {
-      (getServerSession as Mock).mockResolvedValue({ user: { name: "Test" } });
+      (auth as Mock).mockResolvedValue({ user: { name: "Test" } });
 
       const request = new NextRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -147,7 +124,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Input Validation", () => {
     test("should return 400 if taskId is missing", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
 
       const request = new NextRequest(
         "http://localhost:3000/api/tasks/undefined/messages",
@@ -165,7 +142,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should return 404 if task not found", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(null);
 
       const request = new NextRequest(
@@ -184,7 +161,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should validate task query includes deleted filter", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
@@ -225,7 +202,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       };
 
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(taskWithDifferentOwner);
 
       const request = new NextRequest(
@@ -244,7 +221,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should allow access if user is workspace owner", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
@@ -271,7 +248,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       };
 
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(taskWithMember);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
@@ -289,7 +266,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should filter workspace members by current user in query", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
@@ -333,7 +310,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Message Retrieval", () => {
     test("should return messages with artifacts ordered by timestamp", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
 
@@ -370,7 +347,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should parse contextTags from JSON string", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
 
@@ -391,7 +368,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should include task metadata in response", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
@@ -415,7 +392,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should retrieve messages ordered by createdAt ascending", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
@@ -447,7 +424,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should return empty array when task has no messages", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
@@ -475,7 +452,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       ];
 
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(messagesWithoutArtifacts);
 
@@ -496,7 +473,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Error Handling", () => {
     test("should return 500 on database error during task fetch", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockRejectedValue(new Error("Database connection failed"));
 
       const request = new NextRequest(
@@ -514,7 +491,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should return 500 on database error during message fetch", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockRejectedValue(new Error("Query timeout"));
 
@@ -540,7 +517,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
         },
       ];
 
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(messagesWithInvalidJSON);
 
@@ -560,7 +537,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("POST Method - Not Implemented", () => {
     test("should return 405 Method Not Allowed for POST requests", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
 
       const request = new NextRequest(
         `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
@@ -576,7 +553,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       // Current implementation will return Next.js default 405 response
       
       // When POST is implemented, it should follow this pattern:
-      // - Authenticate with getServerSession
+      // - Authenticate with auth
       // - Validate taskId and message content
       // - Check workspace access (owner/member)
       // - Call sendMessageToStakwork service function
@@ -587,7 +564,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
 
   describe("Response Structure", () => {
     test("should return correct response structure", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
 
@@ -611,7 +588,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     });
 
     test("should not include sensitive workspace data", async () => {
-      (getServerSession as Mock).mockResolvedValue(mockSession);
+      (auth as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 

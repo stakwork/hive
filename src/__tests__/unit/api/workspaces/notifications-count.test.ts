@@ -4,108 +4,21 @@ import { auth } from "@/lib/auth/auth";
 import { GET } from "@/app/api/workspaces/[slug]/tasks/notifications-count/route";
 
 // Mock next-auth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-// Mock authOptions
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-// Mock the database
-vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
-      findFirst: vi.fn(),
-    },
-    task: {
-      findMany: vi.fn(),
-    },
-  },
-}));
-
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
-const { db: mockDb } = await import("@/lib/db");
-
-// Test Data Factories
-const TestDataFactory = {
-  createValidSession: (userId: string = "user-123") => ({
-    user: { id: userId, email: "test@example.com", name: "Test User" },
-  }),
-
-  createValidWorkspace: (ownerId: string = "user-123") => ({
-    id: "workspace-123",
-    ownerId,
-    members: [],
-  }),
-
-  createWorkspaceWithMember: (userId: string = "member-456") => ({
-    id: "workspace-123",
-    ownerId: "owner-123",
-    members: [{ role: "DEVELOPER" }],
-  }),
-
-  createTaskWithFormArtifact: (taskId: string = "task-1") => ({
-    id: taskId,
-    chatMessages: [
-      {
-        artifacts: [{ type: "FORM" }],
-      },
-    ],
-  }),
-
-  createTaskWithCodeArtifact: (taskId: string = "task-2") => ({
-    id: taskId,
-    chatMessages: [
-      {
-        artifacts: [{ type: "CODE" }],
-      },
-    ],
-  }),
-
-  createTaskWithNoMessages: (taskId: string = "task-3") => ({
-    id: taskId,
-    chatMessages: [],
-  }),
-
-  createTaskWithMultipleMessages: (taskId: string = "task-4", latestHasForm: boolean = true) => ({
-    id: taskId,
-    chatMessages: [
-      {
-        artifacts: latestHasForm ? [{ type: "FORM" }] : [{ type: "CODE" }],
-      },
-    ],
-  }),
-
-  createTaskWithMultipleArtifacts: (taskId: string = "task-5") => ({
-    id: taskId,
-    chatMessages: [
-      {
-        artifacts: [{ type: "FORM" }, { type: "CODE" }, { type: "BROWSER" }],
-      },
-    ],
-  }),
-};
-
-// Test Helpers
-const TestHelpers = {
-  createGetRequest: (slug: string) => {
-    return new NextRequest(`http://localhost:3000/api/workspaces/${slug}/tasks/notifications-count`, {
-      method: "GET",
-    });
   },
 
   setupAuthenticatedUser: (userId: string = "user-123") => {
-    (mockGetServerSession as Mock).mockResolvedValue(TestDataFactory.createValidSession(userId));
+    (mockAuth as Mock).mockResolvedValue(TestDataFactory.createValidSession(userId));
   },
 
   setupUnauthenticatedUser: () => {
-    (mockGetServerSession as Mock).mockResolvedValue(null);
+    (mockAuth as Mock).mockResolvedValue(null);
   },
 
   setupInvalidSession: () => {
-    (mockGetServerSession as Mock).mockResolvedValue({ user: {} });
+    (mockAuth as Mock).mockResolvedValue({ user: {} });
   },
 
   expectAuthenticationError: async (response: Response) => {
@@ -157,7 +70,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      (mockGetServerSession as Mock).mockResolvedValue({ expires: new Date().toISOString() });
+      (mockAuth as Mock).mockResolvedValue({ expires: new Date().toISOString() });
 
       const request = TestHelpers.createGetRequest("test-workspace");
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
@@ -185,7 +98,7 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
       const response = await GET(request, { params: Promise.resolve({ slug: "test-workspace" }) });
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(mockAuth).toHaveBeenCalled();
     });
   });
 

@@ -4,40 +4,9 @@ import { POST } from "@/app/api/chat/message/route";
 import { ChatRole, ChatStatus, WorkflowStatus } from "@prisma/client";
 
 // Mock all external dependencies
-vi.mock("next-auth/next");
-vi.mock("@/lib/auth/nextauth");
-vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    user: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-    },
-    workspace: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-    },
-    chatMessage: {
-      create: vi.fn(),
-      findMany: vi.fn(),
-    },
-  },
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-vi.mock("@/lib/env");
-vi.mock("@/services/s3");
-vi.mock("@/lib/utils", async () => {
-  const actual = await vi.importActual("@/lib/utils");
-  return {
-    ...actual,
-    getBaseUrl: vi.fn(),
-  };
-});
 vi.mock("@/lib/utils/swarm", () => ({
   transformSwarmUrlToRepo2Graph: vi.fn(),
 }));
@@ -63,7 +32,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     vi.clearAllMocks();
 
     // Setup default mocks
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(auth).mockResolvedValue({
       user: { id: mockUserId },
     } as any);
 
@@ -100,7 +69,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
   describe("Authentication Tests", () => {
     it("should return 401 when no session exists", async () => {
-      vi.mocked(getServerSession).mockResolvedValue(null);
+      vi.mocked(auth).mockResolvedValue(null);
 
       const request = new NextRequest("http://localhost/api/chat/message", {
         method: "POST",
@@ -118,7 +87,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should return 401 when user ID is missing", async () => {
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: {},
       } as any);
 
@@ -138,7 +107,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should return 401 when session user has no ID", async () => {
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: { email: "test@example.com" }, // Missing id
       } as any);
 

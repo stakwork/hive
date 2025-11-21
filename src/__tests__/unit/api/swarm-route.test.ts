@@ -11,100 +11,9 @@ import { beforeEach, describe, expect, Mock, test, vi } from "vitest";
 import { randomUUID } from "crypto";
 
 // Mock external dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-vi.mock("@/lib/utils/password", () => ({
-  generateSecurePassword: vi.fn(),
-}));
-
-vi.mock("@/services/workspace", () => ({
-  validateWorkspaceAccessById: vi.fn(),
-}));
-
-vi.mock("@/services/swarm/db", () => ({
-  saveOrUpdateSwarm: vi.fn(),
-}));
-
-vi.mock("@/services/swarm", () => ({
-  SwarmService: vi.fn(),
-}));
-
-vi.mock("@/config/services", () => ({
-  getServiceConfig: vi.fn(),
-}));
-
-vi.mock("@/services/swarm/fake", () => ({
-  isFakeMode: false,
-  createFakeSwarm: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-vi.mock("crypto", () => ({
-  default: {
-    randomUUID: vi.fn(),
-  },
-  randomUUID: vi.fn(),
-}));
-
-vi.mock("@/lib/db", () => ({
-  db: {
-    $transaction: vi.fn(),
-    workspace: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-    },
-    sourceControlOrg: {
-      findUnique: vi.fn(),
-    },
-    swarm: {
-      findFirst: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    repository: {
-      create: vi.fn(),
-    },
-  },
-}));
-
-const mockGetServerSession = getServerSession as Mock;
-const mockGenerateSecurePassword = generateSecurePassword as Mock;
-const mockValidateWorkspaceAccessById = validateWorkspaceAccessById as Mock;
-const mockSaveOrUpdateSwarm = saveOrUpdateSwarm as Mock;
-const mockSwarmService = SwarmService as Mock;
-const mockGetServiceConfig = getServiceConfig as Mock;
-const mockRandomUUID = randomUUID as Mock;
-
-// Import and setup db mocks
-import { db } from "@/lib/db";
-const mockDb = db as any;
-
-describe("POST /api/swarm - Unit Tests", () => {
-  let mockSwarmServiceInstance: {
-    createSwarm: Mock;
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup SwarmService mock instance
-    mockSwarmServiceInstance = {
-      createSwarm: vi.fn(),
-    };
-    mockSwarmService.mockImplementation(() => mockSwarmServiceInstance);
-
-    // Default mocks
-    mockGetServiceConfig.mockReturnValue({
-      baseURL: "https://swarm.example.com",
-      apiKey: "test-api-key",
-      timeout: 30000,
-      headers: { "Content-Type": "application/json" },
-    });
 
     mockGenerateSecurePassword.mockReturnValue("secure-test-password-123");
     mockRandomUUID.mockReturnValue("temp-uuid-123");
@@ -174,7 +83,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Authentication and Authorization", () => {
     test("should reject unauthenticated requests", async () => {
-      mockGetServerSession.mockResolvedValue(null);
+      mockAuth.mockResolvedValue(null);
 
       const request = createMockRequest(validSwarmData);
       const response = await POST(request);
@@ -193,7 +102,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should reject users without workspace access", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -218,7 +127,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should reject users without admin permissions", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -243,7 +152,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should allow workspace owners and admins", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -288,7 +197,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Input Validation", () => {
     test("should reject requests with missing workspaceId", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -305,7 +214,7 @@ describe("POST /api/swarm - Unit Tests", () => {
     });
 
     test("should reject requests with missing repository fields", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -326,7 +235,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Sensitive Data Handling", () => {
     beforeEach(() => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -436,7 +345,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Existing Swarm Handling", () => {
     test("should return existing swarm if one already exists", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -477,7 +386,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("External Service Integration", () => {
     beforeEach(() => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -579,7 +488,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Workspace SourceControlOrg Linking", () => {
     beforeEach(() => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -716,7 +625,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Database Operations", () => {
     beforeEach(() => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -861,7 +770,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Data Flow and State Management", () => {
     test("should maintain proper data flow through all steps", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 
@@ -908,7 +817,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       });
 
       // Verify all steps were executed in correct order
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(mockAuth).toHaveBeenCalled();
       expect(mockValidateWorkspaceAccessById).toHaveBeenCalled();
       expect(mockDb.$transaction).toHaveBeenCalled(); // Placeholder creation
       expect(mockSwarmServiceInstance.createSwarm).toHaveBeenCalled();
@@ -918,7 +827,7 @@ describe("POST /api/swarm - Unit Tests", () => {
 
   describe("Status Flow Management", () => {
     beforeEach(() => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: "user-123" },
       });
 

@@ -18,46 +18,9 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock NextAuth for testing callback behavior
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-describe("GitHub OAuth Callback Flow Integration Tests", () => {
-  const encryptionService = EncryptionService.getInstance();
-
-  // Test fixtures
-  const mockGitHubProfile = {
-    id: 123456,
-    login: "testuser",
-    node_id: "U_test123",
-    name: "Test User",
-    email: "testuser@example.com",
-    bio: "Test bio",
-    company: "Test Company",
-    location: "Test Location",
-    blog: "https://testblog.com",
-    twitter_username: "testuser",
-    public_repos: 10,
-    public_gists: 5,
-    followers: 100,
-    following: 50,
-    created_at: "2020-01-01T00:00:00Z",
-    updated_at: "2024-01-01T00:00:00Z",
-    type: "User",
-  };
-
-  const mockOAuthTokenResponse = {
-    access_token: "gho_test_access_token_123",
-    token_type: "bearer",
-    scope: "read:user,repo",
-  };
-
-  beforeEach(async () => {
-    const axios = await import("axios");
-    vi.clearAllMocks();
-    mockFetch.mockClear();
-    (axios.default.get as any).mockClear();
-  });
 
   describe("OAuth Callback Handling", () => {
     test("should handle successful OAuth callback with valid authorization code", async () => {

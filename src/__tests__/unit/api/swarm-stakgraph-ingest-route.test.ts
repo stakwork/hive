@@ -5,72 +5,14 @@ import { auth } from "@/lib/auth/auth";
 import { RepositoryStatus } from "@prisma/client";
 
 // Mock dependencies
-vi.mock("next-auth/next");
-vi.mock("@/lib/db", () => ({
-  db: {
-    swarm: {
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
-    },
-    repository: {
-      update: vi.fn(),
-    },
-    workspace: {
-      findUnique: vi.fn(),
-    },
-  },
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-vi.mock("@/lib/auth/nextauth");
-vi.mock("@/lib/helpers/repository");
-vi.mock("@/services/swarm/stakgraph-actions");
-vi.mock("@/services/swarm/api/swarm");
-vi.mock("@/services/swarm/db");
-vi.mock("@/lib/encryption", () => ({
-  EncryptionService: {
-    getInstance: vi.fn(() => ({
-      decryptField: vi.fn(() => "decrypted-key"),
-    })),
-  },
-}));
-vi.mock("@/services/github/WebhookService");
-vi.mock("@/config/services");
-vi.mock("@/lib/constants");
-vi.mock("@/lib/url");
-
-import { db } from "@/lib/db";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
-import { swarmApiRequest } from "@/services/swarm/api/swarm";
-import { saveOrUpdateSwarm } from "@/services/swarm/db";
-
-const mockSession = { user: { id: "user-123" } };
-const mockSwarm = {
-  id: "swarm-123",
-  name: "test-swarm",
-  workspaceId: "workspace-123",
-  swarmUrl: "https://test.com",
-  swarmApiKey: "encrypted-key"
-};
-const mockWorkspace = { id: "workspace-123", slug: "test-workspace" };
-const mockRepository = { id: "repo-123", repositoryUrl: "https://github.com/user/repo" };
-const mockGithubProfile = { username: "user", token: "token" };
-
-describe("POST /api/swarm/stakgraph/ingest", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.swarm.findFirst).mockResolvedValue(mockSwarm);
-    vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepository);
-    vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
-    vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace);
-    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(mockGithubProfile);
-    vi.mocked(triggerIngestAsync).mockResolvedValue({ ok: true, status: 200, data: { request_id: "req-123" } });
     vi.mocked(saveOrUpdateSwarm).mockResolvedValue({});
   });
 
   test("should return 401 when not authenticated", async () => {
-    vi.mocked(getServerSession).mockResolvedValue(null);
+    vi.mocked(auth).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
@@ -130,7 +72,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 describe("GET /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getServerSession).mockResolvedValue(mockSession);
+    vi.mocked(auth).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(swarmApiRequest).mockResolvedValue({ ok: true, status: 200, data: {} });
   });

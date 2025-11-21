@@ -21,7 +21,9 @@ import { createTestRepository } from "@/__tests__/support/fixtures/repository";
 import { createTestUserJourneyTask } from "@/__tests__/support/fixtures/task";
 import { createTestSwarm } from "@/__tests__/support/fixtures/swarm";
 
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/lib/auth/nextauth", () => ({
+  getGithubUsernameAndPAT: vi.fn(),
+}));
 vi.mock("next-auth");
 
 // Mock global fetch

@@ -3,7 +3,9 @@ import { invokeRoute } from "@/__tests__/harness/route";
 import { POST } from "@/app/api/stakwork/user-journey/route";
 
 // Mock all dependencies including the external Stakwork API
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/lib/auth/nextauth", () => ({
+  getGithubUsernameAndPAT: vi.fn(),
+}));
 vi.mock("@/services/workspace");
 vi.mock("@/lib/db");
 vi.mock("@/lib/utils/swarm");

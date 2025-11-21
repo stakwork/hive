@@ -33,7 +33,7 @@ vi.mock('@/services/s3', () => ({
 }))
 
 vi.mock('next-auth/next', () => ({
-  getServerSession: vi.fn(),
+  auth: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/nextauth', () => ({

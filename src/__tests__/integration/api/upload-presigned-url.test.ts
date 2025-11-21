@@ -24,24 +24,9 @@ vi.mock("@/services/s3", () => ({
 }));
 
 // Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-describe("POST /api/upload/presigned-url Integration Tests", () => {
-  async function createTestUserWithWorkspaceAndTask() {
-    return await db.$transaction(async (tx) => {
-      const testUser = await tx.user.create({
-        data: {
-          id: generateUniqueId("test-user"),
-          email: `test-${generateUniqueId()}@example.com`,
-          name: "Test User",
-        },
-      });
 
       const testWorkspace = await tx.workspace.create({
         data: {

@@ -7,49 +7,9 @@ import { getServiceConfig } from "@/config/services";
 import { ValidateUriResponse } from "@/types/swarm";
 
 // Mock external dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-vi.mock("@/services/swarm", () => ({
-  SwarmService: vi.fn(),
-}));
-
-vi.mock("@/config/services", () => ({
-  getServiceConfig: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-const mockGetServerSession = getServerSession as Mock;
-const mockSwarmService = SwarmService as Mock;
-const mockGetServiceConfig = getServiceConfig as Mock;
-
-describe("GET /api/swarm/validate - Unit Tests", () => {
-  let mockSwarmServiceInstance: {
-    validateUri: Mock;
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup SwarmService mock instance
-    mockSwarmServiceInstance = {
-      validateUri: vi.fn(),
-    };
-    mockSwarmService.mockImplementation(() => mockSwarmServiceInstance);
-
-    // Default service config mock
-    mockGetServiceConfig.mockReturnValue({
-      baseURL: "https://swarm-superadmin.example.com",
-      apiKey: "test-super-admin-key",
-      timeout: 120000,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
   });
 
   // Test Data Factories
@@ -90,11 +50,11 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     },
 
     setupAuthenticatedUser: () => {
-      mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+      mockAuth.mockResolvedValue(TestDataFactory.createValidSession());
     },
 
     setupUnauthenticatedUser: () => {
-      mockGetServerSession.mockResolvedValue(null);
+      mockAuth.mockResolvedValue(null);
     },
 
     expectAuthenticationError: async (response: Response) => {
@@ -132,7 +92,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should return 401 when session exists but user is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         expires: new Date().toISOString(),
       });
 
@@ -143,7 +103,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should return 401 when session.user.id is missing", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { email: "test@example.com" },
         expires: new Date().toISOString(),
       });
@@ -164,7 +124,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       const response = await GET(request);
 
       expect(response.status).toBe(200);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(mockAuth).toHaveBeenCalled();
     });
   });
 

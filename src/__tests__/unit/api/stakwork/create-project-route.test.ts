@@ -5,99 +5,21 @@ import { auth } from "@/lib/auth/auth";
 import { type ApiError } from "@/types";
 
 // Mock dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-const mockCreateProject = vi.fn();
-
-vi.mock("@/lib/service-factory", () => ({
-  stakworkService: () => ({
-    createProject: mockCreateProject,
-  }),
-}));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-const mockGetServerSession = getServerSession as Mock;
-
-// Test Data Factories
-const TestDataFactory = {
-  createValidProjectData: () => ({
-    title: "Test Project",
-    description: "A test project description",
-    budget: 5000,
-    skills: ["javascript", "typescript", "react"],
-    name: "test-project",
-    workflow_id: 123,
-    workflow_params: {
-      set_var: {
-        attributes: {
-          vars: {
-            key1: "value1",
-            key2: "value2",
-          },
-        },
-      },
-    },
-  }),
-
-  createMinimalProjectData: () => ({
-    title: "Test Project",
-    description: "A test project",
-    budget: 1000,
-    skills: ["javascript"],
-  }),
-
-  createValidUser: () => ({
-    id: "user-123",
-    email: "test@example.com",
-  }),
-
-  createValidSession: () => ({
-    user: TestDataFactory.createValidUser(),
-  }),
-
-  createMockProject: (overrides = {}) => ({
-    id: "project-123",
-    title: "Test Project",
-    description: "A test project",
-    budget: 1000,
-    skills: ["javascript"],
-    ...overrides,
-  }),
-
-  createApiError: (overrides: Partial<ApiError> = {}): ApiError => ({
-    message: "Test error",
-    status: 400,
-    service: "stakwork",
-    details: {},
-    ...overrides,
-  }),
-};
-
-// Test Helpers
-const TestHelpers = {
-  createMockRequest: (body: object) => {
-    return new NextRequest("http://localhost:3000/api/stakwork/create-project", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
   },
 
   setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+    mockAuth.mockResolvedValue(TestDataFactory.createValidSession());
   },
 
   setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
+    mockAuth.mockResolvedValue(null);
   },
 
   setupSessionWithoutUser: () => {
-    mockGetServerSession.mockResolvedValue({ user: null });
+    mockAuth.mockResolvedValue({ user: null });
   },
 
   expectAuthenticationError: async (response: Response) => {
@@ -175,7 +97,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(mockAuth).toHaveBeenCalled();
       expect(mockCreateProject).toHaveBeenCalled();
     });
   });

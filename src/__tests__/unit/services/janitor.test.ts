@@ -22,7 +22,9 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 vi.mock("@/services/workspace");
 vi.mock("@/services/task-workflow");
 vi.mock("@/lib/service-factory");
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/lib/auth/nextauth", () => ({
+  getGithubUsernameAndPAT: vi.fn(),
+}));
 vi.mock("@/lib/pusher", () => ({
   pusherServer: {
     trigger: vi.fn(),

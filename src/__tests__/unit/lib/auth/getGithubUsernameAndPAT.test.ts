@@ -1,7 +1,16 @@
-import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
+import { getGithubUsernameAndPAT } from '@/lib/auth/auth';
 import { db } from '@/lib/db';
-import { EncryptionService } from '@/lib/encryption';
+import { getEncryptionService } from '@/lib/encryption';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Mock the auth module but keep getGithubUsernameAndPAT real
+vi.mock('@/lib/auth/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/auth')>();
+  return {
+    ...actual,
+    auth: vi.fn(), // Mock auth function but keep getGithubUsernameAndPAT real
+  };
+});
 
 // Mock the database
 vi.mock('@/lib/db', () => ({
@@ -28,32 +37,32 @@ vi.mock('@/lib/db', () => ({
 }));
 
 // Mock the encryption service
+const mockDecryptField = vi.fn((field: string, value: string) => {
+  // Return the value as-is for testing
+  return value.replace('encrypted_', 'decrypted_');
+});
+
 vi.mock('@/lib/encryption', () => ({
   EncryptionService: {
     getInstance: vi.fn(() => ({
-      decryptField: vi.fn((field: string, value: string) => {
-        // Return the value as-is for testing
-        return value.replace('encrypted_', 'decrypted_');
-      }),
+      decryptField: mockDecryptField,
     })),
   },
+  getEncryptionService: vi.fn(() => ({
+    decryptField: mockDecryptField,
+  })),
 }));
 
 describe('getGithubUsernameAndPAT', () => {
   const mockUserId = 'user-123';
   const mockWorkspaceSlug = 'test-workspace';
 
-  let mockEncryptionService: { decryptField: any };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    mockEncryptionService = {
-      decryptField: vi.fn((field: string, value: string) => {
-        // Return the value as-is for testing
-        return value.replace('encrypted_', 'decrypted_');
-      }),
-    };
-    (EncryptionService.getInstance as any).mockReturnValue(mockEncryptionService);
+    mockDecryptField.mockImplementation((field: string, value: string) => {
+      // Return the value as-is for testing
+      return value.replace('encrypted_', 'decrypted_');
+    });
   });
 
   describe('Mock User Detection', () => {

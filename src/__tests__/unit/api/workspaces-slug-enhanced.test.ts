@@ -5,63 +5,13 @@ import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { getWorkspaceBySlug, updateWorkspace, deleteWorkspaceBySlug } from "@/services/workspace";
 
 // Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-// Mock the workspace service functions
-vi.mock("@/services/workspace", () => ({
-  getWorkspaceBySlug: vi.fn(),
-  updateWorkspace: vi.fn(),
-  deleteWorkspaceBySlug: vi.fn(),
-}));
-
-const mockGetServerSession = getServerSession as vi.MockedFunction<typeof getServerSession>;
-const mockGetWorkspaceBySlug = getWorkspaceBySlug as vi.MockedFunction<typeof getWorkspaceBySlug>;
-const mockUpdateWorkspace = updateWorkspace as vi.MockedFunction<typeof updateWorkspace>;
-const mockDeleteWorkspaceBySlug = deleteWorkspaceBySlug as vi.MockedFunction<typeof deleteWorkspaceBySlug>;
-
-describe("Enhanced Workspace [slug] API Integration Tests", () => {
-  const mockWorkspace = {
-    id: "workspace-123",
-    name: "Test Workspace",
-    slug: "test-workspace",
-    description: "Test workspace description",
-    ownerId: "owner-123",
-    userRole: "OWNER" as const,
-  };
-
-  const mockOwnerUser = {
-    id: "owner-123",
-    email: "owner@example.com",
-    name: "Owner User",
-  };
-
-  const mockAdminUser = {
-    id: "admin-123", 
-    email: "admin@example.com",
-    name: "Admin User",
-  };
-
-  const mockMemberUser = {
-    id: "member-123",
-    email: "member@example.com", 
-    name: "Member User",
-  };
-
-  const mockOutsiderUser = {
-    id: "outsider-123",
-    email: "outsider@example.com",
-    name: "Outsider User",
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
 
   describe("GET /api/workspaces/[slug] - Enhanced Coverage", () => {
     test("should return workspace with correct user role for owner", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -83,7 +33,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should return workspace with correct user role for admin", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockAdminUser,
       });
 
@@ -102,7 +52,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should return workspace with correct user role for member", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockMemberUser,
       });
 
@@ -121,7 +71,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should return 404 for outsider user with no access", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOutsiderUser,
       });
 
@@ -137,7 +87,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle malformed session data gracefully", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: undefined, email: "test@example.com" },
       });
 
@@ -150,7 +100,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle empty slug parameter", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -163,7 +113,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle non-existent workspace", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -178,7 +128,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle internal server error", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -195,7 +145,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
   describe("PUT /api/workspaces/[slug] - Enhanced Coverage", () => {
     test("should validate slug format and reject invalid characters", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -220,7 +170,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle successful update", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -254,7 +204,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle malformed JSON gracefully", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -270,7 +220,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle workspace not found error", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -296,7 +246,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle permission denied error", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockMemberUser,
       });
 
@@ -322,7 +272,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle slug already exists error", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -350,7 +300,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
 
   describe("DELETE /api/workspaces/[slug] - Enhanced Coverage", () => {
     test("should successfully delete workspace", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -369,7 +319,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle workspace not found error", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -387,7 +337,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should verify workspace owner permissions strictly", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockAdminUser,
       });
 
@@ -405,7 +355,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle unauthorized access", async () => {
-      mockGetServerSession.mockResolvedValue(null);
+      mockAuth.mockResolvedValue(null);
 
       const request = new NextRequest(`http://localhost:3000/api/workspaces/${mockWorkspace.slug}`, {
         method: "DELETE",
@@ -419,7 +369,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should handle empty slug parameter", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 
@@ -444,7 +394,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       ];
 
       for (const scenario of errorScenarios) {
-        mockGetServerSession.mockResolvedValue(
+        mockAuth.mockResolvedValue(
           scenario.sessionUser ? { user: scenario.sessionUser } : null
         );
 
@@ -464,7 +414,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
     });
 
     test("should validate Content-Type header for PUT requests", async () => {
-      mockGetServerSession.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: mockOwnerUser,
       });
 

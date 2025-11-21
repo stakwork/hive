@@ -131,7 +131,7 @@ export function createRequestWithHeaders(
 
 /**
  * Adds middleware authentication headers to a request
- * Used for testing routes that use middleware context instead of getServerSession
+ * Used for testing routes that use middleware context instead of auth
  */
 export function addMiddlewareHeaders(
   request: NextRequest,

@@ -14,32 +14,10 @@ import {
 import { generateUniqueSlug, generateUniqueId } from "@/__tests__/support/helpers/ids";
 import type { User, Workspace, Task } from "@prisma/client";
 
-// Mock NextAuth for GET tests that use getServerSession
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+// Mock NextAuth for GET tests that use auth
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-}));
-
-// Test Data Setup Functions
-async function createTestWorkspace(ownerId: string) {
-  const slug = generateUniqueSlug("test-workspace");
-
-  const workspace = await db.workspace.create({
-    data: {
-      name: `Test Workspace ${slug}`,
-      slug,
-      ownerId,
-      members: {
-        create: {
-          userId: ownerId,
-          role: "OWNER",
-        },
-      },
-    },
-  });
 
   return workspace;
 }

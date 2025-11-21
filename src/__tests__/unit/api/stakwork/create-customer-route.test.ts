@@ -5,25 +5,9 @@ import { auth } from "@/lib/auth/auth";
 import { type ApiError } from "@/types";
 
 // Mock dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-
-// Mock function declarations - will be assigned after vi.mocked() imports
-
-vi.mock("@/lib/service-factory", () => {
-  const mockCreateCustomer = vi.fn();
-  const mockCreateSecret = vi.fn();
-  
-  return {
-    stakworkService: vi.fn(() => ({
-      createCustomer: mockCreateCustomer,
-      createSecret: mockCreateSecret,
-    })),
-    __mockCreateCustomer: mockCreateCustomer,
-    __mockCreateSecret: mockCreateSecret,
-  };
-});
 
 vi.mock("@/lib/encryption", () => {
   const mockEncryptField = vi.fn();
@@ -68,7 +52,7 @@ vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
-const mockGetServerSession = getServerSession as Mock;
+const mockAuth = auth as Mock;
 
 // Test Data Factories
 const TestDataFactory = {
@@ -147,15 +131,15 @@ const TestHelpers = {
   },
 
   setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+    mockAuth.mockResolvedValue(TestDataFactory.createValidSession());
   },
 
   setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
+    mockAuth.mockResolvedValue(null);
   },
 
   setupSessionWithoutUser: () => {
-    mockGetServerSession.mockResolvedValue({ user: null });
+    mockAuth.mockResolvedValue({ user: null });
   },
 
   expectAuthenticationError: async (response: Response) => {
@@ -279,7 +263,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect(mockAuth).toHaveBeenCalled();
       expect(mockCreateCustomer).toHaveBeenCalled();
     });
   });

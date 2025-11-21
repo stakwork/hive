@@ -5,119 +5,9 @@ import { POST } from "@/app/api/chat/message/route";
 import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/client";
 
 // Mock all external dependencies at module level
-vi.mock("next-auth/next");
-vi.mock("@/lib/db", () => ({
-  db: {
-    task: {
-      findFirst: vi.fn(),
-      findUnique: vi.fn(),
-      update: vi.fn(),
-    },
-    user: {
-      findUnique: vi.fn(),
-    },
-    chatMessage: {
-      create: vi.fn(),
-      findMany: vi.fn(),
-    },
-    workspace: {
-      findUnique: vi.fn(),
-    },
-  },
+vi.mock("@/lib/auth/auth", () => ({
+  auth: vi.fn(),
 }));
-vi.mock("@/lib/env", () => ({
-  config: {},
-}));
-vi.mock("@/lib/auth/nextauth", () => ({
-  authOptions: {},
-  getGithubUsernameAndPAT: vi.fn(),
-}));
-vi.mock("@/services/s3", () => ({
-  getS3Service: vi.fn(),
-}));
-vi.mock("@/lib/utils/swarm", () => ({
-  transformSwarmUrlToRepo2Graph: vi.fn(),
-}));
-vi.mock("@/lib/utils", () => ({
-  getBaseUrl: vi.fn(() => "http://localhost:3000"),
-}));
-
-// Mock fetch globally
-global.fetch = vi.fn();
-
-// Import mocked modules
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
-const { db: mockDb } = await import("@/lib/db");
-const { config: mockConfig } = await import("@/lib/env");
-const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
-const { getS3Service: mockGetS3Service } = await import("@/services/s3");
-const { transformSwarmUrlToRepo2Graph: mockTransformSwarmUrlToRepo2Graph } = await import("@/lib/utils/swarm");
-const mockFetch = fetch as vi.MockedFunction<typeof fetch>;
-
-describe("POST /api/chat/message", () => {
-  const mockTaskId = "test-task-id";
-  const mockUserId = "test-user-id";
-  const mockWorkspaceId = "test-workspace-id";
-  const mockMessage = "Test message";
-
-  const mockSession = {
-    user: { id: mockUserId, name: "Test User", email: "test@example.com" },
-  };
-
-  const mockTask = {
-    workspaceId: mockWorkspaceId,
-    workspace: {
-      ownerId: mockUserId,
-      swarm: {
-        id: "swarm-id",
-        swarmUrl: "https://swarm.example.com/api",
-        swarmSecretAlias: "test-alias",
-        poolName: "test-pool",
-        name: "test-swarm",
-      },
-      members: [],
-    },
-  };
-
-  const mockUser = {
-    name: "Test User",
-  };
-
-  const mockChatMessage = {
-    id: "message-id",
-    taskId: mockTaskId,
-    message: mockMessage,
-    role: ChatRole.USER,
-    contextTags: "[]",
-    status: ChatStatus.SENT,
-    sourceWebsocketID: null,
-    replyId: null,
-    artifacts: [],
-    attachments: [],
-    task: {
-      id: mockTaskId,
-      title: "Test Task",
-    },
-    timestamp: new Date(),
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    // Setup default mocks
-    mockGetServerSession.mockResolvedValue(mockSession);
-    mockDb.task.findFirst.mockResolvedValue(mockTask as any);
-    mockDb.task.findUnique.mockResolvedValue({ status: "TODO" } as any);
-    mockDb.user.findUnique.mockResolvedValue(mockUser as any);
-    mockDb.chatMessage.create.mockResolvedValue(mockChatMessage as any);
-    mockDb.chatMessage.findMany.mockResolvedValue([]);
-    mockDb.task.update.mockResolvedValue({} as any);
-    mockDb.workspace.findUnique.mockResolvedValue({ slug: "test-workspace" } as any);
-
-    mockGetGithubUsernameAndPAT.mockResolvedValue({
-      username: "testuser",
-      token: "token123",
-    });
 
     mockGetS3Service.mockReturnValue({
       generatePresignedDownloadUrl: vi.fn().mockResolvedValue("https://presigned-url.com"),
@@ -133,7 +23,7 @@ describe("POST /api/chat/message", () => {
 
   describe("Authentication", () => {
     it("should return 401 if no session", async () => {
-      mockGetServerSession.mockResolvedValue(null);
+      mockAuth.mockResolvedValue(null);
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -148,7 +38,7 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should return 401 if no user in session", async () => {
-      mockGetServerSession.mockResolvedValue({ user: null });
+      mockAuth.mockResolvedValue({ user: null });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -163,7 +53,7 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should return 401 if no user id in session", async () => {
-      mockGetServerSession.mockResolvedValue({ user: { name: "Test" } });
+      mockAuth.mockResolvedValue({ user: { name: "Test" } });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
