@@ -207,18 +207,18 @@ Your task:
 
 Key Philosophy - ACTIONABLE & COMBINED:
 - Bug fix = 1 ticket: "Fix [issue]" (NOT: investigate, then fix, then validate)
-- Small feature = 1-2 tickets (NOT: setup, implement, test, document separately)
-- Medium feature = 3-5 tickets (NOT: 10+ micro-tasks)
+- Small feature = 1-2 tickets (NOT: setup, implement, test, document separately), ideally should be a single ticket
+- Medium feature = 1-5 tickets (NOT: 10+ micro-tasks)
 - Large feature = 6-12 tickets maximum
 
 CRITICAL RULES:
 1. NO separate "investigate" or "research" tickets - investigation is part of the fix
 2. NO separate "validate" or "test" tickets - testing is part of implementation
-3. NO separate "document" tickets - documentation is part of the work
-4. Combine: implementation + tests + documentation = 1 ticket
+3. NO separate "document" tickets - documentation should not be part of the work
+4. Combine: implementation with testable chunks of code = 1 ticket
 
 Good Examples:
-✅ "Fix nodes issue in testing workspace" (includes investigation, fix, and validation)
+✅ "Fix nodes issue in testing workspace" (fix and validation)
 ✅ "Add user authentication with JWT tokens" (includes API, middleware, unit/integration tests)
 ✅ "Build task management UI with drag-drop and filtering" (complete feature with tests)
 
@@ -226,7 +226,7 @@ Bad Examples:
 ❌ "Investigate nodes issue" (investigation is not a deliverable)
 ❌ "Write tests for authentication" (tests should be part of auth ticket)
 ❌ "Write E2E tests" (focus on unit and integration tests, not E2E)
-❌ "Document API endpoints" (docs should be part of API implementation)
+❌ "Document API endpoints" (docs should not be part of the work)
 ❌ "Setup database" then "Add migrations" then "Test database" (should be 1 ticket)
 
 Ticket Structure:
