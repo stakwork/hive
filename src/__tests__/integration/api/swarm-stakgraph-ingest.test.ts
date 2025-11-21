@@ -72,7 +72,6 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
   let userId: string;
   let workspaceId: string;
-  let swarmId: string;
   let sourceControlOrgId: string;
 
   beforeEach(async () => {
@@ -155,7 +154,6 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
 
     userId = testData.user.id;
     workspaceId = testData.workspace.id;
-    swarmId = testData.swarm.swarmId!;
     sourceControlOrgId = testData.sourceControlOrg.id;
 
     getMockedSession().mockResolvedValue(createAuthenticatedSession(testData.user));
@@ -169,7 +167,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -214,7 +212,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-456" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -274,7 +272,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: requestId },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -300,7 +298,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       });
       const initialIngestRefId = initialSwarm?.ingestRefId;
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -327,7 +325,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: newRequestId },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -350,7 +348,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);
@@ -375,7 +373,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       await POST(request);
 
       // Verify triggerIngestAsync was called (decryption happens inside)
@@ -388,27 +386,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
   });
 
   describe("Workspace and Swarm Lookup", () => {
-    it("should find swarm by swarmId when provided", async () => {
-      mockTriggerIngestAsync.mockResolvedValue({
-        ok: true,
-        status: 200,
-        data: { request_id: "ingest-req-123" },
-      } as AsyncSyncResult);
-
-      const request = createPostRequest({ swarmId });
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-
-      // Verify repository was created with swarm's workspaceId
-      const repository = await db.repository.findFirst({
-        where: { repositoryUrl: "https://github.com/test-org/test-repo" },
-      });
-
-      expect(repository?.workspaceId).toBe(workspaceId);
-    });
-
-    it("should find swarm by workspaceId when swarmId not provided", async () => {
+    it("should find swarm by workspaceId", async () => {
       mockTriggerIngestAsync.mockResolvedValue({
         ok: true,
         status: 200,
@@ -437,7 +415,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request = createPostRequest({ workspaceId, swarmId });
+      const request = createPostRequest({ workspaceId });
       const response = await POST(request);
 
       expect(response.status).toBe(200);
