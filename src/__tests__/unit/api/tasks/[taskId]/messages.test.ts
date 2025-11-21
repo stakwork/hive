@@ -1,17 +1,13 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/tasks/[taskId]/messages/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 
-// Mock next-auth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
-}));
-
-// Mock authOptions
-vi.mock("@/lib/auth/nextauth", () => ({
+// Mock auth module
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
   authOptions: {},
 }));
 
