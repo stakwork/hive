@@ -13,6 +13,7 @@ import { randomUUID } from "crypto";
 // Mock external dependencies
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
+  authOptions: {},
 }));
 
 vi.mock("@/lib/utils/password", () => ({
@@ -38,10 +39,6 @@ vi.mock("@/config/services", () => ({
 vi.mock("@/services/swarm/fake", () => ({
   isFakeMode: false,
   createFakeSwarm: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
 }));
 
 vi.mock("crypto", () => ({

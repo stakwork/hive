@@ -9,6 +9,7 @@ import { ValidateUriResponse } from "@/types/swarm";
 // Mock external dependencies
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
+  authOptions: {},
 }));
 
 vi.mock("@/services/swarm", () => ({
@@ -17,10 +18,6 @@ vi.mock("@/services/swarm", () => ({
 
 vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
 }));
 
 const mockGetServerSession = getServerSession as Mock;

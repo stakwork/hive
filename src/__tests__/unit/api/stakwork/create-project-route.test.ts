@@ -7,6 +7,7 @@ import { type ApiError } from "@/types";
 // Mock dependencies
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
+  authOptions: {},
 }));
 
 const mockCreateProject = vi.fn();
@@ -15,10 +16,6 @@ vi.mock("@/lib/service-factory", () => ({
   stakworkService: () => ({
     createProject: mockCreateProject,
   }),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
 }));
 
 const mockGetServerSession = getServerSession as Mock;

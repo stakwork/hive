@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 // Mock dependencies
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
+  authOptions: {},
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -26,10 +27,6 @@ vi.mock("@/lib/url", () => ({
 
 vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
-}));
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
 }));
 
 // Import mocked modules

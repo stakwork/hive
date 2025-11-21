@@ -7,6 +7,7 @@ import { type ApiError } from "@/types";
 // Mock dependencies
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
+  authOptions: {},
 }));
 
 // Mock function declarations - will be assigned after vi.mocked() imports
@@ -63,10 +64,6 @@ vi.mock("@/lib/db", () => {
     __mockSwarmFindFirst: mockSwarmFindFirst,
   };
 });
-
-vi.mock("@/lib/auth", () => ({
-  authOptions: {},
-}));
 
 const mockGetServerSession = getServerSession as Mock;
 

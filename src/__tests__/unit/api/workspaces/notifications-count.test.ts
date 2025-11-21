@@ -6,13 +6,10 @@ import { GET } from "@/app/api/workspaces/[slug]/tasks/notifications-count/route
 // Mock next-auth
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
-}));
-
-// Mock authOptions
-vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
+// Mock authOptions
 // Mock the database
 vi.mock("@/lib/db", () => ({
   db: {
