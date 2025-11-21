@@ -18,8 +18,6 @@ vi.mock("@/lib/service-factory", () => ({
   }),
 }));
 
-const mockGetServerSession = getServerSession as Mock;
-
 // Test Data Factories
 const TestDataFactory = {
   createValidProjectData: () => ({
@@ -86,15 +84,15 @@ const TestHelpers = {
   },
 
   setupAuthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(TestDataFactory.createValidSession());
+    (auth as Mock).mockResolvedValue(TestDataFactory.createValidSession());
   },
 
   setupUnauthenticatedUser: () => {
-    mockGetServerSession.mockResolvedValue(null);
+    (auth as Mock).mockResolvedValue(null);
   },
 
   setupSessionWithoutUser: () => {
-    mockGetServerSession.mockResolvedValue({ user: null });
+    (auth as Mock).mockResolvedValue({ user: null });
   },
 
   expectAuthenticationError: async (response: Response) => {
@@ -172,7 +170,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      expect(mockGetServerSession).toHaveBeenCalled();
+      expect((auth as Mock)).toHaveBeenCalled();
       expect(mockCreateProject).toHaveBeenCalled();
     });
   });

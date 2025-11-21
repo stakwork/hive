@@ -22,7 +22,6 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const { getServerSession: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
 
 // Test Data Factories
