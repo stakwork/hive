@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, Loader2, Phone, Mic, MicOff } from "lucide-r
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
+import { TranscriptTooltip } from "./TranscriptTooltip";
 
 export default function CallsPage() {
   const { workspace, slug } = useWorkspace();
@@ -284,28 +285,33 @@ export default function CallsPage() {
           workspace?.isCodeGraphSetup ? (
             <div className="flex gap-2">
               {isVoiceSupported && (
-                <Button
-                  onClick={handleToggleRecording}
-                  disabled={processingFeature}
-                  variant={isRecording ? "destructive" : "default"}
+                <TranscriptTooltip
+                  transcript={currentTranscript}
+                  show={isRecording && currentTranscript.trim().length > 0}
                 >
-                  {processingFeature ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating Feature...
-                    </>
-                  ) : isRecording ? (
-                    <>
-                      <MicOff className="h-4 w-4 mr-2" />
-                      Stop Recording
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="h-4 w-4 mr-2" />
-                      Record
-                    </>
-                  )}
-                </Button>
+                  <Button
+                    onClick={handleToggleRecording}
+                    disabled={processingFeature}
+                    variant={isRecording ? "destructive" : "default"}
+                  >
+                    {processingFeature ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Creating Feature...
+                      </>
+                    ) : isRecording ? (
+                      <>
+                        <MicOff className="h-4 w-4 mr-2" />
+                        Stop Recording
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-4 w-4 mr-2" />
+                        Record
+                      </>
+                    )}
+                  </Button>
+                </TranscriptTooltip>
               )}
               <Button onClick={handleStartCall} disabled={generatingLink}>
                 {generatingLink ? (
@@ -324,30 +330,6 @@ export default function CallsPage() {
           ) : null
         }
       />
-
-      {false && isRecording && (
-        <Card className="border-red-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse" />
-              Recording in Progress
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Say <strong>&quot;{WAKE_WORD}, make a feature from this&quot;</strong> to create a feature from the last
-                hour of conversation.
-              </p>
-              {currentTranscript && (
-                <div className="mt-3 p-3 bg-muted rounded-md">
-                  <p className="text-sm font-mono">{currentTranscript}</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>
