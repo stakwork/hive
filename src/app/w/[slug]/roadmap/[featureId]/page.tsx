@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, Check, Trash2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
@@ -28,28 +27,27 @@ export default function FeatureDetailPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
-  const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
+  const { slug: workspaceSlug } = useWorkspace();
   const featureId = params.featureId as string;
 
   // Tab state management
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "overview");
-  const [overviewExpanded, setOverviewExpanded] = useState(false);
+  const [personasExpanded, setPersonasExpanded] = useState(false);
+  const [userStoriesExpanded, setUserStoriesExpanded] = useState(false);
+  const [requirementsExpanded, setRequirementsExpanded] = useState(false);
 
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [creatingStory, setCreatingStory] = useState(false);
   const storyFocusRef = useRef(false);
 
-  const fetchFeature = useCallback(
-    async (id: string) => {
-      const response = await fetch(`/api/features/${id}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch feature");
-      }
-      return response.json();
-    },
-    []
-  );
+  const fetchFeature = useCallback(async (id: string) => {
+    const response = await fetch(`/api/features/${id}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch feature");
+    }
+    return response.json();
+  }, []);
 
   const {
     data: feature,
@@ -80,13 +78,33 @@ export default function FeatureDetailPage() {
         updateOriginalData(result.data);
       }
     },
-    [featureId, setFeature]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [featureId, setFeature],
   );
 
   const { saving, saved, savedField, handleFieldBlur, updateOriginalData, triggerSaved } = useAutoSave({
     data: feature,
     onSave: handleSave,
   });
+
+  // Auto-expand sections if they have content
+  useEffect(() => {
+    if (feature) {
+      // Check if personas have content
+      const hasPersonas =
+        feature.personas && feature.personas.length > 0 && feature.personas.some((p) => p.trim().length > 0);
+      setPersonasExpanded(hasPersonas || false);
+
+      // Check if user stories exist
+      const hasUserStories = feature.userStories && feature.userStories.length > 0;
+      setUserStoriesExpanded(hasUserStories || false);
+
+      // Check if requirements have content
+      const hasRequirements = feature.requirements && feature.requirements.trim().length > 0;
+      setRequirementsExpanded(hasRequirements || false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feature?.id]); // Only run when feature id changes (initial load)
 
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
     await handleSave({ status });
@@ -145,9 +163,7 @@ export default function FeatureDetailPage() {
       if (result.success && feature) {
         setFeature({
           ...feature,
-          userStories: feature.userStories.map((story) =>
-            story.id === storyId ? { ...story, title } : story
-          ),
+          userStories: feature.userStories.map((story) => (story.id === storyId ? { ...story, title } : story)),
         });
       }
     } catch (error) {
@@ -192,14 +208,11 @@ export default function FeatureDetailPage() {
         order: index,
       }));
 
-      const response = await fetch(
-        `/api/features/${featureId}/user-stories/reorder`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stories: reorderData }),
-        }
-      );
+      const response = await fetch(`/api/features/${featureId}/user-stories/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stories: reorderData }),
+      });
 
       if (!response.ok) {
         throw new Error("Failed to reorder user stories");
@@ -269,11 +282,7 @@ export default function FeatureDetailPage() {
       <div className="space-y-6">
         {/* Header with back button */}
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
@@ -354,11 +363,7 @@ export default function FeatureDetailPage() {
   if (error || !feature) {
     return (
       <div className="space-y-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
-        >
+        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
@@ -378,11 +383,7 @@ export default function FeatureDetailPage() {
     <div className="space-y-6">
       {/* Header with back button */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
-        >
+        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
@@ -413,11 +414,7 @@ export default function FeatureDetailPage() {
 
             {/* Status, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
-              <StatusPopover
-                statusType="feature"
-                currentStatus={feature.status}
-                onUpdate={handleUpdateStatus}
-              />
+              <StatusPopover statusType="feature" currentStatus={feature.status} onUpdate={handleUpdateStatus} />
               <AssigneeCombobox
                 workspaceSlug={workspaceSlug}
                 currentAssignee={feature.assignee}
@@ -468,13 +465,13 @@ export default function FeatureDetailPage() {
                 enableImageUpload={true}
               />
 
-              {/* Collapsible sections */}
-              <Collapsible open={overviewExpanded} onOpenChange={setOverviewExpanded}>
+              {/* User Personas - Collapsible */}
+              <Collapsible open={personasExpanded} onOpenChange={setPersonasExpanded}>
                 <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
-                  <ChevronRight className={`h-4 w-4 transition-transform ${overviewExpanded ? "rotate-90" : ""}`} />
-                  Additional Details
+                  <ChevronRight className={`h-4 w-4 transition-transform ${personasExpanded ? "rotate-90" : ""}`} />
+                  User Personas
                 </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-6 mt-4">
+                <CollapsibleContent className="mt-4">
                   <PersonasSection
                     personas={feature.personas || []}
                     savedField={savedField}
@@ -483,7 +480,16 @@ export default function FeatureDetailPage() {
                     onChange={(value) => updateFeature({ personas: value })}
                     onBlur={(value) => handleFieldBlur("personas", value)}
                   />
+                </CollapsibleContent>
+              </Collapsible>
 
+              {/* User Stories - Collapsible */}
+              <Collapsible open={userStoriesExpanded} onOpenChange={setUserStoriesExpanded}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronRight className={`h-4 w-4 transition-transform ${userStoriesExpanded ? "rotate-90" : ""}`} />
+                  User Stories
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-4">
                   <UserStoriesSection
                     featureId={featureId}
                     userStories={feature.userStories}
@@ -497,7 +503,16 @@ export default function FeatureDetailPage() {
                     onAcceptGeneratedStory={handleAcceptGeneratedStory}
                     shouldFocusRef={storyFocusRef}
                   />
+                </CollapsibleContent>
+              </Collapsible>
 
+              {/* Requirements - Collapsible */}
+              <Collapsible open={requirementsExpanded} onOpenChange={setRequirementsExpanded}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronRight className={`h-4 w-4 transition-transform ${requirementsExpanded ? "rotate-90" : ""}`} />
+                  Requirements
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-4">
                   <AITextareaSection
                     id="requirements"
                     label="Requirements"
@@ -515,9 +530,7 @@ export default function FeatureDetailPage() {
 
               {/* Navigation buttons */}
               <div className="flex justify-end pt-4">
-                <Button onClick={() => setActiveTab("architecture")}>
-                  Next
-                </Button>
+                <Button onClick={() => setActiveTab("architecture")}>Next</Button>
               </div>
             </TabsContent>
 
@@ -540,18 +553,12 @@ export default function FeatureDetailPage() {
                 <Button variant="outline" onClick={() => setActiveTab("overview")}>
                   Back
                 </Button>
-                <Button onClick={() => setActiveTab("tickets")}>
-                  Next
-                </Button>
+                <Button onClick={() => setActiveTab("tickets")}>Next</Button>
               </div>
             </TabsContent>
 
             <TabsContent value="tickets" className="space-y-6 pt-0">
-              <TicketsList
-                featureId={featureId}
-                feature={feature}
-                onUpdate={setFeature}
-              />
+              <TicketsList featureId={featureId} feature={feature} onUpdate={setFeature} />
 
               {/* Navigation buttons */}
               <div className="flex justify-start pt-4">
