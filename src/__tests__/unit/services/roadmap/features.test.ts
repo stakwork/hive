@@ -644,13 +644,31 @@ describe("createFeature", () => {
           assigneeId: null,
           createdById: mockUserId,
           updatedById: mockUserId,
+          phases: {
+            create: {
+              name: "Phase 1",
+              description: null,
+              status: "NOT_STARTED",
+              order: 0,
+            },
+          },
         },
         include: {
           assignee: {
-            select: expect.any(Object),
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
           },
           createdBy: {
-            select: expect.any(Object),
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
           },
           workspace: {
             select: {
@@ -700,13 +718,31 @@ describe("createFeature", () => {
           assigneeId: mockAssigneeId,
           createdById: mockUserId,
           updatedById: mockUserId,
+          phases: {
+            create: {
+              name: "Phase 1",
+              description: null,
+              status: "NOT_STARTED",
+              order: 0,
+            },
+          },
         },
         include: {
           assignee: {
-            select: expect.any(Object),
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
           },
           createdBy: {
-            select: expect.any(Object),
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
           },
           workspace: {
             select: {
