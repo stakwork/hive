@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AIButton } from "@/components/ui/ai-button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { RoadmapTasksTable } from "@/components/features/RoadmapTasksTable";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
@@ -73,9 +73,6 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   const [generating, setGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
 
-  // Phase creation state
-  const [creatingPhase, setCreatingPhase] = useState(false);
-
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,44 +90,6 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       titleInputRef.current?.focus();
     }
   }, [creatingTicket, newTicketTitle, isCreatingTicket]);
-
-  // Auto-create Phase 1 if it doesn't exist
-  useEffect(() => {
-    const createDefaultPhase = async () => {
-      if (!feature.phases || feature.phases.length === 0) {
-        setCreatingPhase(true);
-        try {
-          const response = await fetch(`/api/features/${featureId}/phases`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: "Phase 1",
-              description: null,
-              status: "NOT_STARTED",
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error("Failed to create default phase");
-          }
-
-          const result = await response.json();
-          if (result.success) {
-            onUpdate({
-              ...feature,
-              phases: [result.data],
-            });
-          }
-        } catch (error) {
-          console.error("Failed to create default phase:", error);
-        } finally {
-          setCreatingPhase(false);
-        }
-      }
-    };
-
-    createDefaultPhase();
-  }, [featureId, feature.phases, feature, onUpdate]);
 
   const handleCreateTicket = async () => {
     if (!newTicketTitle.trim() || !defaultPhase) return;
@@ -283,12 +242,12 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     }
   };
 
-  if (creatingPhase || !defaultPhase) {
+  if (!defaultPhase) {
     return (
       <Empty>
-        <EmptyHeader>Setting up tasks...</EmptyHeader>
+        <EmptyHeader>No phase found</EmptyHeader>
         <EmptyDescription>
-          Creating default phase for your tasks.
+          This feature doesn't have a phase yet. Please contact support.
         </EmptyDescription>
       </Empty>
     );
@@ -320,7 +279,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   return (
     <div className="space-y-4">
-      {/* Header with Tasks heading, AI button, and Add Task button */}
+      {/* Header with Tasks heading, AI button, view toggle, and Add Task button */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-semibold">Tasks</h3>
@@ -336,12 +295,24 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
             iconOnly
           />
         </div>
-        {!isCreatingTicket && (
-          <Button onClick={() => setIsCreatingTicket(true)} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Task
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
+            <TabsList>
+              <TabsTrigger value="table" className="gap-2">
+                <TableIcon className="h-4 w-4" />
+              </TabsTrigger>
+              <TabsTrigger value="graph" className="gap-2">
+                <Network className="h-4 w-4" />
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {!isCreatingTicket && (
+            <Button onClick={() => setIsCreatingTicket(true)} size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Task
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Inline Task Creation Form */}
@@ -421,45 +392,30 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
         </div>
       )}
 
-      {/* View Toggle Tabs */}
-      <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
-        <TabsList>
-          <TabsTrigger value="table" className="gap-2">
-            <TableIcon className="h-4 w-4" />
-            Table
-          </TabsTrigger>
-          <TabsTrigger value="graph" className="gap-2">
-            <Network className="h-4 w-4" />
-            Graph
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="table" className="mt-4">
-          <RoadmapTasksTable
-            phaseId={defaultPhase.id}
-            workspaceSlug={workspaceSlug || ""}
-            tasks={tickets}
-            onTasksReordered={handleTasksReordered}
-            onTaskUpdate={handleTaskUpdate}
-          />
-        </TabsContent>
-
-        <TabsContent value="graph" className="mt-4">
-          <DependencyGraph
-            entities={tickets}
-            getDependencies={(ticket) => ticket.dependsOnTaskIds || []}
-            renderNode={(ticket) => <RoadmapTaskNode data={ticket} />}
-            onNodeClick={(ticketId) => {
-              router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
-            }}
-            emptyStateMessage="No tasks to display."
-            noDependenciesMessage={{
-              title: "No Dependencies Yet",
-              description: "Add dependencies between tasks to see them visualized here.",
-            }}
-          />
-        </TabsContent>
-      </Tabs>
+      {/* Task View */}
+      {activeView === "table" ? (
+        <RoadmapTasksTable
+          phaseId={defaultPhase.id}
+          workspaceSlug={workspaceSlug || ""}
+          tasks={tickets}
+          onTasksReordered={handleTasksReordered}
+          onTaskUpdate={handleTaskUpdate}
+        />
+      ) : (
+        <DependencyGraph
+          entities={tickets}
+          getDependencies={(ticket) => ticket.dependsOnTaskIds || []}
+          renderNode={(ticket) => <RoadmapTaskNode data={ticket} />}
+          onNodeClick={(ticketId) => {
+            router.push(`/w/${workspaceSlug}/tickets/${ticketId}`);
+          }}
+          emptyStateMessage="No tasks to display."
+          noDependenciesMessage={{
+            title: "No Dependencies Yet",
+            description: "Add dependencies between tasks to see them visualized here.",
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -25,6 +25,7 @@
     "format": "prettier --write .",
     "migrate:encrypt": "tsx scripts/migrate-encrypt-existing-data.ts",
     "migrate:e2e-tasks": "tsx scripts/migrate-e2e-to-tasks.ts",
+    "migrate:default-phases": "tsx scripts/ensure-default-phases.ts",
     "validate:e2e-migration": "tsx scripts/validate-e2e-migration.ts",
     "rotate-keys": "tsx scripts/rotate-encryption-key.ts",
     "seed:db": "tsx scripts/helpers/seed-database.ts",
