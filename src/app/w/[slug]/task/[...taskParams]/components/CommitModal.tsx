@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { GitBranch, MessageSquare, Loader2 } from "lucide-react";
+import { GitBranch, Loader2, Github } from "lucide-react";
 
 interface CommitModalProps {
   isOpen: boolean;
@@ -43,10 +43,10 @@ export function CommitModal({
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GitBranch className="w-5 h-5" />
-            Commit Changes
+            <Github className="w-5 h-5" />
+            Push to GitHub
           </DialogTitle>
-          <DialogDescription>Review and edit the AI-generated commit message and branch name</DialogDescription>
+          <DialogDescription>Review details before pushing to your repository</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
@@ -54,7 +54,7 @@ export function CommitModal({
           <div className="space-y-2">
             <Label htmlFor="branch-name" className="flex items-center gap-2 text-sm font-medium">
               <GitBranch className="w-4 h-4" />
-              Branch Name
+              GitHub Branch
             </Label>
             <Input
               id="branch-name"
@@ -64,14 +64,13 @@ export function CommitModal({
               className="font-mono text-sm"
               disabled={isCommitting}
             />
-            <p className="text-xs text-muted-foreground">Follow convention: category/brief-description</p>
+            <p className="text-xs text-muted-foreground">Your changes will be saved to this branch</p>
           </div>
 
-          {/* Commit Message */}
+          {/* Change Description */}
           <div className="space-y-2">
-            <Label htmlFor="commit-message" className="flex items-center gap-2 text-sm font-medium">
-              <MessageSquare className="w-4 h-4" />
-              Commit Message
+            <Label htmlFor="commit-message" className="text-sm font-medium">
+              Change Description
             </Label>
             <Textarea
               id="commit-message"
@@ -81,7 +80,7 @@ export function CommitModal({
               className="min-h-[120px] resize-none"
               disabled={isCommitting}
             />
-            <p className="text-xs text-muted-foreground">Write a clear, concise description of the changes</p>
+            <p className="text-xs text-muted-foreground">Briefly explain what was added or updated</p>
           </div>
         </div>
 
@@ -94,12 +93,12 @@ export function CommitModal({
             {isCommitting ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Committing...
+                Pushing...
               </>
             ) : (
               <>
                 <GitBranch className="w-4 h-4 mr-2" />
-                Commit & Push
+                Push to GitHub
               </>
             )}
           </Button>

@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, GitCommit, Monitor } from "lucide-react";
+import { ArrowLeft, Save, Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -149,7 +149,7 @@ export function AgentChatArea({
                 </Button>
               )}
 
-              {/* Commit Button */}
+              {/* Save Button */}
               {onCommit && (
                 <Button
                   variant="outline"
@@ -158,8 +158,8 @@ export function AgentChatArea({
                   disabled={isCommitting}
                   className="flex-shrink-0 gap-1"
                 >
-                  <GitCommit className="w-3 h-3" />
-                  {isCommitting ? "Generating..." : "Commit"}
+                  <Save className="w-3 h-3" />
+                  {isCommitting ? "Saving..." : "Save"}
                 </Button>
               )}
             </div>
