@@ -83,6 +83,7 @@ const NodePointsComponent = () => {
       limit={Math.max(1000, nodeCount)} // Dynamic limit based on actual node count
       range={Math.max(1000, nodeCount)}
       visible={!selectedNode || true}
+      frustumCulled={false}
     >
       <meshBasicMaterial />
       {nodeInstanceData.map(({ key, color, scale, node, position }) => (
