@@ -33,10 +33,25 @@ vi.mock("@/lib/encryption", () => ({
     })),
   },
 }));
-vi.mock("@/services/github/WebhookService");
-vi.mock("@/config/services");
-vi.mock("@/lib/constants");
-vi.mock("@/lib/url");
+vi.mock("@/services/github/WebhookService", () => ({
+  WebhookService: vi.fn().mockImplementation(() => ({
+    ensureRepoWebhook: vi.fn().mockResolvedValue({ id: 123, secret: "webhook-secret" }),
+  })),
+}));
+vi.mock("@/config/services", () => ({
+  getServiceConfig: vi.fn(() => ({
+    baseURL: "https://github.com",
+    apiKey: "test-api-key",
+    timeout: 30000,
+  })),
+}));
+vi.mock("@/lib/constants", () => ({
+  getSwarmVanityAddress: vi.fn((name: string) => `${name}.sphinx.chat`),
+}));
+vi.mock("@/lib/url", () => ({
+  getGithubWebhookCallbackUrl: vi.fn(() => "https://app.example.com/api/github/webhook"),
+  getStakgraphWebhookCallbackUrl: vi.fn(() => "https://app.example.com/api/swarm/stakgraph/webhook"),
+}));
 
 import { db } from "@/lib/db";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
