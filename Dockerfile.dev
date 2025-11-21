@@ -7,10 +7,10 @@ RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
+COPY package.json yarn.lock* ./
 
 # Install all dependencies (including dev dependencies)
-RUN npm ci
+RUN yarn install --frozen-lockfile
 
 # Copy the rest of the application
 COPY . .

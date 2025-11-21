@@ -73,8 +73,6 @@ node_modules/
 # tasks.json
 # tasks/ 
 
-yarn.lock
-
 # Tests
 mock-tests/
 
