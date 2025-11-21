@@ -209,6 +209,7 @@ export async function createTicket(
       assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
       systemAssigneeType: systemAssigneeType,
       bountyCode: bountyCode,
+      dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
       createdById: userId,
