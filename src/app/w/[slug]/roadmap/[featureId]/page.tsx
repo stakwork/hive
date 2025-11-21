@@ -329,12 +329,7 @@ export default function FeatureDetailPage() {
 
             {/* User Stories */}
             <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">User Stories</Label>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Define the user stories and acceptance criteria for this feature.
-                </p>
-              </div>
+              <Label className="text-sm font-medium">User Stories</Label>
               <Skeleton className="h-14 w-full rounded-lg" />
               {[1, 2, 3].map((i) => (
                 <Skeleton key={i} className="h-14 w-full rounded-lg" />
@@ -348,9 +343,6 @@ export default function FeatureDetailPage() {
               <Label htmlFor="requirements" className="text-sm font-medium">
                 Requirements
               </Label>
-              <p className="text-sm text-muted-foreground">
-                Detailed product and technical requirements for implementation.
-              </p>
               <Skeleton className="h-32 w-full rounded-md" />
             </div>
 
@@ -359,9 +351,6 @@ export default function FeatureDetailPage() {
               <Label htmlFor="architecture" className="text-sm font-medium">
                 Architecture
               </Label>
-              <p className="text-sm text-muted-foreground">
-                Technical architecture, design decisions, and implementation notes.
-              </p>
               <Skeleton className="h-32 w-full rounded-md" />
             </div>
           </CardContent>
@@ -475,7 +464,6 @@ export default function FeatureDetailPage() {
               <AutoSaveTextarea
                 id="brief"
                 label="Brief"
-                description="High-level overview of what this feature is and why it matters."
                 value={feature.brief}
                 rows={4}
                 className="resize-none"
@@ -521,7 +509,6 @@ export default function FeatureDetailPage() {
                   <AITextareaSection
                     id="requirements"
                     label="Requirements"
-                    description="Functional and technical specifications for implementation."
                     type="requirements"
                     featureId={featureId}
                     value={feature.requirements}
@@ -546,7 +533,6 @@ export default function FeatureDetailPage() {
               <AITextareaSection
                 id="architecture"
                 label="Architecture"
-                description="Technical design decisions and implementation approach."
                 type="architecture"
                 featureId={featureId}
                 value={feature.architecture}
