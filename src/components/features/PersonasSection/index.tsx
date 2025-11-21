@@ -104,9 +104,6 @@ export function PersonasSection({
           </div>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Define the target user types for this feature.
-      </p>
 
       <div className="rounded-lg border bg-muted/30 p-3">
         <div className="flex flex-wrap gap-2 mb-2">

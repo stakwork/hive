@@ -22,7 +22,7 @@ export function SaveIndicator({
   if (!isSavedField || !saved || saving) return null;
 
   return (
-    <span className="ml-2 inline-flex items-center gap-1.5 text-xs">
+    <span className="inline-flex items-center gap-1.5 text-xs">
       <Check className="h-3 w-3 text-green-600" />
       <span className="text-green-600">Saved</span>
     </span>

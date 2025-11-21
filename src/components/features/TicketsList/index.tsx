@@ -278,11 +278,11 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Header with Tasks heading, AI button, view toggle, and Add Task button */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold">Tasks</h3>
+          <Label className="text-sm font-medium">Tasks</Label>
           <AIButton<GeneratedContent>
             endpoint={`/api/features/${featureId}/generate`}
             params={{ type: "tickets" }}
