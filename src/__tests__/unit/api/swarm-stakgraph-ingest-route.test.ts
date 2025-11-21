@@ -9,7 +9,6 @@ vi.mock("next-auth/next");
 vi.mock("@/lib/db", () => ({
   db: {
     swarm: {
-      findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
     },
@@ -132,7 +131,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
-    vi.mocked(db.swarm.findFirst).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(db.swarm.update).mockResolvedValue(mockSwarm);
     vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepository);
     vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
@@ -155,7 +154,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 404 when swarm not found", async () => {
-    vi.mocked(db.swarm.findFirst).mockResolvedValue(null);
+    vi.mocked(db.swarm.findUnique).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
@@ -179,7 +178,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 409 when ingest request already in progress", async () => {
-    vi.mocked(db.swarm.findFirst).mockResolvedValue({
+    vi.mocked(db.swarm.findUnique).mockResolvedValue({
       ...mockSwarm,
       ingestRequestInProgress: true
     });

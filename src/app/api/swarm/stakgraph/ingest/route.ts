@@ -27,16 +27,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspaceId, swarmId, useLsp } = body;
-    console.log(`[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, swarmId: ${swarmId}, useLsp: ${useLsp}, user: ${session.user.id}`);
+    const { workspaceId, useLsp } = body;
+    console.log(`[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, useLsp: ${useLsp}, user: ${session.user.id}`);
 
-    console.log(`[STAKGRAPH_INGEST] Looking up swarm - swarmId: ${swarmId}, workspaceId: ${workspaceId}`);
-    const where: Record<string, string> = {};
-    if (swarmId) where.swarmId = swarmId;
-    if (!swarmId && workspaceId) where.workspaceId = workspaceId;
+    if (!workspaceId) {
+      console.log(`[STAKGRAPH_INGEST] No workspaceId provided`);
+      return NextResponse.json({ success: false, message: "Workspace ID is required" }, { status: 400 });
+    }
 
-    const swarm = await db.swarm.findFirst({
-      where,
+    console.log(`[STAKGRAPH_INGEST] Looking up swarm for workspace: ${workspaceId}`);
+
+    const swarm = await db.swarm.findUnique({
+      where: { workspaceId },
       select: {
         id: true,
         name: true,
@@ -161,11 +163,9 @@ export async function POST(request: NextRequest) {
     if (apiResult?.data && typeof apiResult.data === "object" && "error" in apiResult.data) {
       const errorMsg = apiResult.data.error as string;
       if (errorMsg.includes("System is busy processing another request")) {
-        console.log(`[STAKGRAPH_INGEST] External service busy, resetting flag and returning 409`);
-        await saveOrUpdateSwarm({
-          workspaceId: swarm.workspaceId,
-          ingestRequestInProgress: false,
-        });
+        console.log(`[STAKGRAPH_INGEST] External service busy, keeping flag set and returning 409`);
+        // NOTE: We keep ingestRequestInProgress: true to prevent more requests
+        // The flag will be reset when the external processing completes via webhook
         return NextResponse.json({
           success: false,
           message: "Ingest request already in progress for this swarm"
@@ -224,13 +224,14 @@ export async function POST(request: NextRequest) {
     // Try to reset ingest request flag on unexpected error
     try {
       const body = await request.json();
-      const { workspaceId, swarmId } = body;
+      const { workspaceId } = body;
 
-      const where: Record<string, string> = {};
-      if (swarmId) where.swarmId = swarmId;
-      if (!swarmId && workspaceId) where.workspaceId = workspaceId;
+      if (!workspaceId) {
+        console.log(`[STAKGRAPH_INGEST] No workspaceId in error handler`);
+        return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
+      }
 
-      const swarm = await db.swarm.findFirst({ where });
+      const swarm = await db.swarm.findUnique({ where: { workspaceId } });
       if (swarm) {
         console.log(`[STAKGRAPH_INGEST] Resetting ingestRequestInProgress flag after error`);
         await saveOrUpdateSwarm({
