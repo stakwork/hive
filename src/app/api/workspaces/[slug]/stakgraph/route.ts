@@ -1,5 +1,5 @@
 import { getServiceConfig } from "@/config/services";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { config } from "@/lib/env";
@@ -13,7 +13,7 @@ import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 
@@ -88,7 +88,7 @@ const stakgraphSettingsSchema = z.object({
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { slug } = await params;
 
     if (!session?.user) {
@@ -237,7 +237,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   console.log("PUT request received");
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { slug } = await params;
 
     if (!session?.user) {

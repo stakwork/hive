@@ -19,7 +19,7 @@ vi.mock("@/services/swarm/api/swarm", () => ({
   swarmApiRequestAuth: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   getGithubUsernameAndPAT: vi.fn(),
 }));
 
@@ -29,7 +29,7 @@ vi.mock("@/lib/utils/swarm", () => ({
 
 // Import mocked functions for type-safe access
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 
 const mockSwarmApiRequest = vi.mocked(swarmApiRequestAuth);

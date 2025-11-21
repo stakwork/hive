@@ -1,12 +1,11 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { handleWorkspaceRedirect } from "@/lib/auth/workspace-resolver";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import LandingPage from "@/components/LandingPage";
 import { isLandingPageEnabled } from "@/lib/auth/landing-cookie";
 
 export default async function HomePage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   // If landing page is enabled and user has no session, show password gate
   if (isLandingPageEnabled() && !session?.user) {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/chat/message/route";
 import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/client";
@@ -28,7 +28,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/env", () => ({
   config: {},
 }));
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   authOptions: {},
   getGithubUsernameAndPAT: vi.fn(),
 }));
@@ -49,7 +49,7 @@ global.fetch = vi.fn();
 const { getServerSession: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/lib/env");
-const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth");
 const { getS3Service: mockGetS3Service } = await import("@/services/s3");
 const { transformSwarmUrlToRepo2Graph: mockTransformSwarmUrlToRepo2Graph } = await import("@/lib/utils/swarm");
 const mockFetch = fetch as vi.MockedFunction<typeof fetch>;

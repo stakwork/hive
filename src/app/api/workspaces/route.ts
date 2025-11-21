@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth";
 import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
@@ -9,7 +8,7 @@ import { getErrorMessage } from "@/lib/utils/error";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user || !(session.user as { id?: string }).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -19,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user || !(session.user as { id?: string }).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -48,7 +47,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user || !(session.user as { id?: string }).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

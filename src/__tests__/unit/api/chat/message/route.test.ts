@@ -5,7 +5,10 @@ import { ChatRole, ChatStatus, WorkflowStatus } from "@prisma/client";
 
 // Mock all external dependencies
 vi.mock("next-auth/next");
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
+  getGithubUsernameAndPAT: vi.fn(),
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     task: {
@@ -43,8 +46,8 @@ vi.mock("@/lib/utils/swarm", () => ({
 }));
 
 // Import mocked modules after vi.mock declarations
-import { getServerSession } from "next-auth/next";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth";
+import { getGithubUsernameAndPAT } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";
 import { getS3Service } from "@/services/s3";
@@ -63,7 +66,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     vi.clearAllMocks();
 
     // Setup default mocks
-    vi.mocked(getServerSession).mockResolvedValue({
+    vi.mocked(auth).mockResolvedValue({
       user: { id: mockUserId },
     } as any);
 
@@ -100,7 +103,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
   describe("Authentication Tests", () => {
     it("should return 401 when no session exists", async () => {
-      vi.mocked(getServerSession).mockResolvedValue(null);
+      vi.mocked(auth).mockResolvedValue(null);
 
       const request = new NextRequest("http://localhost/api/chat/message", {
         method: "POST",
@@ -118,7 +121,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should return 401 when user ID is missing", async () => {
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: {},
       } as any);
 
@@ -138,7 +141,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
     });
 
     it("should return 401 when session user has no ID", async () => {
-      vi.mocked(getServerSession).mockResolvedValue({
+      vi.mocked(auth).mockResolvedValue({
         user: { email: "test@example.com" }, // Missing id
       } as any);
 

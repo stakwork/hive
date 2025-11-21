@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth";
 import {
   getWorkspaceBySlug,
   deleteWorkspaceBySlug,
@@ -13,7 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     const userId = (session?.user as { id?: string })?.id;
 
@@ -54,7 +53,7 @@ export async function DELETE(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     const userId = (session?.user as { id?: string })?.id;
 
@@ -98,7 +97,7 @@ export async function PUT(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     const userId = (session?.user as { id?: string })?.id;
 

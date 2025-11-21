@@ -26,7 +26,7 @@ vi.mock("@/lib/service-factory", () => ({
   poolManagerService: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   authOptions: {},
   getGithubUsernameAndPAT: vi.fn(),
 }));
@@ -41,7 +41,7 @@ vi.mock("@/services/swarm/secrets", () => ({
 }));
 
 import { poolManagerService } from "@/lib/service-factory";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 

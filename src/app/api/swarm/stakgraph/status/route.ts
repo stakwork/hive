@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSwarmVanityAddress } from "@/lib/constants";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
@@ -40,7 +39,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
       }
     } else {
-      const session = await getServerSession(authOptions);
+      const session = await auth();
       if (!session?.user?.id) {
         return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
       }

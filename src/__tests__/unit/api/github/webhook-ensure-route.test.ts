@@ -1,11 +1,11 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/github/webhook/ensure/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 
 // Mock dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -28,7 +28,7 @@ vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 

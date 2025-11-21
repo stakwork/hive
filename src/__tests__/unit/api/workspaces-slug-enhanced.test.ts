@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { getWorkspaceBySlug, updateWorkspace, deleteWorkspaceBySlug } from "@/services/workspace";
 
 // Mock NextAuth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
 }));
 
 // Mock the workspace service functions

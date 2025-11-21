@@ -1,9 +1,6 @@
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth/nextauth";
+import { handlers } from "@/lib/auth";
 
 // To permit Edge Runtime, we need to set the runtime to nodejs
 export const runtime = "nodejs";
 
-const handler = NextAuth(authOptions);
-
-export { handler as GET, handler as POST };
+export const { GET, POST } = handlers;

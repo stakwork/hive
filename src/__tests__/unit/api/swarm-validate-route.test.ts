@@ -1,14 +1,14 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/swarm/validate/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { SwarmService } from "@/services/swarm";
 import { getServiceConfig } from "@/config/services";
 import { ValidateUriResponse } from "@/types/swarm";
 
 // Mock external dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
 }));
 
 vi.mock("@/services/swarm", () => ({
@@ -19,7 +19,7 @@ vi.mock("@/config/services", () => ({
   getServiceConfig: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 

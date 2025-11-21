@@ -1,17 +1,17 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/tasks/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority } from "@prisma/client";
 
 // Mock next-auth
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
 }));
 
 // Mock authOptions
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
@@ -101,7 +101,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   };
 
   test("should create task successfully with all fields", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.user.findFirst as Mock).mockResolvedValue(mockAssignee);
@@ -204,7 +204,7 @@ describe("POST /api/tasks - Unit Tests", () => {
       repository: null,
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockResolvedValue(minimalTask);
@@ -245,7 +245,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 401 for unauthenticated user", async () => {
-    (getServerSession as Mock).mockResolvedValue(null);
+    (auth as Mock).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -265,7 +265,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 401 for invalid user session", async () => {
-    (getServerSession as Mock).mockResolvedValue({ user: {} });
+    (auth as Mock).mockResolvedValue({ user: {} });
 
     const request = new NextRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -285,7 +285,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for missing required fields", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
 
     const request = new NextRequest("http://localhost:3000/api/tasks", {
       method: "POST",
@@ -304,7 +304,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 404 for non-existent workspace", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost:3000/api/tasks", {
@@ -325,7 +325,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 404 for non-existent user", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(null);
 
@@ -353,7 +353,7 @@ describe("POST /api/tasks - Unit Tests", () => {
       members: [], // No members
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithoutAccess);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
 
@@ -375,7 +375,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for invalid status", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
 
@@ -398,7 +398,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for invalid priority", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
 
@@ -421,7 +421,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should return 400 for non-existent assignee", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.user.findFirst as Mock).mockResolvedValue(null);
@@ -451,7 +451,7 @@ describe("POST /api/tasks - Unit Tests", () => {
       workspaceId: "different-workspace",
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.repository.findFirst as Mock).mockResolvedValue(repositoryInDifferentWorkspace);
@@ -475,7 +475,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should handle status mapping from 'active' to IN_PROGRESS", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockResolvedValue({
@@ -506,7 +506,7 @@ describe("POST /api/tasks - Unit Tests", () => {
   });
 
   test("should handle database error gracefully", async () => {
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(mockWorkspace);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockRejectedValue(new Error("Database connection failed"));
@@ -534,7 +534,7 @@ describe("POST /api/tasks - Unit Tests", () => {
       members: [{ role: "DEVELOPER" }], // User is a member
     };
 
-    (getServerSession as Mock).mockResolvedValue(mockSession);
+    (auth as Mock).mockResolvedValue(mockSession);
     (db.workspace.findFirst as Mock).mockResolvedValue(workspaceWithMember);
     (db.user.findUnique as Mock).mockResolvedValue(mockUser);
     (db.task.create as Mock).mockResolvedValue(mockCreatedTask);

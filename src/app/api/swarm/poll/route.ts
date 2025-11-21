@@ -4,14 +4,12 @@ import { SwarmStatus } from "@prisma/client";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { fetchSwarmDetails } from "@/services/swarm/api/swarm";
 import { isFakeMode, fakePollSwarm } from "@/services/swarm/fake";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
-
+import { auth } from "@/lib/auth";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
@@ -164,7 +162,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user) {
     return NextResponse.json(
       { success: false, message: "Unauthorized" },

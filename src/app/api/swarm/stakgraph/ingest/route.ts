@@ -1,5 +1,5 @@
 import { getServiceConfig } from "@/config/services";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
@@ -10,7 +10,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
   try {
     console.log(`[STAKGRAPH_INGEST] Starting ingest request`);
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.id) {
       console.log(`[STAKGRAPH_INGEST] Unauthorized - no session or user ID`);
@@ -263,7 +263,7 @@ export async function GET(request: NextRequest) {
   console.log(`[STAKGRAPH_STATUS] Getting ingest status - id: ${id}, workspaceId: ${workspaceId}`);
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       console.log(`[STAKGRAPH_STATUS] Unauthorized - no session or user ID`);
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });

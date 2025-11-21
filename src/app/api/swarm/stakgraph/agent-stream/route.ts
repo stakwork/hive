@@ -1,4 +1,3 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { parseEnv } from "@/lib/env-parser";
@@ -7,7 +6,7 @@ import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { pollAgentProgress } from "@/services/swarm/stakgraph-services";
 import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -17,7 +16,7 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     console.log("[agent-stream] Unauthorized access attempt", {
       timestamp: new Date().toISOString(),

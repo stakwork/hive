@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/swarm/stakgraph/ingest/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { RepositoryStatus } from "@prisma/client";
 
 // Mock dependencies
@@ -20,7 +20,10 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-vi.mock("@/lib/auth/nextauth");
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
+  getGithubUsernameAndPAT: vi.fn(),
+}));
 vi.mock("@/lib/helpers/repository");
 vi.mock("@/services/swarm/stakgraph-actions");
 vi.mock("@/services/swarm/api/swarm");
@@ -53,7 +56,7 @@ vi.mock("@/lib/url", () => ({
 }));
 
 import { db } from "@/lib/db";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
@@ -130,7 +133,7 @@ const mockGithubProfile = { username: "user", token: "token" };
 describe("POST /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getServerSession).mockResolvedValue(mockSession);
+    vi.mocked(auth).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(db.swarm.update).mockResolvedValue(mockSwarm);
     vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepository);
@@ -142,7 +145,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   });
 
   test("should return 401 when not authenticated", async () => {
-    vi.mocked(getServerSession).mockResolvedValue(null);
+    vi.mocked(auth).mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
@@ -237,7 +240,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 describe("GET /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getServerSession).mockResolvedValue(mockSession);
+    vi.mocked(auth).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(swarmApiRequest).mockResolvedValue({ ok: true, status: 200, data: {} });
   });

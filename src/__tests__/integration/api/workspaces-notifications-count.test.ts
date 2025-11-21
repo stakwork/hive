@@ -14,7 +14,7 @@ import type { User, Workspace, Task, ChatMessage } from "@prisma/client";
 // Mock next-auth
 vi.mock("next-auth/next");
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 

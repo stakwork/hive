@@ -9,10 +9,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Github, Loader2 } from "lucide-react";
-import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+// Type for provider from next-auth v5
+type Provider = {
+  id: string;
+  name: string;
+  type: string;
+  signinUrl: string;
+  callbackUrl: string;
+};
 
 export function GithubAuthStep() {
   const { data: session, status } = useSession();
@@ -20,7 +28,7 @@ export function GithubAuthStep() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [providers, setProviders] = useState<Record<
     string,
-    ClientSafeProvider
+    Provider
   > | null>(null);
 
   // Fetch available providers

@@ -37,7 +37,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   getGithubUsernameAndPAT: vi.fn(),
 }));
 
@@ -51,7 +51,7 @@ global.fetch = vi.fn();
 // Import mocked modules
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/lib/env");
-const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth");
 const { getBaseUrl: mockGetBaseUrl } = await import("@/lib/utils");
 const mockFetch = fetch as vi.MockedFunction<typeof fetch>;
 

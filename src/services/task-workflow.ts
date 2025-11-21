@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { Priority, TaskStatus, TaskSourceType, WorkflowStatus } from "@prisma/client";
 import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
-import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getGithubUsernameAndPAT } from "@/lib/auth";
 import { buildFeatureContext } from "@/services/task-coordinator";
 
 /**

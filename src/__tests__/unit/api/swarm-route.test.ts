@@ -5,14 +5,14 @@ import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { SwarmStatus, RepositoryStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, Mock, test, vi } from "vitest";
 import { randomUUID } from "crypto";
 
 // Mock external dependencies
-vi.mock("next-auth/next", () => ({
-  getServerSession: vi.fn(),
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
 }));
 
 vi.mock("@/lib/utils/password", () => ({
@@ -40,7 +40,7 @@ vi.mock("@/services/swarm/fake", () => ({
   createFakeSwarm: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/nextauth", () => ({
+vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
