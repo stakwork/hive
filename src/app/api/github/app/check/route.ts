@@ -127,6 +127,14 @@ export async function GET(request: Request) {
       console.warn(`[REPO CHECK] Repository '${targetRepoFullName}' not found in installation ${installationId}`);
       console.warn(`[REPO CHECK] Available repositories:`, installationData.repositories?.map((r: { full_name: string }) => r.full_name) || []);
 
+      // Special case: Allow stakwork/opportunity-cost to bypass installation check
+      if (targetRepoFullName === 'stakwork/opportunity-cost') {
+        console.log(`[REPO CHECK] Bypassing installation check for ${targetRepoFullName}`);
+        return NextResponse.json({
+          hasPushAccess: true
+        }, { status: 200 });
+      }
+
       return NextResponse.json({
         hasPushAccess: false,
         error: `Repository '${owner}/${repo}' is not accessible through the GitHub App installation. Please ensure the repository is included in the app's permissions or reinstall the app with access to this repository.`,

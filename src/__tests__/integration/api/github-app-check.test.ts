@@ -417,6 +417,64 @@ describe("GitHub App Check API Integration Tests", () => {
           })
         );
       });
+
+      test("should bypass installation check for stakwork/opportunity-cost repository", async () => {
+        const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens({
+          githubOwner: "stakwork",
+        });
+
+        getMockedSession().mockResolvedValue(
+          createAuthenticatedSession(testUser)
+        );
+
+        vi.mocked(getUserAppTokens).mockResolvedValue({
+          accessToken,
+        });
+
+        // Mock installation repositories response without the target repository
+        // This simulates the repository not being in the installation
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repositories: [
+              {
+                full_name: "stakwork/other-repo",
+                permissions: {
+                  push: true,
+                },
+              },
+            ],
+          }),
+        });
+
+        const request = createGetRequest(
+          "http://localhost:3000/api/github/app/check",
+          {
+            repositoryUrl: "https://github.com/stakwork/opportunity-cost",
+          }
+        );
+
+        const response = await GET(request);
+        const data = await response.json();
+
+        // Should return true due to the bypass logic
+        expect(response.status).toBe(200);
+        expect(data.hasPushAccess).toBe(true);
+        expect(data.error).toBeUndefined();
+
+        // Verify installation repositories API was called
+        expect(mockFetch).toHaveBeenCalledWith(
+          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            }),
+          })
+        );
+      });
     });
 
     describe("Authentication and authorization scenarios", () => {
