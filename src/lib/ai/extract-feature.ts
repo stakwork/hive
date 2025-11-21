@@ -28,7 +28,9 @@ Your task:
    - Acceptance criteria if mentioned
    - Any specific implementation details
 
-Be comprehensive but focused. Only include information explicitly mentioned or clearly implied in the conversation.`;
+Be comprehensive but focused. Only include information explicitly mentioned or clearly implied in the conversation.
+
+IMPORTANT: This transcript might contain multiple discussions about features or separate aspects of the project. ONLY FOCUS ON THAT LAST FEATURE DISCUSSED! Just before the user asked "hive" to create the feature.`;
 
 export interface ExtractedFeature {
   title: string;

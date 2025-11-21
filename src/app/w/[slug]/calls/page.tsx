@@ -91,7 +91,14 @@ export default function CallsPage() {
 
   // Monitor transcript for wake word and feature requests
   useEffect(() => {
-    if (!isRecording || !slug || processingFeature || hasDetectedFeatureRequestRef.current || isProcessingDetectionRef.current) return;
+    if (
+      !isRecording ||
+      !slug ||
+      processingFeature ||
+      hasDetectedFeatureRequestRef.current ||
+      isProcessingDetectionRef.current
+    )
+      return;
 
     // Set flag IMMEDIATELY before starting async work to block other effects
     isProcessingDetectionRef.current = true;
@@ -105,7 +112,7 @@ export default function CallsPage() {
         const textsToCheck: string[] = [];
 
         // Add new chunks
-        newChunks.forEach(chunk => textsToCheck.push(chunk.text));
+        newChunks.forEach((chunk) => textsToCheck.push(chunk.text));
 
         // Add live transcript (may contain wake word before it's chunked)
         // Only if it's different from last processed transcript to avoid duplicates
@@ -115,101 +122,101 @@ export default function CallsPage() {
 
         if (textsToCheck.length === 0) return;
 
-      // Process each text segment
-      for (const text of textsToCheck) {
-        // First check for wake word in frontend (avoid unnecessary API calls)
-        if (!text.toLowerCase().includes(WAKE_WORD)) {
-          continue;
-        }
-
-        console.log(`🎤 Wake word "${WAKE_WORD}" detected, checking if feature request...`);
-
-        // Call API to detect if this is a feature request (requires AI/LLM)
-        const detectionResponse = await fetch("/api/voice/detect-feature-request", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chunk: text,
-            workspaceSlug: slug,
-          }),
-        });
-
-        if (!detectionResponse.ok) {
-          console.error("Failed to detect feature request");
-          continue;
-        }
-
-        const detectionData = await detectionResponse.json();
-        const isFeatureRequest = detectionData.isFeatureRequest;
-
-        if (isFeatureRequest) {
-          console.log("🎯 Feature request detected! Creating feature...");
-
-          // Set flag immediately to prevent duplicate processing
-          hasDetectedFeatureRequestRef.current = true;
-          setProcessingFeature(true);
-
-          try {
-            // Get last hour of transcript from buffer (completed chunks)
-            const bufferedTranscript = getRecentTranscript(20);
-
-            // Also include current live transcript (may contain wake word before chunking)
-            const fullTranscript = bufferedTranscript
-              ? `${bufferedTranscript} ${currentTranscript}`
-              : currentTranscript;
-
-            if (!fullTranscript || fullTranscript.trim().length === 0) {
-              throw new Error("No transcript available to create feature");
-            }
-
-            console.log("📝 Creating feature from transcript:", {
-              bufferedLength: bufferedTranscript.length,
-              currentLength: currentTranscript.length,
-              totalLength: fullTranscript.length,
-              preview: fullTranscript.substring(0, 100) + "...",
-            });
-
-            // Create feature in background
-            const response = await fetch("/api/voice/create-feature", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                workspaceSlug: slug,
-                transcript: fullTranscript,
-              }),
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              const errorMessage = errorData.error || `Failed to create feature (${response.status})`;
-              throw new Error(errorMessage);
-            }
-
-            const data = await response.json();
-
-            toast({
-              title: "Feature created!",
-              description: `"${data.title}" has been added to your workspace.`,
-            });
-
-            console.log("✅ Feature created:", data);
-          } catch (error) {
-            console.error("❌ Error creating feature:", error);
-            toast({
-              title: "Failed to create feature",
-              description: error instanceof Error ? error.message : "Unknown error",
-              variant: "destructive",
-            });
-            // Reset flag on error so user can retry
-            hasDetectedFeatureRequestRef.current = false;
-          } finally {
-            setProcessingFeature(false);
+        // Process each text segment
+        for (const text of textsToCheck) {
+          // First check for wake word in frontend (avoid unnecessary API calls)
+          if (!text.toLowerCase().includes(WAKE_WORD)) {
+            continue;
           }
 
-          // Stop checking after first feature request to avoid duplicates
-          break;
+          console.log(`🎤 Wake word "${WAKE_WORD}" detected, checking if feature request...`);
+
+          // Call API to detect if this is a feature request (requires AI/LLM)
+          const detectionResponse = await fetch("/api/voice/detect-feature-request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chunk: text,
+              workspaceSlug: slug,
+            }),
+          });
+
+          if (!detectionResponse.ok) {
+            console.error("Failed to detect feature request");
+            continue;
+          }
+
+          const detectionData = await detectionResponse.json();
+          const isFeatureRequest = detectionData.isFeatureRequest;
+
+          if (isFeatureRequest) {
+            console.log("🎯 Feature request detected! Creating feature...");
+
+            // Set flag immediately to prevent duplicate processing
+            hasDetectedFeatureRequestRef.current = true;
+            setProcessingFeature(true);
+
+            try {
+              // Get last hour of transcript from buffer (completed chunks)
+              const bufferedTranscript = getRecentTranscript(20);
+
+              // Also include current live transcript (may contain wake word before chunking)
+              const fullTranscript = bufferedTranscript
+                ? `${bufferedTranscript} ${currentTranscript}`
+                : currentTranscript;
+
+              if (!fullTranscript || fullTranscript.trim().length === 0) {
+                throw new Error("No transcript available to create feature");
+              }
+
+              console.log("📝 Creating feature from transcript:", {
+                bufferedLength: bufferedTranscript.length,
+                currentLength: currentTranscript.length,
+                totalLength: fullTranscript.length,
+                preview: fullTranscript.substring(0, 100) + "...",
+              });
+
+              // Create feature in background
+              const response = await fetch("/api/voice/create-feature", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  workspaceSlug: slug,
+                  transcript: fullTranscript,
+                }),
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.error || `Failed to create feature (${response.status})`;
+                throw new Error(errorMessage);
+              }
+
+              const data = await response.json();
+
+              toast({
+                title: "Feature created!",
+                description: `"${data.title}" has been added to your workspace.`,
+              });
+
+              console.log("✅ Feature created:", data);
+            } catch (error) {
+              console.error("❌ Error creating feature:", error);
+              toast({
+                title: "Failed to create feature",
+                description: error instanceof Error ? error.message : "Unknown error",
+                variant: "destructive",
+              });
+              // Reset flag on error so user can retry
+              hasDetectedFeatureRequestRef.current = false;
+            } finally {
+              setProcessingFeature(false);
+            }
+
+            // Stop checking after first feature request to avoid duplicates
+            break;
+          }
         }
-      }
 
         lastProcessedIndexRef.current = transcriptBuffer.length;
         lastProcessedTranscriptRef.current = currentTranscript;
@@ -318,7 +325,7 @@ export default function CallsPage() {
         }
       />
 
-      {isRecording && (
+      {false && isRecording && (
         <Card className="border-red-500">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
