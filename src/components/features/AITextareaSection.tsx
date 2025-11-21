@@ -73,7 +73,7 @@ export function AITextareaSection({
 
   useEffect(() => {
     if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
-      aiGeneration.setContent(latestRun.result, "deep");
+      aiGeneration.setContent(latestRun.result, "deep", latestRun.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestRun]); // aiGeneration.setContent is stable (useCallback), safe to omit
