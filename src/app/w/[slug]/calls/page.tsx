@@ -70,14 +70,22 @@ export default function CallsPage() {
   const handleToggleRecording = () => {
     if (isRecording) {
       stopRecording();
-      lastProcessedIndexRef.current = 0;
-      lastProcessedTranscriptRef.current = "";
-      hasDetectedFeatureRequestRef.current = false;
-      isProcessingDetectionRef.current = false;
+      // Flags will be reset by the useEffect watching isRecording
     } else {
       startRecording();
     }
   };
+
+  // Reset flags when recording stops (either manually or automatically)
+  useEffect(() => {
+    if (!isRecording) {
+      console.log("🎤 Recording stopped, resetting flags");
+      hasDetectedFeatureRequestRef.current = false;
+      isProcessingDetectionRef.current = false;
+      lastProcessedIndexRef.current = 0;
+      lastProcessedTranscriptRef.current = "";
+    }
+  }, [isRecording]);
 
   // Monitor transcript for wake word and feature requests
   useEffect(() => {
