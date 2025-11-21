@@ -136,6 +136,7 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
           swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
           agentRequestId: null,
           agentStatus: null,
+          ingestRequestInProgress: false,
         },
       });
 
@@ -459,6 +460,77 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(decryptedToken).toBe(PLAINTEXT_GITHUB_PAT);
     });
   });
+
+  describe("Duplicate Request Prevention", () => {
+    it("should return 409 when ingest request already in progress", async () => {
+      // Set ingestRequestInProgress to true
+      await db.swarm.update({
+        where: { workspaceId },
+        data: { ingestRequestInProgress: true },
+      });
+
+      const request = createPostRequest({ workspaceId });
+      const response = await POST(request);
+
+      expect(response.status).toBe(409);
+
+      const responseData = await response.json();
+      expect(responseData.success).toBe(false);
+      expect(responseData.message).toBe("Ingest request already in progress for this swarm");
+
+      // Verify triggerIngestAsync was not called
+      expect(mockTriggerIngestAsync).not.toHaveBeenCalled();
+    });
+
+    it("should handle concurrent requests gracefully", async () => {
+      mockTriggerIngestAsync.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { request_id: "ingest-req-123" },
+      } as AsyncSyncResult);
+
+      const request1 = createPostRequest({ workspaceId });
+      const request2 = createPostRequest({ workspaceId });
+
+      // Make concurrent requests
+      const [response1, response2] = await Promise.all([
+        POST(request1),
+        POST(request2),
+      ]);
+
+      // One should succeed, one should fail with 409
+      const responses = [response1, response2].sort((a, b) => a.status - b.status);
+      expect(responses[0].status).toBe(200); // Success
+      expect(responses[1].status).toBe(409); // Conflict
+
+      const successData = await responses[0].json();
+      expect(successData.success).toBe(true);
+
+      const conflictData = await responses[1].json();
+      expect(conflictData.success).toBe(false);
+      expect(conflictData.message).toBe("Ingest request already in progress for this swarm");
+    });
+
+    it("should reset flag after successful completion", async () => {
+      mockTriggerIngestAsync.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { request_id: "ingest-req-456" },
+      } as AsyncSyncResult);
+
+      const request = createPostRequest({ workspaceId });
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify flag is reset after completion
+      const swarm = await db.swarm.findUnique({
+        where: { workspaceId },
+      });
+
+      expect(swarm?.ingestRequestInProgress).toBe(false);
+    });
+  });
 });
 
 describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
@@ -531,6 +603,7 @@ describe("GET /api/swarm/stakgraph/ingest - Integration Tests", () => {
           ingestRefId: "ingest-req-123",
           agentRequestId: null,
           agentStatus: null,
+          ingestRequestInProgress: false,
         },
       });
 
