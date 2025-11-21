@@ -139,7 +139,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace);
     vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(mockGithubProfile);
     vi.mocked(triggerIngestAsync).mockResolvedValue({ ok: true, status: 200, data: { request_id: "req-123" } });
-    vi.mocked(saveOrUpdateSwarm).mockResolvedValue({});
+    vi.mocked(saveOrUpdateSwarm).mockResolvedValue(mockSwarm as any);
   });
 
   test("should return 401 when not authenticated", async () => {
@@ -219,14 +219,14 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
       data: { status: RepositoryStatus.PENDING }
     });
 
-    // Verify ingest request flag is set and reset
-    expect(db.swarm.update).toHaveBeenCalledWith({
-      where: { id: mockSwarm.id },
-      data: { ingestRequestInProgress: true }
+    // Verify saveOrUpdateSwarm is called to set and reset the flag
+    expect(saveOrUpdateSwarm).toHaveBeenCalledWith({
+      workspaceId: mockSwarm.workspaceId,
+      ingestRequestInProgress: true,
     });
-    expect(db.swarm.update).toHaveBeenCalledWith({
-      where: { id: mockSwarm.id },
-      data: { ingestRequestInProgress: false }
+    expect(saveOrUpdateSwarm).toHaveBeenCalledWith({
+      workspaceId: mockSwarm.workspaceId,
+      ingestRequestInProgress: false,
     });
   });
 });
