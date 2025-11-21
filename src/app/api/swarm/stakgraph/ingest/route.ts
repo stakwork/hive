@@ -9,6 +9,7 @@ import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
+import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -92,6 +93,19 @@ export async function POST(request: NextRequest) {
       data: { ingestRequestInProgress: true },
     });
     console.log(`[STAKGRAPH_INGEST] Ingest request marked as in progress`);
+
+    // Update repository status to PENDING
+    console.log(`[STAKGRAPH_INGEST] Updating repository status to PENDING`);
+    await db.repository.update({
+      where: {
+        repositoryUrl_workspaceId: {
+          repositoryUrl: finalRepo,
+          workspaceId: repoWorkspaceId
+        }
+      },
+      data: { status: RepositoryStatus.PENDING }
+    });
+    console.log(`[STAKGRAPH_INGEST] Repository status updated to PENDING`);
 
     // Get workspace info to get the slug
     console.log(`[STAKGRAPH_INGEST] Looking up workspace details for ID: ${repoWorkspaceId}`);
