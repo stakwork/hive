@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/chat/message/route";
 import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/client";

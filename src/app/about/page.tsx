@@ -1,3 +1,4 @@
+import { auth } from "@/lib/auth/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +9,6 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
-import { authOptions } from "@/lib/auth/nextauth";
 import { handleWorkspaceRedirect } from "@/lib/auth/workspace-resolver";
 import {
   ArrowRight,
@@ -20,12 +20,11 @@ import {
   TrendingUp,
   Workflow,
 } from "lucide-react";
-import { getServerSession } from "next-auth/next";
 import Link from "next/link";
 
 export default async function HomePage() {
   // Check if user is authenticated and handle workspace redirection
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (session?.user) {
     // User is authenticated - redirect them to their appropriate workspace or onboarding

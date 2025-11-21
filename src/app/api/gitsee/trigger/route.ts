@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccessById } from "@/services/workspace";
@@ -8,7 +7,7 @@ import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

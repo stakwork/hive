@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { GET } from "@/app/api/workspaces/[slug]/tasks/notifications-count/route";
 
 // Mock next-auth

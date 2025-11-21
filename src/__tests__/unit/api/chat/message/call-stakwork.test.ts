@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";

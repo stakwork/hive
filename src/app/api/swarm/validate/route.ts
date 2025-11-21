@@ -1,12 +1,11 @@
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth/auth";
 import { getServiceConfig } from "@/services";
 import { SwarmService } from "@/services/swarm";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await auth();
         if (!session?.user?.id) {
             return NextResponse.json(
                 { success: false, message: "Unauthorized" },

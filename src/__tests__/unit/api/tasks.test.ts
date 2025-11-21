@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/tasks/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority } from "@prisma/client";
 

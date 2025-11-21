@@ -5,7 +5,7 @@ import { SwarmService } from "@/services/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { SwarmStatus, RepositoryStatus } from "@prisma/client";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, Mock, test, vi } from "vitest";
 import { randomUUID } from "crypto";

@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { config } from "@/lib/env";
 import { db } from "@/lib/db";
 import { TaskSourceType } from "@prisma/client";
@@ -101,7 +100,7 @@ async function callStakwork(
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

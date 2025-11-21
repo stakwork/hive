@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { WebhookService } from "@/services/github/WebhookService";
 import { getServiceConfig } from "@/config/services";
@@ -10,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },

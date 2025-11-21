@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { getWorkspaceBySlug, updateWorkspace, deleteWorkspaceBySlug } from "@/services/workspace";
 

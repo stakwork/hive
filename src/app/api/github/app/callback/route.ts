@@ -1,10 +1,9 @@
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { config } from "@/lib/env";
 import { checkRepositoryAccess } from "@/lib/github-oauth-repository-access";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is authenticated
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       // Redirect to login if not authenticated
       return NextResponse.redirect(new URL("/auth", request.url));

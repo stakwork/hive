@@ -43,7 +43,7 @@ vi.mock("@/lib/utils/swarm", () => ({
 }));
 
 // Import mocked modules after vi.mock declarations
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";

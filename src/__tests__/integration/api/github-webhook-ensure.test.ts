@@ -20,7 +20,7 @@ vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 
 describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ensure", () => {
   const endpointUrl = "http://localhost:3000/api/github/webhook/ensure";

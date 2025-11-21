@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { auth } from "@/lib/auth/auth";
 import { MIDDLEWARE_HEADERS, resolveRouteAccess } from "@/config/middleware";
 import { verifyCookie, isLandingPageEnabled, LANDING_COOKIE_NAME } from "@/lib/auth/landing-cookie";
 import type { ApiError } from "@/types/errors";
@@ -16,12 +16,6 @@ function generateRequestId(): string {
   }
   // Fallback for environments without crypto.randomUUID
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-}
-
-// Type-safe token property extraction
-function extractTokenProperty(token: Record<string, unknown> | null, property: string): string {
-  const value = token?.[property];
-  return typeof value === "string" ? value : "";
 }
 
 function sanitizeMiddlewareHeaders(headers: Headers) {
@@ -94,10 +88,10 @@ export async function middleware(request: NextRequest) {
 
     // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
-      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+      const session = await auth();
       const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
       const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
-      if (!hasValidCookie && !token) {
+      if (!hasValidCookie && !session) {
         if (pathname === "/") {
           return continueRequest(requestHeaders, "landing_required");
         }
@@ -113,17 +107,17 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, routeAccess);
     }
 
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token) {
+    const session = await auth();
+    if (!session || !session.user) {
       if (isApiRoute) {
         return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
       }
       return redirectTo("/", request, { requestId, authStatus: "unauthenticated" });
     } else {
       requestHeaders.set(MIDDLEWARE_HEADERS.AUTH_STATUS, "authenticated");
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, extractTokenProperty(token, "id"));
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, extractTokenProperty(token, "email"));
-      requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, extractTokenProperty(token, "name"));
+      requestHeaders.set(MIDDLEWARE_HEADERS.USER_ID, session.user.id || "");
+      requestHeaders.set(MIDDLEWARE_HEADERS.USER_EMAIL, session.user.email || "");
+      requestHeaders.set(MIDDLEWARE_HEADERS.USER_NAME, session.user.name || "");
     }
 
     return continueRequest(requestHeaders, "authenticated");

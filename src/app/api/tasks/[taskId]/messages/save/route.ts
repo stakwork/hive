@@ -1,12 +1,11 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

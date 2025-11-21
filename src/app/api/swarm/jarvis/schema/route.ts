@@ -1,14 +1,13 @@
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth/auth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }

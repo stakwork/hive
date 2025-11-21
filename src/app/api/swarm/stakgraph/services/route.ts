@@ -1,4 +1,4 @@
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
@@ -6,7 +6,6 @@ import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { fetchStakgraphServices } from "@/services/swarm/stakgraph-services";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
-import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -17,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   console.log("Getting services");
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }

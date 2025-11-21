@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import {
   updateWorkspaceMemberRole,
   removeWorkspaceMember,
@@ -16,7 +15,7 @@ export async function PATCH(
   { params }: { params: Promise<{ slug: string; userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -68,7 +67,7 @@ export async function DELETE(
   { params }: { params: Promise<{ slug: string; userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

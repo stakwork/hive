@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
@@ -271,7 +270,7 @@ function constructGithubUrl(
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

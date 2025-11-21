@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse, after } from "next/server";
-import { authOptions } from "@/lib/auth/nextauth";
-import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { streamText, ModelMessage } from "ai";
@@ -21,7 +20,7 @@ export async function POST(request: NextRequest) {
   // gooseUrl removed from destructuring
 
   // Authenticate user
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

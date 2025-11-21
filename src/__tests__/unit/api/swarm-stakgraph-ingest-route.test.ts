@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/swarm/stakgraph/ingest/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { RepositoryStatus } from "@prisma/client";
 
 // Mock dependencies

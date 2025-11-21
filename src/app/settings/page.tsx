@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import {
   Card,
@@ -14,7 +13,7 @@ import { Github } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 
 export default async function UserSettingsPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect("/");

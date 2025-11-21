@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { getJanitorRecommendations } from "@/services/janitor";
 import { parseJanitorType, parseRecommendationStatus, parsePriority, validatePaginationParams } from "@/lib/helpers/janitor-validation";
 import { JanitorType, RecommendationStatus, Priority } from "@prisma/client";
@@ -10,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const userId = (session?.user as { id?: string })?.id;
 
     if (!userId) {

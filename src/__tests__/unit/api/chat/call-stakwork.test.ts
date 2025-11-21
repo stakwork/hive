@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/chat/message/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { ChatRole, ChatStatus, ArtifactType, WorkflowStatus } from "@prisma/client";
 
 // Mock all dependencies at module level

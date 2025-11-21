@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { dismissJanitorRecommendation } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
@@ -14,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const userId = (session?.user as { id?: string })?.id;
 
     if (!userId) {

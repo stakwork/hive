@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/stakwork/create-customer/route";
-import { getServerSession } from "next-auth/next";
+import { auth } from "@/lib/auth/auth";
 import { type ApiError } from "@/types";
 
 // Mock dependencies

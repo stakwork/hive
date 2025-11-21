@@ -1,6 +1,5 @@
+import { auth } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { acceptJanitorRecommendation } from "@/services/janitor";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { z } from "zod";
@@ -16,7 +15,7 @@ export async function POST(
 ) {
   try {
     console.log("Accept route called");
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const userId = (session?.user as { id?: string })?.id;
     console.log("Session user ID:", userId);
 
