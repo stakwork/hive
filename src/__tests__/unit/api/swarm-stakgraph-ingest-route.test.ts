@@ -156,6 +156,10 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   test("should return 404 when swarm not found", async () => {
     vi.mocked(db.swarm.findUnique).mockResolvedValue(null);
 
+    // Ensure all other mocks have default behavior for this test
+    vi.mocked(getPrimaryRepository).mockResolvedValue(null);
+    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
+
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
       body: JSON.stringify({ workspaceId: "workspace-123" })
