@@ -287,8 +287,8 @@ export default function FeatureDetailPage() {
         <Card>
           <CardHeader>
             <div className="space-y-4">
-              {/* Title */}
-              <Skeleton className="h-16 w-3/4" />
+              {/* Title - match text-4xl size */}
+              <Skeleton className="h-14 w-3/4" />
 
               {/* Status & Assignee */}
               <div className="flex flex-wrap items-center gap-4">
@@ -304,66 +304,47 @@ export default function FeatureDetailPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-6">
-            <Separator />
+          <CardContent>
+            <Tabs defaultValue="overview">
+              <TabsList className="mb-6">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="architecture">Architecture</TabsTrigger>
+                <TabsTrigger value="tickets">Tasks</TabsTrigger>
+              </TabsList>
 
-            {/* Brief */}
-            <div className="space-y-2">
-              <Label htmlFor="brief" className="text-sm font-medium">
-                Brief
-              </Label>
-              <Skeleton className="h-24 w-full rounded-md" />
-            </div>
+              <TabsContent value="overview" className="space-y-6 pt-0">
+                {/* Brief */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 min-h-9">
+                    <Label className="text-sm font-medium">Brief</Label>
+                  </div>
+                  <Skeleton className="h-24 w-full rounded-md" />
+                </div>
+              </TabsContent>
 
-            <Separator />
+              <TabsContent value="architecture" className="space-y-6 pt-0">
+                {/* Architecture */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 min-h-9">
+                    <Label className="text-sm font-medium">Architecture</Label>
+                  </div>
+                  <Skeleton className="h-48 w-full rounded-md" />
+                </div>
+              </TabsContent>
 
-            {/* User Personas */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                User Personas
-              </Label>
-              <Skeleton className="h-20 w-full rounded-lg" />
-            </div>
-
-            <Separator />
-
-            {/* User Stories */}
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">User Stories</Label>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Define the user stories and acceptance criteria for this feature.
-                </p>
-              </div>
-              <Skeleton className="h-14 w-full rounded-lg" />
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-14 w-full rounded-lg" />
-              ))}
-            </div>
-
-            <Separator />
-
-            {/* Requirements */}
-            <div className="space-y-2">
-              <Label htmlFor="requirements" className="text-sm font-medium">
-                Requirements
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Detailed product and technical requirements for implementation.
-              </p>
-              <Skeleton className="h-32 w-full rounded-md" />
-            </div>
-
-            {/* Architecture */}
-            <div className="space-y-2">
-              <Label htmlFor="architecture" className="text-sm font-medium">
-                Architecture
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Technical architecture, design decisions, and implementation notes.
-              </p>
-              <Skeleton className="h-32 w-full rounded-md" />
-            </div>
+              <TabsContent value="tickets" className="space-y-6 pt-0">
+                {/* Tasks */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 min-h-9">
+                    <Label className="text-sm font-medium">Tasks</Label>
+                  </div>
+                  <Skeleton className="h-14 w-full rounded-lg" />
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-14 w-full rounded-lg" />
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
@@ -419,7 +400,7 @@ export default function FeatureDetailPage() {
                 onChange={(value) => updateFeature({ title: value })}
                 onBlur={(value) => handleFieldBlur("title", value)}
                 placeholder="Enter feature title..."
-                size="xlarge"
+                size="large"
               />
               {/* Save indicator - only show for title/status/assignee changes */}
               {savedField === "title" && saved && !saving && (
@@ -470,12 +451,11 @@ export default function FeatureDetailPage() {
               <TabsTrigger value="tickets">Tasks</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overview" className="space-y-6">
+            <TabsContent value="overview" className="space-y-6 pt-0">
               {/* Brief - Always visible */}
               <AutoSaveTextarea
                 id="brief"
                 label="Brief"
-                description="High-level overview of what this feature is and why it matters."
                 value={feature.brief}
                 rows={4}
                 className="resize-none"
@@ -521,7 +501,6 @@ export default function FeatureDetailPage() {
                   <AITextareaSection
                     id="requirements"
                     label="Requirements"
-                    description="Functional and technical specifications for implementation."
                     type="requirements"
                     featureId={featureId}
                     value={feature.requirements}
@@ -542,11 +521,10 @@ export default function FeatureDetailPage() {
               </div>
             </TabsContent>
 
-            <TabsContent value="architecture" className="space-y-6">
+            <TabsContent value="architecture" className="space-y-6 pt-0">
               <AITextareaSection
                 id="architecture"
                 label="Architecture"
-                description="Technical design decisions and implementation approach."
                 type="architecture"
                 featureId={featureId}
                 value={feature.architecture}
@@ -568,7 +546,7 @@ export default function FeatureDetailPage() {
               </div>
             </TabsContent>
 
-            <TabsContent value="tickets" className="space-y-6">
+            <TabsContent value="tickets" className="space-y-6 pt-0">
               <TicketsList
                 featureId={featureId}
                 feature={feature}

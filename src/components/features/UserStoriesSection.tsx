@@ -162,9 +162,6 @@ export function UserStoriesSection({
             iconOnly
           />
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          Define the user stories and acceptance criteria for this feature.
-        </p>
       </div>
 
       <div className="rounded-lg border bg-muted/30">

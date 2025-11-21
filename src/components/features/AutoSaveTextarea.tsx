@@ -67,7 +67,7 @@ export function AutoSaveTextarea({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center">
+      <div className="flex items-center gap-2 min-h-9">
         <Label htmlFor={id} className="text-sm font-medium">
           {label}
         </Label>

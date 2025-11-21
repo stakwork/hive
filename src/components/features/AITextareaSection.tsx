@@ -24,7 +24,7 @@ interface GeneratedContent {
 interface AITextareaSectionProps {
   id: string;
   label: string;
-  description: string;
+  description?: string;
   type: "requirements" | "architecture";
   featureId: string;
   value: string | null;
@@ -194,9 +194,11 @@ export function AITextareaSection({
           saved={saved}
         />
       </div>
-      <p className="text-sm text-muted-foreground">
-        {description}
-      </p>
+      {description && (
+        <p className="text-sm text-muted-foreground">
+          {description}
+        </p>
+      )}
 
       {aiGeneration.content ? (
         <GenerationPreview
