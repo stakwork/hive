@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "StakworkRunType" ADD VALUE 'FEATURE_EXTRACTION';

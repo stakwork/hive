@@ -8,6 +8,7 @@ vi.mock("@/lib/env", () => ({
     STAKWORK_API_KEY: "test-stakwork-key",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
     STAKWORK_TRANSCRIPT_WORKFLOW_ID: "888",
+    STAKWORK_FEATURE_WORKFLOW_ID: "999",
   },
 }));
 
@@ -56,6 +57,7 @@ describe("POST /api/transcript/chunk - Integration Tests", () => {
       expect(data).toEqual({
         success: true,
         received: testWordCount,
+        featureCreationTriggered: false,
       });
 
       // Verify Stakwork API was called
@@ -894,6 +896,297 @@ describe("POST /api/transcript/chunk - Integration Tests", () => {
 
       expect(data).toHaveProperty("error");
       expect(typeof data.error).toBe("string");
+    });
+  });
+
+  describe("Feature Extraction", () => {
+    test("should trigger feature extraction when keyword detected", async () => {
+      const accumulatedTranscript =
+        "This is a longer conversation about hive and our project needs.";
+      const testChunk = "hive and our project";
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: testChunk,
+          wordCount: 4,
+          workspaceSlug: "feature-workspace",
+          containsKeyword: true,
+          accumulatedTranscript: accumulatedTranscript,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data).toEqual({
+        success: true,
+        received: 4,
+        featureCreationTriggered: true,
+      });
+
+      // Verify two API calls were made: transcript + feature extraction
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      // Verify feature extraction payload
+      const featureCall = mockFetch.mock.calls[1];
+      const featurePayload = JSON.parse(featureCall[1].body);
+
+      expect(featurePayload).toMatchObject({
+        name: "hive_feature_extraction",
+        workflow_id: 999,
+        workflow_params: {
+          set_var: {
+            attributes: {
+              vars: {
+                transcript: accumulatedTranscript,
+                workspaceSlug: "feature-workspace",
+              },
+            },
+          },
+        },
+      });
+      expect(featurePayload.workflow_params.set_var.attributes.vars).toHaveProperty(
+        "timestamp"
+      );
+    });
+
+    test("should not trigger feature extraction without keyword flag", async () => {
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "Regular transcript chunk",
+          wordCount: 3,
+          workspaceSlug: "no-keyword-workspace",
+          containsKeyword: false,
+          accumulatedTranscript: "Some accumulated text",
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.featureCreationTriggered).toBe(false);
+
+      // Only transcript API should be called
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test("should not trigger feature extraction without accumulated transcript", async () => {
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive project",
+          wordCount: 2,
+          workspaceSlug: "missing-transcript-workspace",
+          containsKeyword: true,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.featureCreationTriggered).toBe(false);
+
+      // Only transcript API should be called
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test("should gracefully handle feature extraction workflow ID not configured", async () => {
+      const { config } = await import("@/lib/env");
+      const originalWorkflowId = config.STAKWORK_FEATURE_WORKFLOW_ID;
+      (config as any).STAKWORK_FEATURE_WORKFLOW_ID = undefined;
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive discussion",
+          wordCount: 2,
+          workspaceSlug: "unconfigured-workspace",
+          containsKeyword: true,
+          accumulatedTranscript: "Full transcript text",
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Main request should still succeed
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.featureCreationTriggered).toBe(false);
+
+      // Only transcript API should be called
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // Restore
+      (config as any).STAKWORK_FEATURE_WORKFLOW_ID = originalWorkflowId;
+    });
+
+    test("should handle feature extraction API errors gracefully", async () => {
+      // Mock transcript success, but feature extraction failure
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { project_id: 12345 } }),
+          statusText: "OK",
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: false,
+          statusText: "Internal Server Error",
+          json: async () => ({}),
+        } as Response);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive feature",
+          wordCount: 2,
+          workspaceSlug: "error-feature-workspace",
+          containsKeyword: true,
+          accumulatedTranscript: "Transcript with hive mention",
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Main request should still succeed
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.featureCreationTriggered).toBe(false);
+
+      // Both APIs should have been called
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    test("should handle feature extraction network errors gracefully", async () => {
+      // Mock transcript success, but feature extraction network error
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: { project_id: 12345 } }),
+          statusText: "OK",
+        } as Response)
+        .mockRejectedValueOnce(new Error("Network timeout"));
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive discussion",
+          wordCount: 2,
+          workspaceSlug: "network-error-feature-workspace",
+          containsKeyword: true,
+          accumulatedTranscript: "Full transcript content",
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Main request should still succeed despite feature extraction error
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.featureCreationTriggered).toBe(false);
+    });
+
+    test("should include workspace slug and timestamp in feature extraction payload", async () => {
+      const workspaceSlug = "timestamp-test-workspace";
+      const accumulatedTranscript = "Accumulated transcript with hive keyword";
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive",
+          wordCount: 1,
+          workspaceSlug: workspaceSlug,
+          containsKeyword: true,
+          accumulatedTranscript: accumulatedTranscript,
+        }
+      );
+
+      const beforeTime = new Date().toISOString();
+      const response = await POST(request);
+      const afterTime = new Date().toISOString();
+
+      expect(response.status).toBe(200);
+
+      const featureCall = mockFetch.mock.calls[1];
+      const featurePayload = JSON.parse(featureCall[1].body);
+      const vars = featurePayload.workflow_params.set_var.attributes.vars;
+
+      expect(vars.workspaceSlug).toBe(workspaceSlug);
+      expect(vars.transcript).toBe(accumulatedTranscript);
+      expect(vars.timestamp).toBeDefined();
+      // Verify timestamp is reasonable (between before and after)
+      expect(vars.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    });
+
+    test("should handle empty accumulated transcript with keyword", async () => {
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive",
+          wordCount: 1,
+          workspaceSlug: "empty-accumulated-workspace",
+          containsKeyword: true,
+          accumulatedTranscript: "",
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.featureCreationTriggered).toBe(false);
+
+      // Only transcript API should be called (empty accumulated transcript treated as falsy)
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test("should use correct Stakwork endpoint for feature extraction", async () => {
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive mention",
+          wordCount: 2,
+          workspaceSlug: "endpoint-test-workspace",
+          containsKeyword: true,
+          accumulatedTranscript: "Full transcript",
+        }
+      );
+
+      await POST(request);
+
+      // Second call should be feature extraction
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        "https://api.stakwork.com/api/v1/projects"
+      );
+    });
+
+    test("should include correct headers for feature extraction request", async () => {
+      const request = createPostRequest(
+        "http://localhost:3000/api/transcript/chunk",
+        {
+          chunk: "hive keyword",
+          wordCount: 2,
+          workspaceSlug: "headers-test-workspace",
+          containsKeyword: true,
+          accumulatedTranscript: "Transcript content",
+        }
+      );
+
+      await POST(request);
+
+      const featureCall = mockFetch.mock.calls[1];
+      expect(featureCall[1].headers).toEqual({
+        Authorization: "Token token=test-stakwork-key",
+        "Content-Type": "application/json",
+      });
     });
   });
 });
