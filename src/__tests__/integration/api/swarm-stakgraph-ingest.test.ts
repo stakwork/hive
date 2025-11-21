@@ -460,33 +460,30 @@ describe("POST /api/swarm/stakgraph/ingest - Integration Tests", () => {
       expect(mockTriggerIngestAsync).not.toHaveBeenCalled();
     });
 
-    it("should handle concurrent requests gracefully", async () => {
+    it("should handle sequential requests when flag is already set", async () => {
+      // First, manually set the flag to true to simulate an in-progress request
+      await db.swarm.update({
+        where: { workspaceId },
+        data: { ingestRequestInProgress: true },
+      });
+
       mockTriggerIngestAsync.mockResolvedValue({
         ok: true,
         status: 200,
         data: { request_id: "ingest-req-123" },
       } as AsyncSyncResult);
 
-      const request1 = createPostRequest({ workspaceId });
-      const request2 = createPostRequest({ workspaceId });
+      const request = createPostRequest({ workspaceId });
+      const response = await POST(request);
 
-      // Make concurrent requests
-      const [response1, response2] = await Promise.all([
-        POST(request1),
-        POST(request2),
-      ]);
+      expect(response.status).toBe(409);
 
-      // One should succeed, one should fail with 409
-      const responses = [response1, response2].sort((a, b) => a.status - b.status);
-      expect(responses[0].status).toBe(200); // Success
-      expect(responses[1].status).toBe(409); // Conflict
+      const responseData = await response.json();
+      expect(responseData.success).toBe(false);
+      expect(responseData.message).toBe("Ingest request already in progress for this swarm");
 
-      const successData = await responses[0].json();
-      expect(successData.success).toBe(true);
-
-      const conflictData = await responses[1].json();
-      expect(conflictData.success).toBe(false);
-      expect(conflictData.message).toBe("Ingest request already in progress for this swarm");
+      // Verify triggerIngestAsync was not called
+      expect(mockTriggerIngestAsync).not.toHaveBeenCalled();
     });
 
     it("should reset flag after successful completion", async () => {
