@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import type { StakworkRunType } from "@prisma/client";
 
@@ -192,14 +192,17 @@ export function useAIGeneration({
     setCurrentRunId(null);
   }, []);
 
-  return {
-    content,
-    isLoading,
-    source,
-    accept,
-    reject,
-    regenerate,
-    setContent: setContentWithSource,
-    clear,
-  };
+  return useMemo(
+    () => ({
+      content,
+      isLoading,
+      source,
+      accept,
+      reject,
+      regenerate,
+      setContent: setContentWithSource,
+      clear,
+    }),
+    [content, isLoading, source, accept, reject, regenerate, setContentWithSource, clear]
+  );
 }

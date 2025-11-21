@@ -1,6 +1,5 @@
 "use client";
 
-import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
@@ -9,18 +8,12 @@ import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
-import { Brain, Check, Edit, Eye, Loader2, Sparkles, X } from "lucide-react";
+import { Edit, Eye } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { SaveIndicator } from "./SaveIndicator";
 
@@ -61,10 +54,11 @@ export function AITextareaSection({
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [quickGenerating, setQuickGenerating] = useState(false);
+  const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
 
   const { workspace } = useWorkspace();
-  const { latestRun } = useStakworkGeneration({
+  const { latestRun, refetch } = useStakworkGeneration({
     featureId,
     type: "ARCHITECTURE",
     enabled: type === "architecture",
@@ -74,14 +68,15 @@ export function AITextareaSection({
     featureId,
     workspaceId: workspace?.id || "",
     type: "ARCHITECTURE",
-    enabled: type === "architecture",
+    enabled: true, // Enable for both requirements and architecture (accept/reject for quick generation)
   });
 
   useEffect(() => {
     if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
       aiGeneration.setContent(latestRun.result, "deep");
     }
-  }, [latestRun, aiGeneration]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestRun]); // aiGeneration.setContent is stable (useCallback), safe to omit
 
   const {
     isDragging,
@@ -121,20 +116,29 @@ export function AITextareaSection({
   };
 
   const handleDeepThink = async () => {
-    if (!workspace?.id) return;
+    try {
+      setInitiatingDeepThink(true);
+      // Use aiGeneration.regenerate() to ensure runId is captured for accept/reject
+      await aiGeneration.regenerate();
+      // Immediately fetch the newly created run to show loading state
+      await refetch();
+    } catch (error) {
+      console.error("Deep think failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
 
-    const response = await fetch("/api/stakwork/ai/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "ARCHITECTURE",
-        featureId,
-        workspaceId: workspace.id,
-      }),
-    });
-
-    if (!response.ok) {
-      console.error("Failed to create stakwork run");
+  const handleRetry = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await aiGeneration.regenerate();
+      // Immediately fetch the newly created run to show loading state
+      await refetch();
+    } catch (error) {
+      console.error("Retry failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
     }
   };
 
@@ -148,8 +152,8 @@ export function AITextareaSection({
   const isErrorState = latestRun?.status &&
     ["FAILED", "ERROR", "HALTED"].includes(latestRun.status);
 
-  const isLoadingState = latestRun?.status &&
-    ["PENDING", "IN_PROGRESS"].includes(latestRun.status);
+  const isLoadingState = initiatingDeepThink || (latestRun?.status &&
+    ["PENDING", "IN_PROGRESS"].includes(latestRun.status));
 
   const showWorkflowBadge = !!(
     latestRun &&
@@ -175,7 +179,7 @@ export function AITextareaSection({
           <GenerationControls
             onQuickGenerate={() => {}}
             onDeepThink={handleDeepThink}
-            onRetry={aiGeneration.regenerate}
+            onRetry={handleRetry}
             status={latestRun?.status}
             isLoading={aiGeneration.isLoading}
             isQuickGenerating={quickGenerating}
