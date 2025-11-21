@@ -41,6 +41,7 @@ export default function CallsPage() {
   const lastProcessedIndexRef = useRef(0);
   const lastProcessedTranscriptRef = useRef("");
   const hasDetectedFeatureRequestRef = useRef(false);
+  const isProcessingDetectionRef = useRef(false);
 
   const handleStartCall = async () => {
     if (!slug) return;
@@ -72,6 +73,7 @@ export default function CallsPage() {
       lastProcessedIndexRef.current = 0;
       lastProcessedTranscriptRef.current = "";
       hasDetectedFeatureRequestRef.current = false;
+      isProcessingDetectionRef.current = false;
     } else {
       startRecording();
     }
@@ -79,25 +81,29 @@ export default function CallsPage() {
 
   // Monitor transcript for wake word and feature requests
   useEffect(() => {
-    if (!isRecording || !slug || processingFeature || hasDetectedFeatureRequestRef.current) return;
+    if (!isRecording || !slug || processingFeature || hasDetectedFeatureRequestRef.current || isProcessingDetectionRef.current) return;
+
+    // Set flag IMMEDIATELY before starting async work to block other effects
+    isProcessingDetectionRef.current = true;
 
     const checkNewChunks = async () => {
-      // Only check new chunks that haven't been processed
-      const newChunks = transcriptBuffer.slice(lastProcessedIndexRef.current);
+      try {
+        // Only check new chunks that haven't been processed
+        const newChunks = transcriptBuffer.slice(lastProcessedIndexRef.current);
 
-      // ALSO check current live transcript (text that hasn't been chunked yet)
-      const textsToCheck: string[] = [];
+        // ALSO check current live transcript (text that hasn't been chunked yet)
+        const textsToCheck: string[] = [];
 
-      // Add new chunks
-      newChunks.forEach(chunk => textsToCheck.push(chunk.text));
+        // Add new chunks
+        newChunks.forEach(chunk => textsToCheck.push(chunk.text));
 
-      // Add live transcript (may contain wake word before it's chunked)
-      // Only if it's different from last processed transcript to avoid duplicates
-      if (currentTranscript.trim() && currentTranscript !== lastProcessedTranscriptRef.current) {
-        textsToCheck.push(currentTranscript);
-      }
+        // Add live transcript (may contain wake word before it's chunked)
+        // Only if it's different from last processed transcript to avoid duplicates
+        if (currentTranscript.trim() && currentTranscript !== lastProcessedTranscriptRef.current) {
+          textsToCheck.push(currentTranscript);
+        }
 
-      if (textsToCheck.length === 0) return;
+        if (textsToCheck.length === 0) return;
 
       // Process each text segment
       for (const text of textsToCheck) {
@@ -195,8 +201,12 @@ export default function CallsPage() {
         }
       }
 
-      lastProcessedIndexRef.current = transcriptBuffer.length;
-      lastProcessedTranscriptRef.current = currentTranscript;
+        lastProcessedIndexRef.current = transcriptBuffer.length;
+        lastProcessedTranscriptRef.current = currentTranscript;
+      } finally {
+        // Always reset processing flag, even if there was an error
+        isProcessingDetectionRef.current = false;
+      }
     };
 
     checkNewChunks();
