@@ -1,15 +1,28 @@
-import { db } from '@/lib/db';
-import { EncryptionService } from '@/lib/encryption';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Partially mock @/lib/auth to avoid side effects from NextAuth setup
-vi.mock('@/lib/auth', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth');
-  return {
-    getGithubUsernameAndPAT: actual.getGithubUsernameAndPAT,
-  };
-});
+// Mock NextAuth modules before importing @/lib/auth
+vi.mock('next-auth', () => ({
+  default: vi.fn(() => ({ handlers: {}, auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() })),
+}));
 
+vi.mock('next-auth/providers/github', () => ({
+  default: vi.fn(),
+}));
+
+vi.mock('next-auth/providers/credentials', () => ({
+  default: vi.fn(),
+}));
+
+vi.mock('@auth/prisma-adapter', () => ({
+  PrismaAdapter: vi.fn(),
+}));
+
+vi.mock('@/utils/mockSetup', () => ({
+  ensureMockWorkspaceForUser: vi.fn(),
+}));
+
+import { db } from '@/lib/db';
+import { EncryptionService } from '@/lib/encryption';
 import { getGithubUsernameAndPAT } from '@/lib/auth';
 
 // Mock the database
