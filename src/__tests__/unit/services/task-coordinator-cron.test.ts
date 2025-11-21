@@ -1120,4 +1120,666 @@ describe("executeTaskCoordinatorRuns", () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe("Ticket Sweep with Dependency Resolution", () => {
+    beforeEach(() => {
+      MockSetup.reset();
+    });
+
+    test("should process task with no dependencies", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      // Mock task with no dependencies
+      const taskNoDeps = {
+        id: "task-1",
+        title: "Task with no dependencies",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: [],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      vi.mocked(mockDb.task.findMany).mockResolvedValueOnce([taskNoDeps] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(1);
+    });
+
+    test("should process task with satisfied dependency (status DONE)", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      // Mock candidate task with dependency
+      const taskWithDep = {
+        id: "task-2",
+        title: "Task with satisfied dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-task-1"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      // Mock dependency task as DONE
+      const depTask = {
+        id: "dep-task-1",
+        status: "DONE",
+        workflowStatus: "PENDING",
+        chatMessages: [],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any) // Candidate tasks
+        .mockResolvedValueOnce([depTask] as any); // Dependency check
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(1);
+    });
+
+    test("should NOT process task with dependency that has no PR and status not DONE", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-3",
+        title: "Task with incomplete manual dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-task-2"],
+        priority: "CRITICAL",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depTask = {
+        id: "dep-task-2",
+        status: "IN_PROGRESS", // Not DONE, no PR artifact
+        workflowStatus: "COMPLETED", // WorkflowStatus is ignored
+        chatMessages: [],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([depTask] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(0); // Should NOT process
+    });
+
+    test("should process task with satisfied dependency (merged PR artifact)", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-4",
+        title: "Task with merged PR dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-task-3"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depTask = {
+        id: "dep-task-3",
+        status: "IN_PROGRESS",
+        workflowStatus: "PENDING",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                type: "PULL_REQUEST",
+                content: {
+                  repo: "test/repo",
+                  url: "https://github.com/test/repo/pull/1",
+                  status: "DONE",
+                },
+              },
+            ],
+          },
+        ],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([depTask] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(1);
+    });
+
+    test("should skip task with unsatisfied dependency", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-5",
+        title: "Task with unsatisfied dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-task-4"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depTask = {
+        id: "dep-task-4",
+        status: "TODO",
+        workflowStatus: "PENDING",
+        chatMessages: [],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([depTask] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(0);
+    });
+
+    test("should skip task with missing dependency", async () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn");
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-6",
+        title: "Task with missing dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["missing-dep"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([] as any); // No dependency found
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(0);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Expected 1 dependencies, found 0")
+      );
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    test("should skip task with partially satisfied dependencies", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDeps = {
+        id: "task-7",
+        title: "Task with mixed dependencies",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-done", "dep-not-done"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depDone = {
+        id: "dep-done",
+        status: "DONE",
+        workflowStatus: "COMPLETED",
+        chatMessages: [],
+      };
+
+      const depNotDone = {
+        id: "dep-not-done",
+        status: "TODO",
+        workflowStatus: "PENDING",
+        chatMessages: [],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDeps] as any)
+        .mockResolvedValueOnce([depDone, depNotDone] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(0);
+    });
+
+    test("should process first eligible task from multiple candidates", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const task1 = {
+        id: "task-blocked",
+        title: "Blocked task",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-blocked"],
+        priority: "CRITICAL",
+        createdAt: new Date("2024-01-01"),
+        feature: null,
+        phase: null,
+      };
+
+      const task2 = {
+        id: "task-ready",
+        title: "Ready task",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-ready"],
+        priority: "HIGH",
+        createdAt: new Date("2024-01-02"),
+        feature: null,
+        phase: null,
+      };
+
+      const depBlocked = {
+        id: "dep-blocked",
+        status: "TODO",
+        workflowStatus: "PENDING",
+        chatMessages: [],
+      };
+
+      const depReady = {
+        id: "dep-ready",
+        status: "DONE",
+        workflowStatus: "COMPLETED",
+        chatMessages: [],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([task1, task2] as any)
+        .mockResolvedValueOnce([depBlocked] as any)
+        .mockResolvedValueOnce([depReady] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(1);
+    });
+
+    test("should log dependency check progress", async () => {
+      const consoleLogSpy = vi.spyOn(console, "log");
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-8",
+        title: "Task for logging test",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-1"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depTask = {
+        id: "dep-1",
+        status: "DONE",
+        workflowStatus: "COMPLETED",
+        chatMessages: [],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([depTask] as any);
+
+      await executeTaskCoordinatorRuns();
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Found 1 candidate tickets, checking dependencies")
+      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Found eligible task task-8 with 1 satisfied dependencies")
+      );
+
+      consoleLogSpy.mockRestore();
+    });
+
+    test("should check PR artifact with open status (IN_PROGRESS)", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-9",
+        title: "Task with open PR dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-open-pr"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depTask = {
+        id: "dep-open-pr",
+        status: "IN_PROGRESS",
+        workflowStatus: "PENDING",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                type: "PULL_REQUEST",
+                content: {
+                  repo: "test/repo",
+                  url: "https://github.com/test/repo/pull/2",
+                  status: "IN_PROGRESS", // Open PR, not merged
+                },
+              },
+            ],
+          },
+        ],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([depTask] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(0); // Should not process - PR not merged
+    });
+
+    test("should NOT process task with mixed state (status DONE + unmerged PR)", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-mixed",
+        title: "Task with mixed state dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-mixed"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depTask = {
+        id: "dep-mixed",
+        status: "DONE", // Status is DONE (misleading)
+        workflowStatus: "PENDING",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                type: "PULL_REQUEST",
+                content: {
+                  url: "https://github.com/test/repo/pull/5",
+                  status: "open", // PR not merged yet
+                },
+                createdAt: new Date(),
+              },
+            ],
+            createdAt: new Date(),
+          },
+        ],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([depTask] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(0); // Should NOT process - PR must be merged
+    });
+
+    test("should process task with multiple satisfied dependencies", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDeps = {
+        id: "task-10",
+        title: "Task with multiple satisfied dependencies",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-a", "dep-b", "dep-c"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depA = {
+        id: "dep-a",
+        status: "DONE", // Manual completion, no PR
+        workflowStatus: "PENDING",
+        chatMessages: [],
+      };
+
+      const depB = {
+        id: "dep-b",
+        status: "DONE", // Manual completion, no PR
+        workflowStatus: "COMPLETED",
+        chatMessages: [],
+      };
+
+      const depC = {
+        id: "dep-c",
+        status: "IN_PROGRESS", // Status ignored when PR exists
+        workflowStatus: "PENDING",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                type: "PULL_REQUEST",
+                content: {
+                  status: "DONE", // PR merged
+                },
+                createdAt: new Date(),
+              },
+            ],
+            createdAt: new Date(),
+          },
+        ],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDeps] as any)
+        .mockResolvedValueOnce([depA, depB, depC] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(1); // All dependencies satisfied
+    });
+
+    test("should check LATEST PR artifact when multiple PRs exist", async () => {
+      const workspace = JanitorTestDataFactory.createValidWorkspace({
+        janitorConfig: {
+          ...JanitorTestDataFactory.createValidWorkspace().janitorConfig,
+          ticketSweepEnabled: true,
+          recommendationSweepEnabled: false,
+        },
+      });
+      TestHelpers.setupWorkspaceWithConfig([workspace]);
+      TestHelpers.setupPoolManagerResponse(3);
+      TestHelpers.setupRecommendations([]);
+
+      const taskWithDep = {
+        id: "task-multi-pr",
+        title: "Task with multi-PR dependency",
+        status: "TODO",
+        systemAssigneeType: "TASK_COORDINATOR",
+        deleted: false,
+        dependsOnTaskIds: ["dep-multi-pr"],
+        priority: "HIGH",
+        createdAt: new Date(),
+        feature: null,
+        phase: null,
+      };
+
+      const depTask = {
+        id: "dep-multi-pr",
+        status: "DONE",
+        workflowStatus: "PENDING",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                type: "PULL_REQUEST",
+                content: {
+                  url: "https://github.com/test/repo/pull/1",
+                  status: "DONE", // First PR merged
+                },
+                createdAt: new Date("2024-01-01"),
+              },
+            ],
+            createdAt: new Date("2024-01-01"),
+          },
+          {
+            artifacts: [
+              {
+                type: "PULL_REQUEST",
+                content: {
+                  url: "https://github.com/test/repo/pull/2",
+                  status: "open", // Latest PR still open
+                },
+                createdAt: new Date("2024-01-02"),
+              },
+            ],
+            createdAt: new Date("2024-01-02"),
+          },
+        ],
+      };
+
+      vi.mocked(mockDb.task.findMany)
+        .mockResolvedValueOnce([taskWithDep] as any)
+        .mockResolvedValueOnce([depTask] as any);
+
+      const result = await executeTaskCoordinatorRuns();
+
+      expect(result.tasksCreated).toBe(0); // Should NOT process - latest PR not merged
+    });
+  });
 });
