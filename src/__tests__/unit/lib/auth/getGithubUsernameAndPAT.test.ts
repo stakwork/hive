@@ -1,7 +1,16 @@
-import { getGithubUsernameAndPAT } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Partially mock @/lib/auth to avoid side effects from NextAuth setup
+vi.mock('@/lib/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth');
+  return {
+    getGithubUsernameAndPAT: actual.getGithubUsernameAndPAT,
+  };
+});
+
+import { getGithubUsernameAndPAT } from '@/lib/auth';
 
 // Mock the database
 vi.mock('@/lib/db', () => ({
