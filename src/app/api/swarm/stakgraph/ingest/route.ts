@@ -35,7 +35,17 @@ export async function POST(request: NextRequest) {
     if (swarmId) where.swarmId = swarmId;
     if (!swarmId && workspaceId) where.workspaceId = workspaceId;
 
-    const swarm = await db.swarm.findFirst({ where });
+    const swarm = await db.swarm.findFirst({
+      where,
+      select: {
+        id: true,
+        name: true,
+        swarmUrl: true,
+        swarmApiKey: true,
+        workspaceId: true,
+        ingestRequestInProgress: true
+      }
+    });
     if (!swarm) {
       console.log(`[STAKGRAPH_INGEST] Swarm not found with criteria:`, where);
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
@@ -67,18 +77,22 @@ export async function POST(request: NextRequest) {
 
     console.log(`[STAKGRAPH_INGEST] Repository details - URL: ${finalRepo}, workspace: ${repoWorkspaceId}`);
 
-    // Update the existing repository status to PENDING (repository was created when swarm was created)
-    console.log(`[STAKGRAPH_INGEST] Updating repository status to PENDING - URL: ${finalRepo}, workspace: ${repoWorkspaceId}`);
-    await db.repository.update({
-      where: {
-        repositoryUrl_workspaceId: {
-          repositoryUrl: finalRepo,
-          workspaceId: repoWorkspaceId,
-        },
-      },
-      data: { status: RepositoryStatus.PENDING },
+    // Check if ingest request is already in progress
+    if (swarm.ingestRequestInProgress) {
+      console.log(`[STAKGRAPH_INGEST] Ingest request already in progress for swarm: ${swarm.name}`);
+      return NextResponse.json({
+        success: false,
+        message: "Ingest request already in progress for this swarm"
+      }, { status: 409 });
+    }
+
+    // Set ingest request in progress flag
+    console.log(`[STAKGRAPH_INGEST] Setting ingestRequestInProgress to true`);
+    await db.swarm.update({
+      where: { id: swarm.id },
+      data: { ingestRequestInProgress: true },
     });
-    console.log(`[STAKGRAPH_INGEST] Repository status updated to PENDING`);
+    console.log(`[STAKGRAPH_INGEST] Ingest request marked as in progress`);
 
     // Get workspace info to get the slug
     console.log(`[STAKGRAPH_INGEST] Looking up workspace details for ID: ${repoWorkspaceId}`);
@@ -157,6 +171,13 @@ export async function POST(request: NextRequest) {
       console.log(`[STAKGRAPH_INGEST] No request_id found in API result data:`, apiResult?.data);
     }
 
+    // Reset ingest request flag on successful completion
+    console.log(`[STAKGRAPH_INGEST] Resetting ingestRequestInProgress flag on success`);
+    await db.swarm.update({
+      where: { id: swarm.id },
+      data: { ingestRequestInProgress: false },
+    });
+
     console.log(`[STAKGRAPH_INGEST] Returning response - success: ${apiResult.ok}, status: ${apiResult.status}`);
     return NextResponse.json(
       {
@@ -168,6 +189,29 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error(`[STAKGRAPH_INGEST] Top-level error during ingest:`, error);
+
+    // Try to reset ingest request flag on unexpected error
+    try {
+      const body = await request.json();
+      const { workspaceId, swarmId } = body;
+
+      const where: Record<string, string> = {};
+      if (swarmId) where.swarmId = swarmId;
+      if (!swarmId && workspaceId) where.workspaceId = workspaceId;
+
+      const swarm = await db.swarm.findFirst({ where });
+      if (swarm) {
+        console.log(`[STAKGRAPH_INGEST] Resetting ingestRequestInProgress flag after error`);
+        await db.swarm.update({
+          where: { id: swarm.id },
+          data: { ingestRequestInProgress: false },
+        });
+        console.log(`[STAKGRAPH_INGEST] Ingest request flag reset after error`);
+      }
+    } catch (resetError) {
+      console.error(`[STAKGRAPH_INGEST] Failed to reset ingest request flag:`, resetError);
+    }
+
     return NextResponse.json({ success: false, message: "Failed to ingest code" }, { status: 500 });
   }
 }

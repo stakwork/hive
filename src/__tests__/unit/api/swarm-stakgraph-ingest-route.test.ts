@@ -11,6 +11,7 @@ vi.mock("@/lib/db", () => ({
     swarm: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
     repository: {
       update: vi.fn(),
@@ -50,10 +51,66 @@ const mockSwarm = {
   name: "test-swarm",
   workspaceId: "workspace-123",
   swarmUrl: "https://test.com",
-  swarmApiKey: "encrypted-key"
+  swarmApiKey: "encrypted-key",
+  ingestRequestInProgress: false,
+  status: "ACTIVE" as const,
+  swarmId: "external-swarm-id",
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  poolApiKey: null,
+  poolState: "NOT_STARTED" as const,
+  poolName: null,
+  poolCpu: null,
+  poolMemory: null,
+  swarmSecretAlias: null,
+  environmentVariables: [],
+  services: [],
+  ingestRefId: null,
+  containerFiles: null,
+  containerFilesSetUp: false,
+  agentRequestId: null,
+  agentStatus: null,
+  swarmPassword: null,
+  instanceType: "XL",
+  ec2Id: null
 };
-const mockWorkspace = { id: "workspace-123", slug: "test-workspace" };
-const mockRepository = { id: "repo-123", repositoryUrl: "https://github.com/user/repo" };
+const mockWorkspace = {
+  id: "workspace-123",
+  slug: "test-workspace",
+  name: "Test Workspace",
+  description: null,
+  mission: null,
+  deleted: false,
+  deletedAt: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ownerId: "user-123",
+  originalSlug: null,
+  sourceControlOrgId: null,
+  stakworkApiKey: null,
+  repositoryDraft: null,
+  logoUrl: null,
+  logoKey: null
+};
+const mockRepository = {
+  id: "repo-123",
+  repositoryUrl: "https://github.com/user/repo",
+  name: "test-repo",
+  description: null,
+  workspaceId: "workspace-123",
+  status: "PENDING" as const,
+  branch: "main",
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  githubWebhookId: null,
+  githubWebhookSecret: null,
+  testingFrameworkSetup: false,
+  playwrightSetup: false,
+  ignoreDirs: "",
+  unitGlob: "",
+  integrationGlob: "",
+  e2eGlob: ""
+};
 const mockGithubProfile = { username: "user", token: "token" };
 
 describe("POST /api/swarm/stakgraph/ingest", () => {
@@ -61,6 +118,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     vi.clearAllMocks();
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findFirst).mockResolvedValue(mockSwarm);
+    vi.mocked(db.swarm.update).mockResolvedValue(mockSwarm);
     vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepository);
     vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
     vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace);
@@ -105,6 +163,25 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     expect(response.status).toBe(400);
   });
 
+  test("should return 409 when ingest request already in progress", async () => {
+    vi.mocked(db.swarm.findFirst).mockResolvedValue({
+      ...mockSwarm,
+      ingestRequestInProgress: true
+    });
+
+    const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: "workspace-123" })
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(409);
+
+    const responseData = await response.json();
+    expect(responseData.success).toBe(false);
+    expect(responseData.message).toBe("Ingest request already in progress for this swarm");
+  });
+
   test("should successfully trigger ingest", async () => {
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
@@ -124,6 +201,16 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
       data: { status: RepositoryStatus.PENDING }
     });
     expect(triggerIngestAsync).toHaveBeenCalled();
+
+    // Verify ingest request flag is set and reset
+    expect(db.swarm.update).toHaveBeenCalledWith({
+      where: { id: mockSwarm.id },
+      data: { ingestRequestInProgress: true }
+    });
+    expect(db.swarm.update).toHaveBeenCalledWith({
+      where: { id: mockSwarm.id },
+      data: { ingestRequestInProgress: false }
+    });
   });
 });
 

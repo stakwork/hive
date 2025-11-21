@@ -67,6 +67,13 @@ export function RerunIngest({
           description: "Code ingestion has been started. This may take a few minutes.",
         });
         setIsOpen(false);
+      } else if (response.status === 409) {
+        // Handle duplicate ingest request
+        toast({
+          title: "Ingest Already in Progress",
+          description: "A code ingestion is already running for this workspace. Please wait for it to complete before starting another one.",
+          variant: "destructive",
+        });
       } else {
         console.error("Ingest API error:", { status: response.status, data });
         toast({

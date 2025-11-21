@@ -3,8 +3,8 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getRepositoryDefaultBranch } from "@/utils/getRepositoryDefaultBranch";
+import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface WorkspaceSetupProps {
@@ -67,6 +67,11 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       });
 
       if (!ingestRes.ok) {
+        if (ingestRes.status === 409) {
+          // Handle duplicate ingest request
+          console.log("Code ingestion already in progress for workspace:", workspaceId);
+          return;
+        }
         throw new Error("Failed to start code ingestion");
       }
 
