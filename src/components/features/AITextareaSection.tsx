@@ -24,7 +24,7 @@ interface GeneratedContent {
 interface AITextareaSectionProps {
   id: string;
   label: string;
-  description: string;
+  description?: string;
   type: "requirements" | "architecture";
   featureId: string;
   value: string | null;
@@ -73,7 +73,7 @@ export function AITextareaSection({
 
   useEffect(() => {
     if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
-      aiGeneration.setContent(latestRun.result, "deep");
+      aiGeneration.setContent(latestRun.result, "deep", latestRun.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestRun]); // aiGeneration.setContent is stable (useCallback), safe to omit
@@ -194,9 +194,11 @@ export function AITextareaSection({
           saved={saved}
         />
       </div>
-      <p className="text-sm text-muted-foreground">
-        {description}
-      </p>
+      {description && (
+        <p className="text-sm text-muted-foreground">
+          {description}
+        </p>
+      )}
 
       {aiGeneration.content ? (
         <GenerationPreview

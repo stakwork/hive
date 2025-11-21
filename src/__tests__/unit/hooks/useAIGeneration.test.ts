@@ -98,9 +98,9 @@ describe("useAIGeneration", () => {
       json: async () => ({ success: true, run: { id: "run-123", decision: "ACCEPTED" } }),
     });
 
-    // Simulate content being set from webhook/polling
+    // Simulate content being set from webhook/polling (with runId from webhook)
     await waitFor(() => {
-      result.current.setContent("Deep content", "deep");
+      result.current.setContent("Deep content", "deep", "run-123");
     });
 
     // Now accept it
@@ -144,9 +144,9 @@ describe("useAIGeneration", () => {
       json: async () => ({ success: true, run: { id: "run-123", decision: "REJECTED" } }),
     });
 
-    // Simulate content being set from webhook/polling
+    // Simulate content being set from webhook/polling (with runId from webhook)
     await waitFor(() => {
-      result.current.setContent("Content to reject", "deep");
+      result.current.setContent("Content to reject", "deep", "run-123");
     });
 
     // Now reject it

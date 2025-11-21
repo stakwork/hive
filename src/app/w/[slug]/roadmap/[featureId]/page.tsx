@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { ArrowLeft, Loader2, Check, Trash2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -11,12 +11,14 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { AITextareaSection } from "@/components/features/AITextareaSection";
-import { PhaseSection } from "@/components/features/PhaseSection";
 import { PersonasSection } from "@/components/features/PersonasSection";
+import { TicketsList } from "@/components/features/TicketsList";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -25,8 +27,13 @@ import type { FeatureDetail } from "@/types/roadmap";
 export default function FeatureDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const { id: workspaceId, slug: workspaceSlug } = useWorkspace();
   const featureId = params.featureId as string;
+
+  // Tab state management
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "overview");
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
 
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
@@ -208,12 +215,12 @@ export default function FeatureDetailPage() {
     }
   };
 
-  const handleUpdatePhases = (updatedPhases: FeatureDetail["phases"]) => {
-    if (!feature) return;
-    setFeature({
-      ...feature,
-      phases: updatedPhases,
-    });
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    // Update URL without navigation
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.pushState({}, "", url.toString());
   };
 
   const handleDeleteFeature = async () => {
@@ -280,8 +287,8 @@ export default function FeatureDetailPage() {
         <Card>
           <CardHeader>
             <div className="space-y-4">
-              {/* Title */}
-              <Skeleton className="h-16 w-3/4" />
+              {/* Title - match text-4xl size */}
+              <Skeleton className="h-14 w-3/4" />
 
               {/* Status & Assignee */}
               <div className="flex flex-wrap items-center gap-4">
@@ -297,66 +304,47 @@ export default function FeatureDetailPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-6">
-            <Separator />
+          <CardContent>
+            <Tabs defaultValue="overview">
+              <TabsList className="mb-6">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="architecture">Architecture</TabsTrigger>
+                <TabsTrigger value="tickets">Tasks</TabsTrigger>
+              </TabsList>
 
-            {/* Brief */}
-            <div className="space-y-2">
-              <Label htmlFor="brief" className="text-sm font-medium">
-                Brief
-              </Label>
-              <Skeleton className="h-24 w-full rounded-md" />
-            </div>
+              <TabsContent value="overview" className="space-y-6 pt-0">
+                {/* Brief */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 min-h-9">
+                    <Label className="text-sm font-medium">Brief</Label>
+                  </div>
+                  <Skeleton className="h-24 w-full rounded-md" />
+                </div>
+              </TabsContent>
 
-            <Separator />
+              <TabsContent value="architecture" className="space-y-6 pt-0">
+                {/* Architecture */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 min-h-9">
+                    <Label className="text-sm font-medium">Architecture</Label>
+                  </div>
+                  <Skeleton className="h-48 w-full rounded-md" />
+                </div>
+              </TabsContent>
 
-            {/* User Personas */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                User Personas
-              </Label>
-              <Skeleton className="h-20 w-full rounded-lg" />
-            </div>
-
-            <Separator />
-
-            {/* User Stories */}
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">User Stories</Label>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Define the user stories and acceptance criteria for this feature.
-                </p>
-              </div>
-              <Skeleton className="h-14 w-full rounded-lg" />
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-14 w-full rounded-lg" />
-              ))}
-            </div>
-
-            <Separator />
-
-            {/* Requirements */}
-            <div className="space-y-2">
-              <Label htmlFor="requirements" className="text-sm font-medium">
-                Requirements
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Detailed product and technical requirements for implementation.
-              </p>
-              <Skeleton className="h-32 w-full rounded-md" />
-            </div>
-
-            {/* Architecture */}
-            <div className="space-y-2">
-              <Label htmlFor="architecture" className="text-sm font-medium">
-                Architecture
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Technical architecture, design decisions, and implementation notes.
-              </p>
-              <Skeleton className="h-32 w-full rounded-md" />
-            </div>
+              <TabsContent value="tickets" className="space-y-6 pt-0">
+                {/* Tasks */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 min-h-9">
+                    <Label className="text-sm font-medium">Tasks</Label>
+                  </div>
+                  <Skeleton className="h-14 w-full rounded-lg" />
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-14 w-full rounded-lg" />
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
@@ -412,7 +400,7 @@ export default function FeatureDetailPage() {
                 onChange={(value) => updateFeature({ title: value })}
                 onBlur={(value) => handleFieldBlur("title", value)}
                 placeholder="Enter feature title..."
-                size="xlarge"
+                size="large"
               />
               {/* Save indicator - only show for title/status/assignee changes */}
               {savedField === "title" && saved && !saving && (
@@ -455,80 +443,124 @@ export default function FeatureDetailPage() {
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-6">
-          <AutoSaveTextarea
-            id="brief"
-            label="Brief"
-            description="High-level overview of what this feature is and why it matters."
-            value={feature.brief}
-            rows={4}
-            className="resize-none"
-            savedField={savedField}
-            saving={saving}
-            saved={saved}
-            onChange={(value) => updateFeature({ brief: value })}
-            onBlur={(value) => handleFieldBlur("brief", value)}
-            featureId={featureId}
-            enableImageUpload={true}
-          />
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
+            <TabsList className="mb-6">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="architecture">Architecture</TabsTrigger>
+              <TabsTrigger value="tickets">Tasks</TabsTrigger>
+            </TabsList>
 
-          <PersonasSection
-            personas={feature.personas || []}
-            savedField={savedField}
-            saving={saving}
-            saved={saved}
-            onChange={(value) => updateFeature({ personas: value })}
-            onBlur={(value) => handleFieldBlur("personas", value)}
-          />
+            <TabsContent value="overview" className="space-y-6 pt-0">
+              {/* Brief - Always visible */}
+              <AutoSaveTextarea
+                id="brief"
+                label="Brief"
+                value={feature.brief}
+                rows={4}
+                className="resize-none"
+                savedField={savedField}
+                saving={saving}
+                saved={saved}
+                onChange={(value) => updateFeature({ brief: value })}
+                onBlur={(value) => handleFieldBlur("brief", value)}
+                featureId={featureId}
+                enableImageUpload={true}
+              />
 
-          <UserStoriesSection
-            featureId={featureId}
-            userStories={feature.userStories}
-            newStoryTitle={newStoryTitle}
-            creatingStory={creatingStory}
-            onNewStoryTitleChange={setNewStoryTitle}
-            onAddUserStory={handleAddUserStory}
-            onDeleteUserStory={handleDeleteUserStory}
-            onUpdateUserStory={handleUpdateUserStory}
-            onReorderUserStories={handleReorderUserStories}
-            onAcceptGeneratedStory={handleAcceptGeneratedStory}
-            shouldFocusRef={storyFocusRef}
-          />
+              {/* Collapsible sections */}
+              <Collapsible open={overviewExpanded} onOpenChange={setOverviewExpanded}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                  <ChevronRight className={`h-4 w-4 transition-transform ${overviewExpanded ? "rotate-90" : ""}`} />
+                  Additional Details
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-6 mt-4">
+                  <PersonasSection
+                    personas={feature.personas || []}
+                    savedField={savedField}
+                    saving={saving}
+                    saved={saved}
+                    onChange={(value) => updateFeature({ personas: value })}
+                    onBlur={(value) => handleFieldBlur("personas", value)}
+                  />
 
-          <AITextareaSection
-            id="requirements"
-            label="Requirements"
-            description="Functional and technical specifications for implementation."
-            type="requirements"
-            featureId={featureId}
-            value={feature.requirements}
-            savedField={savedField}
-            saving={saving}
-            saved={saved}
-            onChange={(value) => updateFeature({ requirements: value })}
-            onBlur={(value) => handleFieldBlur("requirements", value)}
-          />
+                  <UserStoriesSection
+                    featureId={featureId}
+                    userStories={feature.userStories}
+                    newStoryTitle={newStoryTitle}
+                    creatingStory={creatingStory}
+                    onNewStoryTitleChange={setNewStoryTitle}
+                    onAddUserStory={handleAddUserStory}
+                    onDeleteUserStory={handleDeleteUserStory}
+                    onUpdateUserStory={handleUpdateUserStory}
+                    onReorderUserStories={handleReorderUserStories}
+                    onAcceptGeneratedStory={handleAcceptGeneratedStory}
+                    shouldFocusRef={storyFocusRef}
+                  />
 
-          <AITextareaSection
-            id="architecture"
-            label="Architecture"
-            description="Technical design decisions and implementation approach."
-            type="architecture"
-            featureId={featureId}
-            value={feature.architecture}
-            savedField={savedField}
-            saving={saving}
-            saved={saved}
-            onChange={(value) => updateFeature({ architecture: value })}
-            onBlur={(value) => handleFieldBlur("architecture", value)}
-          />
+                  <AITextareaSection
+                    id="requirements"
+                    label="Requirements"
+                    type="requirements"
+                    featureId={featureId}
+                    value={feature.requirements}
+                    savedField={savedField}
+                    saving={saving}
+                    saved={saved}
+                    onChange={(value) => updateFeature({ requirements: value })}
+                    onBlur={(value) => handleFieldBlur("requirements", value)}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
 
-          <PhaseSection
-            featureId={featureId}
-            workspaceSlug={workspaceSlug}
-            phases={feature.phases || []}
-            onUpdate={handleUpdatePhases}
-          />
+              {/* Navigation buttons */}
+              <div className="flex justify-end pt-4">
+                <Button onClick={() => setActiveTab("architecture")}>
+                  Next
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="architecture" className="space-y-6 pt-0">
+              <AITextareaSection
+                id="architecture"
+                label="Architecture"
+                type="architecture"
+                featureId={featureId}
+                value={feature.architecture}
+                savedField={savedField}
+                saving={saving}
+                saved={saved}
+                onChange={(value) => updateFeature({ architecture: value })}
+                onBlur={(value) => handleFieldBlur("architecture", value)}
+              />
+
+              {/* Navigation buttons */}
+              <div className="flex justify-between pt-4">
+                <Button variant="outline" onClick={() => setActiveTab("overview")}>
+                  Back
+                </Button>
+                <Button onClick={() => setActiveTab("tickets")}>
+                  Next
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="tickets" className="space-y-6 pt-0">
+              <TicketsList
+                featureId={featureId}
+                feature={feature}
+                onUpdate={setFeature}
+              />
+
+              {/* Navigation buttons */}
+              <div className="flex justify-start pt-4">
+                <Button variant="outline" onClick={() => setActiveTab("architecture")}>
+                  Back
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

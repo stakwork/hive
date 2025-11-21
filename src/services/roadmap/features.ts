@@ -186,6 +186,14 @@ export async function createFeature(
       assigneeId: data.assigneeId || null,
       createdById: userId,
       updatedById: userId,
+      phases: {
+        create: {
+          name: "Phase 1",
+          description: null,
+          status: "NOT_STARTED",
+          order: 0,
+        },
+      },
     },
     include: {
       assignee: {
