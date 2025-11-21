@@ -9,7 +9,14 @@ interface SpeechRecognitionHook {
   resetTranscript: () => void;
 }
 
-export function useSpeechRecognition(): SpeechRecognitionHook {
+interface SpeechRecognitionOptions {
+  autoRestart?: boolean; // Auto-restart when browser stops due to silence
+}
+
+export function useSpeechRecognition(
+  options: SpeechRecognitionOptions = {}
+): SpeechRecognitionHook {
+  const { autoRestart = false } = options;
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [isSupported, setIsSupported] = useState(false);
@@ -50,6 +57,19 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
 
         recognition.onend = () => {
           console.log("🎤🛑 Speech recognition ended");
+
+          // Auto-restart if enabled and we're supposed to be listening
+          if (autoRestart && !isStartingRef.current && recognitionRef.current) {
+            console.log("🔄 Auto-restarting speech recognition");
+            try {
+              recognitionRef.current.start();
+              isStartingRef.current = true;
+              return; // Don't set isListening to false
+            } catch (error) {
+              console.error("Failed to auto-restart:", error);
+            }
+          }
+
           setIsListening(false);
           isStartingRef.current = false;
         };
@@ -68,7 +88,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         recognitionRef.current.stop();
       }
     };
-  }, []);
+  }, [autoRestart]);
 
   const startListening = useCallback(() => {
     if (recognitionRef.current && !isStartingRef.current) {

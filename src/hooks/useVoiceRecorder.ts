@@ -17,6 +17,10 @@ interface VoiceRecorderHook {
   clearBuffer: () => void;
 }
 
+interface VoiceRecorderOptions {
+  autoRestart?: boolean; // Auto-restart when browser stops due to silence
+}
+
 const BUFFER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 export const DEFAULT_CONTEXT_MINUTES = 60; // Default minutes of context to analyze for features (1 hour)
 const DEFAULT_MIN_WORDS = 15;
@@ -27,9 +31,10 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export function useVoiceRecorder(): VoiceRecorderHook {
+export function useVoiceRecorder(options: VoiceRecorderOptions = {}): VoiceRecorderHook {
+  const { autoRestart = false } = options;
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
-    useSpeechRecognition();
+    useSpeechRecognition({ autoRestart });
 
   const [transcriptBuffer, setTranscriptBuffer] = useState<TranscriptChunk[]>([]);
   const lastChunkedLengthRef = useRef(0);

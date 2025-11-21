@@ -28,6 +28,8 @@ export default function CallsPage() {
   const limit = 10;
 
   // Voice recording state
+  // Note: autoRestart option can be enabled to keep recording alive even after browser auto-stops
+  // Example: useVoiceRecorder({ autoRestart: true })
   const {
     isRecording,
     isSupported: isVoiceSupported,
