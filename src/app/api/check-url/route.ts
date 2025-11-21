@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { validateExternalUrl } from "@/lib/utils/url-validator";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -6,6 +7,18 @@ export async function GET(request: Request) {
 
   if (!url) {
     return NextResponse.json({ error: "URL parameter is required" }, { status: 400 });
+  }
+
+  // SSRF Protection: Validate the URL before fetching
+  const validation = validateExternalUrl(url);
+  if (!validation.valid) {
+    return NextResponse.json(
+      { 
+        error: validation.error,
+        isReady: false 
+      }, 
+      { status: 400 }
+    );
   }
 
   try {

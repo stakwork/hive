@@ -1,4 +1,5 @@
 import React from "react";
+import { getAllowedDomains, isAllowedDomain } from "@/lib/utils/url-validator";
 
 type Size = string | number;
 
@@ -28,6 +29,28 @@ export const Iframe: React.FC<IframeProps> = ({
 }) => {
   const cssWidth = sizeToCss(width);
   const cssHeight = sizeToCss(height);
+
+  // Validate iframe src against domain allowlist
+  const allowedDomains = getAllowedDomains();
+  const isDomainAllowed = isAllowedDomain(src, allowedDomains);
+
+  if (!isDomainAllowed) {
+    console.warn(`[Security] Blocked iframe src from disallowed domain: ${src}`);
+    return (
+      <div
+        className={`overflow-hidden rounded-2xl ${className} flex items-center justify-center bg-muted`}
+        style={{
+          width: cssWidth,
+          height: cssHeight,
+          minHeight: cssHeight ? undefined : 150,
+        }}
+      >
+        <p className="text-muted-foreground text-sm px-4 text-center">
+          Content blocked: Domain not in allowlist
+        </p>
+      </div>
+    );
+  }
 
   return (
     // apply explicit width/height to wrapper so "100%" on iframe has a reference
