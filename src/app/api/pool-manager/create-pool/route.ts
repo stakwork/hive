@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth, getGithubUsernameAndPAT } from "@/lib/auth/auth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { poolManagerService } from "@/lib/service-factory";

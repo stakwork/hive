@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth, getGithubUsernameAndPAT } from "@/lib/auth/auth";
 import { NextResponse } from "next/server";
 import axios from "axios";
 

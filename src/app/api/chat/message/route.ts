@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth, getGithubUsernameAndPAT } from "@/lib/auth/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { config } from "@/lib/env";

@@ -70,7 +70,7 @@ const getProviders = () => {
         },
         async authorize(credentials) {
           // Mock authentication - accept any username in development
-          if (credentials?.username) {
+          if (credentials?.username && typeof credentials.username === 'string') {
             const username = credentials.username.trim();
             return {
               id: `mock-${username}`,
@@ -543,7 +543,6 @@ export async function getGithubUsernameAndPAT(
     console.log(`[getGithubUsernameAndPAT] GitHub account found, attempting to decrypt OAuth token`);
 
     try {
-      const encryptionService = EncryptionService.getInstance();
       const token = getEncryptionService().decryptField("access_token", account.access_token);
 
       console.log(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`);
@@ -588,7 +587,6 @@ export async function getGithubUsernameAndPAT(
     }
 
     try {
-      const encryptionService = EncryptionService.getInstance();
       const token = getEncryptionService().decryptField("access_token", account.access_token);
       console.log(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`);
       return {
@@ -621,7 +619,6 @@ export async function getGithubUsernameAndPAT(
   console.log(`[getGithubUsernameAndPAT] Source control token found, attempting to decrypt`);
 
   try {
-    const encryptionService = EncryptionService.getInstance();
     const token = getEncryptionService().decryptField("source_control_token", sourceControlToken.token);
 
     console.log(`[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubAuth.githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`);

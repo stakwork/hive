@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth, getGithubUsernameAndPAT } from "@/lib/auth/auth";
 import { getServiceConfig } from "@/config/services";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";

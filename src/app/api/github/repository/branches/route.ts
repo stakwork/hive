@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth, getGithubUsernameAndPAT } from "@/lib/auth/auth";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import axios from "axios";
 import { NextResponse } from "next/server";

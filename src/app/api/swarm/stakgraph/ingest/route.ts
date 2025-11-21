@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth, getGithubUsernameAndPAT } from "@/lib/auth/auth";
 import { getServiceConfig } from "@/config/services";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";

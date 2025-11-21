@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth, getGithubUsernameAndPAT } from "@/lib/auth/auth";
 import { db } from "@/lib/db";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
