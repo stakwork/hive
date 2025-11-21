@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
-    console.log(`[STAKGRAPH_INGEST] Found swarm - ID: ${swarm.id}, name: ${swarm.name}`);
+    console.log(swarm)
+
+    console.log(`[STAKGRAPH_INGEST] Found swarm - ID: ${swarm.id}, name: ${swarm.name}, ingestRequestInProgress: ${swarm.ingestRequestInProgress}`);
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
       console.log(`[STAKGRAPH_INGEST] Swarm missing required fields - swarmUrl: ${!!swarm.swarmUrl}, swarmApiKey: ${!!swarm.swarmApiKey}`);
@@ -88,9 +90,9 @@ export async function POST(request: NextRequest) {
 
     // Set ingest request in progress flag
     console.log(`[STAKGRAPH_INGEST] Setting ingestRequestInProgress to true`);
-    await db.swarm.update({
-      where: { id: swarm.id },
-      data: { ingestRequestInProgress: true },
+    await saveOrUpdateSwarm({
+      workspaceId: swarm.workspaceId,
+      ingestRequestInProgress: true,
     });
     console.log(`[STAKGRAPH_INGEST] Ingest request marked as in progress`);
 
@@ -155,6 +157,22 @@ export async function POST(request: NextRequest) {
     const ingestDuration = Date.now() - startTime;
     console.log(`[STAKGRAPH_INGEST] Ingest trigger completed in ${ingestDuration}ms - success: ${apiResult.ok}, status: ${apiResult.status}`);
 
+    // Check if external service is already processing another request
+    if (apiResult?.data && typeof apiResult.data === "object" && "error" in apiResult.data) {
+      const errorMsg = apiResult.data.error as string;
+      if (errorMsg.includes("System is busy processing another request")) {
+        console.log(`[STAKGRAPH_INGEST] External service busy, resetting flag and returning 409`);
+        await saveOrUpdateSwarm({
+          workspaceId: swarm.workspaceId,
+          ingestRequestInProgress: false,
+        });
+        return NextResponse.json({
+          success: false,
+          message: "Ingest request already in progress for this swarm"
+        }, { status: 409 });
+      }
+    }
+
     try {
       console.log(`[STAKGRAPH_INGEST] Setting up GitHub webhook for repository: ${finalRepo}`);
       const callbackUrl = getGithubWebhookCallbackUrl(request);
@@ -186,9 +204,9 @@ export async function POST(request: NextRequest) {
 
     // Reset ingest request flag on successful completion
     console.log(`[STAKGRAPH_INGEST] Resetting ingestRequestInProgress flag on success`);
-    await db.swarm.update({
-      where: { id: swarm.id },
-      data: { ingestRequestInProgress: false },
+    await saveOrUpdateSwarm({
+      workspaceId: swarm.workspaceId,
+      ingestRequestInProgress: false,
     });
 
     console.log(`[STAKGRAPH_INGEST] Returning response - success: ${apiResult.ok}, status: ${apiResult.status}`);
@@ -215,9 +233,9 @@ export async function POST(request: NextRequest) {
       const swarm = await db.swarm.findFirst({ where });
       if (swarm) {
         console.log(`[STAKGRAPH_INGEST] Resetting ingestRequestInProgress flag after error`);
-        await db.swarm.update({
-          where: { id: swarm.id },
-          data: { ingestRequestInProgress: false },
+        await saveOrUpdateSwarm({
+          workspaceId: swarm.workspaceId,
+          ingestRequestInProgress: false,
         });
         console.log(`[STAKGRAPH_INGEST] Ingest request flag reset after error`);
       }
