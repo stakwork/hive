@@ -29,6 +29,7 @@ vi.mock("@/lib/env", () => ({
   config: {},
 }));
 vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
   authOptions: {},
   getGithubUsernameAndPAT: vi.fn(),
 }));
