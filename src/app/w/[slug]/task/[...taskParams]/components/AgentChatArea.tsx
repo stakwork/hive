@@ -52,9 +52,7 @@ export function AgentChatArea({
   const router = useRouter();
 
   // Check if any message has a PULL_REQUEST artifact
-  const hasPrArtifact = messages.some((msg) => 
-    msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST")
-  );
+  const hasPrArtifact = messages.some((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
 
   // Handle scroll events to detect user scrolling
   useEffect(() => {

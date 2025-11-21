@@ -1,12 +1,12 @@
-import { Page, expect } from '@playwright/test';
-import { selectors } from './selectors';
+import { Page, expect } from "@playwright/test";
+import { selectors } from "./selectors";
 
 /**
  * Navigate to workspace settings page
  */
 export async function navigateToSettings(page: Page): Promise<void> {
   const settingsButton = page.locator(selectors.navigation.settingsButton);
-  await settingsButton.waitFor({ state: 'visible' });
+  await settingsButton.waitFor({ state: "visible" });
   await settingsButton.click();
 
   // Verify we've landed on the settings page
@@ -50,20 +50,19 @@ export async function navigateToDashboard(page: Page, workspaceSlug: string): Pr
 /**
  * Create a new workspace via onboarding wizard
  */
-export async function createWorkspaceViaWizard(
-  page: Page,
-  workspaceName: string
-): Promise<string> {
+export async function createWorkspaceViaWizard(page: Page, workspaceName: string): Promise<string> {
   // Assuming we're on the onboarding page
   await page.waitForURL(/\/onboarding\/workspace/, { timeout: 10000 });
 
   // Fill in workspace name
   const nameInput = page.locator('input[name="name"], input[placeholder*="workspace" i]').first();
-  await nameInput.waitFor({ state: 'visible' });
+  await nameInput.waitFor({ state: "visible" });
   await nameInput.fill(workspaceName);
 
   // Click next/create button
-  const nextButton = page.locator('button:has-text("Next"), button:has-text("Create"), button:has-text("Continue")').first();
+  const nextButton = page
+    .locator('button:has-text("Next"), button:has-text("Create"), button:has-text("Continue")')
+    .first();
   await nextButton.click();
 
   // Wait for workspace creation to complete
@@ -73,7 +72,7 @@ export async function createWorkspaceViaWizard(
   const url = page.url();
   const match = url.match(/\/w\/([^\/]+)/);
   if (!match) {
-    throw new Error('Failed to extract workspace slug after creation');
+    throw new Error("Failed to extract workspace slug after creation");
   }
 
   return match[1];

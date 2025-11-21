@@ -1,14 +1,14 @@
-import CheckIcon from '@/components/Icons/CheckIcon'
-import PersonIcon from '@/components/Icons/PersonIcon'
-import { Node } from '@Universe/types'
-import { Avatar, TooltipContainer } from '../index'
+import CheckIcon from "@/components/Icons/CheckIcon";
+import PersonIcon from "@/components/Icons/PersonIcon";
+import { Node } from "@Universe/types";
+import { Avatar, TooltipContainer } from "../index";
 
 type Props = {
-  node: Node
-}
+  node: Node;
+};
 
 export const User = ({ node }: Props) => {
-  const properties = node.properties || {}
+  const properties = node.properties || {};
 
   const {
     username,
@@ -18,23 +18,23 @@ export const User = ({ node }: Props) => {
     verified,
     alias,
   } = properties as {
-    username?: string
-    twitter_handle?: string
-    image_url?: string
-    followers?: number
-    verified?: boolean
-    alias?: string
-  }
+    username?: string;
+    twitter_handle?: string;
+    image_url?: string;
+    followers?: number;
+    verified?: boolean;
+    alias?: string;
+  };
 
-  const displayName = alias || twitterHandle || username || ''
-  const displaySubName = twitterHandle || alias || username || ''
+  const displayName = alias || twitterHandle || username || "";
+  const displaySubName = twitterHandle || alias || username || "";
 
-  let profileUrl = ''
+  let profileUrl = "";
 
   if (username) {
-    profileUrl = `https://x.com/${alias}`
+    profileUrl = `https://x.com/${alias}`;
   } else if (twitterHandle) {
-    profileUrl = `https://x.com/${twitterHandle}`
+    profileUrl = `https://x.com/${twitterHandle}`;
   }
 
   return (
@@ -82,6 +82,5 @@ export const User = ({ node }: Props) => {
         </div>
       </div>
     </TooltipContainer>
-  )
-}
-
+  );
+};

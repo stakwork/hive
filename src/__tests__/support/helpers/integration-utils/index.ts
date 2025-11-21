@@ -1,1 +1,1 @@
-export * from './workspace-scenarios';
+export * from "./workspace-scenarios";

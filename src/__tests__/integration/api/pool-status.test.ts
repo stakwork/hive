@@ -3,10 +3,7 @@ import { GET } from "@/app/api/w/[slug]/pool/status/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { PoolManagerService } from "@/services/pool-manager";
-import {
-  createTestWorkspaceScenario,
-  createTestSwarm,
-} from "@/__tests__/support/fixtures";
+import { createTestWorkspaceScenario, createTestSwarm } from "@/__tests__/support/fixtures";
 import {
   createGetRequest,
   createAuthenticatedGetRequest,
@@ -45,10 +42,7 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
 
       // Create swarm with encrypted API key
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key"
-      );
+      const encryptedApiKey = encryptionService.encryptField("poolApiKey", "test-pool-api-key");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -70,11 +64,11 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
   });
 
   it("should return 401 for unauthenticated requests", async () => {
-    getMockedRequireAuth.mockReturnValue(NextResponse.json({ error: "Unauthorized", kind: "unauthorized" }, { status: 401 }));
-
-    const request = createGetRequest(
-      `/api/w/${workspace.slug}/pool/status`
+    getMockedRequireAuth.mockReturnValue(
+      NextResponse.json({ error: "Unauthorized", kind: "unauthorized" }, { status: 401 }),
     );
+
+    const request = createGetRequest(`/api/w/${workspace.slug}/pool/status`);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -112,11 +106,13 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
       owner: { name: "No Swarm Owner" },
     });
 
-    getMockedRequireAuth.mockReturnValue({ id: newScenario.owner.id, email: newScenario.owner.email!, name: newScenario.owner.name! });
+    getMockedRequireAuth.mockReturnValue({
+      id: newScenario.owner.id,
+      email: newScenario.owner.email!,
+      name: newScenario.owner.name!,
+    });
 
-    const request = createGetRequest(
-      `/api/w/${newScenario.workspace.slug}/pool/status`
-    );
+    const request = createGetRequest(`/api/w/${newScenario.workspace.slug}/pool/status`);
     const response = await GET(request, {
       params: Promise.resolve({ slug: newScenario.workspace.slug }),
     });
@@ -136,9 +132,7 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
 
     getMockedRequireAuth.mockReturnValue({ id: owner.id, email: owner.email!, name: owner.name! });
 
-    const request = createGetRequest(
-      `/api/w/${workspace.slug}/pool/status`
-    );
+    const request = createGetRequest(`/api/w/${workspace.slug}/pool/status`);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -163,11 +157,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
     await db.$transaction(async (tx) => {
       const scenario = await createTestWorkspaceScenario({
         owner: { name: "Pool Auth Owner" },
-        members: [
-          { role: "VIEWER" },
-          { role: "DEVELOPER" },
-          { role: "ADMIN" },
-        ],
+        members: [{ role: "VIEWER" }, { role: "DEVELOPER" }, { role: "ADMIN" }],
       });
 
       owner = scenario.owner;
@@ -178,10 +168,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
 
       // Create swarm with encrypted API key
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key-auth"
-      );
+      const encryptedApiKey = encryptionService.encryptField("poolApiKey", "test-pool-api-key-auth");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -224,10 +211,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
   });
 
   it("should return 403 for non-member access", async () => {
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      nonMember
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, nonMember);
     getMockedRequireAuth.mockReturnValue({
       id: nonMember.id,
       email: nonMember.email!,
@@ -242,10 +226,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
   });
 
   it("should allow VIEWER role to access pool status", async () => {
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      memberViewer
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, memberViewer);
     getMockedRequireAuth.mockReturnValue({
       id: memberViewer.id,
       email: memberViewer.email!,
@@ -263,10 +244,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
   });
 
   it("should allow DEVELOPER role to access pool status", async () => {
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      memberDeveloper
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, memberDeveloper);
     getMockedRequireAuth.mockReturnValue({
       id: memberDeveloper.id,
       email: memberDeveloper.email!,
@@ -283,10 +261,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
   });
 
   it("should allow ADMIN role to access pool status", async () => {
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      memberAdmin
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, memberAdmin);
     getMockedRequireAuth.mockReturnValue({
       id: memberAdmin.id,
       email: memberAdmin.email!,
@@ -303,10 +278,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
   });
 
   it("should allow OWNER role to access pool status", async () => {
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     getMockedRequireAuth.mockReturnValue({
       id: owner.id,
       email: owner.email!,
@@ -338,10 +310,7 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
       workspace = scenario.workspace;
 
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key-service"
-      );
+      const encryptedApiKey = encryptionService.encryptField("poolApiKey", "test-pool-api-key-service");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -380,14 +349,9 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
       },
     };
 
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(
-      mockPoolStatus
-    );
+    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(mockPoolStatus);
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -405,13 +369,10 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
 
   it("should return 503 when pool service is unavailable", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockRejectedValue(
-      new Error("Unable to connect to pool service")
+      new Error("Unable to connect to pool service"),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -424,13 +385,10 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
 
   it("should return 503 when pool metrics cannot be fetched", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockRejectedValue(
-      new Error("Unable to fetch pool metrics at the moment")
+      new Error("Unable to fetch pool metrics at the moment"),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -443,13 +401,10 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
 
   it("should handle network errors gracefully", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockRejectedValue(
-      new Error("Network error: Connection timeout")
+      new Error("Network error: Connection timeout"),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -461,10 +416,7 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
   });
 
   it("should decrypt poolApiKey before calling external service", async () => {
-    const getPoolStatusSpy = vi.spyOn(
-      PoolManagerService.prototype,
-      "getPoolStatus"
-    ).mockResolvedValue({
+    const getPoolStatusSpy = vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue({
       status: {
         runningVms: 1,
         pendingVms: 0,
@@ -475,10 +427,7 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
       },
     });
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -488,7 +437,7 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
     // Verify getPoolStatus was called with swarm.id and encrypted poolApiKey
     expect(getPoolStatusSpy).toHaveBeenCalledWith(
       swarm.id,
-      expect.any(String) // poolApiKey (encrypted JSON string)
+      expect.any(String), // poolApiKey (encrypted JSON string)
     );
   });
 });
@@ -508,10 +457,7 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       workspace = scenario.workspace;
 
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key-response"
-      );
+      const encryptedApiKey = encryptionService.encryptField("poolApiKey", "test-pool-api-key-response");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -550,14 +496,9 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       },
     };
 
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(
-      mockPoolStatus
-    );
+    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(mockPoolStatus);
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -597,14 +538,9 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       },
     };
 
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(
-      mockPoolStatus
-    );
+    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(mockPoolStatus);
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/w/${workspace.slug}/pool/status`, owner);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });

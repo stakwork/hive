@@ -10,11 +10,7 @@ import {
   expectForbidden,
   createPostRequest,
 } from "@/__tests__/support/helpers";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-  createTestSwarm,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario, createTestSwarm } from "@/__tests__/support/fixtures";
 import { db } from "@/lib/db";
 
 // Mock environment config
@@ -45,9 +41,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
   let mockFetch: ReturnType<typeof vi.fn>;
 
   // Helper to setup successful pod drop mocks
-  const setupSuccessfulPodDropMocks = (
-    includeRepositoryReset: boolean = false
-  ) => {
+  const setupSuccessfulPodDropMocks = (includeRepositoryReset: boolean = false) => {
     if (includeRepositoryReset) {
       mockFetch
         // First call: GET workspace details (for repository reset)
@@ -101,7 +95,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue(null);
 
       const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123"
+        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123",
       );
 
       const response = await POST(request, {
@@ -117,7 +111,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue({ user: null } as any);
 
       const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123"
+        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123",
       );
 
       const response = await POST(request, {
@@ -136,7 +130,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       } as any);
 
       const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123"
+        "http://localhost:3000/api/pool-manager/drop-pod/test-workspace-id?podId=pod-123",
       );
 
       const response = await POST(request, {
@@ -153,9 +147,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/?podId=pod-123"
-      );
+      const request = createPostRequest("http://localhost:3000/api/pool-manager/drop-pod/?podId=pod-123");
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: "" }),
@@ -178,9 +170,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -195,7 +185,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/drop-pod/nonexistent-workspace-id?podId=pod-123"
+        "http://localhost:3000/api/pool-manager/drop-pod/nonexistent-workspace-id?podId=pod-123",
       );
 
       const response = await POST(request, {
@@ -217,7 +207,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -246,7 +236,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -274,7 +264,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMemberUser));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -301,7 +291,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       setupSuccessfulPodDropMocks(false);
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -331,7 +321,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       setupSuccessfulPodDropMocks(false);
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -359,7 +349,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       setupSuccessfulPodDropMocks(false);
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -387,7 +377,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       setupSuccessfulPodDropMocks(false);
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       await POST(request, {
@@ -403,7 +393,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
             Authorization: "Bearer decrypted-api-key",
             "Content-Type": "application/json",
           }),
-        })
+        }),
       );
     });
 
@@ -423,7 +413,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       setupSuccessfulPodDropMocks(false);
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       await POST(request, {
@@ -437,7 +427,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
           headers: expect.objectContaining({
             Authorization: "Bearer decrypted-api-key",
           }),
-        })
+        }),
       );
     });
 
@@ -461,7 +451,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       });
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -487,7 +477,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       mockFetch.mockRejectedValue(new Error("Network request failed"));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {
@@ -525,7 +515,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       setupSuccessfulPodDropMocks(false);
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       await POST(request, {
@@ -562,7 +552,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       setupSuccessfulPodDropMocks(true);
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`,
       );
 
       await POST(request, {
@@ -581,7 +571,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
           headers: expect.objectContaining({
             Authorization: "Bearer decrypted-api-key",
           }),
-        })
+        }),
       );
 
       // Verify updatePodRepositories call
@@ -593,7 +583,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
           headers: expect.objectContaining({
             Authorization: "Bearer pod-password",
           }),
-        })
+        }),
       );
 
       // Verify mark-unused call
@@ -602,7 +592,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         expect.stringContaining("/mark-unused"),
         expect.objectContaining({
           method: "POST",
-        })
+        }),
       );
     });
 
@@ -651,7 +641,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         });
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`,
       );
 
       const response = await POST(request, {
@@ -704,7 +694,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         });
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`,
       );
 
       const response = await POST(request, {
@@ -769,7 +759,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
         });
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&latest=true`,
       );
 
       const response = await POST(request, {
@@ -798,7 +788,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`,
       );
 
       const response = await POST(request, {

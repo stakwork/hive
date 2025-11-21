@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  createChatMessage,
-  createArtifact,
-  ChatRole,
-  ChatStatus,
-  ArtifactType,
-} from "@/lib/chat";
+import { createChatMessage, createArtifact, ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 
 describe("chat", () => {
   beforeEach(() => {
@@ -185,12 +179,7 @@ describe("chat", () => {
     });
 
     it("should handle different ChatStatus values", () => {
-      const statuses = [
-        ChatStatus.SENT,
-        ChatStatus.PROCESSING,
-        ChatStatus.ERROR,
-        ChatStatus.CANCELLED,
-      ];
+      const statuses = [ChatStatus.SENT, ChatStatus.PROCESSING, ChatStatus.ERROR, ChatStatus.CANCELLED];
 
       statuses.forEach((status) => {
         const message = createChatMessage({
@@ -306,12 +295,7 @@ describe("chat", () => {
     });
 
     it("should handle all ArtifactType values", () => {
-      const types = [
-        ArtifactType.CODE,
-        ArtifactType.FORM,
-        ArtifactType.BROWSER,
-        ArtifactType.LONGFORM,
-      ];
+      const types = [ArtifactType.CODE, ArtifactType.FORM, ArtifactType.BROWSER, ArtifactType.LONGFORM];
 
       types.forEach((type) => {
         const artifact = createArtifact({

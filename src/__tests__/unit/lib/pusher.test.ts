@@ -37,7 +37,7 @@ describe("pusher.ts", () => {
   beforeEach(() => {
     // Reset mocks before each test
     vi.clearAllMocks();
-    
+
     // Reset environment variables to a clean state
     process.env = {
       ...originalEnv,
@@ -61,7 +61,7 @@ describe("pusher.ts", () => {
     it("should create a Pusher instance with correct configuration", async () => {
       // Re-import after environment setup
       const { pusherServer: testPusherServer } = await import("@/lib/pusher");
-      
+
       expect(Pusher).toHaveBeenCalledWith({
         appId: "test-app-id",
         key: "test-key",
@@ -69,7 +69,7 @@ describe("pusher.ts", () => {
         cluster: "test-cluster",
         useTLS: true,
       });
-      
+
       expect(testPusherServer).toBeDefined();
       expect(testPusherServer.config).toEqual({
         appId: "test-app-id",
@@ -83,7 +83,7 @@ describe("pusher.ts", () => {
     it("should have a trigger method", async () => {
       // Re-import after environment setup
       const { pusherServer: testPusherServer } = await import("@/lib/pusher");
-      
+
       expect(testPusherServer.trigger).toBeDefined();
       expect(typeof testPusherServer.trigger).toBe("function");
     });
@@ -117,13 +117,13 @@ describe("pusher.ts", () => {
 
     it("should create a PusherClient instance with correct configuration", async () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
+
       const client = testGetPusherClient();
-      
+
       expect(PusherClient).toHaveBeenCalledWith("test-public-key", {
         cluster: "test-public-cluster",
       });
-      
+
       expect(client).toBeDefined();
       expect(client.key).toBe("test-public-key");
       expect(client.options).toEqual({ cluster: "test-public-cluster" });
@@ -131,10 +131,10 @@ describe("pusher.ts", () => {
 
     it("should implement lazy initialization (singleton pattern)", async () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
+
       const client1 = testGetPusherClient();
       const client2 = testGetPusherClient();
-      
+
       // Should only create one instance
       expect(PusherClient).toHaveBeenCalledTimes(1);
       expect(client1).toBe(client2);
@@ -143,54 +143,46 @@ describe("pusher.ts", () => {
     it("should throw error when NEXT_PUBLIC_PUSHER_KEY is missing", async () => {
       delete process.env.NEXT_PUBLIC_PUSHER_KEY;
       vi.resetModules();
-      
+
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+
+      expect(() => testGetPusherClient()).toThrow("Pusher environment variables are not configured");
     });
 
     it("should throw error when NEXT_PUBLIC_PUSHER_CLUSTER is missing", async () => {
       delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
       vi.resetModules();
-      
+
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+
+      expect(() => testGetPusherClient()).toThrow("Pusher environment variables are not configured");
     });
 
     it("should throw error when both environment variables are missing", async () => {
       delete process.env.NEXT_PUBLIC_PUSHER_KEY;
       delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
       vi.resetModules();
-      
+
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+
+      expect(() => testGetPusherClient()).toThrow("Pusher environment variables are not configured");
     });
 
     it("should work with empty string environment variables", async () => {
       process.env.NEXT_PUBLIC_PUSHER_KEY = "";
       process.env.NEXT_PUBLIC_PUSHER_CLUSTER = "test-cluster";
       vi.resetModules();
-      
+
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+
+      expect(() => testGetPusherClient()).toThrow("Pusher environment variables are not configured");
     });
 
     it("should have expected methods on returned client", async () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
+
       const client = testGetPusherClient();
-      
+
       expect(client.subscribe).toBeDefined();
       expect(client.bind).toBeDefined();
       expect(client.unbind).toBeDefined();
@@ -227,7 +219,7 @@ describe("pusher.ts", () => {
       const taskId = "test-task-123";
       const result1 = getTaskChannelName(taskId);
       const result2 = getTaskChannelName(taskId);
-      
+
       expect(result1).toBe(result2);
       expect(result1).toBe("task-test-task-123");
     });
@@ -258,7 +250,7 @@ describe("pusher.ts", () => {
       const workspaceSlug = "test-workspace";
       const result1 = getWorkspaceChannelName(workspaceSlug);
       const result2 = getWorkspaceChannelName(workspaceSlug);
-      
+
       expect(result1).toBe(result2);
       expect(result1).toBe("workspace-test-workspace");
     });
@@ -289,7 +281,7 @@ describe("pusher.ts", () => {
     it("should have unique values for all events", () => {
       const values = Object.values(PUSHER_EVENTS);
       const uniqueValues = [...new Set(values)];
-      
+
       expect(uniqueValues).toHaveLength(values.length);
     });
 
@@ -337,13 +329,13 @@ describe("pusher.ts", () => {
     it("should work together: channel names with event constants", () => {
       const taskId = "test-task-123";
       const workspaceSlug = "test-workspace";
-      
+
       const taskChannel = getTaskChannelName(taskId);
       const workspaceChannel = getWorkspaceChannelName(workspaceSlug);
-      
+
       expect(taskChannel).toBe("task-test-task-123");
       expect(workspaceChannel).toBe("workspace-test-workspace");
-      
+
       // Verify these can be used with event constants
       expect(PUSHER_EVENTS.TASK_TITLE_UPDATE).toBe("task-title-update");
       expect(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE).toBe("workspace-task-title-update");
@@ -355,7 +347,7 @@ describe("pusher.ts", () => {
       expect(getTaskChannelName).toBeDefined();
       expect(getWorkspaceChannelName).toBeDefined();
       expect(PUSHER_EVENTS).toBeDefined();
-      
+
       expect(typeof getPusherClient).toBe("function");
       expect(typeof getTaskChannelName).toBe("function");
       expect(typeof getWorkspaceChannelName).toBe("function");

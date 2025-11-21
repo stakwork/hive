@@ -18,14 +18,18 @@ export async function POST(request: NextRequest) {
         success: true,
         data: tickets,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error reordering tickets:", error);
     const message = error instanceof Error ? error.message : "Failed to reorder tickets";
-    const status = message.includes("not found") ? 404 :
-                   message.includes("denied") ? 403 :
-                   message.includes("array") || message.includes("empty") ? 400 : 500;
+    const status = message.includes("not found")
+      ? 404
+      : message.includes("denied")
+        ? 403
+        : message.includes("array") || message.includes("empty")
+          ? 400
+          : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

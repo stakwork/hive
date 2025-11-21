@@ -4,9 +4,7 @@ export async function countWorkspaces(): Promise<number> {
   return db.workspace.count();
 }
 
-export async function countWorkspaceMembers(
-  workspaceId: string,
-): Promise<number> {
+export async function countWorkspaceMembers(workspaceId: string): Promise<number> {
   return db.workspaceMember.count({
     where: { workspaceId, leftAt: null },
   });

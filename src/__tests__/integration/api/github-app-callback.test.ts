@@ -49,9 +49,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           repositoryDraft: "https://github.com/test-owner/test-repo",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Encode state with workspace slug and timestamp
         const stateData = {
@@ -116,15 +114,12 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_oauth_code",
-            state,
-            installation_id: "98765",
-            setup_action: "install",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_oauth_code",
+          state,
+          installation_id: "98765",
+          setup_action: "install",
+        });
 
         const response = await GET(request);
 
@@ -141,7 +136,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           expect.objectContaining({
             method: "POST",
             body: expect.stringContaining("test_oauth_code"),
-          })
+          }),
         );
 
         // Verify SourceControlOrg creation
@@ -172,10 +167,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
         // Verify token can be decrypted
         const encryptionService = EncryptionService.getInstance();
-        const decryptedToken = encryptionService.decryptField(
-          "source_control_token",
-          token!.token
-        );
+        const decryptedToken = encryptionService.decryptField("source_control_token", token!.token);
         expect(decryptedToken).toBe("ghu_test_access_token");
 
         // Verify workspace linking
@@ -205,9 +197,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           repositoryDraft: "https://github.com/existing-owner/oauth-repo",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -235,14 +225,11 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "oauth_code",
-            state,
-            // No installation_id - OAuth-only flow
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "oauth_code",
+          state,
+          // No installation_id - OAuth-only flow
+        });
 
         const response = await GET(request);
 
@@ -263,10 +250,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
         // Verify encryption
         const encryptionService = EncryptionService.getInstance();
-        const decryptedToken = encryptionService.decryptField(
-          "source_control_token",
-          token!.token
-        );
+        const decryptedToken = encryptionService.decryptField("source_control_token", token!.token);
         expect(decryptedToken).toBe("ghu_oauth_token");
       });
 
@@ -278,9 +262,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           repositoryDraft: "https://github.com/push-owner/push-repo",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -333,15 +315,12 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "push_code",
-            state,
-            installation_id: "22222",
-            setup_action: "install",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "push_code",
+          state,
+          installation_id: "22222",
+          setup_action: "install",
+        });
 
         const response = await GET(request);
 
@@ -358,9 +337,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           repositoryDraft: "https://github.com/read-owner/read-repo",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -407,15 +384,12 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "read_code",
-            state,
-            installation_id: "44444",
-            setup_action: "install",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "read_code",
+          state,
+          installation_id: "44444",
+          setup_action: "install",
+        });
 
         const response = await GET(request);
 
@@ -432,9 +406,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           repositoryDraft: "https://github.com/admin-owner/admin-repo",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -480,15 +452,12 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "admin_code",
-            state,
-            installation_id: "66666",
-            setup_action: "install",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "admin_code",
+          state,
+          installation_id: "66666",
+          setup_action: "install",
+        });
 
         const response = await GET(request);
 
@@ -508,13 +477,10 @@ describe("GitHub App Callback API Integration Tests", () => {
         };
         const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -536,13 +502,10 @@ describe("GitHub App Callback API Integration Tests", () => {
         };
         const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -555,17 +518,12 @@ describe("GitHub App Callback API Integration Tests", () => {
     describe("Input validation scenarios", () => {
       test("should redirect with error for missing state parameter", async () => {
         const testUser = await createTestUser();
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_code",
-            // Missing state
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_code",
+          // Missing state
+        });
 
         const response = await GET(request);
 
@@ -576,9 +534,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should redirect with error for missing code parameter", async () => {
         const testUser = await createTestUser();
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: "test-workspace",
@@ -586,13 +542,10 @@ describe("GitHub App Callback API Integration Tests", () => {
         };
         const state = Buffer.from(JSON.stringify(stateData)).toString("base64");
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            state,
-            // Missing code
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          state,
+          // Missing code
+        });
 
         const response = await GET(request);
 
@@ -603,9 +556,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should redirect with error for expired state (older than 1 hour)", async () => {
         const testUser = await createTestUser();
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Create state with timestamp older than 1 hour
         const stateData = {
@@ -631,13 +582,10 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -648,9 +596,7 @@ describe("GitHub App Callback API Integration Tests", () => {
 
       test("should redirect with error for malformed state", async () => {
         const testUser = await createTestUser();
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Invalid base64 or invalid JSON
         const state = "invalid_state_not_base64";
@@ -672,13 +618,10 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -696,9 +639,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           slug: "token-fail-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -712,13 +653,10 @@ describe("GitHub App Callback API Integration Tests", () => {
           status: 400,
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "invalid_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "invalid_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -734,9 +672,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           slug: "invalid-code-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -752,13 +688,10 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "bad_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "bad_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -776,9 +709,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           slug: "user-fetch-fail",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -800,13 +731,10 @@ describe("GitHub App Callback API Integration Tests", () => {
           status: 401,
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -822,9 +750,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           slug: "network-error-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -835,13 +761,10 @@ describe("GitHub App Callback API Integration Tests", () => {
         // Mock network error
         mockFetch.mockRejectedValue(new Error("Network error"));
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "test_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "test_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -871,12 +794,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           data: {
             userId: testUser.id,
             sourceControlOrgId: sourceControlOrg.id,
-            token: JSON.stringify(
-              encryptionService.encryptField(
-                "source_control_token",
-                "old_token"
-              )
-            ),
+            token: JSON.stringify(encryptionService.encryptField("source_control_token", "old_token")),
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           },
         });
@@ -887,9 +805,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           sourceControlOrgId: sourceControlOrg.id,
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -915,13 +831,10 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "update_code",
-            state,
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "update_code",
+          state,
+        });
 
         const response = await GET(request);
 
@@ -946,10 +859,7 @@ describe("GitHub App Callback API Integration Tests", () => {
         });
 
         // Verify token was updated with new value
-        const decryptedToken = encryptionService.decryptField(
-          "source_control_token",
-          updatedToken!.token
-        );
+        const decryptedToken = encryptionService.decryptField("source_control_token", updatedToken!.token);
         expect(decryptedToken).toBe("new_access_token");
         expect(decryptedToken).not.toBe("old_token");
       });
@@ -973,9 +883,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           sourceControlOrgId: sourceControlOrg.id,
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -1011,15 +919,12 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "org_code",
-            state,
-            installation_id: "22222", // New ID
-            setup_action: "update",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "org_code",
+          state,
+          installation_id: "22222", // New ID
+          setup_action: "update",
+        });
 
         const response = await GET(request);
 
@@ -1042,9 +947,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           slug: "encrypt-test-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -1080,14 +983,11 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "encrypt_code",
-            state,
-            installation_id: "66666",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "encrypt_code",
+          state,
+          installation_id: "66666",
+        });
 
         const response = await GET(request);
         expect(response.status).toBe(307);
@@ -1126,14 +1026,8 @@ describe("GitHub App Callback API Integration Tests", () => {
 
         // Verify decryption works correctly
         const encryptionService = EncryptionService.getInstance();
-        const decryptedAccess = encryptionService.decryptField(
-          "source_control_token",
-          token!.token
-        );
-        const decryptedRefresh = encryptionService.decryptField(
-          "source_control_refresh_token",
-          token!.refreshToken!
-        );
+        const decryptedAccess = encryptionService.decryptField("source_control_token", token!.token);
+        const decryptedRefresh = encryptionService.decryptField("source_control_refresh_token", token!.refreshToken!);
 
         expect(decryptedAccess).toBe("ghu_encryption_test_token");
         expect(decryptedRefresh).toBe("ghr_encryption_test_refresh");
@@ -1146,9 +1040,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           slug: "expiry-test-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -1186,14 +1078,11 @@ describe("GitHub App Callback API Integration Tests", () => {
           }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "expiry_code",
-            state,
-            installation_id: "88888",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "expiry_code",
+          state,
+          installation_id: "88888",
+        });
 
         const response = await GET(request);
         expect(response.status).toBe(307);
@@ -1244,9 +1133,7 @@ describe("GitHub App Callback API Integration Tests", () => {
           sourceControlOrgId: sourceControlOrg.id, // Initially linked
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         const stateData = {
           workspaceSlug: workspace.slug,
@@ -1266,14 +1153,11 @@ describe("GitHub App Callback API Integration Tests", () => {
           json: async () => ({ id: 11111, login: "uninstall-user" }),
         });
 
-        const request = createGetRequest(
-          "http://localhost:3000/api/github/app/callback",
-          {
-            code: "uninstall_code",
-            state,
-            setup_action: "uninstall",
-          }
-        );
+        const request = createGetRequest("http://localhost:3000/api/github/app/callback", {
+          code: "uninstall_code",
+          state,
+          setup_action: "uninstall",
+        });
 
         const response = await GET(request);
         expect(response.status).toBe(307);

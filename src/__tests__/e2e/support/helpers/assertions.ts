@@ -1,4 +1,4 @@
-import { Page, expect } from '@playwright/test';
+import { Page, expect } from "@playwright/test";
 
 /**
  * Assertion helper utilities
@@ -8,34 +8,21 @@ import { Page, expect } from '@playwright/test';
 /**
  * Assert element is visible with custom timeout
  */
-export async function assertVisible(
-  page: Page,
-  selector: string,
-  timeout = 10000
-): Promise<void> {
+export async function assertVisible(page: Page, selector: string, timeout = 10000): Promise<void> {
   await expect(page.locator(selector)).toBeVisible({ timeout });
 }
 
 /**
  * Assert element contains specific text
  */
-export async function assertContainsText(
-  page: Page,
-  selector: string,
-  text: string,
-  timeout = 10000
-): Promise<void> {
+export async function assertContainsText(page: Page, selector: string, text: string, timeout = 10000): Promise<void> {
   await expect(page.locator(selector)).toContainText(text, { timeout });
 }
 
 /**
  * Assert element count matches expected
  */
-export async function assertElementCount(
-  page: Page,
-  selector: string,
-  expectedCount: number
-): Promise<void> {
+export async function assertElementCount(page: Page, selector: string, expectedCount: number): Promise<void> {
   const count = await page.locator(selector).count();
   expect(count).toBe(expectedCount);
 }

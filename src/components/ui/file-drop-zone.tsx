@@ -15,7 +15,7 @@ export function FileDropZone({
   onFileContent,
   accept = ".env,.txt,text/plain",
   className,
-  disabled = false
+  disabled = false,
 }: FileDropZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,9 +62,9 @@ export function FileDropZone({
 
     if (file) {
       // Accept .env files, text files, or files with no extension
-      const isEnvFile = file.name.endsWith('.env');
+      const isEnvFile = file.name.endsWith(".env");
       const isTextFile = file.type === "text/plain" || file.type === "";
-      const isTxtFile = file.name.endsWith('.txt');
+      const isTxtFile = file.name.endsWith(".txt");
 
       if (isEnvFile || isTextFile || isTxtFile) {
         try {
@@ -85,7 +85,7 @@ export function FileDropZone({
     }
     // Reset input
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
@@ -102,7 +102,7 @@ export function FileDropZone({
           : "border-muted-foreground/25 hover:border-muted-foreground/50",
         disabled && "opacity-50 cursor-not-allowed",
         !disabled && "cursor-pointer",
-        className
+        className,
       )}
       onClick={() => !disabled && fileInputRef.current?.click()}
     >
@@ -126,9 +126,7 @@ export function FileDropZone({
           <p className="text-sm font-medium">
             {isDragging ? "Drop your file here" : "Drop .env file or click to browse"}
           </p>
-          <p className="text-xs text-muted-foreground">
-            Supports .env and .txt files
-          </p>
+          <p className="text-xs text-muted-foreground">Supports .env and .txt files</p>
         </div>
       </div>
     </div>

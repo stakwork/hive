@@ -16,7 +16,7 @@ const ModalContext = React.createContext<{
 } | null>(null);
 
 export function ModalProvider({ registry, children }: React.PropsWithChildren<{ registry: Registry }>) {
-  const open = useModalStore(s => s.open);
+  const open = useModalStore((s) => s.open);
   return (
     <ModalContext.Provider value={{ open }}>
       {children}
@@ -46,7 +46,7 @@ function ModalRoot({ registry }: { registry: Registry }) {
   if (!mounted) return null;
   return createPortal(
     <>
-      {instances.map(inst => {
+      {instances.map((inst) => {
         const Cmp = registry[inst.name];
         if (!Cmp) return null;
         return (
@@ -59,7 +59,7 @@ function ModalRoot({ registry }: { registry: Registry }) {
         );
       })}
     </>,
-    document.body
+    document.body,
   );
 }
 

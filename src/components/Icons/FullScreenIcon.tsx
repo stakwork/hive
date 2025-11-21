@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React from 'react'
+import React from "react";
 
 const FullScreenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 22 22" fill="currentColor">
@@ -13,6 +13,6 @@ const FullScreenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
       />
     </g>
   </svg>
-)
+);
 
-export default FullScreenIcon
+export default FullScreenIcon;

@@ -1,10 +1,10 @@
-import { expect } from '@playwright/test';
-import { test } from '@/__tests__/e2e/support/fixtures/test-hooks';
-import { AuthPage, WorkspaceSettingsPage } from '@/__tests__/e2e/support/page-objects';
-import { selectors } from '@/__tests__/e2e/support/fixtures/selectors';
+import { expect } from "@playwright/test";
+import { test } from "@/__tests__/e2e/support/fixtures/test-hooks";
+import { AuthPage, WorkspaceSettingsPage } from "@/__tests__/e2e/support/page-objects";
+import { selectors } from "@/__tests__/e2e/support/fixtures/selectors";
 
-test.describe('Workspace Settings Edit', () => {
-  test('should successfully update workspace name, slug, and description', async ({ page }) => {
+test.describe("Workspace Settings Edit", () => {
+  test("should successfully update workspace name, slug, and description", async ({ page }) => {
     // Arrange - Sign in with mock authentication
     const authPage = new AuthPage(page);
     await authPage.signInWithMock();

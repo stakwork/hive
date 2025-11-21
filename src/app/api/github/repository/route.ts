@@ -38,9 +38,13 @@ export async function GET(request: Request) {
     const tokens = await getUserAppTokens(userId, owner);
 
     if (!tokens?.accessToken) {
-      return NextResponse.json({
-        error: "No GitHub App tokens found for this repository owner. Please ensure the GitHub App is installed for this organization/user."
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          error:
+            "No GitHub App tokens found for this repository owner. Please ensure the GitHub App is installed for this organization/user.",
+        },
+        { status: 403 },
+      );
     }
 
     console.log("Using GitHub App installation token");
@@ -85,9 +89,12 @@ export async function GET(request: Request) {
         data,
       });
     } else {
-      return NextResponse.json({
-        error: "You do not have push access to this repository"
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          error: "You do not have push access to this repository",
+        },
+        { status: 403 },
+      );
     }
   } catch (error: unknown) {
     console.error("Error fetching repositories:", error);

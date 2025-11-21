@@ -8,7 +8,7 @@ export interface WorkflowTransition {
   name: string;
   title: string;
   skill?: {
-    type: 'human' | 'automated' | 'api' | 'loop';
+    type: "human" | "automated" | "api" | "loop";
     icon?: any;
   };
   skill_icon?: any;

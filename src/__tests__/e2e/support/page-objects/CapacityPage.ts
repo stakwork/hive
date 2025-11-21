@@ -1,5 +1,5 @@
-import { Page, expect } from '@playwright/test';
-import { selectors } from '../fixtures/selectors';
+import { Page, expect } from "@playwright/test";
+import { selectors } from "../fixtures/selectors";
 
 /**
  * Page Object Model for Capacity page
@@ -27,7 +27,7 @@ export class CapacityPage {
    * Verify page title is "Capacity"
    */
   async verifyPageTitle(): Promise<void> {
-    await expect(this.page.locator(selectors.pageTitle.element)).toContainText('Capacity');
+    await expect(this.page.locator(selectors.pageTitle.element)).toContainText("Capacity");
   }
 
   /**

@@ -1,10 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { validateWorkspaceSlug } from "@/services/workspace";
-import { 
-  WORKSPACE_ERRORS, 
-  RESERVED_WORKSPACE_SLUGS,
-  WORKSPACE_SLUG_PATTERNS 
-} from "@/lib/constants";
+import { WORKSPACE_ERRORS, RESERVED_WORKSPACE_SLUGS, WORKSPACE_SLUG_PATTERNS } from "@/lib/constants";
 
 describe("validateWorkspaceSlug", () => {
   describe("Valid slugs", () => {
@@ -55,7 +51,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("a");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH,
       });
     });
 
@@ -63,7 +59,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH,
       });
     });
 
@@ -72,7 +68,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug(tooLongSlug);
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH,
       });
     });
 
@@ -81,7 +77,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug(veryLongSlug);
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH,
       });
     });
   });
@@ -91,7 +87,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("MyWorkspace");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -99,7 +95,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("-workspace");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -107,7 +103,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("workspace-");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -115,7 +111,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work--space");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -123,7 +119,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work_space");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -131,7 +127,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work@space");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -139,7 +135,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work.space");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -147,7 +143,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work space");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -155,7 +151,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug(" workspace");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -163,7 +159,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("workspace ");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -171,7 +167,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("--");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -179,7 +175,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work_space@123!");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
   });
@@ -189,7 +185,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("api");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -197,7 +193,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("admin");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -205,7 +201,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("dashboard");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -213,7 +209,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("auth");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -221,7 +217,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("help");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -229,7 +225,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("www");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -237,7 +233,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("test");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -245,7 +241,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("production");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -253,7 +249,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("workspaces");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -261,7 +257,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("stakgraph");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
@@ -269,28 +265,65 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("robots");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_RESERVED
+        error: WORKSPACE_ERRORS.SLUG_RESERVED,
       });
     });
 
     test("should reject all reserved slugs from the list", () => {
       // Test a sampling of reserved slugs to ensure the validation works
       const sampleReservedSlugs = [
-        "login", "logout", "signup", "register", "signin", "signout",
-        "settings", "onboarding", "support", "docs", "documentation",
-        "contact", "mail", "email", "blog", "news", "status", "health",
-        "graphql", "webhook", "callback", "oauth", "cdn", "assets",
-        "staging", "dev", "development", "preview", "demo", "user",
-        "users", "profile", "account", "billing", "subscription",
-        "pricing", "features", "roadmap", "tasks", "projects",
-        "repositories", "repos", "code-graph", "swarm", "pool-manager"
+        "login",
+        "logout",
+        "signup",
+        "register",
+        "signin",
+        "signout",
+        "settings",
+        "onboarding",
+        "support",
+        "docs",
+        "documentation",
+        "contact",
+        "mail",
+        "email",
+        "blog",
+        "news",
+        "status",
+        "health",
+        "graphql",
+        "webhook",
+        "callback",
+        "oauth",
+        "cdn",
+        "assets",
+        "staging",
+        "dev",
+        "development",
+        "preview",
+        "demo",
+        "user",
+        "users",
+        "profile",
+        "account",
+        "billing",
+        "subscription",
+        "pricing",
+        "features",
+        "roadmap",
+        "tasks",
+        "projects",
+        "repositories",
+        "repos",
+        "code-graph",
+        "swarm",
+        "pool-manager",
       ];
 
       for (const reservedSlug of sampleReservedSlugs) {
         const result = validateWorkspaceSlug(reservedSlug);
         expect(result).toEqual({
           isValid: false,
-          error: WORKSPACE_ERRORS.SLUG_RESERVED
+          error: WORKSPACE_ERRORS.SLUG_RESERVED,
         });
       }
     });
@@ -331,7 +364,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug(overMaxSlug);
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH,
       });
     });
 
@@ -340,7 +373,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug(underMinSlug);
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH,
       });
     });
 
@@ -349,7 +382,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("A"); // too short AND uppercase
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+        error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH,
       });
     });
 
@@ -358,7 +391,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("API"); // reserved word but uppercase (invalid format)
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -366,7 +399,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("   ");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -374,7 +407,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work\tspace");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
 
@@ -382,7 +415,7 @@ describe("validateWorkspaceSlug", () => {
       const result = validateWorkspaceSlug("work\nspace");
       expect(result).toEqual({
         isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
     });
   });

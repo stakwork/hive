@@ -37,7 +37,7 @@ describe("isAlreadyEncrypted", () => {
     it("should return true for encrypted object with additional properties", async () => {
       const encryptedValue = JSON.stringify({
         data: "encrypted-data-string",
-        iv: "initialization-vector", 
+        iv: "initialization-vector",
         tag: "authentication-tag",
         encryptedAt: "2024-01-01T00:00:00.000Z",
         version: "1",
@@ -110,7 +110,7 @@ describe("isAlreadyEncrypted", () => {
     it("should return false when missing data property", async () => {
       const encryptedValue = JSON.stringify({
         iv: "initialization-vector",
-        tag: "authentication-tag", 
+        tag: "authentication-tag",
         encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
@@ -193,7 +193,7 @@ describe("isAlreadyEncrypted", () => {
 
     it("should return false when tag is not a string", async () => {
       const encryptedValue = JSON.stringify({
-        data: "encrypted-data-string", 
+        data: "encrypted-data-string",
         iv: "initialization-vector",
         tag: null,
         encryptedAt: "2024-01-01T00:00:00.000Z",
@@ -206,7 +206,7 @@ describe("isAlreadyEncrypted", () => {
     it("should return false when encryptedAt is not a string", async () => {
       const encryptedValue = JSON.stringify({
         data: "encrypted-data-string",
-        iv: "initialization-vector", 
+        iv: "initialization-vector",
         tag: "authentication-tag",
         encryptedAt: 123456789,
       });
@@ -231,7 +231,7 @@ describe("isAlreadyEncrypted", () => {
       const encryptedValue = JSON.stringify({
         data: undefined,
         iv: "initialization-vector",
-        tag: "authentication-tag", 
+        tag: "authentication-tag",
         encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
@@ -243,12 +243,12 @@ describe("isAlreadyEncrypted", () => {
   describe("error handling and edge cases", () => {
     it("should handle malformed JSON gracefully", async () => {
       const malformedInputs = [
-        '{"data": "value"',  // missing closing brace
-        '{"data": "value"}extra',  // extra content after JSON
-        '{"data": "value",}',  // trailing comma
-        '{data: "value"}',  // unquoted key
-        "{'data': 'value'}",  // single quotes
-        '{"data": "value\\""}',  // escaped quote issue
+        '{"data": "value"', // missing closing brace
+        '{"data": "value"}extra', // extra content after JSON
+        '{"data": "value",}', // trailing comma
+        '{data: "value"}', // unquoted key
+        "{'data': 'value'}", // single quotes
+        '{"data": "value\\""}', // escaped quote issue
       ];
 
       for (const input of malformedInputs) {
@@ -267,9 +267,9 @@ describe("isAlreadyEncrypted", () => {
         "[]",
         '{"test": }',
         '{"test": undefined}',
-        '\n\t\r',
-        '{"data": "\u0000"}',  // null character
-        '{"data": "' + "x".repeat(10000) + '"}',  // very long string
+        "\n\t\r",
+        '{"data": "\u0000"}', // null character
+        '{"data": "' + "x".repeat(10000) + '"}', // very long string
       ];
 
       for (const input of problematicInputs) {
@@ -286,10 +286,10 @@ describe("isAlreadyEncrypted", () => {
         nested: {
           level1: {
             level2: {
-              deep: "value"
-            }
-          }
-        }
+              deep: "value",
+            },
+          },
+        },
       });
 
       const result = await isAlreadyEncrypted(nestedValue);
@@ -309,7 +309,7 @@ describe("isAlreadyEncrypted", () => {
       // Simulate encrypted access_token from migration
       const encryptedToken = JSON.stringify({
         data: "abc123encrypted",
-        iv: "xyz456init", 
+        iv: "xyz456init",
         tag: "def789auth",
         encryptedAt: "2024-01-01T10:00:00.000Z",
         keyId: "k-account",
@@ -329,8 +329,8 @@ describe("isAlreadyEncrypted", () => {
       // Test with different structure that might exist in legacy data
       const legacyFormat = JSON.stringify({
         encrypted: "data",
-        salt: "value", 
-        version: "0.1"
+        salt: "value",
+        version: "0.1",
       });
 
       const result = await isAlreadyEncrypted(legacyFormat);
@@ -342,9 +342,9 @@ describe("isAlreadyEncrypted", () => {
       const envVarFormat = JSON.stringify({
         data: "encrypted-env-value",
         iv: "env-iv",
-        tag: "env-tag", 
+        tag: "env-tag",
         encryptedAt: "2024-01-01T12:00:00.000Z",
-        fieldName: "API_KEY"
+        fieldName: "API_KEY",
       });
 
       const result = await isAlreadyEncrypted(envVarFormat);
@@ -373,14 +373,14 @@ describe("isAlreadyEncrypted", () => {
     it("should handle multiple concurrent calls", async () => {
       const validEncrypted = JSON.stringify({
         data: "test",
-        iv: "test", 
+        iv: "test",
         tag: "test",
-        encryptedAt: "test"
+        encryptedAt: "test",
       });
 
-      const promises = Array(100).fill(null).map(() => 
-        isAlreadyEncrypted(validEncrypted)
-      );
+      const promises = Array(100)
+        .fill(null)
+        .map(() => isAlreadyEncrypted(validEncrypted));
 
       const results = await Promise.all(promises);
       expect(results).toEqual(Array(100).fill(true));

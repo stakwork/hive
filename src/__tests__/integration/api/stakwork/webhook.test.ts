@@ -2,19 +2,15 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/stakwork/webhook/route";
 import { WorkflowStatus, TaskStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import {
-  createPostRequest,
-  generateUniqueId,
-  generateUniqueSlug,
-} from "@/__tests__/support/helpers";
+import { createPostRequest, generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
 
 /**
  * Integration Tests for POST /api/stakwork/webhook
- * 
+ *
  * SECURITY NOTE: This endpoint currently has NO signature verification,
  * unlike other webhooks (GitHub, Stakgraph). This is a known security gap.
  * Any client can send POST requests to manipulate task statuses.
- * 
+ *
  * Future enhancement: Implement HMAC-SHA256 signature verification
  * similar to Stakgraph webhook (see src/app/api/swarm/stakgraph/webhook/route.ts)
  */
@@ -127,12 +123,9 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     test("should accept task_id from query parameter as fallback", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(
-        `${webhookUrl}?task_id=${task.id}`,
-        {
-          project_status: "completed",
-        }
-      );
+      const request = createPostRequest(`${webhookUrl}?task_id=${task.id}`, {
+        project_status: "completed",
+      });
 
       const response = await POST(request);
       const data = await response.json();
@@ -146,13 +139,10 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const { task } = await createTestTask();
       const { task: anotherTask } = await createTestTask();
 
-      const request = createPostRequest(
-        `${webhookUrl}?task_id=${anotherTask.id}`,
-        {
-          task_id: task.id,
-          project_status: "completed",
-        }
-      );
+      const request = createPostRequest(`${webhookUrl}?task_id=${anotherTask.id}`, {
+        task_id: task.id,
+        project_status: "completed",
+      });
 
       const response = await POST(request);
       const data = await response.json();
@@ -377,7 +367,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
           taskId: task.id,
           workflowStatus: WorkflowStatus.COMPLETED,
           timestamp: expect.any(Date),
-        })
+        }),
       );
     });
 
@@ -397,7 +387,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         expect.objectContaining({
           workflowStartedAt: expect.any(Date),
           workflowCompletedAt: null,
-        })
+        }),
       );
     });
 
@@ -471,9 +461,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         }),
       ];
 
-      const responses = await Promise.all(
-        requests.map((req) => POST(req))
-      );
+      const responses = await Promise.all(requests.map((req) => POST(req)));
 
       expect(responses[0].status).toBe(200);
       expect(responses[1].status).toBe(200);
@@ -482,9 +470,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         where: { id: task.id },
       });
 
-      expect([WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED]).toContain(
-        finalTask?.workflowStatus
-      );
+      expect([WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED]).toContain(finalTask?.workflowStatus);
     });
   });
 

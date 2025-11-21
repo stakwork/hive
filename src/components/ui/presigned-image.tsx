@@ -62,9 +62,9 @@ export function PresignedImage({
 
     try {
       console.log(`Image load failed, refetching URL (attempt ${retryCount.current}/${maxRetries})`);
-      
+
       const newUrl = await onRefetchUrl();
-      
+
       if (newUrl && newUrl !== currentSrc) {
         setCurrentSrc(newUrl);
         setHasError(false);
@@ -93,9 +93,7 @@ export function PresignedImage({
   return (
     <div className="relative inline-block">
       {isLoading && (
-        <div
-          className={`absolute inset-0 flex items-center justify-center bg-muted ${loadingClassName}`}
-        >
+        <div className={`absolute inset-0 flex items-center justify-center bg-muted ${loadingClassName}`}>
           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
         </div>
       )}

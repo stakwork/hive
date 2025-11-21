@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import {
-  ChatRole,
-  ChatStatus,
-  ArtifactType,
-  type ContextTag,
-  type Artifact,
-  type ChatMessage,
-} from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType, type ContextTag, type Artifact, type ChatMessage } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export const fetchCache = "force-no-store";
@@ -79,9 +72,7 @@ export async function POST(request: NextRequest) {
 
     const clientMessage: ChatMessage = {
       ...chatMessage,
-      contextTags: JSON.parse(
-        chatMessage.contextTags as string,
-      ) as ContextTag[],
+      contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
       artifacts: chatMessage.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,
@@ -92,11 +83,7 @@ export async function POST(request: NextRequest) {
       try {
         const channelName = getTaskChannelName(taskId);
 
-        await pusherServer.trigger(
-          channelName,
-          PUSHER_EVENTS.NEW_MESSAGE,
-          chatMessage.id,
-        );
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
       } catch (error) {
         console.error("❌ Error broadcasting to Pusher:", error);
       }
@@ -111,9 +98,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error creating chat response:", error);
-    return NextResponse.json(
-      { error: "Failed to create chat response" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create chat response" }, { status: 500 });
   }
 }

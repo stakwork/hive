@@ -1,11 +1,7 @@
 import React from "react";
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import {
-  Avatar,
-  AvatarImage,
-  AvatarFallback,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 // Mock dependencies
 vi.mock("@/lib/utils", () => ({
@@ -81,11 +77,7 @@ const TestDataFactories = {
 
 // Test utilities
 const TestUtils = {
-  renderComponent: (
-    Component: React.ComponentType<any>,
-    props = {},
-    children = "Test Content"
-  ) => {
+  renderComponent: (Component: React.ComponentType<any>, props = {}, children = "Test Content") => {
     const defaultProps = TestDataFactories.avatarProps(props);
     return render(React.createElement(Component, defaultProps, children));
   },
@@ -110,24 +102,15 @@ const TestUtils = {
     expect(component).toHaveAttribute("id", "test-id");
   },
 
-  expectClassNameMerging: (
-    expectedClasses: string,
-    customClass = "custom-class"
-  ) => {
+  expectClassNameMerging: (expectedClasses: string, customClass = "custom-class") => {
     expect(cn).toHaveBeenCalledWith(expectedClasses, customClass);
   },
 
-  expectImageClassNameMerging: (
-    expectedClasses: string,
-    customClass = "custom-image-class"
-  ) => {
+  expectImageClassNameMerging: (expectedClasses: string, customClass = "custom-image-class") => {
     expect(cn).toHaveBeenCalledWith(expectedClasses, customClass);
   },
 
-  expectFallbackClassNameMerging: (
-    expectedClasses: string,
-    customClass = "custom-fallback-class"
-  ) => {
+  expectFallbackClassNameMerging: (expectedClasses: string, customClass = "custom-fallback-class") => {
     expect(cn).toHaveBeenCalledWith(expectedClasses, customClass);
   },
 
@@ -136,15 +119,9 @@ const TestUtils = {
 
     return render(
       <Avatar data-testid="complete-avatar">
-        <AvatarImage
-          src={avatarProps.src}
-          alt={avatarProps.alt}
-          data-testid="avatar-image"
-        />
-        <AvatarFallback data-testid="avatar-fallback">
-          {avatarProps.fallback}
-        </AvatarFallback>
-      </Avatar>
+        <AvatarImage src={avatarProps.src} alt={avatarProps.alt} data-testid="avatar-image" />
+        <AvatarFallback data-testid="avatar-fallback">{avatarProps.fallback}</AvatarFallback>
+      </Avatar>,
     );
   },
 };
@@ -161,20 +138,14 @@ describe("Avatar Components", () => {
 
       TestUtils.expectBasicRendering(avatar, "avatar");
       TestUtils.expectPropsForwarded(avatar);
-      TestUtils.expectClassNameMerging(
-        "relative flex size-8 shrink-0 overflow-hidden rounded-full"
-      );
+      TestUtils.expectClassNameMerging("relative flex size-8 shrink-0 overflow-hidden rounded-full");
     });
 
     test("forwards all props to Radix Root", () => {
       render(
-        <Avatar
-          data-testid="root-test"
-          role="img"
-          aria-label="User profile picture"
-        >
+        <Avatar data-testid="root-test" role="img" aria-label="User profile picture">
           Avatar Content
-        </Avatar>
+        </Avatar>,
       );
 
       const avatar = screen.getByTestId("root-test");
@@ -184,21 +155,16 @@ describe("Avatar Components", () => {
     });
 
     test("handles custom className merging", () => {
-      render(
-        <Avatar className="custom-avatar" data-testid="custom-avatar" />
-      );
+      render(<Avatar className="custom-avatar" data-testid="custom-avatar" />);
 
-      TestUtils.expectClassNameMerging(
-        "relative flex size-8 shrink-0 overflow-hidden rounded-full",
-        "custom-avatar"
-      );
+      TestUtils.expectClassNameMerging("relative flex size-8 shrink-0 overflow-hidden rounded-full", "custom-avatar");
     });
 
     test("renders children correctly", () => {
       render(
         <Avatar data-testid="avatar-with-children">
           <div>Child Content</div>
-        </Avatar>
+        </Avatar>,
       );
 
       const avatar = screen.getByTestId("avatar-with-children");
@@ -210,7 +176,7 @@ describe("Avatar Components", () => {
         <Avatar data-testid="multi-children">
           <AvatarImage src="test.jpg" alt="Test" />
           <AvatarFallback>FB</AvatarFallback>
-        </Avatar>
+        </Avatar>,
       );
 
       const avatar = screen.getByTestId("multi-children");
@@ -230,13 +196,7 @@ describe("Avatar Components", () => {
     });
 
     test("forwards image props correctly", () => {
-      render(
-        <AvatarImage
-          src="https://example.com/user.jpg"
-          alt="User profile"
-          data-testid="img-props"
-        />
-      );
+      render(<AvatarImage src="https://example.com/user.jpg" alt="User profile" data-testid="img-props" />);
 
       const image = screen.getByTestId("img-props");
       expect(image).toHaveAttribute("src", "https://example.com/user.jpg");
@@ -245,13 +205,7 @@ describe("Avatar Components", () => {
     });
 
     test("handles custom className merging", () => {
-      render(
-        <AvatarImage
-          src="test.jpg"
-          className="custom-img"
-          data-testid="custom-img"
-        />
-      );
+      render(<AvatarImage src="test.jpg" className="custom-img" data-testid="custom-img" />);
 
       TestUtils.expectImageClassNameMerging("aspect-square size-full", "custom-img");
     });
@@ -273,7 +227,7 @@ describe("Avatar Components", () => {
           alt="Loading test"
           onLoadingStatusChange={onLoadingStatusChange}
           data-testid="loading-img"
-        />
+        />,
       );
 
       await waitFor(() => {
@@ -282,15 +236,7 @@ describe("Avatar Components", () => {
     });
 
     test("supports additional image attributes", () => {
-      render(
-        <AvatarImage
-          src="test.jpg"
-          alt="Test"
-          loading="lazy"
-          crossOrigin="anonymous"
-          data-testid="img-attrs"
-        />
-      );
+      render(<AvatarImage src="test.jpg" alt="Test" loading="lazy" crossOrigin="anonymous" data-testid="img-attrs" />);
 
       const image = screen.getByTestId("img-attrs");
       expect(image).toHaveAttribute("loading", "lazy");
@@ -304,15 +250,11 @@ describe("Avatar Components", () => {
       const fallback = screen.getByTestId("test-fallback");
 
       TestUtils.expectBasicRendering(fallback, "avatar-fallback");
-      TestUtils.expectFallbackClassNameMerging(
-        "bg-muted flex size-full items-center justify-center rounded-full"
-      );
+      TestUtils.expectFallbackClassNameMerging("bg-muted flex size-full items-center justify-center rounded-full");
     });
 
     test("renders fallback text correctly", () => {
-      render(
-        <AvatarFallback data-testid="fallback-text">JD</AvatarFallback>
-      );
+      render(<AvatarFallback data-testid="fallback-text">JD</AvatarFallback>);
 
       const fallback = screen.getByTestId("fallback-text");
       expect(fallback).toHaveTextContent("JD");
@@ -320,17 +262,14 @@ describe("Avatar Components", () => {
 
     test("handles custom className merging", () => {
       render(
-        <AvatarFallback
-          className="custom-fallback"
-          data-testid="custom-fallback"
-        >
+        <AvatarFallback className="custom-fallback" data-testid="custom-fallback">
           CF
-        </AvatarFallback>
+        </AvatarFallback>,
       );
 
       TestUtils.expectFallbackClassNameMerging(
         "bg-muted flex size-full items-center justify-center rounded-full",
-        "custom-fallback"
+        "custom-fallback",
       );
     });
 
@@ -338,7 +277,7 @@ describe("Avatar Components", () => {
       render(
         <AvatarFallback delayMs={600} data-testid="delayed-fallback">
           DL
-        </AvatarFallback>
+        </AvatarFallback>,
       );
 
       const fallback = screen.getByTestId("delayed-fallback");
@@ -350,7 +289,7 @@ describe("Avatar Components", () => {
         <AvatarFallback data-testid="complex-fallback">
           <span>Complex</span>
           <strong>Fallback</strong>
-        </AvatarFallback>
+        </AvatarFallback>,
       );
 
       const fallback = screen.getByTestId("complex-fallback");
@@ -361,13 +300,9 @@ describe("Avatar Components", () => {
 
     test("forwards all props to Radix Fallback", () => {
       render(
-        <AvatarFallback
-          data-testid="props-fallback"
-          role="img"
-          aria-label="Fallback content"
-        >
+        <AvatarFallback data-testid="props-fallback" role="img" aria-label="Fallback content">
           FB
-        </AvatarFallback>
+        </AvatarFallback>,
       );
 
       const fallback = screen.getByTestId("props-fallback");
@@ -406,13 +341,9 @@ describe("Avatar Components", () => {
     test("handles image and fallback together", () => {
       render(
         <Avatar data-testid="complete">
-          <AvatarImage
-            src="https://example.com/avatar.jpg"
-            alt="John Doe"
-            data-testid="img"
-          />
+          <AvatarImage src="https://example.com/avatar.jpg" alt="John Doe" data-testid="img" />
           <AvatarFallback data-testid="fb">JD</AvatarFallback>
-        </Avatar>
+        </Avatar>,
       );
 
       expect(screen.getByTestId("complete")).toBeInTheDocument();
@@ -432,7 +363,7 @@ describe("Avatar Components", () => {
             <AvatarImage src="user2.jpg" alt="User 2" />
             <AvatarFallback>U2</AvatarFallback>
           </Avatar>
-        </>
+        </>,
       );
 
       expect(screen.getByTestId("avatar-1")).toBeInTheDocument();
@@ -451,13 +382,7 @@ describe("Avatar Components", () => {
       ];
 
       components.forEach(({ Component, name }, index) => {
-        render(
-          React.createElement(
-            Component,
-            { "data-testid": `null-test-${index}`, className: null },
-            null
-          )
-        );
+        render(React.createElement(Component, { "data-testid": `null-test-${index}`, className: null }, null));
         const element = screen.getByTestId(`null-test-${index}`);
         expect(element).toBeInTheDocument();
       });
@@ -472,11 +397,7 @@ describe("Avatar Components", () => {
 
     test("handles special characters in fallback", () => {
       const specialContent = "!@#$%^&*()";
-      render(
-        <AvatarFallback data-testid="special-chars">
-          {specialContent}
-        </AvatarFallback>
-      );
+      render(<AvatarFallback data-testid="special-chars">{specialContent}</AvatarFallback>);
       const fallback = screen.getByTestId("special-chars");
 
       expect(fallback).toHaveTextContent(specialContent);
@@ -489,7 +410,7 @@ describe("Avatar Components", () => {
             <AvatarImage src="test.jpg" alt="Test" />
             <AvatarFallback>FB</AvatarFallback>
           </React.Fragment>
-        </Avatar>
+        </Avatar>,
       );
 
       const avatar = screen.getByTestId("fragment-avatar");
@@ -498,11 +419,7 @@ describe("Avatar Components", () => {
 
     test("handles very long fallback text", () => {
       const longText = "ThisIsAVeryLongFallbackTextThatShouldBeHandled";
-      render(
-        <AvatarFallback data-testid="long-fallback">
-          {longText}
-        </AvatarFallback>
-      );
+      render(<AvatarFallback data-testid="long-fallback">{longText}</AvatarFallback>);
 
       const fallback = screen.getByTestId("long-fallback");
       expect(fallback).toHaveTextContent(longText);
@@ -522,7 +439,7 @@ describe("Avatar Components", () => {
         <Avatar data-testid="conditional">
           {showImage && <AvatarImage src="test.jpg" alt="Test" />}
           <AvatarFallback>FB</AvatarFallback>
-        </Avatar>
+        </Avatar>,
       );
 
       expect(screen.getByTestId("radix-avatar-image")).toBeInTheDocument();
@@ -545,13 +462,7 @@ describe("Avatar Components", () => {
     });
 
     test("image has proper alt text", () => {
-      render(
-        <AvatarImage
-          src="user.jpg"
-          alt="John Doe profile picture"
-          data-testid="accessible-img"
-        />
-      );
+      render(<AvatarImage src="user.jpg" alt="John Doe profile picture" data-testid="accessible-img" />);
 
       const image = screen.getByTestId("accessible-img");
       expect(image).toHaveAttribute("alt", "John Doe profile picture");
@@ -559,13 +470,9 @@ describe("Avatar Components", () => {
 
     test("fallback has proper accessibility attributes", () => {
       render(
-        <AvatarFallback
-          data-testid="accessible-fallback"
-          role="img"
-          aria-label="John Doe initials"
-        >
+        <AvatarFallback data-testid="accessible-fallback" role="img" aria-label="John Doe initials">
           JD
-        </AvatarFallback>
+        </AvatarFallback>,
       );
 
       const fallback = screen.getByTestId("accessible-fallback");
@@ -577,7 +484,7 @@ describe("Avatar Components", () => {
       render(
         <Avatar data-testid="keyboard-avatar" tabIndex={0}>
           <AvatarImage src="test.jpg" alt="Test" />
-        </Avatar>
+        </Avatar>,
       );
 
       const avatar = screen.getByTestId("keyboard-avatar");
@@ -589,7 +496,7 @@ describe("Avatar Components", () => {
         <Avatar>
           <AvatarImage src="user.jpg" alt="User profile" />
           <AvatarFallback aria-label="Fallback: JD">JD</AvatarFallback>
-        </Avatar>
+        </Avatar>,
       );
 
       const fallback = screen.getByText("JD");
@@ -606,34 +513,21 @@ describe("Avatar Components", () => {
       ];
 
       expectedSlots.forEach(({ Component, slot }, index) => {
-        render(
-          React.createElement(Component, { "data-testid": `slot-test-${index}` })
-        );
+        render(React.createElement(Component, { "data-testid": `slot-test-${index}` }));
         const element = screen.getByTestId(`slot-test-${index}`);
         expect(element).toHaveAttribute("data-slot", slot);
       });
     });
 
     test("data-slot attributes can be overridden via props", () => {
-      render(
-        <Avatar
-          data-testid="slot-override-test"
-          data-slot="custom-slot"
-        />
-      );
+      render(<Avatar data-testid="slot-override-test" data-slot="custom-slot" />);
       const avatar = screen.getByTestId("slot-override-test");
 
       expect(avatar).toHaveAttribute("data-slot", "custom-slot");
     });
 
     test("data-slot persists with custom classes", () => {
-      render(
-        <AvatarImage
-          src="test.jpg"
-          className="custom-class"
-          data-testid="slot-with-class"
-        />
-      );
+      render(<AvatarImage src="test.jpg" className="custom-class" data-testid="slot-with-class" />);
 
       const image = screen.getByTestId("slot-with-class");
       expect(image).toHaveAttribute("data-slot", "avatar-image");
@@ -645,16 +539,13 @@ describe("Avatar Components", () => {
       render(<Avatar data-testid="styled-avatar" />);
 
       // The default factory doesn't provide className for styled test
-      expect(cn).toHaveBeenCalledWith(
-        "relative flex size-8 shrink-0 overflow-hidden rounded-full",
-        undefined
-      );
+      expect(cn).toHaveBeenCalledWith("relative flex size-8 shrink-0 overflow-hidden rounded-full", undefined);
     });
 
     test("AvatarImage has correct default classes", () => {
       render(<AvatarImage src="test.jpg" data-testid="styled-image" />);
 
-      // The default factory doesn't provide className for styled test  
+      // The default factory doesn't provide className for styled test
       expect(cn).toHaveBeenCalledWith("aspect-square size-full", undefined);
     });
 
@@ -662,37 +553,24 @@ describe("Avatar Components", () => {
       render(<AvatarFallback data-testid="styled-fallback">FB</AvatarFallback>);
 
       // The default factory doesn't provide className for styled test
-      expect(cn).toHaveBeenCalledWith(
-        "bg-muted flex size-full items-center justify-center rounded-full",
-        undefined
-      );
+      expect(cn).toHaveBeenCalledWith("bg-muted flex size-full items-center justify-center rounded-full", undefined);
     });
 
     test("custom classes merge properly", () => {
       render(
         <Avatar className="w-16 h-16" data-testid="custom-size">
-          <AvatarImage
-            src="test.jpg"
-            className="object-cover"
-            data-testid="custom-img"
-          />
-          <AvatarFallback
-            className="bg-blue-500"
-            data-testid="custom-fallback"
-          >
+          <AvatarImage src="test.jpg" className="object-cover" data-testid="custom-img" />
+          <AvatarFallback className="bg-blue-500" data-testid="custom-fallback">
             FB
           </AvatarFallback>
-        </Avatar>
+        </Avatar>,
       );
 
-      expect(cn).toHaveBeenCalledWith(
-        "relative flex size-8 shrink-0 overflow-hidden rounded-full",
-        "w-16 h-16"
-      );
+      expect(cn).toHaveBeenCalledWith("relative flex size-8 shrink-0 overflow-hidden rounded-full", "w-16 h-16");
       expect(cn).toHaveBeenCalledWith("aspect-square size-full", "object-cover");
       expect(cn).toHaveBeenCalledWith(
         "bg-muted flex size-full items-center justify-center rounded-full",
-        "bg-blue-500"
+        "bg-blue-500",
       );
     });
   });

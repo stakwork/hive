@@ -251,9 +251,9 @@ describe("Workspace Member Management", () => {
     test("should throw error if GitHub username not found", async () => {
       mockedFindUserByGitHubUsername.mockResolvedValue(null);
 
-      await expect(
-        addWorkspaceMember("workspace1", "nonexistent", "DEVELOPER")
-      ).rejects.toThrow("User not found. They must sign up to Hive first.");
+      await expect(addWorkspaceMember("workspace1", "nonexistent", "DEVELOPER")).rejects.toThrow(
+        "User not found. They must sign up to Hive first.",
+      );
     });
 
     test("should throw error if user is already a member", async () => {
@@ -263,9 +263,9 @@ describe("Workspace Member Management", () => {
       });
       mockedFindActiveMember.mockResolvedValue({ id: "existing-member" });
 
-      await expect(
-        addWorkspaceMember("workspace1", "johndoe", "DEVELOPER")
-      ).rejects.toThrow("User is already a member of this workspace");
+      await expect(addWorkspaceMember("workspace1", "johndoe", "DEVELOPER")).rejects.toThrow(
+        "User is already a member of this workspace",
+      );
     });
 
     test("should throw error if user is the workspace owner", async () => {
@@ -276,9 +276,9 @@ describe("Workspace Member Management", () => {
       mockedFindActiveMember.mockResolvedValue(null);
       mockedIsWorkspaceOwner.mockResolvedValue(true);
 
-      await expect(
-        addWorkspaceMember("workspace1", "johndoe", "DEVELOPER")
-      ).rejects.toThrow("Cannot add workspace owner as a member");
+      await expect(addWorkspaceMember("workspace1", "johndoe", "DEVELOPER")).rejects.toThrow(
+        "Cannot add workspace owner as a member",
+      );
     });
 
     test("should reactivate previously removed member", async () => {
@@ -737,9 +737,7 @@ describe("Workspace Member Management", () => {
     test("should throw error if member not found", async () => {
       mockedFindActiveMember.mockResolvedValue(null);
 
-      await expect(
-        updateWorkspaceMemberRole("workspace1", "user1", "DEVELOPER")
-      ).rejects.toThrow("Member not found");
+      await expect(updateWorkspaceMemberRole("workspace1", "user1", "DEVELOPER")).rejects.toThrow("Member not found");
     });
 
     test("should throw error if trying to set same role", async () => {
@@ -749,9 +747,9 @@ describe("Workspace Member Management", () => {
       };
       mockedFindActiveMember.mockResolvedValue(memberWithAdminRole);
 
-      await expect(
-        updateWorkspaceMemberRole("workspace1", "user1", "ADMIN")
-      ).rejects.toThrow("Member already has this role");
+      await expect(updateWorkspaceMemberRole("workspace1", "user1", "ADMIN")).rejects.toThrow(
+        "Member already has this role",
+      );
     });
   });
 

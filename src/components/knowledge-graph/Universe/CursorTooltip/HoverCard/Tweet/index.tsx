@@ -1,33 +1,31 @@
-import CheckIcon from '@/components/Icons/CheckIcon'
-import PersonIcon from '@/components/Icons/PersonIcon'
-import { Node } from '@Universe/types'
-import { FaBookmark, FaChartBar, FaComment, FaHeart, FaQuoteRight, FaRetweet } from 'react-icons/fa'
-import { TooltipContainer } from '../index'
-
-
+import CheckIcon from "@/components/Icons/CheckIcon";
+import PersonIcon from "@/components/Icons/PersonIcon";
+import { Node } from "@Universe/types";
+import { FaBookmark, FaChartBar, FaComment, FaHeart, FaQuoteRight, FaRetweet } from "react-icons/fa";
+import { TooltipContainer } from "../index";
 
 type MetricsProps = {
   metrics: {
-    impressions?: number
-    likes?: number
-    replies?: number
-    retweets?: number
-    quotes?: number
-    bookmarks?: number
-  }
-}
+    impressions?: number;
+    likes?: number;
+    replies?: number;
+    retweets?: number;
+    quotes?: number;
+    bookmarks?: number;
+  };
+};
 
 type Props = {
-  node: Node
-}
+  node: Node;
+};
 const MetricsBar = ({ metrics }: MetricsProps) => {
   const formatNumber = (num?: number) => {
     if (!num) {
-      return '0'
+      return "0";
     }
 
-    return num.toLocaleString()
-  }
+    return num.toLocaleString();
+  };
 
   return (
     <div className="flex flex-row gap-3 mt-1 w-full justify-center items-center flex-wrap px-2.5">
@@ -80,12 +78,12 @@ const MetricsBar = ({ metrics }: MetricsProps) => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
 export const Tweet = ({ node }: Props) => {
-  const properties = node.properties || {}
-  const nodeType = node.node_type
+  const properties = node.properties || {};
+  const nodeType = node.node_type;
 
   const {
     text,
@@ -101,28 +99,28 @@ export const Tweet = ({ node }: Props) => {
     alias,
     verified,
   } = properties as {
-    text?: string
-    tweet_id?: string
-    impression_count?: number
-    like_count?: number
-    reply_count?: number
-    retweet_count?: number
-    quote_count?: number
-    bookmark_count?: number
-    image_url?: string
-    twitter_handle?: string
-    alias?: string
-    verified?: boolean
+    text?: string;
+    tweet_id?: string;
+    impression_count?: number;
+    like_count?: number;
+    reply_count?: number;
+    retweet_count?: number;
+    quote_count?: number;
+    bookmark_count?: number;
+    image_url?: string;
+    twitter_handle?: string;
+    alias?: string;
+    verified?: boolean;
+  };
+
+  let postUrl = "";
+
+  if (nodeType === "Tweet" && tweetId && twitterHandle) {
+    postUrl = `https://x.com/${twitterHandle}/status/${tweetId}`;
   }
 
-  let postUrl = ''
-
-  if (nodeType === 'Tweet' && tweetId && twitterHandle) {
-    postUrl = `https://x.com/${twitterHandle}/status/${tweetId}`
-  }
-
-  const displayName = alias || twitterHandle || ''
-  const displaySubName = twitterHandle || alias || ''
+  const displayName = alias || twitterHandle || "";
+  const displaySubName = twitterHandle || alias || "";
 
   return (
     <TooltipContainer>
@@ -130,11 +128,7 @@ export const Tweet = ({ node }: Props) => {
         <div className="flex flex-row w-full gap-3">
           <div className="flex-shrink-0 w-10">
             {imageUrl ? (
-              <img
-                alt={displayName}
-                src={imageUrl}
-                className="w-10 h-10 rounded-full object-cover"
-              />
+              <img alt={displayName} src={imageUrl} className="w-10 h-10 rounded-full object-cover" />
             ) : (
               <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-white text-2xl">
                 <PersonIcon />
@@ -187,6 +181,5 @@ export const Tweet = ({ node }: Props) => {
         />
       </div>
     </TooltipContainer>
-  )
-}
-
+  );
+};

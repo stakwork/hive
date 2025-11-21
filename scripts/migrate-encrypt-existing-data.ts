@@ -1,9 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import {
-  EncryptableField,
-  EncryptionService,
-  encryptEnvVars,
-} from "@/lib/encryption";
+import { EncryptableField, EncryptionService, encryptEnvVars } from "@/lib/encryption";
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig({ path: ".env.local" });
 
@@ -30,10 +26,7 @@ async function isAlreadyEncrypted(value: string | null): Promise<boolean> {
 
 async function encryptValue(fieldName: string, value: string): Promise<string> {
   try {
-    const encrypted = encryptionService.encryptField(
-      fieldName as EncryptableField,
-      value,
-    );
+    const encrypted = encryptionService.encryptField(fieldName as EncryptableField, value);
     return JSON.stringify(encrypted);
   } catch (error) {
     console.error(`Failed to encrypt ${fieldName}:`, error);
@@ -60,11 +53,7 @@ function logStats(label: string, stats: MigrationStats) {
 async function migrateAccounts(stats: MigrationStats): Promise<void> {
   const accounts = await prisma.account.findMany({
     where: {
-      OR: [
-        { access_token: { not: null } },
-        { refresh_token: { not: null } },
-        { id_token: { not: null } },
-      ],
+      OR: [{ access_token: { not: null } }, { refresh_token: { not: null } }, { id_token: { not: null } }],
     },
     select: {
       id: true,
@@ -79,24 +68,12 @@ async function migrateAccounts(stats: MigrationStats): Promise<void> {
       stats.processed++;
       const data: Record<string, string> = {};
       let updated = false;
-      if (
-        account.access_token &&
-        !(await isAlreadyEncrypted(account.access_token))
-      ) {
-        data.access_token = await encryptValue(
-          "access_token",
-          account.access_token,
-        );
+      if (account.access_token && !(await isAlreadyEncrypted(account.access_token))) {
+        data.access_token = await encryptValue("access_token", account.access_token);
         updated = true;
       }
-      if (
-        account.refresh_token &&
-        !(await isAlreadyEncrypted(account.refresh_token))
-      ) {
-        data.refresh_token = await encryptValue(
-          "refresh_token",
-          account.refresh_token,
-        );
+      if (account.refresh_token && !(await isAlreadyEncrypted(account.refresh_token))) {
+        data.refresh_token = await encryptValue("refresh_token", account.refresh_token);
         updated = true;
       }
       if (account.id_token && !(await isAlreadyEncrypted(account.id_token))) {
@@ -138,16 +115,10 @@ async function migrateSwarms(stats: MigrationStats): Promise<void> {
           try {
             const parsed = JSON.parse(swarm.environmentVariables);
             if (Array.isArray(parsed)) {
-              const encArr = encryptEnvVars(
-                parsed as Array<{ name: string; value: string }>,
-              );
-              (
-                updateData as unknown as { environmentVariables: unknown }
-              ).environmentVariables = encArr;
+              const encArr = encryptEnvVars(parsed as Array<{ name: string; value: string }>);
+              (updateData as unknown as { environmentVariables: unknown }).environmentVariables = encArr;
               updated = true;
-            } else if (
-              !(await isAlreadyEncrypted(swarm.environmentVariables))
-            ) {
+            } else if (!(await isAlreadyEncrypted(swarm.environmentVariables))) {
               // legacy single-string case; leave as-is for compatibility
             }
           } catch {
@@ -165,27 +136,19 @@ async function migrateSwarms(stats: MigrationStats): Promise<void> {
               value: String(ev.value ?? ""),
             }));
             const encArr = encryptEnvVars(plain);
-            (
-              updateData as unknown as { environmentVariables: unknown }
-            ).environmentVariables = encArr;
+            (updateData as unknown as { environmentVariables: unknown }).environmentVariables = encArr;
             updated = true;
           }
         }
       }
 
       if (swarm.swarmApiKey && !(await isAlreadyEncrypted(swarm.swarmApiKey))) {
-        updateData.swarmApiKey = await encryptValue(
-          "swarmApiKey",
-          swarm.swarmApiKey,
-        );
+        updateData.swarmApiKey = await encryptValue("swarmApiKey", swarm.swarmApiKey);
         updated = true;
       }
 
       if (swarm.poolApiKey && !(await isAlreadyEncrypted(swarm.poolApiKey))) {
-        updateData.poolApiKey = await encryptValue(
-          "poolApiKey",
-          swarm.poolApiKey,
-        );
+        updateData.poolApiKey = await encryptValue("poolApiKey", swarm.poolApiKey);
         updated = true;
       }
 
@@ -245,18 +208,12 @@ async function migrateWorkspaces(stats: MigrationStats): Promise<void> {
   for (const workspace of workspaces) {
     try {
       stats.processed++;
-      if (
-        !workspace.stakworkApiKey ||
-        (await isAlreadyEncrypted(workspace.stakworkApiKey))
-      ) {
+      if (!workspace.stakworkApiKey || (await isAlreadyEncrypted(workspace.stakworkApiKey))) {
         stats.skipped++;
         continue;
       }
 
-      const encryptedKey = await encryptValue(
-        "stakworkApiKey",
-        workspace.stakworkApiKey,
-      );
+      const encryptedKey = await encryptValue("stakworkApiKey", workspace.stakworkApiKey);
 
       await prisma.workspace.update({
         where: { id: workspace.id },

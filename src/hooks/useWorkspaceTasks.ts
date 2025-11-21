@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  TaskTitleUpdateEvent,
-  usePusherConnection,
-} from "@/hooks/usePusherConnection";
+import { TaskTitleUpdateEvent, usePusherConnection } from "@/hooks/usePusherConnection";
 import { WorkflowStatus } from "@/lib/chat";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
@@ -98,7 +95,7 @@ export function useWorkspaceTasks(
   workspaceSlug?: string | null,
   includeNotifications: boolean = false,
   pageLimit: number = 5,
-  showArchived: boolean = false
+  showArchived: boolean = false,
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -108,71 +105,26 @@ export function useWorkspaceTasks(
   const [currentPage, setCurrentPage] = useState(1);
   const [isRestoringFromStorage, setIsRestoringFromStorage] = useState(false);
 
-  const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications, limit: number = pageLimit) => {
-    if (!workspaceId || !session?.user) {
-      setTasks([]);
-      setPagination(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const archivedParam = showArchived ? '&includeArchived=true' : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
-
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch tasks: ${response.statusText}`);
+  const fetchTasks = useCallback(
+    async (
+      page: number,
+      reset: boolean = false,
+      includeLatestMessage: boolean = includeNotifications,
+      limit: number = pageLimit,
+    ) => {
+      if (!workspaceId || !session?.user) {
+        setTasks([]);
+        setPagination(null);
+        return;
       }
 
-      const result = await response.json();
+      setLoading(true);
+      setError(null);
 
-      if (result.success && Array.isArray(result.data)) {
-        setTasks(prevTasks => reset ? result.data : [...prevTasks, ...result.data]);
-        setPagination(result.pagination);
-      } else {
-        throw new Error("Invalid response format");
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to fetch tasks";
-      setError(errorMessage);
-      console.error("Error fetching workspace tasks:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived]);
+      try {
+        const archivedParam = showArchived ? "&includeArchived=true" : "";
+        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? "&includeLatestMessage=true" : ""}${archivedParam}`;
 
-  // Function to restore state from sessionStorage by fetching all pages up to stored page
-  const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
-    if (!workspaceId || !session?.user) return;
-
-    const storedPage = getStoredPage(workspaceId);
-    if (storedPage <= 1) {
-      // No stored state or already at initial state, proceed with normal fetch
-      await fetchTasks(1, true, includeLatestMessage);
-      return;
-    }
-
-    setIsRestoringFromStorage(true);
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Fetch all pages from 1 to storedPage to rebuild the complete tasks array
-      const allTasks: TaskData[] = [];
-      let finalPagination: PaginationData | null = null;
-
-      for (let page = 1; page <= storedPage; page++) {
-        const archivedParam = showArchived ? '&includeArchived=true' : '';
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -187,37 +139,93 @@ export function useWorkspaceTasks(
         const result = await response.json();
 
         if (result.success && Array.isArray(result.data)) {
-          allTasks.push(...result.data);
-          finalPagination = result.pagination;
+          setTasks((prevTasks) => (reset ? result.data : [...prevTasks, ...result.data]));
+          setPagination(result.pagination);
         } else {
           throw new Error("Invalid response format");
         }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch tasks";
+        setError(errorMessage);
+        console.error("Error fetching workspace tasks:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [workspaceId, session?.user, includeNotifications, pageLimit, showArchived],
+  );
+
+  // Function to restore state from sessionStorage by fetching all pages up to stored page
+  const restoreFromStorage = useCallback(
+    async (includeLatestMessage: boolean = includeNotifications) => {
+      if (!workspaceId || !session?.user) return;
+
+      const storedPage = getStoredPage(workspaceId);
+      if (storedPage <= 1) {
+        // No stored state or already at initial state, proceed with normal fetch
+        await fetchTasks(1, true, includeLatestMessage);
+        return;
       }
 
-      setTasks(allTasks);
-      setPagination(finalPagination);
-      setCurrentPage(storedPage);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to restore tasks from storage";
-      setError(errorMessage);
-      console.error("Error restoring workspace tasks from storage:", err);
-      // Clear invalid stored state and fallback to normal fetch
-      clearStoredPage(workspaceId);
-      await fetchTasks(1, true, includeLatestMessage);
-    } finally {
-      setLoading(false);
-      setIsRestoringFromStorage(false);
-    }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived]);
+      setIsRestoringFromStorage(true);
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Fetch all pages from 1 to storedPage to rebuild the complete tasks array
+        const allTasks: TaskData[] = [];
+        let finalPagination: PaginationData | null = null;
+
+        for (let page = 1; page <= storedPage; page++) {
+          const archivedParam = showArchived ? "&includeArchived=true" : "";
+          const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? "&includeLatestMessage=true" : ""}${archivedParam}`;
+          const response = await fetch(url, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch tasks: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+
+          if (result.success && Array.isArray(result.data)) {
+            allTasks.push(...result.data);
+            finalPagination = result.pagination;
+          } else {
+            throw new Error("Invalid response format");
+          }
+        }
+
+        setTasks(allTasks);
+        setPagination(finalPagination);
+        setCurrentPage(storedPage);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to restore tasks from storage";
+        setError(errorMessage);
+        console.error("Error restoring workspace tasks from storage:", err);
+        // Clear invalid stored state and fallback to normal fetch
+        clearStoredPage(workspaceId);
+        await fetchTasks(1, true, includeLatestMessage);
+      } finally {
+        setLoading(false);
+        setIsRestoringFromStorage(false);
+      }
+    },
+    [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived],
+  );
 
   // Handle real-time task title updates (also handles archive status changes)
   const handleTaskTitleUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
-      setTasks(prevTasks => {
+      setTasks((prevTasks) => {
         // If task is archived/unarchived, remove it from current list
         // (it will now belong to the opposite tab)
-        if ('archived' in update && update.archived !== showArchived) {
-          const filteredTasks = prevTasks.filter(task => task.id !== update.taskId);
+        if ("archived" in update && update.archived !== showArchived) {
+          const filteredTasks = prevTasks.filter((task) => task.id !== update.taskId);
 
           // Fetch exactly 1 replacement item to maintain the same total count
           // Use setTimeout to avoid state updates during render
@@ -236,11 +244,7 @@ export function useWorkspaceTasks(
         }
 
         // Otherwise update the task in place
-        return prevTasks.map(task =>
-          task.id === update.taskId
-            ? { ...task, title: update.newTitle }
-            : task
-        );
+        return prevTasks.map((task) => (task.id === update.taskId ? { ...task, title: update.newTitle } : task));
       });
     },
     [showArchived, fetchTasks, currentPage, includeNotifications, pagination?.hasMore],
@@ -263,14 +267,17 @@ export function useWorkspaceTasks(
     }
   }, [fetchTasks, pagination?.hasMore, currentPage, workspaceId]);
 
-  const refetch = useCallback(async (includeLatestMessage?: boolean) => {
-    if (workspaceId) {
-      // Clear stored state when explicitly refetching (e.g., on refresh)
-      clearStoredPage(workspaceId);
-    }
-    setCurrentPage(1);
-    await fetchTasks(1, true, includeLatestMessage);
-  }, [fetchTasks, workspaceId]);
+  const refetch = useCallback(
+    async (includeLatestMessage?: boolean) => {
+      if (workspaceId) {
+        // Clear stored state when explicitly refetching (e.g., on refresh)
+        clearStoredPage(workspaceId);
+      }
+      setCurrentPage(1);
+      await fetchTasks(1, true, includeLatestMessage);
+    },
+    [fetchTasks, workspaceId],
+  );
 
   useEffect(() => {
     // Use restoreFromStorage instead of refetch to maintain state across navigation

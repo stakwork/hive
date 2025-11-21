@@ -57,12 +57,9 @@ async function graphApiRequest(graphUrl: string, apiKey: string, params: Record<
   return { ok: true, status: response.status, data };
 }
 
-async function fetchE2eTestsFromGraph(
-  swarmUrl: string,
-  swarmApiKey: string
-): Promise<E2eTestNode[]> {
+async function fetchE2eTestsFromGraph(swarmUrl: string, swarmApiKey: string): Promise<E2eTestNode[]> {
   try {
-    const graphPort = process.env.GRAPH_SERVICE_PORT || '3355';
+    const graphPort = process.env.GRAPH_SERVICE_PORT || "3355";
     const swarmUrlObj = new URL(swarmUrl);
     const graphUrl = `https://${swarmUrlObj.hostname}:${graphPort}`;
 
@@ -117,24 +114,18 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
 
   console.log(`✅ Workspace found: ${workspace.name}`);
   console.log(`   Swarm URL: ${workspace.swarm.swarmUrl}`);
-  console.log(`   Repository: ${workspace.repositories[0]?.repositoryUrl || 'not configured'}`);
+  console.log(`   Repository: ${workspace.repositories[0]?.repositoryUrl || "not configured"}`);
 
   // Fetch tests from graph
   console.log(`\n📊 Fetching tests from graph...`);
-  const decryptedApiKey = encryptionService.decryptField(
-    "swarmApiKey",
-    workspace.swarm.swarmApiKey
-  );
-  const graphTests = await fetchE2eTestsFromGraph(
-    workspace.swarm.swarmUrl,
-    decryptedApiKey
-  );
+  const decryptedApiKey = encryptionService.decryptField("swarmApiKey", workspace.swarm.swarmApiKey);
+  const graphTests = await fetchE2eTestsFromGraph(workspace.swarm.swarmUrl, decryptedApiKey);
 
   console.log(`   Found ${graphTests.length} test cases in graph`);
 
   // Group tests by file path (matching migration script behavior)
   const testsByFile = new Map<string, E2eTestNode>();
-  graphTests.forEach(test => {
+  graphTests.forEach((test) => {
     const filePath = test.properties.file;
     // Only keep the first test case we encounter for each file
     if (!testsByFile.has(filePath)) {
@@ -167,8 +158,8 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
 
   // Group tests by test_kind
   const testsByKind: Record<string, E2eTestNode[]> = {};
-  uniqueTestFiles.forEach(test => {
-    const kind = test.properties.test_kind || 'unknown';
+  uniqueTestFiles.forEach((test) => {
+    const kind = test.properties.test_kind || "unknown";
     if (!testsByKind[kind]) {
       testsByKind[kind] = [];
     }
@@ -183,8 +174,8 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
     });
 
   // Create lookup map for database tasks
-  const dbTasksByPath = new Map<string, typeof dbTasks[0]>();
-  dbTasks.forEach(task => {
+  const dbTasksByPath = new Map<string, (typeof dbTasks)[0]>();
+  dbTasks.forEach((task) => {
     if (task.testFilePath) {
       dbTasksByPath.set(task.testFilePath, task);
     }
@@ -199,15 +190,15 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
   if (uniqueTestFiles.length > dbTasks.length) {
     console.log(`\n❌ Missing Test Files (in graph but not in database):\n`);
 
-    const missingTestFiles = uniqueTestFiles.filter(test => {
+    const missingTestFiles = uniqueTestFiles.filter((test) => {
       return !dbTasksByPath.has(test.properties.file);
     });
 
     missingTestFiles.forEach((test, index) => {
-      const fileName = test.properties.file.split('/').pop() || test.properties.file;
+      const fileName = test.properties.file.split("/").pop() || test.properties.file;
       console.log(`   ${index + 1}. ${fileName}`);
       console.log(`      File: ${test.properties.file}`);
-      console.log(`      Kind: ${test.properties.test_kind || 'unknown'}`);
+      console.log(`      Kind: ${test.properties.test_kind || "unknown"}`);
       console.log(`      Ref ID: ${test.ref_id}`);
       console.log();
     });
@@ -215,8 +206,8 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
     // Analyze why they might be missing
     console.log(`\n📋 Potential Issues:`);
     const missingByKind: Record<string, number> = {};
-    missingTestFiles.forEach(test => {
-      const kind = test.properties.test_kind || 'unknown';
+    missingTestFiles.forEach((test) => {
+      const kind = test.properties.test_kind || "unknown";
       missingByKind[kind] = (missingByKind[kind] || 0) + 1;
     });
 
@@ -238,50 +229,50 @@ async function validateWorkspace(workspaceSlug: string): Promise<void> {
   }
 
   // Show detailed comparison
-  console.log(`\n\n${'='.repeat(80)}`);
+  console.log(`\n\n${"=".repeat(80)}`);
   console.log(`📝 Detailed Comparison`);
-  console.log(`${'='.repeat(80)}\n`);
+  console.log(`${"=".repeat(80)}\n`);
 
   console.log(`Graph Test Files:`);
   uniqueTestFiles.forEach((test, index) => {
     const inDb = dbTasksByPath.has(test.properties.file);
-    const status = inDb ? '✅' : '❌';
-    const fileName = test.properties.file.split('/').pop() || test.properties.file;
+    const status = inDb ? "✅" : "❌";
+    const fileName = test.properties.file.split("/").pop() || test.properties.file;
     console.log(`   ${status} ${index + 1}. ${fileName}`);
     console.log(`      Path: ${test.properties.file}`);
-    console.log(`      Kind: ${test.properties.test_kind || 'unknown'}`);
+    console.log(`      Kind: ${test.properties.test_kind || "unknown"}`);
     if (inDb) {
       const task = dbTasksByPath.get(test.properties.file)!;
       console.log(`      Task ID: ${task.id}`);
       console.log(`      Task Title: ${task.title}`);
-      console.log(`      Status: ${task.status} / ${task.workflowStatus || 'N/A'}`);
+      console.log(`      Status: ${task.status} / ${task.workflowStatus || "N/A"}`);
     }
     console.log();
   });
 }
 
 async function main() {
-  console.log('🚀 E2E Test Migration Validation\n');
+  console.log("🚀 E2E Test Migration Validation\n");
 
   const args = process.argv.slice(2);
-  const workspaceArg = args.find(arg => arg.startsWith('--workspace='));
+  const workspaceArg = args.find((arg) => arg.startsWith("--workspace="));
 
   if (!workspaceArg) {
-    console.error('❌ Missing argument. Usage:');
-    console.error('   npm run validate:e2e-migration -- --workspace=<workspace-slug>');
+    console.error("❌ Missing argument. Usage:");
+    console.error("   npm run validate:e2e-migration -- --workspace=<workspace-slug>");
     process.exit(1);
   }
 
-  const workspaceSlug = workspaceArg.split('=')[1];
+  const workspaceSlug = workspaceArg.split("=")[1];
   if (!workspaceSlug) {
-    console.error('❌ Invalid workspace argument');
+    console.error("❌ Invalid workspace argument");
     process.exit(1);
   }
 
   try {
     await validateWorkspace(workspaceSlug);
   } catch (error) {
-    console.error('\n❌ Validation failed:', error);
+    console.error("\n❌ Validation failed:", error);
     process.exit(1);
   } finally {
     await prisma.$disconnect();

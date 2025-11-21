@@ -15,12 +15,7 @@ interface RepositoryPermissionStatus {
   };
 }
 
-export default function RepositoryForm({
-  data,
-  errors,
-  loading,
-  onChange,
-}: FormSectionProps<RepositoryData>) {
+export default function RepositoryForm({ data, errors, loading, onChange }: FormSectionProps<RepositoryData>) {
   const {
     permissions,
     loading: permissionLoading,
@@ -78,14 +73,14 @@ export default function RepositoryForm({
   const handleRepositoryChange = (index: number, field: keyof Repository, value: string) => {
     const updatedRepos = [...data.repositories];
     updatedRepos[index] = { ...updatedRepos[index], [field]: value };
-    
+
     // Auto-infer repository name from URL when URL changes
     if (field === "repositoryUrl" && value) {
       const match = value.match(/\/([^/]+?)(?:\.git)?$/);
       const inferredName = match?.[1]?.replace(/\.git$/i, "") || "";
       updatedRepos[index].name = inferredName;
     }
-    
+
     onChange({ repositories: updatedRepos });
 
     if (field === "repositoryUrl") {

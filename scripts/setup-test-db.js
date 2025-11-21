@@ -3,9 +3,7 @@
 const { execSync } = require("child_process");
 const { PrismaClient } = require("@prisma/client");
 
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  "postgresql://test:test@localhost:5433/hive_test";
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL || "postgresql://test:test@localhost:5433/hive_test";
 
 async function setupTestDatabase() {
   console.log("🚀 Setting up test database...");
@@ -68,9 +66,7 @@ async function setupTestDatabase() {
     await prisma.$disconnect();
     console.log("✅ Test database setup complete!");
     console.log(`📊 Database URL: ${TEST_DATABASE_URL}`);
-    console.log(
-      "🧪 You can now run integration tests with: npm run test:integration",
-    );
+    console.log("🧪 You can now run integration tests with: npm run test:integration");
   } catch (error) {
     console.error("❌ Error setting up test database:", error);
     process.exit(1);

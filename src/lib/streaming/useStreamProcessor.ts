@@ -1,10 +1,5 @@
 import { useCallback } from "react";
-import type {
-  BaseStreamingMessage,
-  StreamProcessorConfig,
-  StreamEvent,
-  ToolCallStatus,
-} from "@/types/streaming";
+import type { BaseStreamingMessage, StreamProcessorConfig, StreamEvent, ToolCallStatus } from "@/types/streaming";
 import { DEFAULT_DEBOUNCE_MS } from "./constants";
 import { parseSSELine } from "./helpers";
 
@@ -34,22 +29,12 @@ interface InternalToolCall {
  * });
  */
 export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamingMessage>(
-  config: StreamProcessorConfig = {}
+  config: StreamProcessorConfig = {},
 ) {
-  const {
-    debounceMs = DEFAULT_DEBOUNCE_MS,
-    toolProcessors = {},
-    hiddenTools = [],
-    hiddenToolTextIds = {},
-  } = config;
+  const { debounceMs = DEFAULT_DEBOUNCE_MS, toolProcessors = {}, hiddenTools = [], hiddenToolTextIds = {} } = config;
 
   const processStream = useCallback(
-    async (
-      response: Response,
-      messageId: string,
-      onUpdate: (message: T) => void,
-      additionalFields?: Partial<T>
-    ) => {
+    async (response: Response, messageId: string, onUpdate: (message: T) => void, additionalFields?: Partial<T>) => {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -89,25 +74,29 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
           content: reasoningParts.get(id) || "",
         }));
 
-        const allToolCalls = toolCallsOrder.map((id) => {
-          const call = toolCalls.get(id);
-          return call ? { id, ...call } : null;
-        }).filter((call): call is NonNullable<typeof call> => call !== null);
+        const allToolCalls = toolCallsOrder
+          .map((id) => {
+            const call = toolCalls.get(id);
+            return call ? { id, ...call } : null;
+          })
+          .filter((call): call is NonNullable<typeof call> => call !== null);
 
         // Build timeline in insertion order
-        const timelineItems = timeline.map(item => {
-          if (item.type === "text") {
-            const textPart = allTextParts.find(p => p.id === item.id);
-            return textPart ? { type: "text" as const, id: item.id, data: textPart } : null;
-          } else if (item.type === "reasoning") {
-            const reasoningPart = allReasoningParts.find(p => p.id === item.id);
-            return reasoningPart ? { type: "reasoning" as const, id: item.id, data: reasoningPart } : null;
-          } else if (item.type === "toolCall") {
-            const toolCall = allToolCalls.find(t => t.id === item.id);
-            return toolCall ? { type: "toolCall" as const, id: item.id, data: toolCall } : null;
-          }
-          return null;
-        }).filter((item): item is NonNullable<typeof item> => item !== null);
+        const timelineItems = timeline
+          .map((item) => {
+            if (item.type === "text") {
+              const textPart = allTextParts.find((p) => p.id === item.id);
+              return textPart ? { type: "text" as const, id: item.id, data: textPart } : null;
+            } else if (item.type === "reasoning") {
+              const reasoningPart = allReasoningParts.find((p) => p.id === item.id);
+              return reasoningPart ? { type: "reasoning" as const, id: item.id, data: reasoningPart } : null;
+            } else if (item.type === "toolCall") {
+              const toolCall = allToolCalls.find((t) => t.id === item.id);
+              return toolCall ? { type: "toolCall" as const, id: item.id, data: toolCall } : null;
+            }
+            return null;
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null);
 
         return {
           id: messageId,
@@ -205,9 +194,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                 toolCalls.set(data.toolCallId, {
                   ...existing,
                   input: data.input,
-                  inputText: typeof data.input === "string"
-                    ? data.input
-                    : JSON.stringify(data.input, null, 2),
+                  inputText: typeof data.input === "string" ? data.input : JSON.stringify(data.input, null, 2),
                   status: "input-available",
                 });
                 // Update immediately when tool input is ready
@@ -289,12 +276,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
             }
 
             // Only update if there's content to show
-            if (
-              textParts.size > 0 ||
-              toolCalls.size > 0 ||
-              reasoningParts.size > 0 ||
-              error
-            ) {
+            if (textParts.size > 0 || toolCalls.size > 0 || reasoningParts.size > 0 || error) {
               debouncedUpdate();
             }
           } catch (parseError) {
@@ -311,7 +293,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       // Finalize
       onUpdate(buildMessage(false));
     },
-    [debounceMs, toolProcessors, hiddenTools, hiddenToolTextIds]
+    [debounceMs, toolProcessors, hiddenTools, hiddenToolTextIds],
   );
 
   return { processStream };

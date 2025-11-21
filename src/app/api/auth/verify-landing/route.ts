@@ -8,42 +8,30 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    let password = ""
+    let password = "";
     try {
       const body = await request.json();
-      password = body.password
+      password = body.password;
     } catch (error) {
-      return NextResponse.json(
-        { success: false, message: "Invalid or missing JSON body"},
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Invalid or missing JSON body" }, { status: 400 });
     }
 
     // Check if landing page password is set
     const landingPassword = process.env.LANDING_PAGE_PASSWORD;
     if (!landingPassword || landingPassword.trim() === "") {
-      return NextResponse.json(
-        { success: false, message: "Landing page password is not enabled" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Landing page password is not enabled" }, { status: 400 });
     }
 
     // Validate password input
     if (!password || typeof password !== "string") {
-      return NextResponse.json(
-        { success: false, message: "Password is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Password is required" }, { status: 400 });
     }
 
     // Use constant-time comparison to prevent timing attacks
     const isValid = constantTimeCompare(password, landingPassword);
 
     if (!isValid) {
-      return NextResponse.json(
-        { success: false, message: "Incorrect password" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, message: "Incorrect password" }, { status: 401 });
     }
 
     // Password correct - set signed verification cookie
@@ -63,9 +51,6 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("Error verifying landing page password:", error);
-    return NextResponse.json(
-      { success: false, message: "An error occurred" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: "An error occurred" }, { status: 500 });
   }
 }

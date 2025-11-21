@@ -13,15 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      title,
-      description,
-      budget,
-      skills,
-      name,
-      workflow_id,
-      workflow_params,
-    } = body;
+    const { title, description, budget, skills, name, workflow_id, workflow_params } = body;
 
     // Validate required fields
     if (!title || !description || budget === undefined || budget === null || !skills) {
@@ -60,9 +52,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(
-      { error: "Failed to create project" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create project" }, { status: 500 });
   }
 }

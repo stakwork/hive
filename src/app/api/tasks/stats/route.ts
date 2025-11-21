@@ -14,27 +14,17 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: "workspaceId query parameter is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
     }
 
     // Validate workspace access
     const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userOrResponse.id);
     if (!workspaceAccess.hasAccess) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
 
     // Get task statistics
-    const [
-      totalCount,
-      inProgressCount,
-      waitingForInputCount,
-    ] = await Promise.all([
+    const [totalCount, inProgressCount, waitingForInputCount] = await Promise.all([
       // Total tasks
       db.task.count({
         where: {
@@ -84,9 +74,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error fetching task statistics:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch task statistics" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch task statistics" }, { status: 500 });
   }
 }

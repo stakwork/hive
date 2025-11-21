@@ -1,8 +1,5 @@
 import type { Prisma, FeatureStatus, FeaturePriority, TaskStatus, Priority } from "@prisma/client";
-import type {
-  ApiSuccessResponse,
-  PaginatedApiResponse,
-} from "./common";
+import type { ApiSuccessResponse, PaginatedApiResponse } from "./common";
 import React from "react";
 import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
@@ -455,7 +452,7 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
   };
 }>;
 
-export type RoadmapTaskListItem = Omit<RoadmapTaskListItemBase, 'assignee'> & {
+export type RoadmapTaskListItem = Omit<RoadmapTaskListItemBase, "assignee"> & {
   assignee: AssigneeWithIcon | null;
 };
 
@@ -517,7 +514,7 @@ type RoadmapTaskDetailBase = Prisma.TaskGetPayload<{
   };
 }>;
 
-export type RoadmapTaskDetail = Omit<RoadmapTaskDetailBase, 'assignee'> & {
+export type RoadmapTaskDetail = Omit<RoadmapTaskDetailBase, "assignee"> & {
   assignee: AssigneeWithIcon | null;
 };
 

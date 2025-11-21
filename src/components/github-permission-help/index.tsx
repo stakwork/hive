@@ -12,10 +12,7 @@ interface GitHubPermissionHelpProps {
   onRetry?: () => void;
 }
 
-export function GitHubPermissionHelp({
-  repositoryUrl,
-  onRetry
-}: GitHubPermissionHelpProps) {
+export function GitHubPermissionHelp({ repositoryUrl, onRetry }: GitHubPermissionHelpProps) {
   const { slug } = useWorkspace();
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -44,7 +41,7 @@ export function GitHubPermissionHelp({
         },
         body: JSON.stringify({
           workspaceSlug: slug,
-          repositoryUrl: repositoryUrl
+          repositoryUrl: repositoryUrl,
         }),
       });
 
@@ -54,10 +51,10 @@ export function GitHubPermissionHelp({
         // Redirect to GitHub App installation
         window.location.href = data.data.link;
       } else {
-        console.error('Failed to generate installation link:', data);
+        console.error("Failed to generate installation link:", data);
       }
     } catch (error) {
-      console.error('Error generating installation link:', error);
+      console.error("Error generating installation link:", error);
     }
   };
 
@@ -68,9 +65,7 @@ export function GitHubPermissionHelp({
           <AlertTriangle className="w-5 h-5 text-orange-500" />
           <CardTitle className="text-lg">GitHub Permissions Required</CardTitle>
         </div>
-        <CardDescription>
-          Your workspace needs push permissions to the repository to function properly.
-        </CardDescription>
+        <CardDescription>Your workspace needs push permissions to the repository to function properly.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <Alert variant="destructive">
@@ -78,8 +73,8 @@ export function GitHubPermissionHelp({
           <div>
             <div className="font-medium mb-1">Push Permissions Required</div>
             <AlertDescription>
-              Your GitHub App installation only has read access to the repository.
-              Push permissions are required to create pull requests, make commits, and sync changes.
+              Your GitHub App installation only has read access to the repository. Push permissions are required to
+              create pull requests, make commits, and sync changes.
             </AlertDescription>
           </div>
         </Alert>
@@ -89,26 +84,38 @@ export function GitHubPermissionHelp({
 
           <div className="space-y-3 text-sm">
             <div className="flex items-start gap-3 p-3 border rounded-lg">
-              <div className="bg-blue-100 text-blue-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">1</div>
+              <div className="bg-blue-100 text-blue-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                1
+              </div>
               <div>
                 <p className="font-medium mb-1">Reinstall the GitHub App</p>
-                <p className="text-muted-foreground">Click the button below to reinstall the GitHub App with proper permissions.</p>
+                <p className="text-muted-foreground">
+                  Click the button below to reinstall the GitHub App with proper permissions.
+                </p>
               </div>
             </div>
 
             <div className="flex items-start gap-3 p-3 border rounded-lg">
-              <div className="bg-blue-100 text-blue-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">2</div>
+              <div className="bg-blue-100 text-blue-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                2
+              </div>
               <div>
                 <p className="font-medium mb-1">Grant Repository Access</p>
-                <p className="text-muted-foreground">When prompted, select the repository and ensure "Write" permissions are granted.</p>
+                <p className="text-muted-foreground">
+                  When prompted, select the repository and ensure "Write" permissions are granted.
+                </p>
               </div>
             </div>
 
             <div className="flex items-start gap-3 p-3 border rounded-lg">
-              <div className="bg-blue-100 text-blue-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">3</div>
+              <div className="bg-blue-100 text-blue-700 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                3
+              </div>
               <div>
                 <p className="font-medium mb-1">Complete Installation</p>
-                <p className="text-muted-foreground">After installation, you'll be redirected back to continue setup.</p>
+                <p className="text-muted-foreground">
+                  After installation, you'll be redirected back to continue setup.
+                </p>
               </div>
             </div>
           </div>
@@ -122,34 +129,22 @@ export function GitHubPermissionHelp({
         )}
 
         <div className="flex gap-3 pt-2">
-          <Button
-            onClick={handleReinstall}
-            disabled={!slug || !repositoryUrl}
-            className="flex-1"
-          >
+          <Button onClick={handleReinstall} disabled={!slug || !repositoryUrl} className="flex-1">
             <Settings className="w-4 h-4 mr-2" />
             Reinstall GitHub App
             <ExternalLink className="w-4 h-4 ml-2" />
           </Button>
 
-          <Button
-            variant="outline"
-            onClick={handleRetry}
-            disabled={isRetrying}
-          >
-            {isRetrying ? (
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
+          <Button variant="outline" onClick={handleRetry} disabled={isRetrying}>
+            {isRetrying ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             Check Again
           </Button>
         </div>
 
         <div className="text-xs text-muted-foreground pt-2 border-t">
           <p>
-            <strong>Note:</strong> If you're not an admin of the repository or organization,
-            you may need to request permissions from an administrator.
+            <strong>Note:</strong> If you're not an admin of the repository or organization, you may need to request
+            permissions from an administrator.
           </p>
         </div>
       </CardContent>

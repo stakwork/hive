@@ -53,13 +53,11 @@ describe("callStakworkAPI", () => {
     test("throws error when STAKWORK_API_KEY is missing", async () => {
       const { config } = await import("@/lib/env");
       const originalApiKey = config.STAKWORK_API_KEY;
-      
+
       // Temporarily unset the API key
       (config as any).STAKWORK_API_KEY = undefined;
 
-      await expect(callStakworkAPI(createTestParams())).rejects.toThrow(
-        "Stakwork configuration missing"
-      );
+      await expect(callStakworkAPI(createTestParams())).rejects.toThrow("Stakwork configuration missing");
 
       // Restore
       (config as any).STAKWORK_API_KEY = originalApiKey;
@@ -68,13 +66,11 @@ describe("callStakworkAPI", () => {
     test("throws error when STAKWORK_WORKFLOW_ID is missing", async () => {
       const { config } = await import("@/lib/env");
       const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
-      
+
       // Temporarily unset the workflow ID
       (config as any).STAKWORK_WORKFLOW_ID = undefined;
 
-      await expect(callStakworkAPI(createTestParams())).rejects.toThrow(
-        "Stakwork configuration missing"
-      );
+      await expect(callStakworkAPI(createTestParams())).rejects.toThrow("Stakwork configuration missing");
 
       // Restore
       (config as any).STAKWORK_WORKFLOW_ID = originalWorkflowId;
@@ -96,7 +92,7 @@ describe("callStakworkAPI", () => {
         expect.any(String),
         expect.objectContaining({
           body: expect.stringContaining('"workflow_id":100'),
-        })
+        }),
       );
 
       // Restore
@@ -116,7 +112,7 @@ describe("callStakworkAPI", () => {
         expect.any(String),
         expect.objectContaining({
           body: expect.stringContaining('"workflow_id":300'),
-        })
+        }),
       );
 
       // Restore
@@ -136,7 +132,7 @@ describe("callStakworkAPI", () => {
         expect.any(String),
         expect.objectContaining({
           body: expect.stringContaining('"workflow_id":300'),
-        })
+        }),
       );
 
       // Restore
@@ -156,7 +152,7 @@ describe("callStakworkAPI", () => {
         expect.any(String),
         expect.objectContaining({
           body: expect.stringContaining('"workflow_id":200'),
-        })
+        }),
       );
 
       // Restore
@@ -176,7 +172,7 @@ describe("callStakworkAPI", () => {
         expect.any(String),
         expect.objectContaining({
           body: expect.stringContaining('"workflow_id":100'),
-        })
+        }),
       );
 
       // Restore
@@ -194,19 +190,15 @@ describe("callStakworkAPI", () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          body: expect.stringContaining(
-            "https://test.example.com/api/stakwork/webhook?task_id=task-456"
-          ),
-        })
+          body: expect.stringContaining("https://test.example.com/api/stakwork/webhook?task_id=task-456"),
+        }),
       );
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          body: expect.stringContaining(
-            "https://test.example.com/api/chat/response"
-          ),
-        })
+          body: expect.stringContaining("https://test.example.com/api/chat/response"),
+        }),
       );
     });
 
@@ -263,16 +255,12 @@ describe("callStakworkAPI", () => {
     test("converts taskSource to lowercase", async () => {
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
 
-      await callStakworkAPI(
-        createTestParams({ taskSource: "CODEBASE_RECOMMENDATION" })
-      );
+      await callStakworkAPI(createTestParams({ taskSource: "CODEBASE_RECOMMENDATION" }));
 
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1]?.body as string);
 
-      expect(body.workflow_params.set_var.attributes.vars.taskSource).toBe(
-        "codebase_recommendation"
-      );
+      expect(body.workflow_params.set_var.attributes.vars.taskSource).toBe("codebase_recommendation");
     });
   });
 
@@ -283,10 +271,7 @@ describe("callStakworkAPI", () => {
 
       await callStakworkAPI(createTestParams());
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${config.STAKWORK_BASE_URL}/projects`,
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(`${config.STAKWORK_BASE_URL}/projects`, expect.any(Object));
     });
 
     test("includes correct Authorization header with API key", async () => {
@@ -302,7 +287,7 @@ describe("callStakworkAPI", () => {
             Authorization: `Token token=${config.STAKWORK_API_KEY}`,
             "Content-Type": "application/json",
           },
-        })
+        }),
       );
     });
 
@@ -315,7 +300,7 @@ describe("callStakworkAPI", () => {
         expect.any(String),
         expect.objectContaining({
           method: "POST",
-        })
+        }),
       );
     });
 
@@ -364,9 +349,7 @@ describe("callStakworkAPI", () => {
 
   describe("Error Handling", () => {
     test("returns error object when response is not ok", async () => {
-      mockFetch.mockResolvedValueOnce(
-        createErrorResponse("Bad Request") as any
-      );
+      mockFetch.mockResolvedValueOnce(createErrorResponse("Bad Request") as any);
 
       const result = await callStakworkAPI(createTestParams());
 
@@ -378,16 +361,12 @@ describe("callStakworkAPI", () => {
 
     test("logs error message when API call fails", async () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      
-      mockFetch.mockResolvedValueOnce(
-        createErrorResponse("Service Unavailable") as any
-      );
+
+      mockFetch.mockResolvedValueOnce(createErrorResponse("Service Unavailable") as any);
 
       await callStakworkAPI(createTestParams());
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to send message to Stakwork")
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to send message to Stakwork"));
 
       consoleErrorSpy.mockRestore();
     });
@@ -404,9 +383,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("handles 500 Internal Server Error responses", async () => {
-      mockFetch.mockResolvedValueOnce(
-        createErrorResponse("Internal Server Error") as any
-      );
+      mockFetch.mockResolvedValueOnce(createErrorResponse("Internal Server Error") as any);
 
       const result = await callStakworkAPI(createTestParams());
 
@@ -464,9 +441,7 @@ describe("callStakworkAPI", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1]?.body as string);
 
-      expect(body.workflow_params.set_var.attributes.vars.contextTags).toEqual(
-        []
-      );
+      expect(body.workflow_params.set_var.attributes.vars.contextTags).toEqual([]);
     });
 
     test("handles empty attachments array", async () => {
@@ -477,9 +452,7 @@ describe("callStakworkAPI", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1]?.body as string);
 
-      expect(body.workflow_params.set_var.attributes.vars.attachments).toEqual(
-        []
-      );
+      expect(body.workflow_params.set_var.attributes.vars.attachments).toEqual([]);
     });
 
     test("handles null userName", async () => {
@@ -513,9 +486,7 @@ describe("callStakworkAPI", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1]?.body as string);
 
-      expect(
-        body.workflow_params.set_var.attributes.vars.swarmSecretAlias
-      ).toBeNull();
+      expect(body.workflow_params.set_var.attributes.vars.swarmSecretAlias).toBeNull();
     });
 
     test("handles null poolName", async () => {

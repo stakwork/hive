@@ -68,7 +68,7 @@ const CommandList = React.forwardRef<
       "[&::-webkit-scrollbar-thumb]:rounded-full",
       "[&::-webkit-scrollbar-thumb]:border-2",
       "[&::-webkit-scrollbar-thumb]:border-transparent",
-      className
+      className,
     )}
     {...props}
   />

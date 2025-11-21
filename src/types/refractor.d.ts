@@ -1,4 +1,4 @@
-declare module 'refractor/core.js' {
+declare module "refractor/core.js" {
   export interface RefractorNode {
     type: string;
     value?: string;
@@ -17,7 +17,7 @@ declare module 'refractor/core.js' {
   export default refractor;
 }
 
-declare module 'refractor/lang/*.js' {
+declare module "refractor/lang/*.js" {
   const syntax: any;
   export default syntax;
 }

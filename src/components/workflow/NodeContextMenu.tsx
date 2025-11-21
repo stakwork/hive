@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback } from "react";
 
 interface NodeContextMenuProps {
   top?: number | string;
@@ -30,27 +30,23 @@ export default function NodeContextMenu({
 
   const exportNodeWR = useCallback(() => {
     console.log("export node", nodes);
-    exportCallback(nodes, 'WorkflowRunner');
+    exportCallback(nodes, "WorkflowRunner");
   }, [nodes, exportCallback]);
 
   const exportNodeFE = useCallback(() => {
     console.log("export node", nodes);
-    exportCallback(nodes, 'ForEachCondition');
+    exportCallback(nodes, "ForEachCondition");
   }, [nodes, exportCallback]);
 
   const exportNodeWL = useCallback(() => {
     console.log("export node", nodes);
-    exportCallback(nodes, 'WhileLoop');
+    exportCallback(nodes, "WhileLoop");
   }, [nodes, exportCallback]);
 
-  const plural = nodes.length > 1 ? 's' : '';
+  const plural = nodes.length > 1 ? "s" : "";
 
   return (
-    <div
-      style={{top, left, right, bottom}}
-      className="reactflow-context-menu"
-      {...props}
-    >
+    <div style={{ top, left, right, bottom }} className="reactflow-context-menu" {...props}>
       <div className="context-menu-header">
         <span>Actions</span>
       </div>

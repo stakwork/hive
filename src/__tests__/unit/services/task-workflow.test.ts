@@ -45,9 +45,7 @@ const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@
 const mockFetch = fetch as vi.MockedFunction<typeof fetch>;
 
 // Import functions under test
-const { sendMessageToStakwork, createTaskWithStakworkWorkflow } = await import(
-  "@/services/task-workflow"
-);
+const { sendMessageToStakwork, createTaskWithStakworkWorkflow } = await import("@/services/task-workflow");
 
 // Test Data Factory - Centralized test data creation
 const TestDataFactory = {
@@ -227,7 +225,7 @@ const TestHelpers = {
         include: expect.objectContaining({
           task: expect.any(Object),
         }),
-      })
+      }),
     );
   },
 
@@ -239,7 +237,7 @@ const TestHelpers = {
           workflowStatus: status,
           ...additionalData,
         }),
-      })
+      }),
     );
   },
 
@@ -252,7 +250,7 @@ const TestHelpers = {
           Authorization: "Token token=test-api-key",
           "Content-Type": "application/json",
         }),
-      })
+      }),
     );
   },
 
@@ -372,7 +370,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
             role: "USER",
             status: "SENT",
           }),
-        })
+        }),
       );
     });
 
@@ -396,7 +394,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
           data: expect.objectContaining({
             contextTags: JSON.stringify(contextTags),
           }),
-        })
+        }),
       );
     });
 
@@ -414,7 +412,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
           data: expect.objectContaining({
             contextTags: "[]",
           }),
-        })
+        }),
       );
     });
   });
@@ -430,7 +428,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
           taskId: "test-task-id",
           message: "Test message",
           userId: "test-user-id",
-        })
+        }),
       ).rejects.toThrow("User not found");
     });
 
@@ -459,7 +457,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
           taskId: "test-task-id",
           message: "Test message",
           userId: "test-user-id",
-        })
+        }),
       ).rejects.toThrow("Task not found");
     });
 
@@ -514,10 +512,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
         userId: "test-user-id",
       });
 
-      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith(
-        "test-user-id",
-        "test-workspace"
-      );
+      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith("test-user-id", "test-workspace");
     });
 
     test("should pass GitHub credentials to Stakwork API", async () => {
@@ -654,9 +649,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
 
-      expect(payload.webhook_url).toBe(
-        "http://localhost:3000/api/stakwork/webhook?task_id=test-task-id"
-      );
+      expect(payload.webhook_url).toBe("http://localhost:3000/api/stakwork/webhook?task_id=test-task-id");
 
       TestHelpers.expectStakworkCalledWithVars({
         webhookUrl: "http://localhost:3000/api/chat/response",
@@ -767,7 +760,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
           data: expect.objectContaining({
             workflowStartedAt: expect.any(Date),
           }),
-        })
+        }),
       );
 
       const updateCall = mockDb.task.update.mock.calls[0][0];
@@ -790,7 +783,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
           data: expect.objectContaining({
             stakworkProjectId: 789,
           }),
-        })
+        }),
       );
     });
   });
@@ -911,7 +904,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           data: expect.objectContaining({
             message: "New Task\n\nTask Description",
           }),
-        })
+        }),
       );
     });
 
@@ -932,7 +925,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           data: expect.objectContaining({
             status: "IN_PROGRESS",
           }),
-        })
+        }),
       );
     });
 
@@ -953,7 +946,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           data: expect.objectContaining({
             status: "IN_PROGRESS",
           }),
-        })
+        }),
       );
     });
   });
@@ -1071,7 +1064,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           data: expect.objectContaining({
             sourceType: "USER",
           }),
-        })
+        }),
       );
 
       TestHelpers.expectStakworkCalledWithVars({
@@ -1099,7 +1092,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           data: expect.objectContaining({
             assigneeId: "assignee-id",
           }),
-        })
+        }),
       );
     });
 
@@ -1121,7 +1114,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           data: expect.objectContaining({
             repositoryId: "repo-id",
           }),
-        })
+        }),
       );
     });
 
@@ -1143,7 +1136,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
             title: "New Task",
             description: "Task Description",
           }),
-        })
+        }),
       );
     });
   });
@@ -1160,7 +1153,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           priority: "MEDIUM" as Priority,
           userId: "test-user-id",
           initialMessage: "Initial message",
-        })
+        }),
       ).rejects.toThrow("Database error");
     });
 
@@ -1177,7 +1170,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           priority: "MEDIUM" as Priority,
           userId: "test-user-id",
           initialMessage: "Initial message",
-        })
+        }),
       ).rejects.toThrow("Chat error");
     });
 
@@ -1194,7 +1187,7 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
           priority: "MEDIUM" as Priority,
           userId: "test-user-id",
           initialMessage: "Initial message",
-        })
+        }),
       ).rejects.toThrow("User not found");
     });
   });
@@ -1501,7 +1494,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
         "https://test-stakwork.com/projects",
         expect.objectContaining({
           method: "POST",
-        })
+        }),
       );
     });
 
@@ -1523,7 +1516,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
             Authorization: "Token token=test-api-key",
             "Content-Type": "application/json",
           },
-        })
+        }),
       );
     });
 
@@ -1540,7 +1533,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
 
       const fetchCall = mockFetch.mock.calls[0];
       const body = fetchCall[1]?.body as string;
-      
+
       expect(() => JSON.parse(body)).not.toThrow();
       const payload = JSON.parse(body);
       expect(payload).toHaveProperty("workflow_id");
@@ -1690,9 +1683,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const { callStakworkAPI } = await import("@/services/task-workflow");
       await callStakworkAPI(params);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Failed to send message to Stakwork: Service Unavailable"
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to send message to Stakwork: Service Unavailable");
 
       consoleErrorSpy.mockRestore();
     });
@@ -1757,7 +1748,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
+
       await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
     });
 
@@ -1767,7 +1758,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
+
       await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
     });
 
@@ -1777,7 +1768,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
+
       await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
     });
 
@@ -1787,7 +1778,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
+
       await expect(callStakworkAPI(params)).rejects.toThrow("Stakwork configuration missing");
     });
 
@@ -1804,7 +1795,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       const params = TestDataFactory.createCallStakworkAPIParams();
 
       const { callStakworkAPI } = await import("@/services/task-workflow");
-      
+
       await expect(callStakworkAPI(params)).resolves.toBeDefined();
     });
   });
@@ -2014,11 +2005,7 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
         json: async () => TestDataFactory.createStakworkSuccessResponse(),
       } as Response);
 
-      const attachments = [
-        "/uploads/file1.pdf",
-        "/uploads/file2.jpg",
-        "/uploads/file3.doc",
-      ];
+      const attachments = ["/uploads/file1.pdf", "/uploads/file2.jpg", "/uploads/file3.doc"];
       const params = TestDataFactory.createCallStakworkAPIParams({
         attachments,
       });

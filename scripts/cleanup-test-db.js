@@ -2,9 +2,7 @@
 
 const { PrismaClient } = require("@prisma/client");
 
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  "postgresql://test:test@localhost:5433/hive_test";
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL || "postgresql://test:test@localhost:5433/hive_test";
 
 async function cleanupTestDatabase() {
   console.log("🧹 Cleaning up test database...");
@@ -58,9 +56,7 @@ async function cleanupTestDatabase() {
 
     await prisma.$disconnect();
     console.log("✅ Test database cleanup complete!");
-    console.log(
-      "🔐 To fully reset authentication, also clear your browser cookies for localhost",
-    );
+    console.log("🔐 To fully reset authentication, also clear your browser cookies for localhost");
   } catch (error) {
     console.error("❌ Error cleaning up test database:", error);
     process.exit(1);

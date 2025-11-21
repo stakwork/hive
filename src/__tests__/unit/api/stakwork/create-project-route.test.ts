@@ -153,7 +153,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
       const response = await POST(request);
-      
+
       await TestHelpers.expectAuthenticationError(response);
     });
 
@@ -162,7 +162,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
       const response = await POST(request);
-      
+
       await TestHelpers.expectAuthenticationError(response);
     });
 
@@ -195,7 +195,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
         },
       },
       {
-        name: "description", 
+        name: "description",
         createInvalidData: () => {
           const data = TestDataFactory.createValidProjectData();
           delete (data as any).description;
@@ -220,29 +220,20 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       },
     ];
 
-    test.each(validationTestCases)(
-      "should return 400 when $name is missing",
-      async ({ createInvalidData }) => {
-        const request = TestHelpers.createMockRequest(createInvalidData());
-        const response = await POST(request);
-        
-        await TestHelpers.expectValidationError(
-          response,
-          "Missing required fields: title, description, budget, skills"
-        );
-      }
-    );
+    test.each(validationTestCases)("should return 400 when $name is missing", async ({ createInvalidData }) => {
+      const request = TestHelpers.createMockRequest(createInvalidData());
+      const response = await POST(request);
+
+      await TestHelpers.expectValidationError(response, "Missing required fields: title, description, budget, skills");
+    });
 
     test("should return 400 when multiple required fields are missing", async () => {
       const invalidData = { title: "Test" }; // Missing description, budget, skills
 
       const request = TestHelpers.createMockRequest(invalidData);
       const response = await POST(request);
-      
-      await TestHelpers.expectValidationError(
-        response,
-        "Missing required fields: title, description, budget, skills"
-      );
+
+      await TestHelpers.expectValidationError(response, "Missing required fields: title, description, budget, skills");
     });
 
     test("should accept request with only required fields (name, workflow_id, workflow_params are optional)", async () => {
@@ -281,9 +272,9 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       const request = TestHelpers.createMockRequest(projectData);
       const response = await POST(request);
-      
+
       await TestHelpers.expectSuccessfulResponse(response, mockProject);
-      
+
       expect(mockCreateProject).toHaveBeenCalledWith({
         title: projectData.title,
         description: projectData.description,
@@ -305,7 +296,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       expect(mockCreateProject).toHaveBeenCalledWith(
         expect.objectContaining({
           workflow_params: projectData.workflow_params,
-        })
+        }),
       );
     });
 
@@ -321,7 +312,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
       const response = await POST(request);
-      
+
       await TestHelpers.expectSuccessfulResponse(response, mockProject);
     });
   });
@@ -341,7 +332,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
         }),
       },
       {
-        name: "404 ApiError from service", 
+        name: "404 ApiError from service",
         apiError: TestDataFactory.createApiError({
           message: "Workflow not found",
           status: 404,
@@ -366,17 +357,14 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       },
     ];
 
-    test.each(apiErrorTestCases)(
-      "should handle $name",
-      async ({ apiError }) => {
-        mockCreateProject.mockRejectedValue(apiError);
+    test.each(apiErrorTestCases)("should handle $name", async ({ apiError }) => {
+      mockCreateProject.mockRejectedValue(apiError);
 
-        const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
-        const response = await POST(request);
-        
-        await TestHelpers.expectApiErrorResponse(response, apiError);
-      }
-    );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const response = await POST(request);
+
+      await TestHelpers.expectApiErrorResponse(response, apiError);
+    });
 
     test("should preserve all ApiError properties in response", async () => {
       const apiError = TestDataFactory.createApiError({
@@ -394,7 +382,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
       const response = await POST(request);
-      
+
       await TestHelpers.expectApiErrorResponse(response, apiError);
     });
   });
@@ -414,7 +402,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
         error: "String error",
       },
       {
-        name: "null/undefined errors and return 500", 
+        name: "null/undefined errors and return 500",
         error: null,
       },
       {
@@ -426,31 +414,25 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       },
     ];
 
-    test.each(genericErrorTestCases)(
-      "should handle $name",
-      async ({ error }) => {
-        mockCreateProject.mockRejectedValue(error);
+    test.each(genericErrorTestCases)("should handle $name", async ({ error }) => {
+      mockCreateProject.mockRejectedValue(error);
 
-        const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
-        const response = await POST(request);
-        
-        await TestHelpers.expectGenericErrorResponse(response);
-      }
-    );
+      const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
+      const response = await POST(request);
+
+      await TestHelpers.expectGenericErrorResponse(response);
+    });
 
     test("should log errors to console", async () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       const testError = new Error("Test error for logging");
-      
+
       mockCreateProject.mockRejectedValue(testError);
 
       const request = TestHelpers.createMockRequest(TestDataFactory.createValidProjectData());
       await POST(request);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error creating Stakwork project:",
-        testError
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Error creating Stakwork project:", testError);
 
       consoleErrorSpy.mockRestore();
     });
@@ -497,9 +479,7 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
           workflow_params: {
             set_var: {
               attributes: {
-                vars: Object.fromEntries(
-                  Array.from({ length: 100 }, (_, i) => [`key${i}`, `value${i}`])
-                ),
+                vars: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`key${i}`, `value${i}`])),
               },
             },
           },
@@ -519,21 +499,16 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
       },
     ];
 
-    test.each(edgeCaseTestCases)(
-      "should handle $name",
-      async ({ createData, expectedContaining }) => {
-        mockCreateProject.mockResolvedValue(TestDataFactory.createMockProject());
+    test.each(edgeCaseTestCases)("should handle $name", async ({ createData, expectedContaining }) => {
+      mockCreateProject.mockResolvedValue(TestDataFactory.createMockProject());
 
-        const testData = createData();
-        const request = TestHelpers.createMockRequest(testData);
-        const response = await POST(request);
+      const testData = createData();
+      const request = TestHelpers.createMockRequest(testData);
+      const response = await POST(request);
 
-        expect(response.status).toBe(201);
-        expect(mockCreateProject).toHaveBeenCalledWith(
-          expect.objectContaining(expectedContaining)
-        );
-      }
-    );
+      expect(response.status).toBe(201);
+      expect(mockCreateProject).toHaveBeenCalledWith(expect.objectContaining(expectedContaining));
+    });
 
     test("should handle empty string title (validation should catch this)", async () => {
       const dataWithEmptyTitle = {
@@ -543,12 +518,9 @@ describe("POST /api/stakwork/create-project - Unit Tests", () => {
 
       const request = TestHelpers.createMockRequest(dataWithEmptyTitle);
       const response = await POST(request);
-      
+
       // Empty string is falsy, so validation should fail
-      await TestHelpers.expectValidationError(
-        response,
-        "Missing required fields: title, description, budget, skills"
-      );
+      await TestHelpers.expectValidationError(response, "Missing required fields: title, description, budget, skills");
     });
   });
 });

@@ -1,9 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/workspaces/[slug]/git-leaks/route";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario } from "@/__tests__/support/fixtures";
 import { createTestRepository } from "@/__tests__/support/fixtures/repository";
 import {
   expectSuccess,
@@ -65,9 +62,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
         repositoryUrl: "https://github.com/test/repo",
       });
 
-      const request = createGetRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/git-leaks`,
-      );
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/git-leaks`);
 
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -181,11 +176,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      await expectError(
-        response,
-        "Workspace does not have a swarm configured",
-        400,
-      );
+      await expectError(response, "Workspace does not have a swarm configured", 400);
     });
 
     test("returns 400 when workspace has no repositories", async () => {
@@ -203,11 +194,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      await expectError(
-        response,
-        "No repositories configured for this workspace",
-        400,
-      );
+      await expectError(response, "No repositories configured for this workspace", 400);
     });
 
     test("returns 400 when swarm API key not configured", async () => {
@@ -263,11 +250,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      await expectError(
-        response,
-        "GitHub authentication not configured for this workspace",
-        400,
-      );
+      await expectError(response, "GitHub authentication not configured for this workspace", 400);
     });
 
     test("returns 500 when unable to determine graph service URL", async () => {
@@ -548,11 +531,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      await expectError(
-        response,
-        "Git leaks scan timed out. Please try again.",
-        504,
-      );
+      await expectError(response, "Git leaks scan timed out. Please try again.", 504);
     });
 
     test("handles fetch connection error", async () => {
@@ -592,9 +571,7 @@ describe("GET /api/workspaces/[slug]/git-leaks", () => {
         repositoryUrl: "https://github.com/test/repo",
       });
 
-      mockSwarmApiRequest.mockRejectedValue(
-        new Error("Unexpected internal error"),
-      );
+      mockSwarmApiRequest.mockRejectedValue(new Error("Unexpected internal error"));
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/git-leaks`,

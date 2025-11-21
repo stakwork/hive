@@ -1,5 +1,5 @@
-import { Page, expect } from '@playwright/test';
-import { selectors } from '../fixtures/selectors';
+import { Page, expect } from "@playwright/test";
+import { selectors } from "../fixtures/selectors";
 
 /**
  * Page Object Model for Dashboard page

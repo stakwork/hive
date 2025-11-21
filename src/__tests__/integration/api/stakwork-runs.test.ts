@@ -112,11 +112,15 @@ describe("Stakwork Runs API Integration Tests", () => {
   describe("POST /api/stakwork/ai/generate", () => {
     test("should create AI generation run successfully", async () => {
       const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
-      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
-        type: "ARCHITECTURE",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/test",
+        {
+          type: "ARCHITECTURE",
+          workspaceId: workspace.id,
+          featureId: feature.id,
+        },
+        user,
+      );
 
       const response = await GenerateAI(request);
       const responseData = await response.json();
@@ -140,11 +144,15 @@ describe("Stakwork Runs API Integration Tests", () => {
 
     test("should create workspace-level generation without featureId", async () => {
       const { user, workspace } = await createTestWorkspaceWithFeature();
-      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
-        type: "ARCHITECTURE",
-        workspaceId: workspace.id,
-        featureId: null,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/test",
+        {
+          type: "ARCHITECTURE",
+          workspaceId: workspace.id,
+          featureId: null,
+        },
+        user,
+      );
 
       const response = await GenerateAI(request);
       const responseData = await response.json();
@@ -155,10 +163,14 @@ describe("Stakwork Runs API Integration Tests", () => {
 
     test("should reject invalid StakworkRunType", async () => {
       const { user, workspace } = await createTestWorkspaceWithFeature();
-      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
-        type: "INVALID_TYPE",
-        workspaceId: workspace.id,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/test",
+        {
+          type: "INVALID_TYPE",
+          workspaceId: workspace.id,
+        },
+        user,
+      );
 
       const response = await GenerateAI(request);
 
@@ -184,11 +196,15 @@ describe("Stakwork Runs API Integration Tests", () => {
         stakworkRequest: mockStakworkRequest,
       } as any);
 
-      const request = createAuthenticatedPostRequest("http://localhost/api/test", {
-        type: "ARCHITECTURE",
-        workspaceId: workspace.id,
-        featureId: feature.id,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/test",
+        {
+          type: "ARCHITECTURE",
+          workspaceId: workspace.id,
+          featureId: feature.id,
+        },
+        user,
+      );
 
       const response = await GenerateAI(request);
 
@@ -227,7 +243,7 @@ describe("Stakwork Runs API Integration Tests", () => {
       });
       const request = createAuthenticatedGetRequest(
         `http://localhost/api/test?workspaceId=${workspace.id}&limit=10&offset=0`,
-        user
+        user,
       );
 
       const response = await GetRuns(request);
@@ -254,7 +270,7 @@ describe("Stakwork Runs API Integration Tests", () => {
       });
       const request = createAuthenticatedGetRequest(
         `http://localhost/api/test?workspaceId=${workspace.id}&type=ARCHITECTURE&limit=10&offset=0`,
-        user
+        user,
       );
 
       const response = await GetRuns(request);
@@ -290,7 +306,7 @@ describe("Stakwork Runs API Integration Tests", () => {
       });
       const request = createAuthenticatedGetRequest(
         `http://localhost/api/test?workspaceId=${workspace.id}&featureId=${feature.id}&limit=10&offset=0`,
-        user
+        user,
       );
 
       const response = await GetRuns(request);
@@ -325,10 +341,14 @@ describe("Stakwork Runs API Integration Tests", () => {
           dataType: "string",
         },
       });
-      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
-        decision: "ACCEPTED",
-        featureId: feature.id,
-      }, user);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost/api/test",
+        {
+          decision: "ACCEPTED",
+          featureId: feature.id,
+        },
+        user,
+      );
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -368,10 +388,14 @@ describe("Stakwork Runs API Integration Tests", () => {
       });
 
       const originalArchitecture = feature.architecture;
-      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
-        decision: "REJECTED",
-        feedback: "Not good enough",
-      }, user);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost/api/test",
+        {
+          decision: "REJECTED",
+          feedback: "Not good enough",
+        },
+        user,
+      );
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -403,10 +427,14 @@ describe("Stakwork Runs API Integration Tests", () => {
           dataType: "string",
         },
       });
-      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
-        decision: "FEEDBACK",
-        feedback: "Please add more database schema details",
-      }, user);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost/api/test",
+        {
+          decision: "FEEDBACK",
+          feedback: "Please add more database schema details",
+        },
+        user,
+      );
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -433,9 +461,13 @@ describe("Stakwork Runs API Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
-        decision: "ACCEPTED",
-      }, user);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost/api/test",
+        {
+          decision: "ACCEPTED",
+        },
+        user,
+      );
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -463,10 +495,14 @@ describe("Stakwork Runs API Integration Tests", () => {
       // Use a valid CUID format that doesn't exist in the database
       const nonExistentFeatureId = "clxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
-      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
-        decision: "ACCEPTED",
-        featureId: nonExistentFeatureId,
-      }, user);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost/api/test",
+        {
+          decision: "ACCEPTED",
+          featureId: nonExistentFeatureId,
+        },
+        user,
+      );
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -515,10 +551,14 @@ describe("Stakwork Runs API Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
-        decision: "ACCEPTED",
-        featureId: feature2.id,
-      }, user);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost/api/test",
+        {
+          decision: "ACCEPTED",
+          featureId: feature2.id,
+        },
+        user,
+      );
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -551,10 +591,14 @@ describe("Stakwork Runs API Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedPatchRequest("http://localhost/api/test", {
-        decision: "ACCEPTED",
-        featureId: feature.id,
-      }, otherUser);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost/api/test",
+        {
+          decision: "ACCEPTED",
+          featureId: feature.id,
+        },
+        otherUser,
+      );
 
       const response = await UpdateDecision(request, {
         params: Promise.resolve({ runId: run.id }),
@@ -588,7 +632,7 @@ describe("Stakwork Runs API Integration Tests", () => {
           result: { architecture: "Generated architecture content" },
           project_status: "completed",
           project_id: 12345,
-        }
+        },
       );
 
       const response = await WebhookHandler(request);
@@ -619,14 +663,11 @@ describe("Stakwork Runs API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest(
-        `http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`,
-        {
-          result: "Simple string result",
-          project_status: "completed",
-          project_id: 12345,
-        }
-      );
+      const request = createPostRequest(`http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`, {
+        result: "Simple string result",
+        project_status: "completed",
+        project_id: 12345,
+      });
 
       const response = await WebhookHandler(request);
 
@@ -653,14 +694,11 @@ describe("Stakwork Runs API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest(
-        `http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`,
-        {
-          result: null,
-          project_status: "failed",
-          project_id: 12345,
-        }
-      );
+      const request = createPostRequest(`http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`, {
+        result: null,
+        project_status: "failed",
+        project_id: 12345,
+      });
 
       const response = await WebhookHandler(request);
 
@@ -686,14 +724,11 @@ describe("Stakwork Runs API Integration Tests", () => {
         },
       });
 
-      const request = createPostRequest(
-        `http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`,
-        {
-          result: "test",
-          project_status: "completed",
-          project_id: 12345,
-        }
-      );
+      const request = createPostRequest(`http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`, {
+        result: "test",
+        project_status: "completed",
+        project_id: 12345,
+      });
 
       const response = await WebhookHandler(request);
 
@@ -703,13 +738,10 @@ describe("Stakwork Runs API Integration Tests", () => {
     test("should reject invalid webhook payload", async () => {
       const { workspace } = await createTestWorkspaceWithFeature();
 
-      const request = createPostRequest(
-        `http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`,
-        {
-          result: "test",
-          // This will pass validation but fail to find a matching run
-        }
-      );
+      const request = createPostRequest(`http://localhost/api/test?type=ARCHITECTURE&workspace_id=${workspace.id}`, {
+        result: "test",
+        // This will pass validation but fail to find a matching run
+      });
 
       const response = await WebhookHandler(request);
 

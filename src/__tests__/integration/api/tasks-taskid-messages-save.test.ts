@@ -98,10 +98,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return 401 when no session provided", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -115,10 +115,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return 401 when session has no user", async () => {
       getMockedSession().mockResolvedValue({ user: null });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -132,10 +132,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return 401 when session user has no id", async () => {
       getMockedSession().mockResolvedValue({ user: { name: "Test User" } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -151,10 +151,9 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return 400 when message is missing", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -168,10 +167,9 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return 400 when role is missing", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -185,10 +183,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return 400 when role is invalid", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "INVALID" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "INVALID",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -203,10 +201,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
       const nonExistentId = "non-existent-task-id";
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${nonExistentId}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${nonExistentId}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: nonExistentId }),
@@ -226,10 +224,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
         data: { deleted: true, deletedAt: new Date() },
       });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -245,10 +243,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return 403 when user is not workspace owner or member", async () => {
       getMockedSession().mockResolvedValue({ user: { id: otherUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -262,10 +260,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should allow access for workspace owner", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -280,10 +278,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should allow access for workspace member", async () => {
       getMockedSession().mockResolvedValue({ user: { id: memberUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -300,10 +298,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should create message with USER role", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "User message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "User message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -321,10 +319,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should create message with ASSISTANT role", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Assistant message", role: "ASSISTANT" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Assistant message",
+        role: "ASSISTANT",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -344,23 +342,20 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should mark task as DONE when PULL_REQUEST artifact is present", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        {
-          message: "",
-          role: "ASSISTANT",
-          artifacts: [
-            {
-              type: "PULL_REQUEST",
-              content: {
-                repo: "user/repo",
-                url: "https://github.com/user/repo/pull/123",
-                status: "open",
-              },
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "",
+        role: "ASSISTANT",
+        artifacts: [
+          {
+            type: "PULL_REQUEST",
+            content: {
+              repo: "user/repo",
+              url: "https://github.com/user/repo/pull/123",
+              status: "open",
             },
-          ],
-        }
-      );
+          },
+        ],
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -384,31 +379,28 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should mark task as DONE with multiple PULL_REQUEST artifacts", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        {
-          message: "",
-          role: "ASSISTANT",
-          artifacts: [
-            {
-              type: "PULL_REQUEST",
-              content: {
-                repo: "user/repo",
-                url: "https://github.com/user/repo/pull/123",
-                status: "open",
-              },
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "",
+        role: "ASSISTANT",
+        artifacts: [
+          {
+            type: "PULL_REQUEST",
+            content: {
+              repo: "user/repo",
+              url: "https://github.com/user/repo/pull/123",
+              status: "open",
             },
-            {
-              type: "PULL_REQUEST",
-              content: {
-                repo: "user/repo-2",
-                url: "https://github.com/user/repo-2/pull/456",
-                status: "open",
-              },
+          },
+          {
+            type: "PULL_REQUEST",
+            content: {
+              repo: "user/repo-2",
+              url: "https://github.com/user/repo-2/pull/456",
+              status: "open",
             },
-          ],
-        }
-      );
+          },
+        ],
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -429,10 +421,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should NOT mark task as DONE when no PULL_REQUEST artifact is present", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Regular message without PR link", role: "ASSISTANT" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Regular message without PR link",
+        role: "ASSISTANT",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -454,10 +446,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
 
       const prMessage = "Check out this [open pr](https://github.com/user/repo/pull/123)";
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: prMessage, role: "ASSISTANT" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: prMessage,
+        role: "ASSISTANT",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -490,23 +482,20 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
         },
       });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${todoTask.id}/messages/save`,
-        {
-          message: "",
-          role: "ASSISTANT",
-          artifacts: [
-            {
-              type: "PULL_REQUEST",
-              content: {
-                repo: "user/repo",
-                url: "https://github.com/user/repo/pull/123",
-                status: "open",
-              },
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${todoTask.id}/messages/save`, {
+        message: "",
+        role: "ASSISTANT",
+        artifacts: [
+          {
+            type: "PULL_REQUEST",
+            content: {
+              repo: "user/repo",
+              url: "https://github.com/user/repo/pull/123",
+              status: "open",
             },
-          ],
-        }
-      );
+          },
+        ],
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: todoTask.id }),
@@ -529,10 +518,10 @@ describe("POST /api/tasks/[taskId]/messages/save", () => {
     it("should return correct response structure", async () => {
       getMockedSession().mockResolvedValue({ user: { id: testUser.id } });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/tasks/${testTask.id}/messages/save`,
-        { message: "Test message", role: "USER" }
-      );
+      const request = createPostRequest(`http://localhost:3000/api/tasks/${testTask.id}/messages/save`, {
+        message: "Test message",
+        role: "USER",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ taskId: testTask.id }),

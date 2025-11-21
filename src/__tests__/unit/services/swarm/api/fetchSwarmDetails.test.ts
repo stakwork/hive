@@ -60,15 +60,12 @@ describe("fetchSwarmDetails", () => {
       });
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "https://test-swarm-admin.example.com/api/super/details?id=swarm-123",
-        {
-          method: "GET",
-          headers: {
-            "x-super-token": "test-super-admin-key-12345",
-          },
-        }
-      );
+      expect(fetchSpy).toHaveBeenCalledWith("https://test-swarm-admin.example.com/api/super/details?id=swarm-123", {
+        method: "GET",
+        headers: {
+          "x-super-token": "test-super-admin-key-12345",
+        },
+      });
 
       expect(consoleLogSpy).toHaveBeenCalledWith("Attempt: 1/10 for swarm swarm-123");
     });
@@ -89,7 +86,7 @@ describe("fetchSwarmDetails", () => {
 
       expect(fetchSpy).toHaveBeenCalledWith(
         "https://test-swarm-admin.example.com/api/super/details?id=swarm-123%2Ftest%3Fparam%3Dvalue",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -179,9 +176,7 @@ describe("fetchSwarmDetails", () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Got 400 error, will retry in 1000ms...")
-      );
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Got 400 error, will retry in 1000ms..."));
     });
 
     it("should succeed after retries if swarm becomes ready", async () => {
@@ -320,10 +315,7 @@ describe("fetchSwarmDetails", () => {
         status: 500,
       });
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "fetchSwarmDetails network error:",
-        expect.any(Error)
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("fetchSwarmDetails network error:", expect.any(Error));
     });
 
     it("should retry after network failures and eventually return last error", async () => {
@@ -552,9 +544,7 @@ describe("fetchSwarmDetails", () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        "Got 400 error, will retry in 1000ms..."
-      );
+      expect(consoleLogSpy).toHaveBeenCalledWith("Got 400 error, will retry in 1000ms...");
     });
 
     it("should not log retry messages for non-400 errors", async () => {
@@ -570,14 +560,12 @@ describe("fetchSwarmDetails", () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(consoleLogSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining("will retry")
-      );
+      expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining("will retry"));
     });
 
     it("should log network errors to console.error", async () => {
       const networkError = new Error("Connection refused");
-      
+
       // Mock all 10 attempts to reject
       fetchSpy.mockRejectedValue(networkError);
 
@@ -585,10 +573,7 @@ describe("fetchSwarmDetails", () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "fetchSwarmDetails network error:",
-        networkError
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("fetchSwarmDetails network error:", networkError);
     });
   });
 
@@ -606,7 +591,7 @@ describe("fetchSwarmDetails", () => {
 
       expect(fetchSpy).toHaveBeenCalledWith(
         "https://test-swarm-admin.example.com/api/super/details?id=",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -622,10 +607,7 @@ describe("fetchSwarmDetails", () => {
       await vi.runAllTimersAsync();
       await promise;
 
-      expect(fetchSpy).toHaveBeenCalledWith(
-        expect.stringContaining("id=swarm-123"),
-        expect.any(Object)
-      );
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining("id=swarm-123"), expect.any(Object));
     });
 
     it("should handle very long swarm IDs", async () => {
@@ -735,7 +717,7 @@ describe("fetchSwarmDetails", () => {
 
       // Verify that we made exactly 10 attempts and no more
       expect(fetchSpy).toHaveBeenCalledTimes(10);
-      
+
       // Verify we logged all 10 attempts, including the final one
       expect(consoleLogSpy).toHaveBeenCalledWith("Attempt: 10/10 for swarm swarm-123");
     });

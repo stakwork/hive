@@ -9,23 +9,26 @@ export default defineConfig({
     globals: true,
     // Run integration tests sequentially to avoid database conflicts
     pool: testSuite === "integration" ? "forks" : "threads",
-    poolOptions: testSuite === "integration" ? {
-      forks: {
-        singleFork: true,
-      },
-    } : undefined,
+    poolOptions:
+      testSuite === "integration"
+        ? {
+            forks: {
+              singleFork: true,
+            },
+          }
+        : undefined,
     include:
       testSuite === "integration"
         ? ["src/__tests__/integration/**/*.test.ts"]
         : testSuite === "api"
-        ? ["src/__tests__/api/**/*.test.ts"]
-        : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
+          ? ["src/__tests__/api/**/*.test.ts"]
+          : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
     setupFiles:
       testSuite === "integration"
-        ? ["./src/__tests__/setup/integration.ts", 'dotenv/config']
+        ? ["./src/__tests__/setup/integration.ts", "dotenv/config"]
         : testSuite === "api"
-        ? ["./src/__tests__/setup/unit.ts", 'dotenv/config'] // API tests can use unit test setup
-        : ["./src/__tests__/setup/unit.ts", 'dotenv/config'],
+          ? ["./src/__tests__/setup/unit.ts", "dotenv/config"] // API tests can use unit test setup
+          : ["./src/__tests__/setup/unit.ts", "dotenv/config"],
   },
   resolve: {
     alias: {

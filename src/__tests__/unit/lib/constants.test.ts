@@ -111,19 +111,19 @@ describe("constants", () => {
 
     it("should have ascending permission levels", () => {
       expect(WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.VIEWER]).toBeLessThan(
-        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.STAKEHOLDER]
+        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.STAKEHOLDER],
       );
       expect(WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.STAKEHOLDER]).toBeLessThan(
-        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER]
+        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER],
       );
       expect(WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.DEVELOPER]).toBeLessThan(
-        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.PM]
+        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.PM],
       );
       expect(WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.PM]).toBeLessThan(
-        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN]
+        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN],
       );
       expect(WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.ADMIN]).toBeLessThan(
-        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.OWNER]
+        WORKSPACE_PERMISSION_LEVELS[WorkspaceRole.OWNER],
       );
     });
 

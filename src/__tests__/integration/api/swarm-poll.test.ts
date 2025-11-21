@@ -42,8 +42,7 @@ describe("Swarm Poll API Integration Tests", () => {
 
     // Set up encryption environment for tests
     process.env.TOKEN_ENCRYPTION_KEY =
-      process.env.TOKEN_ENCRYPTION_KEY ||
-      "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+      process.env.TOKEN_ENCRYPTION_KEY || "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
     process.env.TOKEN_ENCRYPTION_KEY_ID = "test-key-id";
 
     // Create test scenario with users, workspace, and swarm
@@ -85,12 +84,7 @@ describe("Swarm Poll API Integration Tests", () => {
       data: {
         swarmId: generateUniqueId("swarm"),
         swarmUrl: "https://test-swarm.example.com",
-        swarmApiKey: JSON.stringify(
-          EncryptionService.getInstance().encryptField(
-            "swarmApiKey",
-            "initial-api-key",
-          ),
-        ),
+        swarmApiKey: JSON.stringify(EncryptionService.getInstance().encryptField("swarmApiKey", "initial-api-key")),
         swarmSecretAlias: "{{SWARM_123_API_KEY}}",
       },
     });
@@ -201,9 +195,7 @@ describe("Swarm Poll API Integration Tests", () => {
     });
 
     it("should allow workspace developer to poll swarm", async () => {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(developerUser),
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(developerUser));
 
       // Mock successful polling response
       vi.mocked(fetchSwarmDetails).mockResolvedValue({
@@ -261,9 +253,7 @@ describe("Swarm Poll API Integration Tests", () => {
     });
 
     it("should reject unauthorized user from polling swarm", async () => {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(unauthorizedUser),
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
         workspaceId: workspace.id,
@@ -390,10 +380,7 @@ describe("Swarm Poll API Integration Tests", () => {
 
       // Verify API key was encrypted before storage
       expect(updatedSwarm?.swarmApiKey).toBeTruthy();
-      const decryptedKey = EncryptionService.getInstance().decryptField(
-        "swarmApiKey",
-        updatedSwarm!.swarmApiKey!,
-      );
+      const decryptedKey = EncryptionService.getInstance().decryptField("swarmApiKey", updatedSwarm!.swarmApiKey!);
       expect(decryptedKey).toBe(newApiKey);
 
       // Verify swarmSecretAlias was updated
@@ -563,9 +550,7 @@ describe("Swarm Poll API Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       // Mock exception during fetch
-      vi.mocked(fetchSwarmDetails).mockRejectedValue(
-        new Error("Unexpected error"),
-      );
+      vi.mocked(fetchSwarmDetails).mockRejectedValue(new Error("Unexpected error"));
 
       const request = createPostRequest("http://localhost:3000/api/swarm/poll", {
         workspaceId: workspace.id,
@@ -620,10 +605,7 @@ describe("Swarm Poll API Integration Tests", () => {
       expect(encryptedData).toHaveProperty("keyId");
 
       // Verify decryption returns original value
-      const decrypted = EncryptionService.getInstance().decryptField(
-        "swarmApiKey",
-        updatedSwarm!.swarmApiKey!,
-      );
+      const decrypted = EncryptionService.getInstance().decryptField("swarmApiKey", updatedSwarm!.swarmApiKey!);
       expect(decrypted).toBe(plainTextApiKey);
     });
   });
@@ -690,9 +672,7 @@ describe("Swarm Poll API Integration Tests", () => {
     });
 
     it("should enforce authorization on GET requests", async () => {
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(unauthorizedUser),
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
       const url = new URL("http://localhost:3000/api/swarm/poll");
       url.searchParams.set("id", swarm.swarmId!);
@@ -781,10 +761,7 @@ describe("Swarm Poll API Integration Tests", () => {
       expect(updatedSwarm?.swarmSecretAlias).toMatch(/^{{.+_API_KEY}}$/);
 
       // Verify API key decrypts correctly
-      const decryptedKey = EncryptionService.getInstance().decryptField(
-        "swarmApiKey",
-        updatedSwarm!.swarmApiKey!,
-      );
+      const decryptedKey = EncryptionService.getInstance().decryptField("swarmApiKey", updatedSwarm!.swarmApiKey!);
       expect(decryptedKey).toBe(apiKey);
     });
   });

@@ -5,10 +5,7 @@ import type { SearchResponse, SearchResult } from "@/types/search";
 
 const RESULTS_PER_TYPE = 5;
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -19,10 +16,7 @@ export async function GET(
     const query = searchParams.get("q");
 
     if (!query || query.trim().length < 2) {
-      return NextResponse.json(
-        { error: "Search query must be at least 2 characters" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Search query must be at least 2 characters" }, { status: 400 });
     }
 
     const searchQuery = query.trim();
@@ -46,17 +40,11 @@ export async function GET(
     });
 
     if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     if (workspace.ownerId !== userOrResponse.id && workspace.members.length === 0) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Search across all entity types in parallel
@@ -174,7 +162,7 @@ export async function GET(
       let url: string;
       if (task.featureId) {
         // Roadmap task
-        if (task.status === 'TODO' && !task.stakworkProjectId) {
+        if (task.status === "TODO" && !task.stakworkProjectId) {
           // Not being worked on yet - use legacy ticket page
           url = `/w/${slug}/tickets/${task.id}`;
         } else {
@@ -233,10 +221,7 @@ export async function GET(
       },
     }));
 
-    const total =
-      taskResults.length +
-      featureResults.length +
-      phaseResults.length;
+    const total = taskResults.length + featureResults.length + phaseResults.length;
 
     const response: SearchResponse = {
       success: true,
@@ -251,9 +236,6 @@ export async function GET(
     return NextResponse.json(response);
   } catch (error) {
     console.error("Error performing search:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

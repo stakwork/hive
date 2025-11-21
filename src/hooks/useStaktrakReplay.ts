@@ -220,7 +220,7 @@ export function usePlaywrightReplay(
           break;
 
         case "staktrak-playwright-screenshot-captured":
-          console.log('[Screenshot] Captured:', { actionIndex: data.actionIndex, url: data.url, workspaceId, taskId });
+          console.log("[Screenshot] Captured:", { actionIndex: data.actionIndex, url: data.url, workspaceId, taskId });
 
           // Add screenshot to local state immediately for display
           const newScreenshot: Screenshot = {
@@ -235,10 +235,10 @@ export function usePlaywrightReplay(
 
           // Upload to S3 asynchronously (don't block replay)
           if (workspaceId && data.screenshot) {
-            console.log('[Screenshot] Starting S3 upload...', { workspaceId, taskId });
-            fetch('/api/screenshots/upload', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+            console.log("[Screenshot] Starting S3 upload...", { workspaceId, taskId });
+            fetch("/api/screenshots/upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 dataUrl: data.screenshot,
                 workspaceId,
@@ -251,27 +251,25 @@ export function usePlaywrightReplay(
               .then(async (response) => {
                 if (!response.ok) {
                   const error = await response.json();
-                  throw new Error(error.error || 'Upload failed');
+                  throw new Error(error.error || "Upload failed");
                 }
                 return response.json();
               })
               .then((uploaded) => {
-                console.log('[Screenshot] S3 upload successful:', uploaded);
+                console.log("[Screenshot] S3 upload successful:", uploaded);
                 // Update screenshot in state with S3 details
                 setReplayScreenshots((prev) =>
                   prev.map((s) =>
-                    s.id === data.id
-                      ? { ...s, s3Key: uploaded.s3Key, s3Url: uploaded.s3Url, hash: uploaded.hash }
-                      : s
-                  )
+                    s.id === data.id ? { ...s, s3Key: uploaded.s3Key, s3Url: uploaded.s3Url, hash: uploaded.hash } : s,
+                  ),
                 );
               })
               .catch((error) => {
-                console.error('[Screenshot] S3 upload failed:', error);
+                console.error("[Screenshot] S3 upload failed:", error);
                 // Continue anyway - screenshot is still available locally via dataUrl
               });
           } else {
-            console.log('[Screenshot] Skipping S3 upload - missing workspaceId or screenshot data');
+            console.log("[Screenshot] Skipping S3 upload - missing workspaceId or screenshot data");
           }
           break;
 

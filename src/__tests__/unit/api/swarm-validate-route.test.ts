@@ -156,9 +156,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
     test("should proceed with valid session", async () => {
       TestHelpers.setupAuthenticatedUser();
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -177,17 +175,15 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       // CRITICAL: This test documents that the endpoint is missing workspace-level authorization
       // Reference implementations (POST /api/swarm, PUT /api/swarm) use validateWorkspaceAccessById()
       // but this endpoint does NOT - any authenticated user can validate any swarm URI
-      
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("unauthorized-workspace-swarm.sphinx.chat");
       const response = await GET(request);
 
       // Currently returns 200 even for unauthorized workspace access
       expect(response.status).toBe(200);
-      
+
       // RECOMMENDATION: Should add workspaceId parameter and validate access:
       // const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
       // if (!workspaceAccess.hasAccess) {
@@ -198,10 +194,8 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     test("SECURITY GAP: endpoint does NOT check workspace membership", async () => {
       // This endpoint allows any authenticated user to validate URIs for swarms they don't have access to
       // This differs from other swarm endpoints which enforce workspace-level permissions
-      
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("cross-workspace-swarm.sphinx.chat");
       const response = await GET(request);
@@ -214,10 +208,8 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     test("SECURITY GAP: endpoint does NOT enforce minimum permission level", async () => {
       // Other swarm endpoints check canRead/canWrite/canAdmin permissions
       // This endpoint has no permission level enforcement
-      
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -249,9 +241,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should accept valid domain format", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -261,9 +251,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should accept URI with subdomain", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("my-team-swarm-123.sphinx.chat");
       const response = await GET(request);
@@ -273,9 +261,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should handle URI with special characters", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("test_swarm-v2.sphinx.chat");
       const response = await GET(request);
@@ -292,9 +278,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
     test("SECURITY GAP: does NOT sanitize XSS patterns in URI", async () => {
       // CRITICAL: No XSS protection - malicious URIs are passed directly to external API
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const xssUri = "javascript:alert('xss')";
       const request = TestHelpers.createGetRequest(xssUri);
@@ -302,7 +286,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
       // Currently passes unsanitized URI to service - potential XSS vulnerability
       expect(mockSwarmServiceInstance.validateUri).toHaveBeenCalledWith(xssUri);
-      
+
       // RECOMMENDATION: Add URI validation before service call:
       // if (uri.startsWith('javascript:') || uri.startsWith('data:')) {
       //   return NextResponse.json({ success: false, message: "Invalid URI format" }, { status: 400 });
@@ -312,7 +296,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     test("SECURITY GAP: does NOT validate URI format before external API call", async () => {
       // No URI format validation - could allow malformed URIs to reach external service
       mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createFailedValidateUriResponse("Invalid domain format")
+        TestDataFactory.createFailedValidateUriResponse("Invalid domain format"),
       );
 
       const malformedUri = "not-a-valid-uri@#$%";
@@ -325,9 +309,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
     test("SECURITY GAP: does NOT prevent SSRF attacks via malicious URIs", async () => {
       // CRITICAL: No SSRF protection - could be used to scan internal networks
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const ssrfUri = "localhost:8080";
       const request = TestHelpers.createGetRequest(ssrfUri);
@@ -335,7 +317,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
       // Currently allows potential SSRF targets
       expect(mockSwarmServiceInstance.validateUri).toHaveBeenCalledWith(ssrfUri);
-      
+
       // RECOMMENDATION: Implement URI whitelist validation:
       // const allowedDomains = ['.sphinx.chat', '.example.com'];
       // if (!allowedDomains.some(domain => uri.endsWith(domain))) {
@@ -344,9 +326,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("SECURITY GAP: does NOT escape special characters in URI", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const uriWithSpecialChars = "test<script>alert('xss')</script>.sphinx.chat";
       const request = TestHelpers.createGetRequest(uriWithSpecialChars);
@@ -363,9 +343,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should call SwarmService.validateUri with correct parameters", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const uri = "test-swarm.sphinx.chat";
       const request = TestHelpers.createGetRequest(uri);
@@ -376,9 +354,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should instantiate SwarmService with correct config", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       await GET(request);
@@ -468,9 +444,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should handle 500 errors from Super Admin API", async () => {
-      mockSwarmServiceInstance.validateUri.mockRejectedValue(
-        new Error("Super Admin API internal error")
-      );
+      mockSwarmServiceInstance.validateUri.mockRejectedValue(new Error("Super Admin API internal error"));
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -485,9 +459,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should return 200 status on successful validation", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -511,7 +483,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       expect(data).toHaveProperty("data");
       expect(typeof data.success).toBe("boolean");
       expect(typeof data.message).toBe("string");
-      
+
       if (data.data) {
         expect(data.data).toHaveProperty("domain_exists");
         expect(data.data).toHaveProperty("swarm_name_exist");
@@ -522,7 +494,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
     test("should handle null data in ValidateUriResponse", async () => {
       mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createFailedValidateUriResponse("Validation failed")
+        TestDataFactory.createFailedValidateUriResponse("Validation failed"),
       );
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
@@ -535,9 +507,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should not expose sensitive data in error messages", async () => {
-      mockSwarmServiceInstance.validateUri.mockRejectedValue(
-        new Error("Internal error: API key xyz123 invalid")
-      );
+      mockSwarmServiceInstance.validateUri.mockRejectedValue(new Error("Internal error: API key xyz123 invalid"));
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -550,7 +520,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
 
     test("should not expose internal error details", async () => {
       mockSwarmServiceInstance.validateUri.mockRejectedValue(
-        new Error("Database connection failed at 192.168.1.10:5432")
+        new Error("Database connection failed at 192.168.1.10:5432"),
       );
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
@@ -569,9 +539,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should return 500 when unexpected error occurs", async () => {
-      mockSwarmServiceInstance.validateUri.mockRejectedValue(
-        new Error("Unexpected error")
-      );
+      mockSwarmServiceInstance.validateUri.mockRejectedValue(new Error("Unexpected error"));
 
       const request = TestHelpers.createGetRequest("test-swarm.sphinx.chat");
       const response = await GET(request);
@@ -613,7 +581,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
       // Should still return 200 even with malformed response
       expect(response.status).toBe(200);
       const data = await response.json();
-      
+
       // With malformed response, the route passes undefined values to NextResponse.json()
       // which results in properties being undefined/missing in the response
       expect(data.success).toBeUndefined();
@@ -642,9 +610,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should handle extremely long URI", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const longUri = "a".repeat(1000) + ".sphinx.chat";
       const request = TestHelpers.createGetRequest(longUri);
@@ -655,9 +621,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should handle URI with URL encoding", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const encodedUri = "test%20swarm.sphinx.chat";
       const request = TestHelpers.createGetRequest(encodedUri);
@@ -667,9 +631,7 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should handle URI with query parameters", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
       const uriWithParams = "test-swarm.sphinx.chat?version=1&mode=prod";
       const request = TestHelpers.createGetRequest(uriWithParams);
@@ -680,13 +642,9 @@ describe("GET /api/swarm/validate - Unit Tests", () => {
     });
 
     test("should handle concurrent requests", async () => {
-      mockSwarmServiceInstance.validateUri.mockResolvedValue(
-        TestDataFactory.createValidateUriResponse()
-      );
+      mockSwarmServiceInstance.validateUri.mockResolvedValue(TestDataFactory.createValidateUriResponse());
 
-      const requests = Array.from({ length: 10 }, (_, i) =>
-        TestHelpers.createGetRequest(`swarm-${i}.sphinx.chat`)
-      );
+      const requests = Array.from({ length: 10 }, (_, i) => TestHelpers.createGetRequest(`swarm-${i}.sphinx.chat`));
 
       const responses = await Promise.all(requests.map((req) => GET(req)));
 

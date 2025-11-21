@@ -1,7 +1,4 @@
-import {
-  mapStakworkStatus,
-  stakgraphToRepositoryStatus,
-} from "@/utils/conversions";
+import { mapStakworkStatus, stakgraphToRepositoryStatus } from "@/utils/conversions";
 import { describe, expect, test, vi } from "vitest";
 
 // Mock Prisma enums
@@ -25,7 +22,7 @@ const normalizeStatus = (status: string) => status.toLowerCase();
 const mapStatus = (status: string, mapping: Record<string, string[]>, defaultValue?: string) => {
   const normalized = status.toLowerCase();
   for (const [enumValue, patterns] of Object.entries(mapping)) {
-    if (patterns.some(pattern => normalized.includes(pattern))) {
+    if (patterns.some((pattern) => normalized.includes(pattern))) {
       return enumValue;
     }
   }
@@ -168,7 +165,6 @@ describe("conversions", () => {
   });
 
   describe("status mapping integration", () => {
-
     test("workflowStatusMapping patterns work with mapStatus", () => {
       const workflowMapping = {
         IN_PROGRESS: ["in_progress", "running", "processing"],

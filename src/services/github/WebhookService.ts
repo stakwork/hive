@@ -237,12 +237,7 @@ export class WebhookService extends BaseServiceClass {
     return githubProfile.token;
   }
 
-  private async verifyHookExists(
-    token: string,
-    owner: string,
-    repo: string,
-    hookId: number,
-  ): Promise<boolean> {
+  private async verifyHookExists(token: string, owner: string, repo: string, hookId: number): Promise<boolean> {
     try {
       const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`, {
         method: "GET",

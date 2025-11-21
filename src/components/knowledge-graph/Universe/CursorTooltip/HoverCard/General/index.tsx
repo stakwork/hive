@@ -1,27 +1,27 @@
-import { useSchemaStore } from '@/stores/useSchemaStore'
-import { Node } from '@Universe/types'
-import { truncateText } from '@Universe/utils/truncateText'
-import { Avatar, TooltipContainer } from '../index'
+import { useSchemaStore } from "@/stores/useSchemaStore";
+import { Node } from "@Universe/types";
+import { truncateText } from "@Universe/utils/truncateText";
+import { Avatar, TooltipContainer } from "../index";
 
 type Props = {
-  node: Node
-}
+  node: Node;
+};
 
 export const General = ({ node }: Props) => {
-  const { getNodeKeysByType } = useSchemaStore((s) => s)
+  const { getNodeKeysByType } = useSchemaStore((s) => s);
 
-  const keyProperty = getNodeKeysByType(node.node_type) || ''
+  const keyProperty = getNodeKeysByType(node.node_type) || "";
 
-  let title = ''
-  let description = node?.properties?.description || node.properties?.text || ''
+  let title = "";
+  let description = node?.properties?.description || node.properties?.text || "";
 
-  if (node.node_type === 'Question') {
-    title = node.name || ''
-  } else if (node.node_type === 'Claim') {
-    title = ''
-    description = node?.properties?.name || ''
+  if (node.node_type === "Question") {
+    title = node.name || "";
+  } else if (node.node_type === "Claim") {
+    title = "";
+    description = node?.properties?.name || "";
   } else if (node?.properties) {
-    title = node.properties[keyProperty] || ''
+    title = node.properties[keyProperty] || "";
   }
 
   return (
@@ -45,6 +45,5 @@ export const General = ({ node }: Props) => {
         )}
       </div>
     </TooltipContainer>
-  )
-}
-
+  );
+};

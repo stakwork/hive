@@ -9,14 +9,11 @@ interface WizardStepRendererProps {
   onNext: () => void;
 }
 
-export function WizardStepRenderer({
-  step,
-  onNext,
-}: Readonly<WizardStepRendererProps>) {
+export function WizardStepRenderer({ step, onNext }: Readonly<WizardStepRendererProps>) {
   const StepComponent = componentsMap[step];
 
   if (!StepComponent) {
-    return <DefaultStep step={step} handleBackToStep={() => { }} />;
+    return <DefaultStep step={step} handleBackToStep={() => {}} />;
   }
 
   const sharedProps = {

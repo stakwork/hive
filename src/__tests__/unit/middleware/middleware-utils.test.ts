@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
-import {
-  getMiddlewareContext,
-  requireAuth,
-  patternToRegex,
-} from "@/lib/middleware/utils";
+import { getMiddlewareContext, requireAuth, patternToRegex } from "@/lib/middleware/utils";
 import type { AuthStatus } from "@/types/middleware";
 
 function createRequestWithHeaders(headers: Record<string, string>): NextRequest {
@@ -261,7 +257,7 @@ describe("requireAuth", () => {
 
     const result = requireAuth(context);
 
-    if ('status' in result) {
+    if ("status" in result) {
       const json = await result.json();
       expect(json).toHaveProperty("error", "Unauthorized");
       expect(json).toHaveProperty("kind");

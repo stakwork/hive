@@ -206,9 +206,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
                 workspaceId: workspaceId,
               }),
             });
-
           }
-
         } catch (error) {
           console.error(`Failed to create swarm:`, error);
           toast({
@@ -380,12 +378,11 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     );
   }
 
-
-  console.log('setup-status')
-  console.log('swarmId', swarmId);
-  console.log('hasStakworkCustomer', hasStakworkCustomer);
-  console.log('ingestRefId', ingestRefId);
-  console.log('setup-status')
+  console.log("setup-status");
+  console.log("swarmId", swarmId);
+  console.log("hasStakworkCustomer", hasStakworkCustomer);
+  console.log("ingestRefId", ingestRefId);
+  console.log("setup-status");
 
   // Show loading state during workspace setup
   if (!swarmId || !hasStakworkCustomer || !ingestRefId) {

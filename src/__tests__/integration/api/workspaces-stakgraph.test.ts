@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  GET as GET_STAK,
-  PUT as PUT_STAK,
-} from "@/app/api/workspaces/[slug]/stakgraph/route";
+import { GET as GET_STAK, PUT as PUT_STAK } from "@/app/api/workspaces/[slug]/stakgraph/route";
 import { db } from "@/lib/db";
 import { encryptEnvVars } from "@/lib/encryption";
 import {
@@ -19,7 +16,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    
+
     // Don't manually clean - let the global cleanup handle it
     // Use transaction to atomically create test data
     testData = await db.$transaction(async (tx) => {
@@ -58,16 +55,14 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
   });
 
   it("GET returns decrypted env vars but DB remains encrypted", async () => {
-    const req = createGetRequest(
-      `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`
-    );
+    const req = createGetRequest(`http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`);
     const res = await GET_STAK(req, {
       params: Promise.resolve({ slug: testData.workspace.slug }),
     });
     const response = await res.json();
     console.log("Response status:", res.status);
     console.log("Response body:", JSON.stringify(response, null, 2));
-    
+
     expect(res.status).toBe(200);
     const envVars = response.data.environmentVariables as Array<{
       name: string;

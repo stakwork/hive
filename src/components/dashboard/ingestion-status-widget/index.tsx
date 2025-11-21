@@ -2,7 +2,6 @@
 
 import { useIngestStatus } from "@/hooks/useIngestStatus";
 
-
 export function IngestionStatusWidget() {
   const { isIngesting, statusMessage } = useIngestStatus();
 
@@ -16,10 +15,7 @@ export function IngestionStatusWidget() {
         <div className="absolute inset-0 rounded-full border-2 border-muted-foreground/20" />
         <div className="absolute inset-0 rounded-full border-2 border-t-muted-foreground border-r-transparent border-b-transparent border-l-transparent animate-spin" />
       </div>
-      <div
-        key={statusMessage}
-        className="text-xs font-mono text-foreground animate-in fade-in duration-300"
-      >
+      <div key={statusMessage} className="text-xs font-mono text-foreground animate-in fade-in duration-300">
         {statusMessage}
       </div>
     </div>

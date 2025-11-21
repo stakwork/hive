@@ -86,7 +86,7 @@ describe("middleware", () => {
       createRequest("/", {
         [MIDDLEWARE_HEADERS.AUTH_STATUS]: "spoofed",
         [MIDDLEWARE_HEADERS.USER_ID]: "spoofed",
-      })
+      }),
     );
 
     expect(response.headers.get(MIDDLEWARE_HEADERS.AUTH_STATUS)).toBe("public");

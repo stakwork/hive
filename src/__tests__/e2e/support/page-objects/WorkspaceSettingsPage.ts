@@ -1,6 +1,6 @@
-import { Page, expect } from '@playwright/test';
-import { selectors, dynamicSelectors } from '../fixtures/selectors';
-import { WorkspaceRole } from '@/lib/auth/roles';
+import { Page, expect } from "@playwright/test";
+import { selectors, dynamicSelectors } from "../fixtures/selectors";
+import { WorkspaceRole } from "@/lib/auth/roles";
 
 const roleSelectors: Record<WorkspaceRole, string | undefined> = {
   OWNER: undefined,
@@ -25,33 +25,33 @@ export class WorkspaceSettingsPage {
   async waitForLoad(): Promise<void> {
     // Debug: Wait a moment and then check what's on the page
     await this.page.waitForTimeout(2000);
-    
+
     // Check if we're on the sign-in page instead
     const signInButton = this.page.locator(selectors.auth.mockSignInButton);
     const isSignInPage = await signInButton.isVisible();
-    
+
     if (isSignInPage) {
-      console.log('WARNING: On sign-in page instead of workspace settings');
-      throw new Error('Authentication failed - redirected to sign-in page');
+      console.log("WARNING: On sign-in page instead of workspace settings");
+      throw new Error("Authentication failed - redirected to sign-in page");
     }
-    
+
     // Check the actual page title that exists
     const pageTitle = this.page.locator('[data-testid="page-title"]');
     const pageTitleExists = await pageTitle.isVisible();
-    
+
     if (pageTitleExists) {
       const titleText = await pageTitle.textContent();
       console.log(`Found page title: "${titleText}"`);
     } else {
       console.log('No page title found with data-testid="page-title"');
     }
-    
+
     // Try a more flexible approach - just check if we have the settings form
-    const settingsForm = this.page.locator('form');
+    const settingsForm = this.page.locator("form");
     await expect(settingsForm).toBeVisible({ timeout: 10000 });
-    
+
     // If we find the form but not the title, we're probably on the right page
-    console.log('Settings form found - assuming we\'re on the correct page');
+    console.log("Settings form found - assuming we're on the correct page");
   }
 
   async fillWorkspaceName(name: string): Promise<void> {
@@ -76,11 +76,7 @@ export class WorkspaceSettingsPage {
     await this.page.locator(selectors.workspaceSettings.saveButton).click();
   }
 
-  async updateWorkspaceSettings(options: {
-    name?: string;
-    slug?: string;
-    description?: string;
-  }): Promise<void> {
+  async updateWorkspaceSettings(options: { name?: string; slug?: string; description?: string }): Promise<void> {
     const { name, slug, description } = options;
 
     if (name) {
@@ -169,14 +165,14 @@ export class WorkspaceSettingsPage {
   async confirmDelete(workspaceName: string): Promise<void> {
     const dialog = this.page.locator(selectors.workspaceDeletion.dialog);
     await expect(dialog).toBeVisible({ timeout: 10000 });
-    
+
     await dialog.locator(selectors.workspaceDeletion.confirmationInput).fill(workspaceName);
     await dialog.locator(selectors.workspaceDeletion.confirmButton).click();
   }
 
   async waitForDeletion(): Promise<void> {
     // Wait for redirect to workspaces list page
-    await expect(this.page).toHaveURL('http://localhost:3000/workspaces', { timeout: 15000 });
+    await expect(this.page).toHaveURL("http://localhost:3000/workspaces", { timeout: 15000 });
   }
 
   async deleteWorkspace(workspaceName: string): Promise<void> {

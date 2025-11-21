@@ -47,10 +47,7 @@ export function ConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel
-            onClick={() => onOpenChange(false)}
-            data-testid={testId ? `${testId}-cancel` : undefined}
-          >
+          <AlertDialogCancel onClick={() => onOpenChange(false)} data-testid={testId ? `${testId}-cancel` : undefined}>
             {cancelText}
           </AlertDialogCancel>
           <AlertDialogAction

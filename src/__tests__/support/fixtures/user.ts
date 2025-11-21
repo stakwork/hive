@@ -13,9 +13,7 @@ export interface CreateTestUserOptions {
   githubUsername?: string;
 }
 
-export async function createTestUser(
-  options: CreateTestUserOptions = {},
-): Promise<User> {
+export async function createTestUser(options: CreateTestUserOptions = {}): Promise<User> {
   const uniqueId = generateUniqueId("user");
   const githubUsername = options.githubUsername || `testuser-${uniqueId}`;
 
@@ -52,9 +50,7 @@ export async function createTestUser(
     // Create GitHub Account with encrypted access token
     if (process.env.TOKEN_ENCRYPTION_KEY) {
       const testAccessToken = `gho_test_token_${uniqueId}`;
-      const encryptedToken = JSON.stringify(
-        encryptionService.encryptField("access_token", testAccessToken)
-      );
+      const encryptedToken = JSON.stringify(encryptionService.encryptField("access_token", testAccessToken));
 
       await db.account.create({
         data: {

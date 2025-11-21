@@ -36,7 +36,6 @@ export function createRequestManager(): RequestManager {
   return new RequestManager();
 }
 
-
 export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }

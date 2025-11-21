@@ -1,5 +1,5 @@
-import { Page } from '@playwright/test';
-import { waitForElement } from '../helpers/waits';
+import { Page } from "@playwright/test";
+import { waitForElement } from "../helpers/waits";
 
 /**
  * Page Object Model for Phase Detail page
@@ -22,7 +22,7 @@ export class PhaseDetailPage {
   async waitForLoad(): Promise<void> {
     await this.page.waitForURL(/\/w\/.*\/phases\/.*/, { timeout: 10000 });
     // Wait for the "Add Task" button or tasks section to be visible
-    await waitForElement(this.page, 'text=Tasks', { timeout: 10000 });
+    await waitForElement(this.page, "text=Tasks", { timeout: 10000 });
   }
 
   /**
@@ -30,7 +30,7 @@ export class PhaseDetailPage {
    */
   async clickAddTicket(): Promise<void> {
     const addButton = this.page.locator('button:has-text("Add Task")');
-    await addButton.waitFor({ state: 'visible', timeout: 10000 });
+    await addButton.waitFor({ state: "visible", timeout: 10000 });
     await addButton.click();
     // Wait for the task form to appear
     await this.page.waitForTimeout(500);
@@ -49,7 +49,7 @@ export class PhaseDetailPage {
     }
 
     // Fill in task title
-    await titleInput.waitFor({ state: 'visible', timeout: 10000 });
+    await titleInput.waitFor({ state: "visible", timeout: 10000 });
     await titleInput.fill(title);
 
     // Optionally fill in description

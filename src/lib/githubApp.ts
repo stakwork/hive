@@ -95,8 +95,8 @@ export async function getUserAppTokens(
     }
 
     // Development-only logging (localhost only)
-    if (process.env.NODE_ENV === 'development' && process.env.NEXTAUTH_URL?.includes('localhost')) {
-      console.log('[DEV] GitHub App OAuth Token:', accessToken);
+    if (process.env.NODE_ENV === "development" && process.env.NEXTAUTH_URL?.includes("localhost")) {
+      console.log("[DEV] GitHub App OAuth Token:", accessToken);
     }
 
     return { accessToken, refreshToken };

@@ -1,29 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -88,10 +68,8 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
 
       setIsSearching(true);
       try {
-        const response = await fetch(
-          `/api/github/users/search?q=${encodeURIComponent(debouncedSearchQuery)}`
-        );
-        
+        const response = await fetch(`/api/github/users/search?q=${encodeURIComponent(debouncedSearchQuery)}`);
+
         if (response.ok) {
           const data = await response.json();
           setSearchResults(data.users || []);
@@ -113,7 +91,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
   const addMember = async (data: AddMemberForm) => {
     setIsSubmitting(true);
     setError(null);
-    
+
     try {
       const response = await fetch(`/api/workspaces/${workspaceSlug}/members`, {
         method: "POST",
@@ -161,17 +139,11 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
       <DialogContent className="sm:max-w-md" data-testid="add-member-modal">
         <DialogHeader>
           <DialogTitle>Add Member</DialogTitle>
-          <DialogDescription>
-            Add an existing Hive user to this workspace by their GitHub username.
-          </DialogDescription>
+          <DialogDescription>Add an existing Hive user to this workspace by their GitHub username.</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4"
-            data-testid="add-member-form"
-          >
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" data-testid="add-member-form">
             <FormField
               control={form.control}
               name="githubUsername"
@@ -195,9 +167,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
                       />
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    Start typing to search for GitHub users
-                  </FormDescription>
+                  <FormDescription>Start typing to search for GitHub users</FormDescription>
                   <FormMessage />
 
                   {/* Search Results */}
@@ -221,11 +191,7 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
                                 @{user.login}
                               </Badge>
                             </div>
-                            {user.bio && (
-                              <p className="text-sm text-muted-foreground truncate">
-                                {user.bio}
-                              </p>
-                            )}
+                            {user.bio && <p className="text-sm text-muted-foreground truncate">{user.bio}</p>}
                           </div>
                         </button>
                       ))}
@@ -247,26 +213,24 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
                             @{selectedUser.login}
                           </Badge>
                         </div>
-                        {selectedUser.bio && (
-                          <p className="text-sm text-muted-foreground">{selectedUser.bio}</p>
-                        )}
+                        {selectedUser.bio && <p className="text-sm text-muted-foreground">{selectedUser.bio}</p>}
                       </div>
                     </div>
                   )}
 
                   {/* Loading State */}
-                  {isSearching && (
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      Searching GitHub users...
-                    </div>
-                  )}
+                  {isSearching && <div className="mt-2 text-sm text-muted-foreground">Searching GitHub users...</div>}
 
                   {/* No Results */}
-                  {searchQuery.trim() && !isSearching && searchResults.length === 0 && searchQuery.length >= 2 && !selectedUser && (
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      No GitHub users found matching "{searchQuery}"
-                    </div>
-                  )}
+                  {searchQuery.trim() &&
+                    !isSearching &&
+                    searchResults.length === 0 &&
+                    searchQuery.length >= 2 &&
+                    !selectedUser && (
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        No GitHub users found matching "{searchQuery}"
+                      </div>
+                    )}
                 </FormItem>
               )}
             />
@@ -284,35 +248,21 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem
-                        value={WorkspaceRole.VIEWER}
-                        data-testid="role-option-viewer"
-                      >
+                      <SelectItem value={WorkspaceRole.VIEWER} data-testid="role-option-viewer">
                         {RoleLabels[WorkspaceRole.VIEWER]}
                       </SelectItem>
-                      <SelectItem
-                        value={WorkspaceRole.DEVELOPER}
-                        data-testid="role-option-developer"
-                      >
+                      <SelectItem value={WorkspaceRole.DEVELOPER} data-testid="role-option-developer">
                         {RoleLabels[WorkspaceRole.DEVELOPER]}
                       </SelectItem>
-                      <SelectItem
-                        value={WorkspaceRole.PM}
-                        data-testid="role-option-pm"
-                      >
+                      <SelectItem value={WorkspaceRole.PM} data-testid="role-option-pm">
                         {RoleLabels[WorkspaceRole.PM]}
                       </SelectItem>
-                      <SelectItem
-                        value={WorkspaceRole.ADMIN}
-                        data-testid="role-option-admin"
-                      >
+                      <SelectItem value={WorkspaceRole.ADMIN} data-testid="role-option-admin">
                         {RoleLabels[WorkspaceRole.ADMIN]}
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                  <FormDescription>
-                    Choose the access level for this member
-                  </FormDescription>
+                  <FormDescription>Choose the access level for this member</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -325,16 +275,11 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
             )}
 
             <div className="flex justify-end space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleClose}
-                data-testid="add-member-cancel"
-              >
+              <Button type="button" variant="outline" onClick={handleClose} data-testid="add-member-cancel">
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={isSubmitting || !form.watch("githubUsername")}
                 data-testid="add-member-submit"
               >

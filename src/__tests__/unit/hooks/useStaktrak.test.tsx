@@ -27,12 +27,7 @@ const TestDataFactories = {
     };
   },
 
-  createMessageEvent: (
-    type: string,
-    data?: any,
-    eventType?: string,
-    source?: any
-  ): MessageEvent => {
+  createMessageEvent: (type: string, data?: any, eventType?: string, source?: any): MessageEvent => {
     const messageData: any = { type };
     if (data !== undefined) messageData.data = data;
     if (eventType !== undefined) messageData.eventType = eventType;
@@ -45,17 +40,8 @@ const TestDataFactories = {
     } as MessageEvent;
   },
 
-  createStaktrakEventMessage: (
-    eventType: string,
-    eventData: any,
-    source?: any
-  ) => {
-    return TestDataFactories.createMessageEvent(
-      "staktrak-event",
-      eventData,
-      eventType,
-      source
-    );
+  createStaktrakEventMessage: (eventType: string, eventData: any, source?: any) => {
+    return TestDataFactories.createMessageEvent("staktrak-event", eventData, eventType, source);
   },
 
   createMockAction: (id: string, type: string, text: string = "") => ({
@@ -66,9 +52,7 @@ const TestDataFactories = {
   }),
 
   createMockActions: (count: number) =>
-    Array.from({ length: count }, (_, i) =>
-      TestDataFactories.createMockAction(`action-${i}`, "click", `Element ${i}`)
-    ),
+    Array.from({ length: count }, (_, i) => TestDataFactories.createMockAction(`action-${i}`, "click", `Element ${i}`)),
 };
 
 // Test utilities
@@ -91,20 +75,12 @@ const TestUtils = {
         data: event.data,
         source: event.source as any,
         origin: event.origin,
-      })
+      }),
     );
   },
 
-  expectPostMessageCall: (
-    mockPostMessage: any,
-    commandType: string,
-    callIndex: number = 0
-  ) => {
-    expect(mockPostMessage).toHaveBeenNthCalledWith(
-      callIndex + 1,
-      { type: commandType },
-      "*"
-    );
+  expectPostMessageCall: (mockPostMessage: any, commandType: string, callIndex: number = 0) => {
+    expect(mockPostMessage).toHaveBeenNthCalledWith(callIndex + 1, { type: commandType }, "*");
   },
 };
 
@@ -255,10 +231,7 @@ describe("useStaktrak Hook", () => {
       });
 
       expect(result.current.isAssertionMode).toBe(true);
-      TestUtils.expectPostMessageCall(
-        mockIframe.postMessage,
-        "staktrak-enable-selection"
-      );
+      TestUtils.expectPostMessageCall(mockIframe.postMessage, "staktrak-enable-selection");
     });
 
     test("disableAssertionMode disables assertion mode and sends command", () => {
@@ -275,11 +248,7 @@ describe("useStaktrak Hook", () => {
       });
 
       expect(result.current.isAssertionMode).toBe(false);
-      TestUtils.expectPostMessageCall(
-        mockIframe.postMessage,
-        "staktrak-disable-selection",
-        1
-      );
+      TestUtils.expectPostMessageCall(mockIframe.postMessage, "staktrak-disable-selection", 1);
     });
   });
 
@@ -297,9 +266,7 @@ describe("useStaktrak Hook", () => {
         result.current.removeAction(actionToRemove);
       });
 
-      expect(mockRecordingManager.removeAction).toHaveBeenCalledWith(
-        actionToRemove.id
-      );
+      expect(mockRecordingManager.removeAction).toHaveBeenCalledWith(actionToRemove.id);
       expect(result.current.capturedActions).toEqual(mockActions.slice(0, 2));
     });
 
@@ -393,7 +360,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-setup",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -411,12 +378,7 @@ describe("useStaktrak Hook", () => {
       result.current.iframeRef.current = mockIframe.current;
 
       const wrongSource = { postMessage: vi.fn() };
-      const event = TestDataFactories.createMessageEvent(
-        "staktrak-setup",
-        undefined,
-        undefined,
-        wrongSource
-      );
+      const event = TestDataFactories.createMessageEvent("staktrak-setup", undefined, undefined, wrongSource);
 
       act(() => {
         TestUtils.simulateMessage(event);
@@ -449,156 +411,106 @@ describe("useStaktrak Hook", () => {
       mockRecordingManager.getActions.mockReturnValue(mockActions);
 
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = {
         selectors: { text: "Submit Button", tagName: "button" },
       };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "click",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("click", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
       await waitFor(() => {
-        expect(mockRecordingManager.handleEvent).toHaveBeenCalledWith(
-          "click",
-          eventData
-        );
+        expect(mockRecordingManager.handleEvent).toHaveBeenCalledWith("click", eventData);
         expect(result.current.capturedActions).toEqual(mockActions);
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "Click captured",
-          "Submit Button"
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("Click captured", "Submit Button");
       });
     });
 
     test("handles staktrak-event for input event", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { value: "test@example.com" };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "input",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("input", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
       await waitFor(() => {
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "Input captured",
-          "test@example.com"
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("Input captured", "test@example.com");
       });
     });
 
     test("handles staktrak-event for form checkbox event", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { formType: "checkbox", checked: true };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "form",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("form", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
       await waitFor(() => {
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "Form change captured",
-          "checkbox checked"
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("Form change captured", "checkbox checked");
       });
     });
 
     test("handles staktrak-event for form select event", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { formType: "select", text: "Option 1", value: "opt1" };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "form",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("form", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
       await waitFor(() => {
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "Form change captured",
-          "Selected: Option 1"
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("Form change captured", "Selected: Option 1");
       });
     });
 
     test("handles staktrak-event for navigation event", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { url: "https://example.com/page" };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "nav",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("nav", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
       await waitFor(() => {
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "Navigation captured",
-          "/page"
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("Navigation captured", "/page");
       });
     });
 
     test("handles staktrak-event for assertion event", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
@@ -606,7 +518,7 @@ describe("useStaktrak Hook", () => {
       const event = TestDataFactories.createStaktrakEventMessage(
         "assertion",
         eventData,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -614,10 +526,7 @@ describe("useStaktrak Hook", () => {
       });
 
       await waitFor(() => {
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "Assertion captured",
-          '"Success Message"'
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("Assertion captured", '"Success Message"');
       });
     });
 
@@ -632,7 +541,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-event",
         { someData: "value" },
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -657,21 +566,14 @@ describe("useStaktrak Hook", () => {
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { selectors: { text: "Button" } };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "click",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("click", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
       await waitFor(() => {
-        expect(consoleErrorSpy).toHaveBeenCalledWith(
-          "Error handling staktrak event:",
-          expect.any(Error)
-        );
+        expect(consoleErrorSpy).toHaveBeenCalledWith("Error handling staktrak event:", expect.any(Error));
       });
 
       consoleErrorSpy.mockRestore();
@@ -688,9 +590,7 @@ describe("useStaktrak Hook", () => {
       mockRecordingManager.getActions.mockReturnValue([{ type: "click", id: "action-1" }]);
 
       const onTestGenerated = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(initialUrl, onTestGenerated)
-      );
+      const { result } = renderHook(() => useStaktrak(initialUrl, onTestGenerated));
 
       result.current.iframeRef.current = mockIframe.current;
 
@@ -698,7 +598,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -706,9 +606,7 @@ describe("useStaktrak Hook", () => {
       });
 
       await waitFor(() => {
-        expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(
-          initialUrl
-        );
+        expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(initialUrl);
         expect(result.current.generatedPlaywrightTest).toBe(generatedTest);
         expect(onTestGenerated).toHaveBeenCalledWith(generatedTest);
       });
@@ -729,7 +627,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -737,9 +635,7 @@ describe("useStaktrak Hook", () => {
       });
 
       await waitFor(() => {
-        expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(
-          expectedUrl
-        );
+        expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(expectedUrl);
       });
     });
 
@@ -758,7 +654,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -766,9 +662,7 @@ describe("useStaktrak Hook", () => {
       });
 
       await waitFor(() => {
-        expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(
-          expectedUrl
-        );
+        expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(expectedUrl);
       });
     });
 
@@ -781,7 +675,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -812,7 +706,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -824,8 +718,8 @@ describe("useStaktrak Hook", () => {
           "[useStaktrak] Test generation error",
           expect.objectContaining({
             error: expect.any(Error),
-            errorMessage: "Generation error"
-          })
+            errorMessage: "Generation error",
+          }),
         );
         expect(onTestGenerated).toHaveBeenCalledWith("", "Failed to generate test. Please try again.");
       });
@@ -836,9 +730,7 @@ describe("useStaktrak Hook", () => {
 
   describe("Message Handler - Navigation", () => {
     test("handles staktrak-page-navigation message", async () => {
-      const { result } = renderHook(() =>
-        useStaktrak("https://example.com/initial")
-      );
+      const { result } = renderHook(() => useStaktrak("https://example.com/initial"));
 
       result.current.iframeRef.current = mockIframe.current;
 
@@ -847,7 +739,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-page-navigation",
         newUrl,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -869,7 +761,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-page-navigation",
         "",
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -888,14 +780,13 @@ describe("useStaktrak Hook", () => {
       const onActionCaptured1 = vi.fn();
 
       const { rerender } = renderHook(
-        ({ onTestGenerated, onActionCaptured }) =>
-          useStaktrak(undefined, onTestGenerated, onActionCaptured),
+        ({ onTestGenerated, onActionCaptured }) => useStaktrak(undefined, onTestGenerated, onActionCaptured),
         {
           initialProps: {
             onTestGenerated: onTestGenerated1,
             onActionCaptured: onActionCaptured1,
           },
-        }
+        },
       );
 
       const onTestGenerated2 = vi.fn();
@@ -927,16 +818,14 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
-      expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(
-        "http://localhost:3000"
-      );
+      expect(mockRecordingManager.generateTest).toHaveBeenCalledWith("http://localhost:3000");
     });
 
     test("cleans workspace URL with custom port", () => {
@@ -954,16 +843,14 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
-      expect(mockRecordingManager.generateTest).toHaveBeenCalledWith(
-        "http://localhost:8080"
-      );
+      expect(mockRecordingManager.generateTest).toHaveBeenCalledWith("http://localhost:8080");
     });
 
     test("leaves non-workspace URLs unchanged", () => {
@@ -981,7 +868,7 @@ describe("useStaktrak Hook", () => {
         "staktrak-results",
         undefined,
         undefined,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -1014,10 +901,7 @@ describe("useStaktrak Hook", () => {
 
       unmount();
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith(
-        "message",
-        expect.any(Function)
-      );
+      expect(removeEventListenerSpy).toHaveBeenCalledWith("message", expect.any(Function));
 
       removeEventListenerSpy.mockRestore();
     });
@@ -1026,22 +910,16 @@ describe("useStaktrak Hook", () => {
       const addEventListenerSpy = vi.spyOn(window, "addEventListener");
       const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
 
-      const { rerender } = renderHook(
-        ({ initialUrl }) => useStaktrak(initialUrl),
-        { initialProps: { initialUrl: "https://example.com/1" } }
-      );
+      const { rerender } = renderHook(({ initialUrl }) => useStaktrak(initialUrl), {
+        initialProps: { initialUrl: "https://example.com/1" },
+      });
 
       const initialCallCount = addEventListenerSpy.mock.calls.length;
 
       rerender({ initialUrl: "https://example.com/2" });
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith(
-        "message",
-        expect.any(Function)
-      );
-      expect(addEventListenerSpy.mock.calls.length).toBeGreaterThan(
-        initialCallCount
-      );
+      expect(removeEventListenerSpy).toHaveBeenCalledWith("message", expect.any(Function));
+      expect(addEventListenerSpy.mock.calls.length).toBeGreaterThan(initialCallCount);
 
       addEventListenerSpy.mockRestore();
       removeEventListenerSpy.mockRestore();
@@ -1057,11 +935,7 @@ describe("useStaktrak Hook", () => {
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { selectors: { text: "Button" } };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "click",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("click", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
@@ -1116,18 +990,12 @@ describe("useStaktrak Hook", () => {
     test("handles click event with missing selectors", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { selectors: {} };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "click",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("click", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
@@ -1141,37 +1009,26 @@ describe("useStaktrak Hook", () => {
     test("handles form event with unknown formType", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
       const eventData = { formType: "unknown" };
-      const event = TestDataFactories.createStaktrakEventMessage(
-        "form",
-        eventData,
-        mockIframe.current.contentWindow
-      );
+      const event = TestDataFactories.createStaktrakEventMessage("form", eventData, mockIframe.current.contentWindow);
 
       act(() => {
         TestUtils.simulateMessage(event);
       });
 
       await waitFor(() => {
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "Form change captured",
-          "unknown"
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("Form change captured", "unknown");
       });
     });
 
     test("handles unknown event type", async () => {
       TestUtils.setupWindowMocks(mockRecordingManager);
       const onActionCaptured = vi.fn();
-      const { result } = renderHook(() =>
-        useStaktrak(undefined, undefined, onActionCaptured)
-      );
+      const { result } = renderHook(() => useStaktrak(undefined, undefined, onActionCaptured));
 
       result.current.iframeRef.current = mockIframe.current;
 
@@ -1179,7 +1036,7 @@ describe("useStaktrak Hook", () => {
       const event = TestDataFactories.createStaktrakEventMessage(
         "unknown-event-type",
         eventData,
-        mockIframe.current.contentWindow
+        mockIframe.current.contentWindow,
       );
 
       act(() => {
@@ -1187,10 +1044,7 @@ describe("useStaktrak Hook", () => {
       });
 
       await waitFor(() => {
-        expect(onActionCaptured).toHaveBeenCalledWith(
-          "unknown-event-type captured",
-          "Action recorded"
-        );
+        expect(onActionCaptured).toHaveBeenCalledWith("unknown-event-type captured", "Action recorded");
       });
     });
   });
@@ -1239,9 +1093,7 @@ describe("useStaktrak Hook", () => {
       ];
 
       methods.forEach((method) => {
-        expect(typeof result.current[method as keyof typeof result.current]).toBe(
-          "function"
-        );
+        expect(typeof result.current[method as keyof typeof result.current]).toBe("function");
       });
     });
   });

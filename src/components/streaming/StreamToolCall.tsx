@@ -74,9 +74,7 @@ export function StreamToolCall({ toolCall, expectsOutput = true }: StreamToolCal
               <div className="font-semibold mb-1">Output:</div>
               <div className="bg-muted/50 rounded p-2 font-mono text-[10px] whitespace-pre-wrap break-words max-h-60 overflow-y-auto overflow-x-hidden">
                 {String(
-                  typeof toolCall.output === "string"
-                    ? toolCall.output
-                    : JSON.stringify(toolCall.output, null, 2)
+                  typeof toolCall.output === "string" ? toolCall.output : JSON.stringify(toolCall.output, null, 2),
                 )}
               </div>
             </div>
@@ -85,9 +83,7 @@ export function StreamToolCall({ toolCall, expectsOutput = true }: StreamToolCal
           {toolCall.errorText && (
             <div>
               <div className="font-semibold mb-1 text-destructive">Error:</div>
-              <div className="bg-destructive/10 rounded p-2 text-destructive break-words">
-                {toolCall.errorText}
-              </div>
+              <div className="bg-destructive/10 rounded p-2 text-destructive break-words">{toolCall.errorText}</div>
             </div>
           )}
         </div>

@@ -97,10 +97,7 @@ export function ActionMenu({
             const Icon = action.icon;
             return (
               <div key={index}>
-                <DropdownMenuItem
-                  variant={action.variant}
-                  onClick={(e) => handleActionClick(action, index, e)}
-                >
+                <DropdownMenuItem variant={action.variant} onClick={(e) => handleActionClick(action, index, e)}>
                   {Icon && <Icon className="h-4 w-4" />}
                   {action.label}
                 </DropdownMenuItem>
@@ -143,7 +140,7 @@ export function ActionMenu({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        ) : null
+        ) : null,
       )}
     </>
   );

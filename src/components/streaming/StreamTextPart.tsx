@@ -14,8 +14,7 @@ export function StreamTextPart({ part, className }: StreamTextPartProps) {
   return (
     <div
       className={
-        className ||
-        "prose prose-sm max-w-none dark:prose-invert [&>*]:!text-foreground [&_*]:!text-foreground"
+        className || "prose prose-sm max-w-none dark:prose-invert [&>*]:!text-foreground [&_*]:!text-foreground"
       }
     >
       <ReactMarkdown>{part.content}</ReactMarkdown>

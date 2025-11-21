@@ -25,10 +25,7 @@ export class StakworkService extends BaseServiceClass {
     // Compose headers as required by Stakwork
     const headers = {
       "Content-Type": "application/json",
-      Authorization: `Token token=${encryptionService.decryptField(
-        "stakworkApiKey",
-        this.config.apiKey,
-      )}`,
+      Authorization: `Token token=${encryptionService.decryptField("stakworkApiKey", this.config.apiKey)}`,
     };
 
     // Use the correct HTTP method
@@ -56,12 +53,7 @@ export class StakworkService extends BaseServiceClass {
     // Use the correct HTTP method
     const client = this.getClient();
     const requestFn = () => {
-      return client.post<unknown>(
-        endpoint,
-        { customer: { name: customerName } },
-        headers,
-        this.serviceName,
-      );
+      return client.post<unknown>(endpoint, { customer: { name: customerName } }, headers, this.serviceName);
     };
 
     return this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
@@ -73,11 +65,7 @@ export class StakworkService extends BaseServiceClass {
    * @param input - Object with fields: name, workflow_id, workflow_params (with set_var/attributes/vars)
    * @returns API response as JSON
    */
-  async createSecret<T = unknown>(
-    name: string,
-    value: string,
-    token: string,
-  ): Promise<T> {
+  async createSecret<T = unknown>(name: string, value: string, token: string): Promise<T> {
     const endpoint = `/secrets`;
 
     const headers = {
@@ -116,10 +104,7 @@ export class StakworkService extends BaseServiceClass {
     // Compose headers as required by Stakwork
     const headers = {
       "Content-Type": "application/json",
-      Authorization: `Token token=${encryptionService.decryptField(
-        "stakworkApiKey",
-        this.config.apiKey,
-      )}`,
+      Authorization: `Token token=${encryptionService.decryptField("stakworkApiKey", this.config.apiKey)}`,
     };
 
     // Use the correct HTTP method
@@ -136,17 +121,12 @@ export class StakworkService extends BaseServiceClass {
    * @param projectId - The Stakwork project ID
    * @returns Workflow data with transitions, connections, and status
    */
-  async getWorkflowData(
-    projectId: string,
-  ): Promise<{ workflowData: unknown; status: string }> {
+  async getWorkflowData(projectId: string): Promise<{ workflowData: unknown; status: string }> {
     const endpoint = `/projects/${projectId}.json`;
 
     const headers = {
       "Content-Type": "application/json",
-      Authorization: `Token token=${encryptionService.decryptField(
-        "stakworkApiKey",
-        this.config.apiKey,
-      )}`,
+      Authorization: `Token token=${encryptionService.decryptField("stakworkApiKey", this.config.apiKey)}`,
     };
 
     const client = this.getClient();
@@ -160,17 +140,10 @@ export class StakworkService extends BaseServiceClass {
             workflow_state: string;
           };
         };
-      }>(
-        endpoint,
-        headers,
-        this.serviceName,
-      );
+      }>(endpoint, headers, this.serviceName);
     };
 
-    const response = await this.handleRequest(
-      requestFn,
-      `stakworkRequest ${endpoint}`,
-    );
+    const response = await this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
 
     return {
       workflowData: response.data,

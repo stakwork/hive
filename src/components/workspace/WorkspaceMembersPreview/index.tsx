@@ -11,10 +11,7 @@ interface WorkspaceMembersPreviewProps {
   maxDisplay?: number;
 }
 
-function getInitials(user: {
-  name: string | null;
-  email: string | null;
-}): string {
+function getInitials(user: { name: string | null; email: string | null }): string {
   if (user.name) {
     const names = user.name.split(" ");
     if (names.length >= 2) {
@@ -28,10 +25,7 @@ function getInitials(user: {
   return "U";
 }
 
-export function WorkspaceMembersPreview({
-  workspaceSlug,
-  maxDisplay = 4,
-}: WorkspaceMembersPreviewProps) {
+export function WorkspaceMembersPreview({ workspaceSlug, maxDisplay = 4 }: WorkspaceMembersPreviewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { members, loading } = useWorkspaceMembers(workspaceSlug, {
     includeSystemAssignees: false,
@@ -58,7 +52,9 @@ export function WorkspaceMembersPreview({
   };
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm transition-all duration-300 max-h-[120px] overflow-y-auto ${loading ? 'opacity-0' : 'opacity-100'}`}>
+    <div
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm transition-all duration-300 max-h-[120px] overflow-y-auto ${loading ? "opacity-0" : "opacity-100"}`}
+    >
       {/* Avatar list */}
       <div className="flex items-center gap-2 flex-wrap">
         {displayMembers.map((member, index) => {
@@ -70,23 +66,15 @@ export function WorkspaceMembersPreview({
               <TooltipTrigger asChild>
                 <Avatar
                   className={`w-8 h-8 border-2 border-card hover:scale-110 transition-all duration-200 ${
-                    isAdditional && isExpanded
-                      ? 'animate-slide-in'
-                      : ''
+                    isAdditional && isExpanded ? "animate-slide-in" : ""
                   }`}
-                  style={
-                    isAdditional && isExpanded
-                      ? { animationDelay: `${staggerDelay}ms` }
-                      : undefined
-                  }
+                  style={isAdditional && isExpanded ? { animationDelay: `${staggerDelay}ms` } : undefined}
                 >
                   <AvatarImage
                     src={member.user.image || undefined}
                     alt={member.user.name || member.user.email || "User"}
                   />
-                  <AvatarFallback className="text-xs">
-                    {getInitials(member.user)}
-                  </AvatarFallback>
+                  <AvatarFallback className="text-xs">{getInitials(member.user)}</AvatarFallback>
                 </Avatar>
               </TooltipTrigger>
               <TooltipContent>

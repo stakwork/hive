@@ -88,9 +88,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const setCookieHeader = response.headers.get("set-cookie");
 
       // Extract cookie value
-      const cookieMatch = setCookieHeader?.match(
-        new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`)
-      );
+      const cookieMatch = setCookieHeader?.match(new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`));
       expect(cookieMatch).toBeTruthy();
       const cookieValue = cookieMatch![1];
 
@@ -248,9 +246,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const response = await POST(request);
       const setCookieHeader = response.headers.get("set-cookie");
 
-      const cookieMatch = setCookieHeader?.match(
-        new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`)
-      );
+      const cookieMatch = setCookieHeader?.match(new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`));
       const cookieValue = cookieMatch![1];
 
       // Verify format: timestamp.signature
@@ -273,9 +269,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const response = await POST(request);
       const setCookieHeader = response.headers.get("set-cookie");
 
-      const cookieMatch = setCookieHeader?.match(
-        new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`)
-      );
+      const cookieMatch = setCookieHeader?.match(new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`));
       const [originalTimestamp, signature] = cookieMatch![1].split(".");
 
       // Tamper with timestamp but keep original signature
@@ -287,13 +281,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
     });
 
     test("should reject cookie with invalid format", async () => {
-      const invalidFormats = [
-        "no-dot-separator",
-        "timestamp-only.",
-        ".signature-only",
-        "too.many.dots",
-        "",
-      ];
+      const invalidFormats = ["no-dot-separator", "timestamp-only.", ".signature-only", "too.many.dots", ""];
 
       for (const invalidCookie of invalidFormats) {
         const isValid = await verifyCookie(invalidCookie);
@@ -365,7 +353,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const special1 = "p@ssw0rd!#$%";
       const special2 = "p@ssw0rd!#$%";
       const special3 = "p@ssw0rd!#$*";
-      
+
       expect(constantTimeCompare(special1, special2)).toBe(true);
       expect(constantTimeCompare(special1, special3)).toBe(false);
     });
@@ -390,10 +378,10 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       // Both should fail with same status code and message
       expect(response1.status).toBe(401);
       expect(response2.status).toBe(401);
-      
+
       const data1 = await response1.json();
       const data2 = await response2.json();
-      
+
       expect(data1.message).toBe("Incorrect password");
       expect(data2.message).toBe("Incorrect password");
     });
@@ -445,9 +433,7 @@ describe("POST /api/auth/verify-landing Integration Tests", () => {
       const response = await POST(request);
       const setCookieHeader = response.headers.get("set-cookie");
 
-      const cookieMatch = setCookieHeader?.match(
-        new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`)
-      );
+      const cookieMatch = setCookieHeader?.match(new RegExp(`${LANDING_COOKIE_NAME}=([^;]+)`));
       const cookieValue = cookieMatch![1];
 
       // Simulate middleware verification

@@ -10,7 +10,7 @@ import {
 
 /**
  * Unit tests for OAuth callback checkRepositoryAccess function
- * 
+ *
  * This function validates repository access immediately after OAuth authorization.
  * It extracts owner/repo from GitHub URLs, checks repository access via GitHub API,
  * and evaluates push permissions.
@@ -25,9 +25,9 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
 
   describe("URL Parsing", () => {
     test("should parse HTTPS GitHub URL", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()));
       global.fetch = mockFetch;
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
@@ -45,33 +45,27 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
     });
 
     test("should parse HTTPS GitHub URL with .git extension", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()));
       global.fetch = mockFetch;
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.httpsWithGit);
 
       expect(result.hasAccess).toBe(true);
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.github.com/repos/test-owner/test-repo",
-        expect.any(Object),
-      );
+      expect(mockFetch).toHaveBeenCalledWith("https://api.github.com/repos/test-owner/test-repo", expect.any(Object));
     });
 
     test("should parse SSH GitHub URL", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()));
       global.fetch = mockFetch;
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.ssh);
 
       expect(result.hasAccess).toBe(true);
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.github.com/repos/nodejs/node",
-        expect.any(Object),
-      );
+      expect(mockFetch).toHaveBeenCalledWith("https://api.github.com/repos/nodejs/node", expect.any(Object));
     });
 
     test("should reject invalid URL: gitlab.com", async () => {
@@ -112,10 +106,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
       );
       global.fetch = mockFetch;
 
-      const result = await checkRepositoryAccess(
-        mockAccessToken,
-        "https://github.com/test-owner/test-repo-123",
-      );
+      const result = await checkRepositoryAccess(mockAccessToken, "https://github.com/test-owner/test-repo-123");
 
       expect(result.hasAccess).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(
@@ -212,9 +203,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
     test("should grant push access when user has push permission", async () => {
       global.fetch = vi
         .fn()
-        .mockResolvedValue(
-          mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()),
-        );
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()));
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
 
@@ -226,9 +215,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
     test("should grant push access when user has admin permission", async () => {
       global.fetch = vi
         .fn()
-        .mockResolvedValue(
-          mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withFullPermissions()),
-        );
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withFullPermissions()));
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
 
@@ -240,9 +227,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
     test("should grant push access when user has maintain permission", async () => {
       global.fetch = vi
         .fn()
-        .mockResolvedValue(
-          mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withMaintainPermissions()),
-        );
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withMaintainPermissions()));
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
 
@@ -254,9 +239,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
     test("should deny push access when user has only read permission", async () => {
       global.fetch = vi
         .fn()
-        .mockResolvedValue(
-          mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withReadOnlyPermissions()),
-        );
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withReadOnlyPermissions()));
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
 
@@ -271,9 +254,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
       const repoWithoutPermissions = mockGitHubRepository.withPushPermissions();
       delete repoWithoutPermissions.permissions;
 
-      global.fetch = vi
-        .fn()
-        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(repoWithoutPermissions));
+      global.fetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.repositorySuccess(repoWithoutPermissions));
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
 
@@ -291,9 +272,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
         },
       });
 
-      global.fetch = vi
-        .fn()
-        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(repoWithUndefinedPermissions));
+      global.fetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.repositorySuccess(repoWithUndefinedPermissions));
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
 
@@ -304,9 +283,9 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
 
   describe("Authorization Header", () => {
     test("should send correct authorization header", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()));
       global.fetch = mockFetch;
 
       await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
@@ -322,9 +301,9 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
     });
 
     test("should send correct Accept header", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()));
       global.fetch = mockFetch;
 
       await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
@@ -340,9 +319,9 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
     });
 
     test("should work with different access tokens", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(mockGitHubRepository.withPushPermissions()));
       global.fetch = mockFetch;
 
       const customToken = "gho_custom_token_98765";
@@ -373,9 +352,7 @@ describe("checkRepositoryAccess (OAuth Callback Version)", () => {
       const repoWithoutDefaultBranch = mockGitHubRepository.withPushPermissions();
       delete (repoWithoutDefaultBranch as any).default_branch;
 
-      global.fetch = vi
-        .fn()
-        .mockResolvedValue(mockGitHubApiResponses.repositorySuccess(repoWithoutDefaultBranch));
+      global.fetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.repositorySuccess(repoWithoutDefaultBranch));
 
       const result = await checkRepositoryAccess(mockAccessToken, testRepositoryUrls.https);
 

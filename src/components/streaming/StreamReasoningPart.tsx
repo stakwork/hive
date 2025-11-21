@@ -11,12 +11,7 @@ export function StreamReasoningPart({ part, className }: StreamReasoningPartProp
   if (!part.content) return null;
 
   return (
-    <div
-      className={
-        className ||
-        "text-xs text-muted-foreground/70 italic border-l-2 border-muted pl-3 py-1"
-      }
-    >
+    <div className={className || "text-xs text-muted-foreground/70 italic border-l-2 border-muted pl-3 py-1"}>
       {part.content}
     </div>
   );

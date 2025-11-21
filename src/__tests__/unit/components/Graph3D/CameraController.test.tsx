@@ -111,7 +111,7 @@ const TestUtils = {
     expectedX: number,
     expectedY: number,
     expectedZ: number,
-    tolerance = 0.0001
+    tolerance = 0.0001,
   ) => {
     expect(camera.position.x).toBeCloseTo(expectedX, 4);
     expect(camera.position.y).toBeCloseTo(expectedY, 4);
@@ -245,12 +245,7 @@ describe("CameraController", () => {
       const { rerender } = TestUtils.renderCameraController(props);
 
       const initialExpected = TestUtils.calculateExpectedPosition(initialDistance);
-      TestUtils.expectCameraPosition(
-        mockCamera,
-        initialExpected.x,
-        initialExpected.y,
-        initialExpected.z
-      );
+      TestUtils.expectCameraPosition(mockCamera, initialExpected.x, initialExpected.y, initialExpected.z);
 
       // Update distance
       const newDistance = 300;
@@ -325,7 +320,7 @@ describe("CameraController", () => {
           y: expect.any(Number),
           z: expect.any(Number),
         }),
-        expect.any(Number)
+        expect.any(Number),
       );
     });
 
@@ -532,12 +527,7 @@ describe("CameraController", () => {
 
       // Final position should match last distance
       const finalExpected = TestUtils.calculateExpectedPosition(210);
-      TestUtils.expectCameraPosition(
-        mockCamera,
-        finalExpected.x,
-        finalExpected.y,
-        finalExpected.z
-      );
+      TestUtils.expectCameraPosition(mockCamera, finalExpected.x, finalExpected.y, finalExpected.z);
     });
   });
 

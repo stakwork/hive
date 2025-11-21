@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 interface RepositoryPermissions {
   hasAccess: boolean;
@@ -28,7 +28,7 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
 
   const checkPermissions = useCallback(async (repositoryUrl: string, workspaceSlug?: string) => {
     if (!repositoryUrl) {
-      setError('Repository URL is required');
+      setError("Repository URL is required");
       return;
     }
 
@@ -37,14 +37,14 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
     setPermissions(null);
 
     try {
-      const response = await fetch('/api/github/repository/permissions', {
-        method: 'POST',
+      const response = await fetch("/api/github/repository/permissions", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           repositoryUrl,
-          workspaceSlug
+          workspaceSlug,
         }),
       });
 
@@ -53,11 +53,11 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
       if (response.ok && result.success) {
         setPermissions(result.data);
       } else {
-        setError(result.error || result.message || 'Failed to check repository permissions');
+        setError(result.error || result.message || "Failed to check repository permissions");
       }
     } catch (err) {
-      console.error('Error checking repository permissions:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      console.error("Error checking repository permissions:", err);
+      setError(err instanceof Error ? err.message : "Unknown error occurred");
     } finally {
       setLoading(false);
     }
@@ -80,37 +80,37 @@ export function useRepositoryPermissions(): UseRepositoryPermissionsResult {
 
 // Helper function to get permission level description
 export function getPermissionLevel(permissions: RepositoryPermissions | null): {
-  level: 'none' | 'read' | 'write' | 'admin';
+  level: "none" | "read" | "write" | "admin";
   description: string;
-  canPerformAction: (action: 'read' | 'push' | 'admin') => boolean;
+  canPerformAction: (action: "read" | "push" | "admin") => boolean;
 } {
   if (!permissions || !permissions.hasAccess) {
     return {
-      level: 'none',
-      description: 'No access to repository',
+      level: "none",
+      description: "No access to repository",
       canPerformAction: () => false,
     };
   }
 
   if (permissions.canAdmin) {
     return {
-      level: 'admin',
-      description: 'Full admin access to repository',
+      level: "admin",
+      description: "Full admin access to repository",
       canPerformAction: () => true,
     };
   }
 
   if (permissions.canPush) {
     return {
-      level: 'write',
-      description: 'Read and write access to repository',
-      canPerformAction: (action) => action !== 'admin',
+      level: "write",
+      description: "Read and write access to repository",
+      canPerformAction: (action) => action !== "admin",
     };
   }
 
   return {
-    level: 'read',
-    description: 'Read-only access to repository',
-    canPerformAction: (action) => action === 'read',
+    level: "read",
+    description: "Read-only access to repository",
+    canPerformAction: (action) => action === "read",
   };
 }

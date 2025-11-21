@@ -1,12 +1,5 @@
 import { db } from "@/lib/db";
-import {
-  JanitorType,
-  JanitorStatus,
-  JanitorTrigger,
-  RecommendationStatus,
-  Priority,
-  Prisma,
-} from "@prisma/client";
+import { JanitorType, JanitorStatus, JanitorTrigger, RecommendationStatus, Priority, Prisma } from "@prisma/client";
 import {
   JanitorConfigUpdate,
   AcceptRecommendationRequest,
@@ -34,12 +27,12 @@ export async function getOrCreateJanitorConfig(workspaceSlug: string, userId: st
 
   const workspaceId = validation.workspace!.id;
   let config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
+    where: { workspaceId },
   });
 
   if (!config) {
     config = await db.janitorConfig.create({
-      data: { workspaceId }
+      data: { workspaceId },
     });
   }
 
@@ -49,11 +42,7 @@ export async function getOrCreateJanitorConfig(workspaceSlug: string, userId: st
 /**
  * Update janitor configuration
  */
-export async function updateJanitorConfig(
-  workspaceSlug: string,
-  userId: string,
-  data: JanitorConfigUpdate
-) {
+export async function updateJanitorConfig(workspaceSlug: string, userId: string, data: JanitorConfigUpdate) {
   const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   if (!validation.hasAccess || !validation.canAdmin) {
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
@@ -61,12 +50,12 @@ export async function updateJanitorConfig(
 
   const workspaceId = validation.workspace!.id;
   let config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
+    where: { workspaceId },
   });
 
   if (!config) {
     config = await db.janitorConfig.create({
-      data: { workspaceId }
+      data: { workspaceId },
     });
   }
 
@@ -83,7 +72,7 @@ export async function createJanitorRun(
   workspaceSlug: string,
   userId: string,
   janitorTypeString: string,
-  triggeredBy: JanitorTrigger = "MANUAL"
+  triggeredBy: JanitorTrigger = "MANUAL",
 ) {
   const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   if (!validation.hasAccess || !validation.canWrite) {
@@ -99,18 +88,18 @@ export async function createJanitorRun(
 
   const workspaceId = validation.workspace!.id;
   let config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
+    where: { workspaceId },
   });
 
   if (!config) {
     config = await db.janitorConfig.create({
-      data: { workspaceId }
+      data: { workspaceId },
     });
   }
 
   // Check if janitor is enabled
   const enabledField = getEnabledFieldName(janitorType);
-  
+
   if (!config[enabledField]) {
     throw new Error(JANITOR_ERRORS.JANITOR_DISABLED);
   }
@@ -128,7 +117,7 @@ export async function createJanitorRun(
       metadata: {
         triggeredByUserId: userId,
         workspaceId,
-      }
+      },
     },
     include: {
       janitorConfig: {
@@ -142,7 +131,7 @@ export async function createJanitorRun(
                   poolName: true,
                   name: true,
                   id: true,
-                }
+                },
               },
               repositories: {
                 select: {
@@ -150,13 +139,13 @@ export async function createJanitorRun(
                   repositoryUrl: true,
                   branch: true,
                   ignoreDirs: true,
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
   try {
@@ -173,7 +162,7 @@ export async function createJanitorRun(
 
     // Build webhook URL for janitor completion (recommendations endpoint)
     const baseUrl = envConfig.STAKWORK_BASE_URL;
-    const webhookUrl = `${baseUrl.replace('/api/v1', '')}/api/janitors/webhook`;
+    const webhookUrl = `${baseUrl.replace("/api/v1", "")}/api/janitors/webhook`;
 
     // Get swarm data from workspace
     const swarm = janitorRun.janitorConfig.workspace.swarm;
@@ -189,7 +178,9 @@ export async function createJanitorRun(
     const githubCreds = await getGithubUsernameAndPAT(credentialUserId, workspaceSlug);
 
     if (!githubCreds) {
-      console.warn(`[Janitor] No GitHub credentials found for userId: ${credentialUserId}, workspaceSlug: ${workspaceSlug}`);
+      console.warn(
+        `[Janitor] No GitHub credentials found for userId: ${credentialUserId}, workspaceSlug: ${workspaceSlug}`,
+      );
     }
 
     // Get repository data from first repository
@@ -221,16 +212,13 @@ export async function createJanitorRun(
       workflow_params: {
         set_var: {
           attributes: {
-            vars
-          }
-        }
-      }
+            vars,
+          },
+        },
+      },
     };
 
-    const stakworkProject = await stakworkService().stakworkRequest(
-      "/projects",
-      stakworkPayload
-    );
+    const stakworkProject = await stakworkService().stakworkRequest("/projects", stakworkPayload);
 
     // Extract project ID from Stakwork response
     const projectId = (stakworkProject as any)?.data?.project_id;
@@ -239,7 +227,6 @@ export async function createJanitorRun(
       console.error("No project_id found in Stakwork response:", stakworkProject);
       throw new Error("No project ID returned from Stakwork");
     }
-
 
     // Update the run with the Stakwork project ID
     janitorRun = await db.janitorRun.update({
@@ -261,45 +248,40 @@ export async function createJanitorRun(
                     poolName: true,
                     name: true,
                     id: true,
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     return janitorRun;
-
   } catch (stakworkError) {
     console.error("Failed to create Stakwork project for janitor run:", stakworkError);
-    
+
     // Update the run status to failed
     await db.janitorRun.update({
       where: { id: janitorRun.id },
       data: {
         status: "FAILED",
         completedAt: new Date(),
-        error: `Failed to initialize Stakwork project: ${stakworkError instanceof Error ? stakworkError.message : 'Unknown error'}`
-      }
+        error: `Failed to initialize Stakwork project: ${stakworkError instanceof Error ? stakworkError.message : "Unknown error"}`,
+      },
     });
 
     // Throw error to be handled by the API route
-    throw new Error(`Failed to start janitor run: ${stakworkError instanceof Error ? stakworkError.message : 'Stakwork integration failed'}`);
+    throw new Error(
+      `Failed to start janitor run: ${stakworkError instanceof Error ? stakworkError.message : "Stakwork integration failed"}`,
+    );
   }
 }
-
-
 
 /**
  * Get janitor runs with filters
  */
-export async function getJanitorRuns(
-  workspaceSlug: string,
-  userId: string,
-  filters: JanitorRunFilters = {}
-) {
+export async function getJanitorRuns(workspaceSlug: string, userId: string, filters: JanitorRunFilters = {}) {
   const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   if (!validation.hasAccess || !validation.canRead) {
     throw new Error(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
@@ -307,15 +289,15 @@ export async function getJanitorRuns(
 
   const workspaceId = validation.workspace!.id;
   let config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
+    where: { workspaceId },
   });
 
   if (!config) {
     config = await db.janitorConfig.create({
-      data: { workspaceId }
+      data: { workspaceId },
     });
   }
-  
+
   const { type, status, limit = 10, page = 1 } = filters;
   const skip = (page - 1) * limit;
 
@@ -340,12 +322,12 @@ export async function getJanitorRuns(
       include: {
         _count: {
           select: {
-            recommendations: true
-          }
-        }
-      }
+            recommendations: true,
+          },
+        },
+      },
     }),
-    db.janitorRun.count({ where })
+    db.janitorRun.count({ where }),
   ]);
 
   return {
@@ -357,7 +339,7 @@ export async function getJanitorRuns(
       totalPages: Math.ceil(total / limit),
       hasNext: page < Math.ceil(total / limit),
       hasPrev: page > 1,
-    }
+    },
   };
 }
 
@@ -367,7 +349,7 @@ export async function getJanitorRuns(
 export async function getJanitorRecommendations(
   workspaceSlug: string,
   userId: string,
-  filters: JanitorRecommendationFilters = {}
+  filters: JanitorRecommendationFilters = {},
 ) {
   const validation = await validateWorkspaceAccess(workspaceSlug, userId);
   if (!validation.hasAccess || !validation.canRead) {
@@ -376,7 +358,7 @@ export async function getJanitorRecommendations(
 
   const workspaceId = validation.workspace!.id;
   const config = await db.janitorConfig.findUnique({
-    where: { workspaceId }
+    where: { workspaceId },
   });
 
   if (!config) {
@@ -389,7 +371,7 @@ export async function getJanitorRecommendations(
         totalPages: 0,
         hasNext: false,
         hasPrev: false,
-      }
+      },
     };
   }
 
@@ -400,9 +382,9 @@ export async function getJanitorRecommendations(
     workspaceId: workspaceId,
     ...(janitorType && {
       janitorRun: {
-        janitorType: janitorType
-      }
-    })
+        janitorType: janitorType,
+      },
+    }),
   };
 
   // Default to PENDING status if no status filter is provided
@@ -419,11 +401,7 @@ export async function getJanitorRecommendations(
   const [recommendations, total] = await Promise.all([
     db.janitorRecommendation.findMany({
       where,
-      orderBy: [
-        { status: "asc" },
-        { priority: "desc" },
-        { createdAt: "desc" }
-      ],
+      orderBy: [{ status: "asc" }, { priority: "desc" }, { createdAt: "desc" }],
       skip,
       take: limit,
       include: {
@@ -433,25 +411,25 @@ export async function getJanitorRecommendations(
             janitorType: true,
             status: true,
             createdAt: true,
-          }
+          },
         },
         acceptedBy: {
           select: {
             id: true,
             name: true,
             email: true,
-          }
+          },
         },
         dismissedBy: {
           select: {
             id: true,
             name: true,
             email: true,
-          }
-        }
-      }
+          },
+        },
+      },
     }),
-    db.janitorRecommendation.count({ where })
+    db.janitorRecommendation.count({ where }),
   ]);
 
   return {
@@ -463,7 +441,7 @@ export async function getJanitorRecommendations(
       totalPages: Math.ceil(total / limit),
       hasNext: page < Math.ceil(total / limit),
       hasPrev: page > 1,
-    }
+    },
   };
 }
 
@@ -474,7 +452,7 @@ export async function acceptJanitorRecommendation(
   recommendationId: string,
   userId: string,
   options: AcceptRecommendationRequest = {},
-  sourceType: "JANITOR" | "TASK_COORDINATOR" = "JANITOR"
+  sourceType: "JANITOR" | "TASK_COORDINATOR" = "JANITOR",
 ) {
   const recommendation = await db.janitorRecommendation.findUnique({
     where: { id: recommendationId },
@@ -483,9 +461,9 @@ export async function acceptJanitorRecommendation(
         select: {
           id: true,
           slug: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   if (!recommendation) {
@@ -509,8 +487,8 @@ export async function acceptJanitorRecommendation(
     const assigneeExists = await db.workspaceMember.findFirst({
       where: {
         userId: options.assigneeId,
-        workspaceId: recommendation.workspaceId
-      }
+        workspaceId: recommendation.workspaceId,
+      },
     });
 
     if (!assigneeExists) {
@@ -523,8 +501,8 @@ export async function acceptJanitorRecommendation(
     const repositoryExists = await db.repository.findFirst({
       where: {
         id: options.repositoryId,
-        workspaceId: recommendation.workspaceId
-      }
+        workspaceId: recommendation.workspaceId,
+      },
     });
 
     if (!repositoryExists) {
@@ -532,7 +510,7 @@ export async function acceptJanitorRecommendation(
     }
   }
 
-  // Update recommendation status 
+  // Update recommendation status
   const updatedRecommendation = await db.janitorRecommendation.update({
     where: { id: recommendationId },
     data: {
@@ -540,11 +518,11 @@ export async function acceptJanitorRecommendation(
       acceptedAt: new Date(),
       acceptedById: userId,
       metadata: {
-        ...recommendation.metadata as object,
+        ...(recommendation.metadata as object),
         assigneeId: options.assigneeId,
         repositoryId: options.repositoryId,
-      }
-    }
+      },
+    },
   });
 
   // Create task and trigger Stakwork workflow using shared service
@@ -557,13 +535,13 @@ export async function acceptJanitorRecommendation(
     priority: recommendation.priority,
     sourceType: sourceType,
     userId: userId,
-    mode: "live"  // Use production workflow for janitor-created tasks
+    mode: "live", // Use production workflow for janitor-created tasks
   });
 
-  return { 
+  return {
     recommendation: updatedRecommendation,
     task: taskResult.task,
-    workflow: taskResult.stakworkResult
+    workflow: taskResult.stakworkResult,
   };
 }
 
@@ -573,7 +551,7 @@ export async function acceptJanitorRecommendation(
 export async function dismissJanitorRecommendation(
   recommendationId: string,
   userId: string,
-  options: DismissRecommendationRequest = {}
+  options: DismissRecommendationRequest = {},
 ) {
   const recommendation = await db.janitorRecommendation.findUnique({
     where: { id: recommendationId },
@@ -582,9 +560,9 @@ export async function dismissJanitorRecommendation(
         select: {
           id: true,
           slug: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   if (!recommendation) {
@@ -610,9 +588,9 @@ export async function dismissJanitorRecommendation(
       dismissedAt: new Date(),
       dismissedById: userId,
       metadata: {
-        ...recommendation.metadata as object,
+        ...(recommendation.metadata as object),
         dismissalReason: options.reason,
-      }
+      },
     },
     include: {
       dismissedBy: {
@@ -620,9 +598,9 @@ export async function dismissJanitorRecommendation(
           id: true,
           name: true,
           email: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 }
 
@@ -644,10 +622,10 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       include: {
         janitorConfig: {
           include: {
-            workspace: true
-          }
-        }
-      }
+            workspace: true,
+          },
+        },
+      },
     });
 
     // If there's an existing run, update it
@@ -656,12 +634,12 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       const updateResult = await db.janitorRun.updateMany({
         where: {
           stakworkProjectId: projectId,
-          status: { in: ["PENDING", "RUNNING"] }
+          status: { in: ["PENDING", "RUNNING"] },
         },
         data: {
           status: "COMPLETED",
           completedAt: new Date(),
-        }
+        },
       });
 
       if (updateResult.count === 0) {
@@ -670,117 +648,113 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
 
       // Get the updated run for processing recommendations
       const janitorRun = await db.janitorRun.findFirst({
-      where: {
-        stakworkProjectId: projectId,
-        status: "COMPLETED"
-      },
-      include: {
-        janitorConfig: {
-          include: {
-            workspace: {
-              include: {
-                swarm: {
-                  select: {
-                    swarmUrl: true,
-                    swarmSecretAlias: true,
-                    poolName: true,
-                    name: true,
-                    id: true,
-                  }
-                }
+        where: {
+          stakworkProjectId: projectId,
+          status: "COMPLETED",
+        },
+        include: {
+          janitorConfig: {
+            include: {
+              workspace: {
+                include: {
+                  swarm: {
+                    select: {
+                      swarmUrl: true,
+                      swarmSecretAlias: true,
+                      poolName: true,
+                      name: true,
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+
+      if (!janitorRun) {
+        throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
+      }
+
+      // Update metadata and create recommendations in a transaction
+      await db.$transaction(async (tx) => {
+        await tx.janitorRun.update({
+          where: { id: janitorRun.id },
+          data: {
+            metadata: {
+              ...(janitorRun.metadata as object),
+              stakworkStatus: status,
+              completedByWebhook: true,
+            },
+          },
+        });
+
+        if (results?.recommendations?.length) {
+          const recommendations = results.recommendations.map((rec) => {
+            let priority: Priority = "MEDIUM";
+
+            if (rec.priority) {
+              const priorityUpper = rec.priority.toUpperCase();
+              if (["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priorityUpper)) {
+                priority = priorityUpper as Priority;
               }
             }
-          }
-        }
-      },
-      orderBy: { updatedAt: "desc" }
-    });
 
-    if (!janitorRun) {
-      throw new Error(JANITOR_ERRORS.RUN_NOT_FOUND);
-    }
+            return {
+              janitorRunId: janitorRun.id,
+              workspaceId: janitorRun.janitorConfig.workspace.id,
+              title: rec.title,
+              description: rec.description,
+              priority,
+              impact: rec.impact,
+              status: "PENDING" as RecommendationStatus,
+              metadata: {
+                ...rec.metadata,
+                source: "stakwork_webhook",
+                janitorType: janitorRun.janitorType,
+              },
+            };
+          });
 
-    // Update metadata and create recommendations in a transaction
-    await db.$transaction(async (tx) => {
-      await tx.janitorRun.update({
-        where: { id: janitorRun.id },
-        data: {
-          metadata: {
-            ...janitorRun.metadata as object,
-            stakworkStatus: status,
-            completedByWebhook: true,
-          }
+          await tx.janitorRecommendation.createMany({
+            data: recommendations,
+          });
         }
       });
 
-      if (results?.recommendations?.length) {
-        const recommendations = results.recommendations.map(rec => {
-          let priority: Priority = "MEDIUM";
-          
-          if (rec.priority) {
-            const priorityUpper = rec.priority.toUpperCase();
-            if (["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priorityUpper)) {
-              priority = priorityUpper as Priority;
-            }
-          }
+      // Trigger Pusher event for real-time recommendations update
+      const newRecommendationCount = results?.recommendations?.length || 0;
+      if (newRecommendationCount > 0) {
+        try {
+          const channelName = getWorkspaceChannelName(janitorRun.janitorConfig.workspace.slug);
 
-          return {
-            janitorRunId: janitorRun.id,
-            workspaceId: janitorRun.janitorConfig.workspace.id,
-            title: rec.title,
-            description: rec.description,
-            priority,
-            impact: rec.impact,
-            status: "PENDING" as RecommendationStatus,
-            metadata: {
-              ...rec.metadata,
-              source: "stakwork_webhook",
-              janitorType: janitorRun.janitorType,
-            }
+          // Get total recommendation count for this workspace
+          const totalCount = await db.janitorRecommendation.count({
+            where: {
+              workspaceId: janitorRun.janitorConfig.workspace.id,
+              status: "PENDING",
+            },
+          });
+
+          const eventPayload = {
+            workspaceSlug: janitorRun.janitorConfig.workspace.slug,
+            newRecommendationCount,
+            totalRecommendationCount: totalCount,
+            timestamp: new Date(),
           };
-        });
 
-        await tx.janitorRecommendation.createMany({
-          data: recommendations
-        });
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.RECOMMENDATIONS_UPDATED, eventPayload);
+        } catch (error) {
+          console.error("Error broadcasting recommendations update to Pusher:", error);
+        }
       }
-    });
-
-    // Trigger Pusher event for real-time recommendations update
-    const newRecommendationCount = results?.recommendations?.length || 0;
-    if (newRecommendationCount > 0) {
-      try {
-        const channelName = getWorkspaceChannelName(janitorRun.janitorConfig.workspace.slug);
-        
-        // Get total recommendation count for this workspace
-        const totalCount = await db.janitorRecommendation.count({
-          where: {
-            workspaceId: janitorRun.janitorConfig.workspace.id,
-            status: "PENDING"
-          }
-        });
-
-        const eventPayload = {
-          workspaceSlug: janitorRun.janitorConfig.workspace.slug,
-          newRecommendationCount,
-          totalRecommendationCount: totalCount,
-          timestamp: new Date(),
-        };
-
-        await pusherServer.trigger(
-          channelName,
-          PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
-          eventPayload,
-        );
-      } catch (error) {
-        console.error("Error broadcasting recommendations update to Pusher:", error);
-      }
-    }
 
       return {
         runId: janitorRun.id,
         status: "COMPLETED" as JanitorStatus,
-        recommendationCount: results?.recommendations?.length || 0
+        recommendationCount: results?.recommendations?.length || 0,
       };
     } else if (!workspaceId) {
       // No existing run and no workspaceId provided - can't create standalone recommendations
@@ -792,7 +766,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         select: {
           id: true,
           slug: true,
-        }
+        },
       });
 
       if (!workspace) {
@@ -801,7 +775,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
 
       // Create recommendations directly without a janitor run
       if (results?.recommendations?.length) {
-        const recommendations = results.recommendations.map(rec => {
+        const recommendations = results.recommendations.map((rec) => {
           let priority: Priority = "MEDIUM";
 
           if (rec.priority) {
@@ -823,12 +797,12 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
               ...rec.metadata,
               source: "external_workflow",
               projectId: projectId,
-            }
+            },
           };
         });
 
         await db.janitorRecommendation.createMany({
-          data: recommendations
+          data: recommendations,
         });
 
         // Trigger Pusher event for real-time recommendations update
@@ -840,8 +814,8 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
           const totalCount = await db.janitorRecommendation.count({
             where: {
               workspaceId: workspace.id,
-              status: "PENDING"
-            }
+              status: "PENDING",
+            },
           });
 
           const eventPayload = {
@@ -851,11 +825,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
             timestamp: new Date(),
           };
 
-          await pusherServer.trigger(
-            channelName,
-            PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
-            eventPayload,
-          );
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.RECOMMENDATIONS_UPDATED, eventPayload);
         } catch (error) {
           console.error("Error broadcasting recommendations update to Pusher:", error);
         }
@@ -864,7 +834,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       return {
         runId: null,
         status: "COMPLETED" as JanitorStatus,
-        recommendationCount: results?.recommendations?.length || 0
+        recommendationCount: results?.recommendations?.length || 0,
       };
     }
   } else if (isFailed) {
@@ -872,13 +842,13 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     const updateResult = await db.janitorRun.updateMany({
       where: {
         stakworkProjectId: projectId,
-        status: { in: ["PENDING", "RUNNING"] }
+        status: { in: ["PENDING", "RUNNING"] },
       },
       data: {
         status: "FAILED",
         completedAt: new Date(),
         error: error || `Stakwork project failed with status: ${status}`,
-      }
+      },
     });
 
     if (updateResult.count === 0) {
@@ -889,7 +859,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     const janitorRun = await db.janitorRun.findFirst({
       where: {
         stakworkProjectId: projectId,
-        status: "FAILED"
+        status: "FAILED",
       },
       include: {
         janitorConfig: {
@@ -898,12 +868,12 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
               select: {
                 id: true,
                 slug: true,
-              }
-            }
-          }
-        }
+              },
+            },
+          },
+        },
       },
-      orderBy: { updatedAt: "desc" }
+      orderBy: { updatedAt: "desc" },
     });
 
     if (janitorRun) {
@@ -912,11 +882,11 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         where: { id: janitorRun.id },
         data: {
           metadata: {
-            ...janitorRun.metadata as object,
+            ...(janitorRun.metadata as object),
             stakworkStatus: status,
             failedByWebhook: true,
-          }
-        }
+          },
+        },
       });
 
       // No Pusher event needed for failed janitors since no new recommendations were created
@@ -925,19 +895,19 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     return {
       runId: janitorRun?.id || "",
       status: "FAILED" as JanitorStatus,
-      error: error || status
+      error: error || status,
     };
   } else {
     // Use atomic updateMany to prevent race conditions
     const updateResult = await db.janitorRun.updateMany({
       where: {
         stakworkProjectId: projectId,
-        status: { in: ["PENDING", "RUNNING"] }
+        status: { in: ["PENDING", "RUNNING"] },
       },
       data: {
         status: "RUNNING",
         startedAt: new Date(),
-      }
+      },
     });
 
     if (updateResult.count === 0) {
@@ -948,9 +918,9 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     const janitorRun = await db.janitorRun.findFirst({
       where: {
         stakworkProjectId: projectId,
-        status: "RUNNING"
+        status: "RUNNING",
       },
-      orderBy: { updatedAt: "desc" }
+      orderBy: { updatedAt: "desc" },
     });
 
     if (janitorRun) {
@@ -959,18 +929,17 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         where: { id: janitorRun.id },
         data: {
           metadata: {
-            ...janitorRun.metadata as object,
+            ...(janitorRun.metadata as object),
             stakworkStatus: status,
             lastWebhookUpdate: new Date(),
-          }
-        }
+          },
+        },
       });
     }
 
     return {
       runId: janitorRun?.id || "",
-      status: "RUNNING" as JanitorStatus
+      status: "RUNNING" as JanitorStatus,
     };
   }
 }
-

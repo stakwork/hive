@@ -4,10 +4,7 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -16,19 +13,13 @@ export async function GET(
     const { slug } = await params;
 
     if (!slug) {
-      return NextResponse.json(
-        { error: "Workspace slug is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Workspace slug is required" }, { status: 400 });
     }
 
     const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
     if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 404 });
     }
 
     const { db } = await import("@/lib/db");
@@ -43,10 +34,7 @@ export async function GET(
     });
 
     if (!swarm?.id || !swarm?.poolApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Pool not configured for this workspace" },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, message: "Pool not configured for this workspace" }, { status: 404 });
     }
 
     const config = getServiceConfig("poolManager");
@@ -67,7 +55,7 @@ export async function GET(
           success: false,
           message,
         },
-        { status: 503 }
+        { status: 503 },
       );
     }
   } catch (error) {
@@ -77,7 +65,7 @@ export async function GET(
         success: false,
         message: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

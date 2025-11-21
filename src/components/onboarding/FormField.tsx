@@ -32,9 +32,7 @@ export function FormField({
   className,
 }: FormFieldProps) {
   const inputClassName = error ? "border-destructive" : "";
-  const fullClassName = className
-    ? `${inputClassName} ${className}`
-    : inputClassName;
+  const fullClassName = className ? `${inputClassName} ${className}` : inputClassName;
 
   return (
     <div className="space-y-2">

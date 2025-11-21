@@ -16,7 +16,7 @@ interface StatusPopoverProps<T extends FeatureStatus | PhaseStatus | TaskStatus>
 export function StatusPopover<T extends FeatureStatus | PhaseStatus | TaskStatus>({
   statusType,
   currentStatus,
-  onUpdate
+  onUpdate,
 }: StatusPopoverProps<T>) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);

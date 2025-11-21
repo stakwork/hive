@@ -1,13 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { redirect } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisconnectAccount } from "@/components/DisconnectAccount";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import { Github } from "lucide-react";
@@ -25,7 +19,6 @@ export default async function UserSettingsPage() {
     redirect("/");
   }
 
-
   const user = {
     name: session?.user?.name,
     email: session?.user?.email,
@@ -41,7 +34,6 @@ export default async function UserSettingsPage() {
     )?.github,
   };
 
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -51,11 +43,9 @@ export default async function UserSettingsPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-foreground">User Settings</h1>
-            <p className="text-muted-foreground mt-2">
-              Manage your personal preferences and connected accounts.
-            </p>
+            <p className="text-muted-foreground mt-2">Manage your personal preferences and connected accounts.</p>
           </div>
-          
+
           <ThemeSettings />
 
           <Card>
@@ -64,9 +54,7 @@ export default async function UserSettingsPage() {
                 <Github className="w-5 h-5" />
                 Connected Accounts
               </CardTitle>
-              <CardDescription>
-                Manage your connected third-party accounts
-              </CardDescription>
+              <CardDescription>Manage your connected third-party accounts</CardDescription>
             </CardHeader>
             <CardContent>
               <DisconnectAccount user={user} />

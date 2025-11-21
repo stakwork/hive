@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { useForm } from 'react-hook-form';
+import React, { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { useForm } from "react-hook-form";
 
 // Global state to track modal visibility
-let modalOpenCallback: ((workflowId: string, workflowVersionId: string, position: { x: number; y: number }) => void) | null = null;
+let modalOpenCallback:
+  | ((workflowId: string, workflowVersionId: string, position: { x: number; y: number }) => void)
+  | null = null;
 let modalCloseCallback: (() => void) | null = null;
 let modalSubmitCallback: ((responseData: any, contextData: ContextData) => void) | null = null;
 
@@ -18,7 +20,7 @@ interface FormData {
 }
 
 interface SubmitStatus {
-  type: 'error' | 'success';
+  type: "error" | "success";
   message: string;
 }
 
@@ -27,7 +29,11 @@ interface ImportNodeModalProps {
 }
 
 // Function to open the modal from anywhere
-export function openImportNodeModal(workflowId: string, workflowVersionId: string, position: { x: number; y: number }): boolean {
+export function openImportNodeModal(
+  workflowId: string,
+  workflowVersionId: string,
+  position: { x: number; y: number },
+): boolean {
   if (modalOpenCallback) {
     modalOpenCallback(workflowId, workflowVersionId, position);
     return true;
@@ -52,19 +58,19 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
   const [contextData, setContextData] = useState<ContextData>({
     workflowId: null,
     workflowVersionId: null,
-    position: { x: 0, y: 0 }
+    position: { x: 0, y: 0 },
   });
-  const [portalContainer] = useState(() => document.createElement('div'));
+  const [portalContainer] = useState(() => document.createElement("div"));
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-    reset
+    reset,
   } = useForm<FormData>({
     defaultValues: {
-      jsonInput: ''
-    }
+      jsonInput: "",
+    },
   });
 
   // Register global callbacks
@@ -73,7 +79,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
       setContextData({
         workflowId,
         workflowVersionId,
-        position
+        position,
       });
       setIsOpen(true);
     };
@@ -114,7 +120,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
 
   // Add styles to document head
   useEffect(() => {
-    const style = document.createElement('style');
+    const style = document.createElement("style");
     style.innerHTML = `
       .import-modal-overlay {
         position: fixed;
@@ -256,74 +262,77 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
     setIsOpen(false);
   }, []);
 
-  const handleFormSubmit = useCallback(async (data: FormData) => {
-    setIsSubmitting(true);
-    setSubmitStatus(null);
-
-    try {
-      // Validate JSON input
-      const parsedJson = JSON.parse(data.jsonInput);
-      let plusX = 0;
-
-      parsedJson.forEach((json: any) => {
-        json['position'] = { x: contextData.position['x'] + plusX, y: contextData.position['y'] };
-        plusX += 200;
-      });
+  const handleFormSubmit = useCallback(
+    async (data: FormData) => {
+      setIsSubmitting(true);
+      setSubmitStatus(null);
 
       try {
-        // Construct URL with workflow IDs if available
-        const url = `/admin/workflows/${contextData.workflowId}/steps/import`;
-        const body = {
-          steps: parsedJson,
-          workflowVersionId: contextData.workflowVersionId,
-        };
+        // Validate JSON input
+        const parsedJson = JSON.parse(data.jsonInput);
+        let plusX = 0;
 
-        // Send the request
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
+        parsedJson.forEach((json: any) => {
+          json["position"] = { x: contextData.position["x"] + plusX, y: contextData.position["y"] };
+          plusX += 200;
         });
 
-        if (!response.ok) {
-          throw new Error(`Server responded with status: ${response.status}`);
-        }
+        try {
+          // Construct URL with workflow IDs if available
+          const url = `/admin/workflows/${contextData.workflowId}/steps/import`;
+          const body = {
+            steps: parsedJson,
+            workflowVersionId: contextData.workflowVersionId,
+          };
 
-        const responseData = await response.json();
+          // Send the request
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          });
 
-        console.log("responseData", responseData);
-
-        if (responseData.data.valid) {
-          setSubmitStatus({ type: 'success', message: 'Node imported successfully!' });
-
-          // Call success callback if provided
-          if (modalSubmitCallback) {
-            modalSubmitCallback(responseData, contextData);
+          if (!response.ok) {
+            throw new Error(`Server responded with status: ${response.status}`);
           }
 
-          // Optional: close modal after successful submission
-          setTimeout(handleClose, 2000);
-        } else {
-          setSubmitStatus({ type: 'error', message: responseData.data.errors });
+          const responseData = await response.json();
+
+          console.log("responseData", responseData);
+
+          if (responseData.data.valid) {
+            setSubmitStatus({ type: "success", message: "Node imported successfully!" });
+
+            // Call success callback if provided
+            if (modalSubmitCallback) {
+              modalSubmitCallback(responseData, contextData);
+            }
+
+            // Optional: close modal after successful submission
+            setTimeout(handleClose, 2000);
+          } else {
+            setSubmitStatus({ type: "error", message: responseData.data.errors });
+          }
+        } catch (fetchError: any) {
+          console.log("fetchError", fetchError);
+          setSubmitStatus({
+            type: "error",
+            message: `Failed to submit: ${fetchError.message}`,
+          });
         }
-      } catch (fetchError: any) {
-        console.log("fetchError", fetchError);
+      } catch (jsonError) {
         setSubmitStatus({
-          type: 'error',
-          message: `Failed to submit: ${fetchError.message}`
+          type: "error",
+          message: "Invalid JSON format. Please check your input.",
         });
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (jsonError) {
-      setSubmitStatus({
-        type: 'error',
-        message: 'Invalid JSON format. Please check your input.'
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [contextData, handleClose]);
+    },
+    [contextData, handleClose],
+  );
 
   // Modal content
   const renderModalContent = () => {
@@ -334,7 +343,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
         className="import-modal-overlay"
         onClick={(e: React.MouseEvent<HTMLDivElement>) => {
           // Close modal when clicking outside
-          if ((e.target as HTMLElement).className === 'import-modal-overlay') {
+          if ((e.target as HTMLElement).className === "import-modal-overlay") {
             handleClose();
           }
         }}
@@ -342,7 +351,9 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
         <div className="import-modal-content">
           <div className="import-modal-header">
             <h3>Import Node from JSON</h3>
-            <button className="import-close-btn" onClick={handleClose}>×</button>
+            <button className="import-close-btn" onClick={handleClose}>
+              ×
+            </button>
           </div>
 
           <form onSubmit={handleSubmit(handleFormSubmit)}>
@@ -351,46 +362,34 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
               <textarea
                 id="jsonInput"
                 rows={8}
-                placeholder=''
+                placeholder=""
                 autoFocus={true}
                 className={errors.jsonInput ? "import-error-input" : ""}
-                {...register('jsonInput', {
-                  required: 'JSON input is required',
-                  validate: value => {
+                {...register("jsonInput", {
+                  required: "JSON input is required",
+                  validate: (value) => {
                     try {
                       JSON.parse(value);
                       return true;
                     } catch (error) {
                       return "Please enter valid JSON";
                     }
-                  }
+                  },
                 })}
               />
-              {errors.jsonInput && (
-                <div className="import-error-message">{errors.jsonInput.message}</div>
-              )}
+              {errors.jsonInput && <div className="import-error-message">{errors.jsonInput.message}</div>}
             </div>
 
             {submitStatus && (
-              <div className={`import-status-message import-${submitStatus.type}`}>
-                {submitStatus.message}
-              </div>
+              <div className={`import-status-message import-${submitStatus.type}`}>{submitStatus.message}</div>
             )}
 
             <div className="import-modal-footer">
-              <button
-                type="button"
-                className="import-cancel-btn"
-                onClick={handleClose}
-              >
+              <button type="button" className="import-cancel-btn" onClick={handleClose}>
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="import-submit-btn"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Importing...' : 'Import'}
+              <button type="submit" className="import-submit-btn" disabled={isSubmitting}>
+                {isSubmitting ? "Importing..." : "Import"}
               </button>
             </div>
           </form>
@@ -400,10 +399,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
   };
 
   // Always render the portal, but content may be null
-  return createPortal(
-    renderModalContent(),
-    portalContainer
-  );
+  return createPortal(renderModalContent(), portalContainer);
 };
 
 // Export modal component to be mounted at the application root

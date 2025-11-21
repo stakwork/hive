@@ -1,15 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import {
-  Inbox,
-  Calendar,
-  Loader2,
-  CheckCircle,
-  XCircle,
-  Circle,
-  AlertCircle
-} from "lucide-react";
+import { Inbox, Calendar, Loader2, CheckCircle, XCircle, Circle, AlertCircle } from "lucide-react";
 import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
 
 type StatusType = "feature" | "phase" | "task";

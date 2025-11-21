@@ -2,15 +2,8 @@ import { describe, test, beforeEach, vi, expect, afterEach } from "vitest";
 import { GET } from "@/app/api/ask/quick/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  createTestWorkspaceScenario,
-  createTestSwarm,
-  createTestRepository,
-} from "@/__tests__/support/fixtures";
-import {
-  createGetRequest,
-  generateUniqueId,
-} from "@/__tests__/support/helpers";
+import { createTestWorkspaceScenario, createTestSwarm, createTestRepository } from "@/__tests__/support/fixtures";
+import { createGetRequest, generateUniqueId } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm, Repository } from "@prisma/client";
 import { NextResponse } from "next/server";
 
@@ -67,11 +60,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
     const scenario = await createTestWorkspaceScenario({
       owner: { name: "Quick Ask Owner" },
-      members: [
-        { role: "VIEWER" },
-        { role: "DEVELOPER" },
-        { role: "ADMIN" },
-      ],
+      members: [{ role: "VIEWER" }, { role: "DEVELOPER" }, { role: "ADMIN" }],
     });
 
     owner = scenario.owner;
@@ -82,10 +71,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
     // Create swarm with encrypted API key
     const encryptionService = EncryptionService.getInstance();
-    const encryptedApiKey = encryptionService.encryptField(
-      "swarmApiKey",
-      "test-swarm-api-key"
-    );
+    const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-swarm-api-key");
 
     swarm = await createTestSwarm({
       workspaceId: workspace.id,
@@ -125,17 +111,12 @@ describe("GET /api/ask/quick - Integration Tests", () => {
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
-      
+
       // Mock requireAuth to return 401 NextResponse
-      requireAuth.mockReturnValue(
-        NextResponse.json(
-          { error: "Unauthorized", kind: "unauthorized" },
-          { status: 401 }
-        )
-      );
+      requireAuth.mockReturnValue(NextResponse.json({ error: "Unauthorized", kind: "unauthorized" }, { status: 401 }));
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("How does this work?")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("How does this work?")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -151,9 +132,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       requireAuth.mockReturnValue({ id: owner.id, email: owner.email, name: owner.name });
 
-      const request = createGetRequest(
-        `/api/ask/quick?workspace=${workspace.slug}`
-      );
+      const request = createGetRequest(`/api/ask/quick?workspace=${workspace.slug}`);
 
       const response = await GET(request);
 
@@ -167,9 +146,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       const { requireAuth } = await import("@/lib/middleware/utils");
       requireAuth.mockReturnValue({ id: owner.id, email: owner.email, name: owner.name });
 
-      const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("How does this work?")}`
-      );
+      const request = createGetRequest(`/api/ask/quick?question=${encodeURIComponent("How does this work?")}`);
 
       const response = await GET(request);
 
@@ -194,7 +171,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("How does this work?")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("How does this work?")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -235,22 +212,18 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
       getApiKeyForProvider.mockReturnValue("anthropic-key");
       getModel.mockResolvedValue({ modelId: "claude-3-5-sonnet-20241022" });
-      askTools.mockReturnValue([
-        { name: "get_learnings" },
-        { name: "recent_commits" },
-        { name: "final_answer" },
-      ]);
+      askTools.mockReturnValue([{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }]);
 
       streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
-          })
+          }),
         ),
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("How does authentication work?")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("How does authentication work?")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -269,10 +242,10 @@ describe("GET /api/ask/quick - Integration Tests", () => {
         owner: { name: "No Swarm Owner" },
       });
 
-      requireAuth.mockReturnValue({ 
-        id: newScenario.owner.id, 
-        email: newScenario.owner.email, 
-        name: newScenario.owner.name 
+      requireAuth.mockReturnValue({
+        id: newScenario.owner.id,
+        email: newScenario.owner.email,
+        name: newScenario.owner.name,
       });
       validateWorkspaceAccess.mockResolvedValue({
         hasAccess: true,
@@ -283,7 +256,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${newScenario.workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${newScenario.workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -313,7 +286,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -345,7 +318,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       getPrimaryRepository.mockResolvedValue(null);
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -379,7 +352,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       getGithubUsernameAndPAT.mockResolvedValue(null);
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -420,24 +393,22 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
       getApiKeyForProvider.mockReturnValue("anthropic-key");
       getModel.mockResolvedValue({ modelId: "claude-3-5-sonnet-20241022" });
-      
-      const askToolsSpy = vi.fn().mockReturnValue([
-        { name: "get_learnings" },
-        { name: "recent_commits" },
-        { name: "final_answer" },
-      ]);
+
+      const askToolsSpy = vi
+        .fn()
+        .mockReturnValue([{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }]);
       askTools.mockImplementation(askToolsSpy);
 
       streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
-          })
+          }),
         ),
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       await GET(request);
@@ -451,7 +422,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
         "decrypted-swarm-api-key",
         "https://github.com/test/repo",
         "test-pat-token",
-        "anthropic-key"
+        "anthropic-key",
       );
     });
 
@@ -485,24 +456,22 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
       getApiKeyForProvider.mockReturnValue("anthropic-key");
       getModel.mockResolvedValue({ modelId: "claude-3-5-sonnet-20241022" });
-      
-      const askToolsSpy = vi.fn().mockReturnValue([
-        { name: "get_learnings" },
-        { name: "recent_commits" },
-        { name: "final_answer" },
-      ]);
+
+      const askToolsSpy = vi
+        .fn()
+        .mockReturnValue([{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }]);
       askTools.mockImplementation(askToolsSpy);
 
       streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
-          })
+          }),
         ),
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       await GET(request);
@@ -513,7 +482,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
         expect.any(String),
         expect.any(String),
         expect.any(String),
-        expect.any(String)
+        expect.any(String),
       );
     });
 
@@ -553,24 +522,22 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
       getApiKeyForProvider.mockReturnValue("anthropic-key");
       getModel.mockResolvedValue({ modelId: "claude-3-5-sonnet-20241022" });
-      
-      const askToolsSpy = vi.fn().mockReturnValue([
-        { name: "get_learnings" },
-        { name: "recent_commits" },
-        { name: "final_answer" },
-      ]);
+
+      const askToolsSpy = vi
+        .fn()
+        .mockReturnValue([{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }]);
       askTools.mockImplementation(askToolsSpy);
 
       streamText.mockReturnValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
-          })
+          }),
         ),
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       await GET(request);
@@ -581,7 +548,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
         expect.any(String),
         expect.any(String),
         expect.any(String),
-        expect.any(String)
+        expect.any(String),
       );
     });
   });
@@ -617,11 +584,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
       getApiKeyForProvider.mockReturnValue("anthropic-key");
       getModel.mockResolvedValue({ modelId: "claude-3-5-sonnet-20241022" });
-      askTools.mockReturnValue([
-        { name: "get_learnings" },
-        { name: "recent_commits" },
-        { name: "final_answer" },
-      ]);
+      askTools.mockReturnValue([{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }]);
 
       const mockStreamResponse = new Response("Mock AI streaming response", {
         status: 200,
@@ -633,7 +596,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       });
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("How does authentication work?")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("How does authentication work?")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -674,25 +637,21 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       getApiKeyForProvider.mockReturnValue("anthropic-key");
       const mockModel = { modelId: "claude-3-5-sonnet-20241022" };
       getModel.mockResolvedValue(mockModel);
-      
-      const mockTools = [
-        { name: "get_learnings" },
-        { name: "recent_commits" },
-        { name: "final_answer" },
-      ];
+
+      const mockTools = [{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }];
       askTools.mockReturnValue(mockTools);
 
       const streamTextSpy = vi.fn().mockResolvedValue({
         toUIMessageStreamResponse: vi.fn().mockReturnValue(
           new Response("Mock AI response", {
             headers: { "content-type": "text/plain; charset=utf-8" },
-          })
+          }),
         ),
       });
       streamText.mockImplementation(streamTextSpy);
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("What are recent commits?")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("What are recent commits?")}&workspace=${workspace.slug}`,
       );
 
       await GET(request);
@@ -703,7 +662,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
         "test-swarm-api-key",
         "https://github.com/test/repo",
         "test-pat-token",
-        "anthropic-key"
+        "anthropic-key",
       );
 
       // Verify streamText was called with correct configuration
@@ -720,7 +679,7 @@ describe("GET /api/ask/quick - Integration Tests", () => {
               content: "What are recent commits?",
             }),
           ]),
-        })
+        }),
       );
     });
   });
@@ -756,17 +715,13 @@ describe("GET /api/ask/quick - Integration Tests", () => {
 
       getApiKeyForProvider.mockReturnValue("anthropic-key");
       getModel.mockResolvedValue({ modelId: "claude-3-5-sonnet-20241022" });
-      askTools.mockReturnValue([
-        { name: "get_learnings" },
-        { name: "recent_commits" },
-        { name: "final_answer" },
-      ]);
+      askTools.mockReturnValue([{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }]);
 
       // Mock streamText to throw an error
       streamText.mockRejectedValue(new Error("AI service unavailable"));
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);
@@ -782,12 +737,12 @@ describe("GET /api/ask/quick - Integration Tests", () => {
       const { validateWorkspaceAccess } = await import("@/services/workspace");
 
       requireAuth.mockReturnValue({ id: owner.id, email: owner.email, name: owner.name });
-      
+
       // Mock validateWorkspaceAccess to throw a non-ApiError
       validateWorkspaceAccess.mockRejectedValue(new Error("Database connection failed"));
 
       const request = createGetRequest(
-        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`
+        `/api/ask/quick?question=${encodeURIComponent("Test question")}&workspace=${workspace.slug}`,
       );
 
       const response = await GET(request);

@@ -9,7 +9,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
     vi.clearAllMocks();
     mockFetch = vi.fn();
     global.fetch = mockFetch;
-    
+
     // Reset store state before each test
     useInsightsStore.getState().reset();
   });
@@ -65,18 +65,14 @@ describe("useInsightsStore - acceptRecommendation", () => {
 
       // Assert - Verify API calls
       expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        1,
-        `/api/janitors/recommendations/${recommendationId}/accept`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        }
-      );
+      expect(mockFetch).toHaveBeenNthCalledWith(1, `/api/janitors/recommendations/${recommendationId}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        `/api/workspaces/${workspaceSlug}/janitors/recommendations?limit=10`
+        `/api/workspaces/${workspaceSlug}/janitors/recommendations?limit=10`,
       );
 
       // Assert - Verify return value
@@ -152,7 +148,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
         `/api/janitors/recommendations/${recommendationId}/accept`,
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -190,17 +186,17 @@ describe("useInsightsStore - acceptRecommendation", () => {
 
       // Assert - Accept call should succeed and return result
       expect(returnedResult).toEqual(mockSuccessResponse);
-      
+
       // Assert - Both API calls should have been attempted
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenNthCalledWith(
         1,
         `/api/janitors/recommendations/${recommendationId}/accept`,
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        `/api/workspaces/${workspaceSlug}/janitors/recommendations?limit=10`
+        `/api/workspaces/${workspaceSlug}/janitors/recommendations?limit=10`,
       );
     });
   });
@@ -376,7 +372,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
             "Content-Type": "application/json",
           }),
           body: JSON.stringify({}),
-        })
+        }),
       );
     });
 
@@ -403,10 +399,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
           await result.current.acceptRecommendation(id);
         });
 
-        expect(mockFetch).toHaveBeenCalledWith(
-          `/api/janitors/recommendations/${id}/accept`,
-          expect.any(Object)
-        );
+        expect(mockFetch).toHaveBeenCalledWith(`/api/janitors/recommendations/${id}/accept`, expect.any(Object));
       }
     });
   });
@@ -567,10 +560,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
       });
 
       // Assert
-      expect(mockFetch).toHaveBeenCalledWith(
-        `/api/janitors/recommendations/${longId}/accept`,
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(`/api/janitors/recommendations/${longId}/accept`, expect.any(Object));
     });
 
     test("should handle concurrent acceptance calls", async () => {
@@ -603,9 +593,7 @@ describe("useInsightsStore - acceptRecommendation", () => {
 
       // Act - Fire all requests concurrently
       await act(async () => {
-        await Promise.all(
-          ids.map((id) => result.current.acceptRecommendation(id))
-        );
+        await Promise.all(ids.map((id) => result.current.acceptRecommendation(id)));
       });
 
       // Assert - All API calls should have been made

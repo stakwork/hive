@@ -17,9 +17,7 @@ export interface CreateTestSwarmOptions {
   poolApiKey?: string;
 }
 
-export async function createTestSwarm(
-  options: CreateTestSwarmOptions,
-): Promise<Swarm> {
+export async function createTestSwarm(options: CreateTestSwarmOptions): Promise<Swarm> {
   const timestamp = Date.now();
   const name = options.name || `test-swarm-${timestamp}`;
 
@@ -38,15 +36,11 @@ export async function createTestSwarm(
   let createData = baseData as any;
 
   if (options.swarmApiKey) {
-    createData.swarmApiKey = JSON.stringify(
-      encryptionService.encryptField("swarmApiKey", options.swarmApiKey)
-    );
+    createData.swarmApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", options.swarmApiKey));
   }
 
   if (options.poolApiKey) {
-    createData.poolApiKey = JSON.stringify(
-      encryptionService.encryptField("poolApiKey", options.poolApiKey)
-    );
+    createData.poolApiKey = JSON.stringify(encryptionService.encryptField("poolApiKey", options.poolApiKey));
   }
 
   return db.swarm.create({ data: createData });

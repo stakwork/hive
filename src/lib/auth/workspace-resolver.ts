@@ -1,7 +1,4 @@
-import {
-  getDefaultWorkspaceForUser,
-  getUserWorkspaces,
-} from "@/services/workspace";
+import { getDefaultWorkspaceForUser, getUserWorkspaces } from "@/services/workspace";
 import { Session } from "next-auth";
 import { redirect } from "next/navigation";
 
@@ -16,9 +13,7 @@ export interface WorkspaceResolutionResult {
  * Resolves where a user should be redirected based on their workspace access
  * This function handles the post-authentication routing logic
  */
-export async function resolveUserWorkspaceRedirect(
-  session: Session,
-): Promise<WorkspaceResolutionResult> {
+export async function resolveUserWorkspaceRedirect(session: Session): Promise<WorkspaceResolutionResult> {
   const userId = (session.user as { id: string }).id;
 
   try {
@@ -113,9 +108,7 @@ export async function validateUserWorkspaceAccess(
 
   try {
     const userWorkspaces = await getUserWorkspaces(userId);
-    const hasAccess = userWorkspaces.some(
-      (workspace) => workspace.slug === requestedSlug,
-    );
+    const hasAccess = userWorkspaces.some((workspace) => workspace.slug === requestedSlug);
 
     return hasAccess ? requestedSlug : null;
   } catch (error) {

@@ -1,9 +1,5 @@
 import { describe, test, expect, beforeEach } from "vitest";
-import { 
-  generatePM2Apps,
-  formatPM2Apps,
-  getPM2AppsContent
-} from "@/utils/devContainerUtils";
+import { generatePM2Apps, formatPM2Apps, getPM2AppsContent } from "@/utils/devContainerUtils";
 import type { ServiceDataConfig } from "@/types/devContainer";
 
 describe("DevContainer Utils - Unit Tests", () => {
@@ -138,7 +134,7 @@ describe("DevContainer Utils - Unit Tests", () => {
       const result = generatePM2Apps("fullstack-app", serviceData);
 
       expect(result).toHaveLength(2);
-      
+
       expect(result[0]).toEqual({
         name: "frontend",
         script: "npm run dev",
@@ -253,9 +249,9 @@ describe("DevContainer Utils - Unit Tests", () => {
       expect(result).toContain('name: "test-app"');
       expect(result).toContain('script: "npm start"');
       expect(result).toContain('cwd: "/workspaces/test"');
-      expect(result).toContain('instances: 1');
-      expect(result).toContain('autorestart: true');
-      expect(result).toContain('watch: false');
+      expect(result).toContain("instances: 1");
+      expect(result).toContain("autorestart: true");
+      expect(result).toContain("watch: false");
       expect(result).toContain('max_memory_restart: "1G"');
       expect(result).toContain('PORT: "3000"');
       expect(result).toContain('NODE_ENV: "development"');
@@ -291,7 +287,7 @@ describe("DevContainer Utils - Unit Tests", () => {
       expect(result).toContain('name: "app1"');
       expect(result).toContain('name: "app2"');
       expect(result).toContain('interpreter: "python"');
-      expect(result.split(',\n').filter(line => line.includes('name:'))).toHaveLength(2);
+      expect(result.split(",\n").filter((line) => line.includes("name:"))).toHaveLength(2);
     });
 
     test("should handle app with empty environment", () => {
@@ -311,7 +307,7 @@ describe("DevContainer Utils - Unit Tests", () => {
       const result = formatPM2Apps(apps);
 
       expect(result).toContain('name: "empty-env"');
-      expect(result).toContain('env: {\n\n      }');
+      expect(result).toContain("env: {\n\n      }");
     });
 
     test("should include interpreter when provided", () => {
@@ -350,7 +346,7 @@ describe("DevContainer Utils - Unit Tests", () => {
 
       const result = formatPM2Apps(apps);
 
-      expect(result).not.toContain('interpreter:');
+      expect(result).not.toContain("interpreter:");
     });
   });
 

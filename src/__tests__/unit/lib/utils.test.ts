@@ -36,20 +36,16 @@ describe("utils", () => {
     });
 
     it("should handle mixed input types", () => {
-      expect(cn(
-        "base",
-        ["foo", "bar"],
-        { active: true, disabled: false },
-        true && "conditional",
-        "final"
-      )).toBe("base foo bar active conditional final");
+      expect(cn("base", ["foo", "bar"], { active: true, disabled: false }, true && "conditional", "final")).toBe(
+        "base foo bar active conditional final",
+      );
     });
   });
 
   describe("formatRelativeTime", () => {
     beforeEach(() => {
       vi.useFakeTimers();
-      vi.setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      vi.setSystemTime(new Date("2024-01-15T12:00:00Z"));
     });
 
     afterEach(() => {
@@ -98,16 +94,15 @@ describe("utils", () => {
       expect(formatRelativeTime(date)).toBe(expected);
     });
 
-    it.each([
-      { days: 7 },
-      { days: 30 },
-      { days: 365 },
-    ])("should format dates $days days ago as formatted date string", ({ days }) => {
-      const now = new Date();
-      const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-      const result = formatRelativeTime(date);
-      expect(result).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
-    });
+    it.each([{ days: 7 }, { days: 30 }, { days: 365 }])(
+      "should format dates $days days ago as formatted date string",
+      ({ days }) => {
+        const now = new Date();
+        const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        const result = formatRelativeTime(date);
+        expect(result).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
+      },
+    );
 
     it("should handle string date inputs", () => {
       const now = new Date();
@@ -154,7 +149,7 @@ describe("utils", () => {
     it("should use NEXTAUTH_URL when available and no host header", () => {
       process.env.NEXTAUTH_URL = "https://myapp.com";
       expect(getBaseUrl()).toBe("https://myapp.com");
-      
+
       process.env.NEXTAUTH_URL = "http://localhost:3000";
       expect(getBaseUrl()).toBe("http://localhost:3000");
     });
@@ -174,7 +169,7 @@ describe("utils", () => {
     it("should handle empty string host header", () => {
       process.env.NEXTAUTH_URL = "https://myapp.com";
       expect(getBaseUrl("")).toBe("https://myapp.com");
-      
+
       delete process.env.NEXTAUTH_URL;
       expect(getBaseUrl("")).toBe("http://localhost:3000");
     });
@@ -230,7 +225,9 @@ describe("utils", () => {
     });
 
     it("should handle workspace URLs from pods and strip workspace prefix", () => {
-      expect(getRelativeUrl("https://abc123-3000.workspaces.sphinx.chat/w/mock-stakgraph/dashboard")).toBe("/dashboard");
+      expect(getRelativeUrl("https://abc123-3000.workspaces.sphinx.chat/w/mock-stakgraph/dashboard")).toBe(
+        "/dashboard",
+      );
       expect(getRelativeUrl("https://abc123-3000.workspaces.sphinx.chat/w/my-workspace/tasks")).toBe("/tasks");
     });
 

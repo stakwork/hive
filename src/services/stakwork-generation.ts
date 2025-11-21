@@ -40,7 +40,10 @@ export class StakworkGenerationService extends BaseServiceClass {
 
   async createRun(input: CreateRunInput): Promise<{ run: StakworkRun }> {
     return this.handleRequest(async () => {
-      const response = await this.client.post<{ success: boolean; run: StakworkRun }>("/api/stakwork/ai/generate", input);
+      const response = await this.client.post<{ success: boolean; run: StakworkRun }>(
+        "/api/stakwork/ai/generate",
+        input,
+      );
       return { run: response.run };
     }, "createRun");
   }
@@ -49,28 +52,28 @@ export class StakworkGenerationService extends BaseServiceClass {
     return this.handleRequest(async () => {
       // Build query string from params
       const queryString = new URLSearchParams(
-        Object.entries(params).reduce((acc, [key, value]) => {
-          if (value !== undefined) {
-            acc[key] = String(value);
-          }
-          return acc;
-        }, {} as Record<string, string>)
+        Object.entries(params).reduce(
+          (acc, [key, value]) => {
+            if (value !== undefined) {
+              acc[key] = String(value);
+            }
+            return acc;
+          },
+          {} as Record<string, string>,
+        ),
       ).toString();
-      
+
       const endpoint = `/api/stakwork/runs?${queryString}`;
       const response = await this.client.get<{ success: boolean; runs: StakworkRun[] }>(endpoint);
       return { runs: response.runs };
     }, "getRuns");
   }
 
-  async updateDecision(
-    runId: string,
-    decision: UpdateDecisionInput
-  ): Promise<{ run: StakworkRun }> {
+  async updateDecision(runId: string, decision: UpdateDecisionInput): Promise<{ run: StakworkRun }> {
     return this.handleRequest(async () => {
       const response = await this.client.patch<{ success: boolean; run: StakworkRun }>(
         `/api/stakwork/runs/${runId}/decision`,
-        decision
+        decision,
       );
       return { run: response.run };
     }, "updateDecision");

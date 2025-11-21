@@ -9,7 +9,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-
 // Helper function to extract S3 key from media_url (matching frontend logic)
 function extractS3KeyFromUrl(url: string): string {
   try {
@@ -112,10 +111,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (!workspaceSlug) {
-        return NextResponse.json(
-          { success: false, message: "Workspace not found" },
-          { status: 404 },
-        );
+        return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
       }
 
       // Call the mock endpoint
@@ -148,7 +144,7 @@ export async function GET(request: NextRequest) {
     // Append node_type to endpoint if provided
     let finalEndpoint = endpoint;
     if (nodeType) {
-      const separator = endpoint.includes('?') ? '&' : '?';
+      const separator = endpoint.includes("?") ? "&" : "?";
       finalEndpoint = `${endpoint}${separator}node_type=${nodeType}`;
     }
 

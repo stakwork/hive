@@ -71,8 +71,6 @@ export function requireAuth(context: MiddlewareContext): MiddlewareUser | NextRe
  */
 export function patternToRegex(pattern: string): RegExp {
   // Escape special regex characters except *
-  const regexPattern = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '[^/]+');
+  const regexPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+");
   return new RegExp(`^${regexPattern}$`);
 }

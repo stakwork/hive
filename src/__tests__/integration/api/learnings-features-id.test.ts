@@ -2,15 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET } from "@/app/api/learnings/features/[id]/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  createTestWorkspaceScenario,
-  createTestSwarm,
-} from "@/__tests__/support/fixtures";
-import {
-  createGetRequest,
-  createAuthenticatedGetRequest,
-  generateUniqueId,
-} from "@/__tests__/support/helpers";
+import { createTestWorkspaceScenario, createTestSwarm } from "@/__tests__/support/fixtures";
+import { createGetRequest, createAuthenticatedGetRequest, generateUniqueId } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 
 describe("GET /api/learnings/features/[id] - Authorization", () => {
@@ -26,11 +19,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
     await db.$transaction(async (tx) => {
       const scenario = await createTestWorkspaceScenario({
         owner: { name: "Feature Learning Owner" },
-        members: [
-          { role: "VIEWER" },
-          { role: "DEVELOPER" },
-          { role: "ADMIN" },
-        ],
+        members: [{ role: "VIEWER" }, { role: "DEVELOPER" }, { role: "ADMIN" }],
       });
 
       owner = scenario.owner;
@@ -41,10 +30,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
       // Create swarm with encrypted API key
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "swarmApiKey",
-        "test-feature-swarm-api-key"
-      );
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-feature-swarm-api-key");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -94,10 +80,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
   });
 
   it("should return 400 when id parameter is missing", async () => {
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings/features/?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings/features/?workspace=${workspace.slug}`, owner);
     // Simulate missing id by passing empty string
     const response = await GET(request, { params: Promise.resolve({ id: "" }) });
 
@@ -109,7 +92,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
   it("should return 403 for non-member access", async () => {
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      nonMember
+      nonMember,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -126,7 +109,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -140,12 +123,12 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      memberViewer
+      memberViewer,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -157,7 +140,7 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
         headers: expect.objectContaining({
           "x-api-token": "test-feature-swarm-api-key",
         }),
-      })
+      }),
     );
 
     fetchSpy.mockRestore();
@@ -168,12 +151,12 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      memberDeveloper
+      memberDeveloper,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -186,12 +169,12 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      memberAdmin
+      memberAdmin,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -204,12 +187,12 @@ describe("GET /api/learnings/features/[id] - Authorization", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -233,10 +216,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       workspace = scenario.workspace;
 
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "swarmApiKey",
-        "test-api-key-feature-integrity"
-      );
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-api-key-feature-integrity");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -265,7 +245,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${newScenario.workspace.slug}`,
-      newScenario.owner
+      newScenario.owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -282,7 +262,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -296,12 +276,12 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -322,13 +302,13 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const featureId = "feature-with-special-chars/123";
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/${encodeURIComponent(featureId)}?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: featureId }) });
 
@@ -337,9 +317,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     // Verify URL encoding
     const fetchCall = fetchSpy.mock.calls[0];
     const fetchUrl = fetchCall[0] as string;
-    expect(fetchUrl).toContain(
-      `gitree/features/${encodeURIComponent(featureId)}`
-    );
+    expect(fetchUrl).toContain(`gitree/features/${encodeURIComponent(featureId)}`);
 
     fetchSpy.mockRestore();
   });
@@ -356,12 +334,12 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       new Response(JSON.stringify(mockFeature), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -380,12 +358,12 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -395,13 +373,11 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
   });
 
   it("should handle external API network errors gracefully", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(
-      new Error("Network error: Connection timeout")
-    );
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error: Connection timeout"));
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     const response = await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -415,12 +391,12 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -428,9 +404,7 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
     const fetchUrl = fetchCall[0] as string;
 
     // Verify URL format: https://{hostname}:3355/gitree/features/{id}
-    expect(fetchUrl).toMatch(
-      /^https:\/\/feature-integrity-swarm\.sphinx\.chat:3355\/gitree\/features\/feature-123$/
-    );
+    expect(fetchUrl).toMatch(/^https:\/\/feature-integrity-swarm\.sphinx\.chat:3355\/gitree\/features\/feature-123$/);
 
     fetchSpy.mockRestore();
   });
@@ -445,12 +419,12 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 
@@ -468,12 +442,12 @@ describe("GET /api/learnings/features/[id] - Data Integrity", () => {
       new Response(JSON.stringify({ id: "feature-123", name: "Test Feature" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings/features/feature-123?workspace=${workspace.slug}`,
-      owner
+      owner,
     );
     await GET(request, { params: Promise.resolve({ id: "feature-123" }) });
 

@@ -1,10 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/features/[featureId]/phases/reorder/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -76,7 +73,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
           { id: phase2.id, order: 2 },
         ],
       },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -103,12 +100,9 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
   });
 
   test("requires authentication", async () => {
-    const request = createPostRequest(
-      "http://localhost:3000/api/features/test-id/phases/reorder",
-      {
-        phases: [{ id: "phase-id", order: 0 }],
-      }
-    );
+    const request = createPostRequest("http://localhost:3000/api/features/test-id/phases/reorder", {
+      phases: [{ id: "phase-id", order: 0 }],
+    });
 
     const response = await POST(request, {
       params: Promise.resolve({ featureId: "test-id" }),
@@ -150,7 +144,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
       {
         phases: [{ id: phase.id, order: 0 }],
       },
-      nonMember
+      nonMember,
     );
 
     const response = await POST(request, {
@@ -168,7 +162,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
       {
         phases: [{ id: "phase-id", order: 0 }],
       },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -216,7 +210,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
       {
         phases: [{ id: phase.id, order: 0 }],
       },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -246,7 +240,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
     const request = createAuthenticatedPostRequest(
       `http://localhost:3000/api/features/${feature.id}/phases/reorder`,
       { phases: "not-an-array" },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -276,7 +270,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
     const request = createAuthenticatedPostRequest(
       `http://localhost:3000/api/features/${feature.id}/phases/reorder`,
       { phases: [] },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -346,7 +340,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
           { id: phase2.id, order: 1 }, // Wrong feature!
         ],
       },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -417,7 +411,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
           { id: phase2.id, order: 2 },
         ],
       },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -486,7 +480,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
           { id: phase2.id, order: 0 }, // Duplicate order
         ],
       },
-      user
+      user,
     );
 
     const response = await POST(request, {
@@ -538,7 +532,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
       {
         phases: [{ id: phase.id, order: 5 }],
       },
-      owner
+      owner,
     );
 
     const response = await POST(request, {
@@ -597,7 +591,7 @@ describe("POST /api/features/[featureId]/phases/reorder", () => {
       {
         phases: [{ id: phase.id, order: 3 }],
       },
-      member
+      member,
     );
 
     const response = await POST(request, {

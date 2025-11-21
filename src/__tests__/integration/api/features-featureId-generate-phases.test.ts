@@ -1,15 +1,8 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/features/[featureId]/generate/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
-import {
-  expectUnauthorized,
-  expectError,
-  createAuthenticatedPostRequest,
-} from "@/__tests__/support/helpers";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
+import { expectUnauthorized, expectError, createAuthenticatedPostRequest } from "@/__tests__/support/helpers";
 
 // Mock AI dependencies
 vi.mock("aieo", () => ({
@@ -60,7 +53,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "phasesTickets" },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -79,14 +72,11 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = new Request(
-        "http://localhost:3000/api/features/test-feature-id/generate",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "phasesTickets" }),
-        }
-      );
+      const request = new Request("http://localhost:3000/api/features/test-feature-id/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "phasesTickets" }),
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ featureId: "test-feature-id" }),
@@ -101,7 +91,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/non-existent-id/generate",
         { type: "phasesTickets" },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -132,7 +122,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "phasesTickets" },
-        nonMember
+        nonMember,
       );
 
       const response = await POST(request, {
@@ -162,7 +152,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "invalid_type" },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -219,7 +209,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "phasesTickets" },
-        user
+        user,
       );
 
       await POST(request, {

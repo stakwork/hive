@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> },
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
     // Check API token authentication
     const apiToken = request.headers.get("x-api-token");
@@ -16,10 +13,7 @@ export async function PUT(
     const { taskId } = await params;
 
     if (!taskId) {
-      return NextResponse.json(
-        { error: "Task ID is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
     }
 
     // Parse request body
@@ -27,10 +21,7 @@ export async function PUT(
     const { title } = body;
 
     if (!title || typeof title !== "string") {
-      return NextResponse.json(
-        { error: "Title is required and must be a string" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Title is required and must be a string" }, { status: 400 });
     }
 
     // Get current task for comparison and workspace info
@@ -97,20 +88,12 @@ export async function PUT(
 
       // Broadcast to task-specific channel (for chat page)
       const taskChannelName = getTaskChannelName(updatedTask.id);
-      await pusherServer.trigger(
-        taskChannelName,
-        PUSHER_EVENTS.TASK_TITLE_UPDATE,
-        titleUpdatePayload,
-      );
+      await pusherServer.trigger(taskChannelName, PUSHER_EVENTS.TASK_TITLE_UPDATE, titleUpdatePayload);
 
       // Broadcast to workspace channel (for task list)
       if (currentTask.workspace?.slug) {
         const workspaceChannelName = getWorkspaceChannelName(currentTask.workspace.slug);
-        await pusherServer.trigger(
-          workspaceChannelName,
-          PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
-          titleUpdatePayload,
-        );
+        await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, titleUpdatePayload);
       }
 
       console.log(`Task title updated and broadcasted: ${taskId} -> "${updatedTask.title}"`);
@@ -130,18 +113,10 @@ export async function PUT(
     console.error("Error updating task title:", error);
 
     // Handle case where task doesn't exist
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "P2025"
-    ) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    return NextResponse.json(
-      { error: "Failed to update task title" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to update task title" }, { status: 500 });
   }
 }

@@ -12,10 +12,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -27,8 +24,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Missing required fields: workspaceId and repositoryUrl or repositoryId",
+          message: "Missing required fields: workspaceId and repositoryUrl or repositoryId",
         },
         { status: 400 },
       );
@@ -41,19 +37,13 @@ export async function POST(request: NextRequest) {
         select: { repositoryUrl: true, workspaceId: true },
       });
       if (!repo || repo.workspaceId !== workspaceId) {
-        return NextResponse.json(
-          { success: false, message: "Repository not found for workspace" },
-          { status: 404 },
-        );
+        return NextResponse.json({ success: false, message: "Repository not found for workspace" }, { status: 404 });
       }
       repositoryUrl = repo.repositoryUrl;
     }
 
     if (!repositoryUrl) {
-      return NextResponse.json(
-        { success: false, message: "Repository URL not found" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Repository URL not found" }, { status: 400 });
     }
 
     const callbackUrl = getGithubWebhookCallbackUrl(request);
@@ -65,15 +55,9 @@ export async function POST(request: NextRequest) {
       callbackUrl,
     });
 
-    return NextResponse.json(
-      { success: true, data: { webhookId: result.id } },
-      { status: 200 },
-    );
+    return NextResponse.json({ success: true, data: { webhookId: result.id } }, { status: 200 });
   } catch (error) {
     console.error(error);
-    return NextResponse.json(
-      { success: false, message: "Failed to ensure webhook" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to ensure webhook" }, { status: 500 });
   }
 }

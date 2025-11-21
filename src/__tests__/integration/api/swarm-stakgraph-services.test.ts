@@ -18,7 +18,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    
+
     // Don't manually clean - let the global cleanup handle it
     // Use transaction to atomically create test data
     const testData = await db.$transaction(async (tx) => {
@@ -45,9 +45,7 @@ describe("GET /api/swarm/stakgraph/services", () => {
           swarmId: generateUniqueId("s1"),
           status: "ACTIVE",
           swarmUrl: "https://s1-name.sphinx.chat/api",
-          swarmApiKey: JSON.stringify(
-            enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY),
-          ),
+          swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY)),
           services: [],
           agentRequestId: null,
           agentStatus: null,
@@ -64,31 +62,23 @@ describe("GET /api/swarm/stakgraph/services", () => {
   });
 
   it("proxies with decrypted header and keeps DB encrypted", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis as unknown as { fetch: typeof fetch }, "fetch")
-      .mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ services: [] }),
-      } as unknown as Response);
+    const fetchSpy = vi.spyOn(globalThis as unknown as { fetch: typeof fetch }, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ services: [] }),
+    } as unknown as Response);
 
     const res = await GET(
-      createGetRequest(
-        "http://localhost:3000/api/swarm/stakgraph/services",
-        { workspaceId, swarmId }
-      )
+      createGetRequest("http://localhost:3000/api/swarm/stakgraph/services", { workspaceId, swarmId }),
     );
-    
+
     const responseBody = await res.json();
     console.log("Swarm API Response status:", res.status);
     console.log("Swarm API Response body:", JSON.stringify(responseBody, null, 2));
 
     expect(res.status).toBe(200);
     // Verify header used decrypted token
-    const firstCall = fetchSpy.mock.calls[0] as [
-      string,
-      { headers?: Record<string, string> },
-    ];
+    const firstCall = fetchSpy.mock.calls[0] as [string, { headers?: Record<string, string> }];
     const headers = (firstCall?.[1]?.headers || {}) as Record<string, string>;
     expect(Object.values(headers).join(" ")).toContain(PLAINTEXT_SWARM_API_KEY);
 

@@ -2,14 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { CallRecording } from "@/types/calls";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface CallsTableProps {
   calls: CallRecording[];
@@ -58,9 +51,7 @@ export function CallsTable({ calls, workspaceSlug }: CallsTableProps) {
               onClick={() => handleRowClick(call.ref_id)}
               className="cursor-pointer hover:bg-muted/50"
             >
-              <TableCell className="font-medium">
-                {call.episode_title}
-              </TableCell>
+              <TableCell className="font-medium">{call.episode_title}</TableCell>
               <TableCell>{formatDate(call.date_added_to_graph)}</TableCell>
             </TableRow>
           ))}

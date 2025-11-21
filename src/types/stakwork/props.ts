@@ -1,4 +1,4 @@
-import { WorkflowSpec } from './workflow';
+import { WorkflowSpec } from "./workflow";
 
 // Props passed from Rails/Stakwork to React workflow component
 export interface WorkflowAppProps {
@@ -6,7 +6,7 @@ export interface WorkflowAppProps {
     workflowData?: WorkflowSpec;
     kflowformdata?: string; // JSON string
     show_only: boolean | string;
-    mode: 'edit' | 'alter' | 'project';
+    mode: "edit" | "alter" | "project";
     projectId?: string;
     isAdmin: boolean;
     workflowId: string;

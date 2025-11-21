@@ -1,8 +1,5 @@
 import { db } from "@/lib/db";
-import {
-  RepositoryStatus,
-  SwarmStatus,
-} from "@prisma/client";
+import { RepositoryStatus, SwarmStatus } from "@prisma/client";
 import { slugify } from "./slugify";
 
 /**
@@ -10,9 +7,7 @@ import { slugify } from "./slugify";
  * Returns the workspace slug.
  * All DB operations wrapped in transaction for atomicity.
  */
-export async function ensureMockWorkspaceForUser(
-  userId: string,
-): Promise<string> {
+export async function ensureMockWorkspaceForUser(userId: string): Promise<string> {
   const existing = await db.workspace.findFirst({
     where: { ownerId: userId, deleted: false },
     select: { id: true, slug: true },

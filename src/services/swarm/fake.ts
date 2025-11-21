@@ -4,10 +4,7 @@ import { isSwarmFakeModeEnabled } from "@/lib/runtime";
 export const isFakeMode = isSwarmFakeModeEnabled();
 
 // In-memory fake swarms: { [name: string]: { id, swarm_id, status, pollCount } }
-const fakeSwarms: Record<
-  string,
-  { id: string; swarm_id: string; status: string; pollCount: number }
-> = {};
+const fakeSwarms: Record<string, { id: string; swarm_id: string; status: string; pollCount: number }> = {};
 
 function makeId(prefix: string = "fake") {
   return `${prefix}-${Math.random().toString(36).substr(2, 8)}`;
@@ -24,10 +21,7 @@ export async function fakePollSwarm(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id || !fakeSwarms[id]) {
-    return NextResponse.json(
-      { success: false, message: "Swarm not found (FAKE)" },
-      { status: 404 },
-    );
+    return NextResponse.json({ success: false, message: "Swarm not found (FAKE)" }, { status: 404 });
   }
   const fake = fakeSwarms[id];
   fake.pollCount++;

@@ -1,11 +1,11 @@
-import ClearIcon from '@/components/Icons/ClearIcon'
-import SearchIcon from '@/components/Icons/SearchIcon'
-import { useGraphStore } from '@/stores/useStores'
-import { GraphFilter } from './GraphFilter'
+import ClearIcon from "@/components/Icons/ClearIcon";
+import SearchIcon from "@/components/Icons/SearchIcon";
+import { useGraphStore } from "@/stores/useStores";
+import { GraphFilter } from "./GraphFilter";
 
 export const GraphSearch = () => {
-  const searchQuery = useGraphStore((s) => s.searchQuery)
-  const setSearchQuery = useGraphStore((s) => s.setSearchQuery)
+  const searchQuery = useGraphStore((s) => s.searchQuery);
+  const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
 
   return (
     <div className="absolute top-0 right-0 left-0 z-[100] flex flex-col items-center px-4 pt-4">
@@ -35,7 +35,7 @@ export const GraphSearch = () => {
           {searchQuery?.trim() ? (
             <button
               data-testid="search_action_icon"
-              onClick={() => setSearchQuery('')}
+              onClick={() => setSearchQuery("")}
               className="
                 absolute right-3 top-1/2 -translate-y-1/2 z-[2]
                 flex items-center justify-center w-6 h-6 rounded-md
@@ -48,12 +48,14 @@ export const GraphSearch = () => {
               <ClearIcon className="w-4 h-4" />
             </button>
           ) : (
-            <div className="
+            <div
+              className="
               absolute right-3 top-1/2 -translate-y-1/2 z-[3]
               flex items-center justify-center w-6 h-6
               pointer-events-none transition-all duration-200
               group-focus-within:text-blue-400 text-gray-500
-            ">
+            "
+            >
               <SearchIcon className="w-5 h-5" />
             </div>
           )}
@@ -63,5 +65,5 @@ export const GraphSearch = () => {
         <GraphFilter />
       </div>
     </div>
-  )
-}
+  );
+};

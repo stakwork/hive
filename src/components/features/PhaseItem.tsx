@@ -21,14 +21,7 @@ interface PhaseItemProps {
 export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete }: PhaseItemProps) {
   const router = useRouter();
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: phase.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: phase.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -57,11 +50,7 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`${isDragging ? "opacity-50 z-50" : ""}`}
-    >
+    <div ref={setNodeRef} style={style} className={`${isDragging ? "opacity-50 z-50" : ""}`}>
       <div className="rounded-lg border bg-card transition-colors">
         <div className="flex items-center gap-2 p-3">
           {/* Drag Handle */}
@@ -77,21 +66,12 @@ export function PhaseItem({ phase, featureId, workspaceSlug, onUpdate, onDelete 
           </Button>
 
           {/* Phase Name - Clickable to navigate */}
-          <div
-            className="flex-1 min-w-0 cursor-pointer hover:text-primary"
-            onClick={handleNavigateToPhase}
-          >
-            <span className="text-sm font-medium truncate">
-              {phase.name}
-            </span>
+          <div className="flex-1 min-w-0 cursor-pointer hover:text-primary" onClick={handleNavigateToPhase}>
+            <span className="text-sm font-medium truncate">{phase.name}</span>
           </div>
 
           {/* Status Badge */}
-          <StatusPopover
-            statusType="phase"
-            currentStatus={phase.status}
-            onUpdate={handleStatusUpdate}
-          />
+          <StatusPopover statusType="phase" currentStatus={phase.status} onUpdate={handleStatusUpdate} />
 
           {/* Actions Menu */}
           <ActionMenu

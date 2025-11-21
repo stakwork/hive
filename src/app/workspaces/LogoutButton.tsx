@@ -40,9 +40,7 @@ export function LogoutButton() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Stay logged in</AlertDialogCancel>
-          <AlertDialogAction onClick={handleLogout}>
-            Log out
-          </AlertDialogAction>
+          <AlertDialogAction onClick={handleLogout}>Log out</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

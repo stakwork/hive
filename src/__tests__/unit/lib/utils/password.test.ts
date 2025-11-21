@@ -76,7 +76,7 @@ describe("generateSecurePassword", () => {
     const password1 = generateSecurePassword(20);
     const password2 = generateSecurePassword(20);
     const password3 = generateSecurePassword(20);
-    
+
     expect(password1).not.toBe(password2);
     expect(password2).not.toBe(password3);
     expect(password1).not.toBe(password3);

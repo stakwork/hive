@@ -1,11 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useStreamProcessor } from "@/lib/streaming/useStreamProcessor";
-import type {
-  BaseStreamingMessage,
-  StreamProcessorConfig,
-  ToolProcessor,
-} from "@/types/streaming";
+import type { BaseStreamingMessage, StreamProcessorConfig, ToolProcessor } from "@/types/streaming";
 import { DEFAULT_DEBOUNCE_MS } from "@/lib/streaming/constants";
 
 // Test data factories
@@ -87,9 +83,7 @@ const TestDataFactories = {
     } as Response;
   },
 
-  createStreamConfig: (
-    overrides: Partial<StreamProcessorConfig> = {}
-  ): StreamProcessorConfig => {
+  createStreamConfig: (overrides: Partial<StreamProcessorConfig> = {}): StreamProcessorConfig => {
     return {
       debounceMs: DEFAULT_DEBOUNCE_MS,
       toolProcessors: {},
@@ -278,9 +272,7 @@ describe("useStreamProcessor", () => {
       const { result } = renderHook(() => useStreamProcessor());
       const onUpdate = TestUtils.createOnUpdateSpy();
 
-      const events = [
-        TestDataFactories.createToolInputStartEvent("tool-1", "search_web"),
-      ];
+      const events = [TestDataFactories.createToolInputStartEvent("tool-1", "search_web")];
       const response = TestDataFactories.createMockResponse(events);
 
       await result.current.processStream(response, "msg-1", onUpdate);
@@ -460,7 +452,7 @@ describe("useStreamProcessor", () => {
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Tool processor error for search_web"),
-        expect.any(Error)
+        expect.any(Error),
       );
 
       consoleErrorSpy.mockRestore();
@@ -491,9 +483,7 @@ describe("useStreamProcessor", () => {
       const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
       expect(finalMessage.toolCalls).toHaveLength(0);
       expect(finalMessage.textParts?.some((p) => p.id === "final-text")).toBe(true);
-      expect(finalMessage.textParts?.find((p) => p.id === "final-text")?.content).toBe(
-        "This is the answer"
-      );
+      expect(finalMessage.textParts?.find((p) => p.id === "final-text")?.content).toBe("This is the answer");
     });
 
     test("should not show hidden tool in toolCalls", async () => {
@@ -540,9 +530,7 @@ describe("useStreamProcessor", () => {
       await result.current.processStream(response, "msg-1", onUpdate);
 
       const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
-      expect(finalMessage.textParts?.some((p) => p.id === "final_answer-output")).toBe(
-        true
-      );
+      expect(finalMessage.textParts?.some((p) => p.id === "final_answer-output")).toBe(true);
     });
 
     test("should handle hidden tool processor errors", async () => {
@@ -570,7 +558,7 @@ describe("useStreamProcessor", () => {
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Hidden tool processor error for final_answer"),
-        expect.any(Error)
+        expect.any(Error),
       );
 
       consoleErrorSpy.mockRestore();
@@ -669,9 +657,9 @@ describe("useStreamProcessor", () => {
 
       const response = { body: null } as Response;
 
-      await expect(
-        result.current.processStream(response, "msg-1", onUpdate)
-      ).rejects.toThrow("No response body reader available");
+      await expect(result.current.processStream(response, "msg-1", onUpdate)).rejects.toThrow(
+        "No response body reader available",
+      );
     });
 
     test("should handle malformed JSON in stream", async () => {
@@ -693,10 +681,7 @@ describe("useStreamProcessor", () => {
 
       await result.current.processStream(response, "msg-1", onUpdate);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Failed to parse stream chunk:",
-        expect.any(Error)
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to parse stream chunk:", expect.any(Error));
 
       consoleErrorSpy.mockRestore();
     });
@@ -713,9 +698,7 @@ describe("useStreamProcessor", () => {
 
       const response = { body: stream } as Response;
 
-      await expect(
-        result.current.processStream(response, "msg-1", onUpdate)
-      ).rejects.toThrow("Stream read error");
+      await expect(result.current.processStream(response, "msg-1", onUpdate)).rejects.toThrow("Stream read error");
     });
   });
 
@@ -759,12 +742,7 @@ describe("useStreamProcessor", () => {
       ];
       const response = TestDataFactories.createMockResponse(events);
 
-      await result.current.processStream(
-        response,
-        "msg-1",
-        onUpdate,
-        additionalFields as any
-      );
+      await result.current.processStream(response, "msg-1", onUpdate, additionalFields as any);
 
       const finalMessage = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
       expect((finalMessage as any).role).toBe("assistant");
@@ -816,9 +794,7 @@ describe("useStreamProcessor", () => {
       const stream = new ReadableStream({
         async start(controller) {
           controller.enqueue(encoder.encode(": comment line\n"));
-          controller.enqueue(
-            encoder.encode('data: {"type":"text-start","id":"text-1"}\n\n')
-          );
+          controller.enqueue(encoder.encode('data: {"type":"text-start","id":"text-1"}\n\n'));
           controller.enqueue(encoder.encode("event: custom\n"));
           controller.close();
         },
@@ -839,9 +815,7 @@ describe("useStreamProcessor", () => {
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
-          controller.enqueue(
-            encoder.encode('data: {"type":"text-start","id":"text-1"}\n\n')
-          );
+          controller.enqueue(encoder.encode('data: {"type":"text-start","id":"text-1"}\n\n'));
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         },
@@ -863,9 +837,7 @@ describe("useStreamProcessor", () => {
       const stream = new ReadableStream({
         async start(controller) {
           controller.enqueue(encoder.encode("data: \n\n"));
-          controller.enqueue(
-            encoder.encode('data: {"type":"text-start","id":"text-1"}\n\n')
-          );
+          controller.enqueue(encoder.encode('data: {"type":"text-start","id":"text-1"}\n\n'));
           controller.close();
         },
       });
@@ -932,7 +904,7 @@ describe("useStreamProcessor", () => {
       const onUpdate = TestUtils.createOnUpdateSpy();
 
       const events = Array.from({ length: 50 }, (_, i) =>
-        TestDataFactories.createTextDeltaEvent("text-1", `word${i} `)
+        TestDataFactories.createTextDeltaEvent("text-1", `word${i} `),
       );
       events.unshift(TestDataFactories.createTextStartEvent("text-1"));
 

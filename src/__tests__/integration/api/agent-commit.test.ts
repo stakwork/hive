@@ -625,7 +625,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
             "Content-Type": "application/json",
           }),
           body: expect.stringContaining("Test commit message"),
-        })
+        }),
       );
     });
 

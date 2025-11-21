@@ -3,11 +3,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { redirect } from "next/navigation";
 import { DashboardLayout } from "@/components/DashboardLayout";
 
-export default async function DashboardRootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashboardRootLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
 
   if (!session) {

@@ -1,5 +1,5 @@
-import { Page, expect } from '@playwright/test';
-import { selectors } from '../fixtures/selectors';
+import { Page, expect } from "@playwright/test";
+import { selectors } from "../fixtures/selectors";
 
 /**
  * Page Object Model for Authentication
@@ -11,14 +11,14 @@ export class AuthPage {
    * Navigate to home page
    */
   async goto(): Promise<void> {
-    await this.page.goto('http://localhost:3000');
+    await this.page.goto("http://localhost:3000");
   }
 
   /**
    * Verify welcome message is visible
    */
   async verifyWelcomeMessage(): Promise<void> {
-    await expect(this.page.locator(selectors.auth.welcomeMessage)).toContainText('Welcome to Hive');
+    await expect(this.page.locator(selectors.auth.welcomeMessage)).toContainText("Welcome to Hive");
   }
 
   /**
@@ -49,7 +49,7 @@ export class AuthPage {
     const url = this.page.url();
     const match = url.match(/\/w\/([^\/]+)/);
     if (!match) {
-      throw new Error('Could not extract workspace slug from URL');
+      throw new Error("Could not extract workspace slug from URL");
     }
     return match[1];
   }
@@ -58,7 +58,7 @@ export class AuthPage {
    * Verify workspace switcher is visible
    */
   async verifyWorkspaceSwitcher(): Promise<void> {
-    const switcher = this.page.locator('button').filter({ hasText: /mock/i }).first();
+    const switcher = this.page.locator("button").filter({ hasText: /mock/i }).first();
     await expect(switcher).toBeVisible();
   }
 

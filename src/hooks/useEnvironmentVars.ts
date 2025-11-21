@@ -3,32 +3,18 @@ import { EnvironmentVariable } from "@/types/wizard";
 
 interface UseEnvironmentVarsReturn {
   envVars: EnvironmentVariable[];
-  handleEnvChange: (
-    index: number,
-    field: keyof EnvironmentVariable,
-    value: string | boolean,
-  ) => void;
+  handleEnvChange: (index: number, field: keyof EnvironmentVariable, value: string | boolean) => void;
   handleAddEnv: () => void;
   handleRemoveEnv: (index: number) => void;
   setEnvVars: (vars: EnvironmentVariable[]) => void;
   bulkAddEnvVars: (vars: Record<string, string>) => void;
 }
 
-export function useEnvironmentVars(
-  initialVars?: EnvironmentVariable[],
-): UseEnvironmentVarsReturn {
-  const [envVars, setEnvVars] = useState<EnvironmentVariable[]>(
-    initialVars || [{ name: "", value: "", show: false }],
-  );
+export function useEnvironmentVars(initialVars?: EnvironmentVariable[]): UseEnvironmentVarsReturn {
+  const [envVars, setEnvVars] = useState<EnvironmentVariable[]>(initialVars || [{ name: "", value: "", show: false }]);
 
-  const handleEnvChange = (
-    index: number,
-    field: keyof EnvironmentVariable,
-    value: string | boolean,
-  ) => {
-    setEnvVars((prev) =>
-      prev.map((pair, i) => (i === index ? { ...pair, [field]: value } : pair)),
-    );
+  const handleEnvChange = (index: number, field: keyof EnvironmentVariable, value: string | boolean) => {
+    setEnvVars((prev) => prev.map((pair, i) => (i === index ? { ...pair, [field]: value } : pair)));
   };
 
   const handleAddEnv = () => {
@@ -63,9 +49,7 @@ export function useEnvironmentVars(
       // Remove empty placeholder if it exists
       const filtered = updatedPrev.filter((v) => v.name || v.value);
 
-      return [...filtered, ...newVars].length > 0
-        ? [...filtered, ...newVars]
-        : [{ name: "", value: "", show: false }];
+      return [...filtered, ...newVars].length > 0 ? [...filtered, ...newVars] : [{ name: "", value: "", show: false }];
     });
   }, []);
 

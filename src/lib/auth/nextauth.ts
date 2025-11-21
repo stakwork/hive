@@ -95,10 +95,10 @@ export const authOptions: NextAuthOptions = {
           // Create or find the mock user in the database
           const existingUser = user.email
             ? await db.user.findUnique({
-              where: {
-                email: user.email,
-              },
-            })
+                where: {
+                  email: user.email,
+                },
+              })
             : null;
 
           if (!existingUser) {
@@ -123,7 +123,7 @@ export const authOptions: NextAuthOptions = {
             logger.authError(
               "Failed to create mock workspace - workspace slug is empty",
               "SIGNIN_MOCK_WORKSPACE_FAILED",
-              { userId: user.id }
+              { userId: user.id },
             );
             return false;
           }
@@ -139,7 +139,7 @@ export const authOptions: NextAuthOptions = {
             logger.authError(
               "Mock workspace created but not found on verification - possible transaction issue",
               "SIGNIN_MOCK_VERIFICATION_FAILED",
-              { userId: user.id, expectedSlug: workspaceSlug }
+              { userId: user.id, expectedSlug: workspaceSlug },
             );
             return false;
           }
@@ -161,10 +161,10 @@ export const authOptions: NextAuthOptions = {
           // Check if there's an existing user with the same email
           const existingUser = user.email
             ? await db.user.findUnique({
-              where: {
-                email: user.email,
-              },
-            })
+                where: {
+                  email: user.email,
+                },
+              })
             : null;
 
           if (existingUser) {
@@ -272,7 +272,7 @@ export const authOptions: NextAuthOptions = {
                 logger.authError(
                   "Mock workspace not found in session callback - signIn may have failed",
                   "SESSION_MOCK_WORKSPACE_MISSING",
-                  { userId: uid }
+                  { userId: uid },
                 );
               }
             } catch (error) {
@@ -313,7 +313,7 @@ export const authOptions: NextAuthOptions = {
             {
               hasToken: !!token,
               hasUser: !!user,
-            }
+            },
           );
           return session;
         }
@@ -485,7 +485,9 @@ export async function getGithubUsernameAndPAT(
   userId: string,
   workspaceSlug?: string,
 ): Promise<GithubUsernameAndPAT | null> {
-  console.log(`[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || 'none'}`);
+  console.log(
+    `[getGithubUsernameAndPAT] Starting lookup for userId: ${userId}, workspaceSlug: ${workspaceSlug || "none"}`,
+  );
 
   // Check if this is a mock user
   const user = await db.user.findUnique({ where: { id: userId } });
@@ -539,7 +541,9 @@ export async function getGithubUsernameAndPAT(
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
 
-      console.log(`[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`);
+      console.log(
+        `[getGithubUsernameAndPAT] Successfully decrypted OAuth token for user: ${githubAuth.githubUsername}`,
+      );
       return {
         username: githubAuth.githubUsername,
         token: token,
@@ -550,7 +554,9 @@ export async function getGithubUsernameAndPAT(
     }
   }
 
-  console.log(`[getGithubUsernameAndPAT] Workspace provided: ${workspaceSlug}, looking up workspace and source control org`);
+  console.log(
+    `[getGithubUsernameAndPAT] Workspace provided: ${workspaceSlug}, looking up workspace and source control org`,
+  );
 
   // Get workspace and its source control org
   const workspace = await db.workspace.findUnique({
@@ -566,7 +572,9 @@ export async function getGithubUsernameAndPAT(
   }
 
   if (!workspace.sourceControlOrg) {
-    console.log(`[getGithubUsernameAndPAT] No source control org linked to workspace: ${workspaceSlug}, falling back to OAuth token`);
+    console.log(
+      `[getGithubUsernameAndPAT] No source control org linked to workspace: ${workspaceSlug}, falling back to OAuth token`,
+    );
 
     const account = await db.account.findFirst({
       where: {
@@ -583,18 +591,25 @@ export async function getGithubUsernameAndPAT(
     try {
       const encryptionService = EncryptionService.getInstance();
       const token = encryptionService.decryptField("access_token", account.access_token);
-      console.log(`[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`);
+      console.log(
+        `[getGithubUsernameAndPAT] => falling back to personal access token!!! Not good for workspace: ${workspaceSlug}`,
+      );
       return {
         username: githubAuth.githubUsername,
         token: token,
       };
     } catch (error) {
-      console.error(`[getGithubUsernameAndPAT] Failed to decrypt OAuth access token during fallback, userId: ${userId}`, error);
+      console.error(
+        `[getGithubUsernameAndPAT] Failed to decrypt OAuth access token during fallback, userId: ${userId}`,
+        error,
+      );
       return null;
     }
   }
 
-  console.log(`[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`);
+  console.log(
+    `[getGithubUsernameAndPAT] Source control org found: ${workspace.sourceControlOrg.githubLogin} (ID: ${workspace.sourceControlOrg.id})`,
+  );
 
   // Get user's token for this source control org
   const sourceControlToken = await db.sourceControlToken.findUnique({
@@ -607,7 +622,9 @@ export async function getGithubUsernameAndPAT(
   });
 
   if (!sourceControlToken?.token) {
-    console.log(`[getGithubUsernameAndPAT] No source control token found for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`);
+    console.log(
+      `[getGithubUsernameAndPAT] No source control token found for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`,
+    );
     return null;
   }
 
@@ -617,13 +634,18 @@ export async function getGithubUsernameAndPAT(
     const encryptionService = EncryptionService.getInstance();
     const token = encryptionService.decryptField("source_control_token", sourceControlToken.token);
 
-    console.log(`[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubAuth.githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`);
+    console.log(
+      `[getGithubUsernameAndPAT] Successfully decrypted source control token for user: ${githubAuth.githubUsername}, org: ${workspace.sourceControlOrg.githubLogin}`,
+    );
     return {
       username: githubAuth.githubUsername,
       token: token,
     };
   } catch (error) {
-    console.error(`[getGithubUsernameAndPAT] Failed to decrypt source control token for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`, error);
+    console.error(
+      `[getGithubUsernameAndPAT] Failed to decrypt source control token for userId: ${userId}, sourceControlOrgId: ${workspace.sourceControlOrg.id}`,
+      error,
+    );
     return null;
   }
 }

@@ -11,11 +11,8 @@ export function parseGithubOwnerRepo(repositoryUrl: string): {
     if (parts.length < 2) throw new Error("Invalid repo path");
     return { owner: parts[0], repo: parts[1].replace(/\.git$/i, "") };
   } catch {
-    const https = repositoryUrl.match(
-      /github\.com\/([^/]+)\/([^/?#]+)(?:\.git)?/i,
-    );
-    if (https)
-      return { owner: https[1], repo: https[2].replace(/\.git$/i, "") };
+    const https = repositoryUrl.match(/github\.com\/([^/]+)\/([^/?#]+)(?:\.git)?/i);
+    if (https) return { owner: https[1], repo: https[2].replace(/\.git$/i, "") };
     throw new Error("Unable to parse GitHub repository URL");
   }
 }

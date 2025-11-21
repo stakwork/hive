@@ -20,9 +20,9 @@ export type ProcessInfo = {
  * Default values for ProcessInfo
  */
 const DEFAULTS = {
-  status: 'online',
+  status: "online",
   pm_uptime: 123456,
-  cwd: '/workspace',
+  cwd: "/workspace",
 } as const;
 
 /**
@@ -30,7 +30,7 @@ const DEFAULTS = {
  * @param overrides - Partial ProcessInfo to override defaults
  * @returns Complete ProcessInfo object
  */
-export function createMockProcess(overrides: Partial<ProcessInfo> & Pick<ProcessInfo, 'pid' | 'name'>): ProcessInfo {
+export function createMockProcess(overrides: Partial<ProcessInfo> & Pick<ProcessInfo, "pid" | "name">): ProcessInfo {
   return {
     status: DEFAULTS.status,
     pm_uptime: DEFAULTS.pm_uptime,
@@ -47,9 +47,9 @@ export function createMockProcess(overrides: Partial<ProcessInfo> & Pick<Process
 export function createMockGooseProcess(overrides?: Partial<ProcessInfo>): ProcessInfo {
   return createMockProcess({
     pid: 5678,
-    name: 'goose',
-    port: '15551',
-    cwd: '/workspace/goose',
+    name: "goose",
+    port: "15551",
+    cwd: "/workspace/goose",
     ...overrides,
   });
 }
@@ -62,9 +62,9 @@ export function createMockGooseProcess(overrides?: Partial<ProcessInfo>): Proces
 export function createMockFrontendProcess(overrides?: Partial<ProcessInfo>): ProcessInfo {
   return createMockProcess({
     pid: 1234,
-    name: 'frontend',
-    port: '3000',
-    cwd: '/workspace/app',
+    name: "frontend",
+    port: "3000",
+    cwd: "/workspace/app",
     ...overrides,
   });
 }

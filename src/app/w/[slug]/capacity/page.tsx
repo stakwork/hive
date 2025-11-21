@@ -22,12 +22,12 @@ export default function CapacityPage() {
   const [vmData, setVmData] = useState<VMData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>(() => {
+  const [viewMode, setViewMode] = useState<"2d" | "3d">(() => {
     const saved = localStorage.getItem("capacity-view-preference");
     return saved === "3d" ? "3d" : "2d";
   });
 
-  const handleViewChange = (mode: '2d' | '3d') => {
+  const handleViewChange = (mode: "2d" | "3d") => {
     setViewMode(mode);
     localStorage.setItem("capacity-view-preference", mode);
   };
@@ -96,8 +96,8 @@ export default function CapacityPage() {
               No Active Pool
             </CardTitle>
             <CardDescription>
-              Resource pool is not configured or not active yet.
-              Please configure your pool in workspace settings to view capacity metrics.
+              Resource pool is not configured or not active yet. Please configure your pool in workspace settings to
+              view capacity metrics.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -128,9 +128,7 @@ export default function CapacityPage() {
               <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
               <div>
                 <p className="text-red-600 font-medium">Error loading capacity data</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {statusError || error}
-                </p>
+                <p className="text-sm text-muted-foreground mt-1">{statusError || error}</p>
               </div>
               <Button onClick={refetch} variant="outline">
                 Try Again
@@ -149,20 +147,13 @@ export default function CapacityPage() {
       {vmData.length > 0 && (
         <>
           {/* Controls */}
-          <CapacityControls
-            viewMode={viewMode}
-            onViewModeChange={handleViewChange}
-          />
+          <CapacityControls viewMode={viewMode} onViewModeChange={handleViewChange} />
 
           {/* 3D View */}
-          {viewMode === '3d' && (
-            <CapacityVisualization3D vmData={vmData} />
-          )}
+          {viewMode === "3d" && <CapacityVisualization3D vmData={vmData} />}
 
           {/* 2D View */}
-          {viewMode === '2d' && (
-            <VMGrid vms={vmData} />
-          )}
+          {viewMode === "2d" && <VMGrid vms={vmData} />}
         </>
       )}
 

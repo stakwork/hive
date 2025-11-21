@@ -28,7 +28,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { workspaceId, swarmId, useLsp } = body;
-    console.log(`[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, swarmId: ${swarmId}, useLsp: ${useLsp}, user: ${session.user.id}`);
+    console.log(
+      `[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, swarmId: ${swarmId}, useLsp: ${useLsp}, user: ${session.user.id}`,
+    );
 
     console.log(`[STAKGRAPH_INGEST] Looking up swarm - swarmId: ${swarmId}, workspaceId: ${workspaceId}`);
     const where: Record<string, string> = {};
@@ -44,7 +46,9 @@ export async function POST(request: NextRequest) {
     console.log(`[STAKGRAPH_INGEST] Found swarm - ID: ${swarm.id}, name: ${swarm.name}, status: ${swarm.status}`);
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      console.log(`[STAKGRAPH_INGEST] Swarm missing required fields - swarmUrl: ${!!swarm.swarmUrl}, swarmApiKey: ${!!swarm.swarmApiKey}`);
+      console.log(
+        `[STAKGRAPH_INGEST] Swarm missing required fields - swarmUrl: ${!!swarm.swarmUrl}, swarmApiKey: ${!!swarm.swarmApiKey}`,
+      );
       return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
@@ -68,7 +72,9 @@ export async function POST(request: NextRequest) {
     console.log(`[STAKGRAPH_INGEST] Repository details - URL: ${finalRepo}, workspace: ${repoWorkspaceId}`);
 
     // Update the existing repository status to PENDING (repository was created when swarm was created)
-    console.log(`[STAKGRAPH_INGEST] Updating repository status to PENDING - URL: ${finalRepo}, workspace: ${repoWorkspaceId}`);
+    console.log(
+      `[STAKGRAPH_INGEST] Updating repository status to PENDING - URL: ${finalRepo}, workspace: ${repoWorkspaceId}`,
+    );
     await db.repository.update({
       where: {
         repositoryUrl_workspaceId: {
@@ -95,11 +101,18 @@ export async function POST(request: NextRequest) {
     console.log(`[STAKGRAPH_INGEST] Found workspace slug: ${workspace.slug}`);
 
     // Get GitHub credentials using the standard function
-    console.log(`[STAKGRAPH_INGEST] Getting GitHub credentials for user ${session.user.id} in workspace ${workspace.slug}`);
+    console.log(
+      `[STAKGRAPH_INGEST] Getting GitHub credentials for user ${session.user.id} in workspace ${workspace.slug}`,
+    );
     const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
     if (!githubProfile?.username || !githubProfile?.token) {
-      console.log(`[STAKGRAPH_INGEST] No GitHub credentials found - username: ${!!githubProfile?.username}, token: ${!!githubProfile?.token}`);
-      return NextResponse.json({ success: false, message: "No GitHub credentials found for this workspace" }, { status: 400 });
+      console.log(
+        `[STAKGRAPH_INGEST] No GitHub credentials found - username: ${!!githubProfile?.username}, token: ${!!githubProfile?.token}`,
+      );
+      return NextResponse.json(
+        { success: false, message: "No GitHub credentials found for this workspace" },
+        { status: 400 },
+      );
     }
 
     const username = githubProfile.username;
@@ -107,13 +120,17 @@ export async function POST(request: NextRequest) {
     console.log(`[STAKGRAPH_INGEST] GitHub credentials found - username: ${username}, token length: ${pat.length}`);
 
     const use_lsp = useLsp === "true" || useLsp === true;
-    console.log(`[STAKGRAPH_INGEST] Starting ingest trigger - use_lsp: ${use_lsp}, swarm: ${swarm.name}, repo: ${finalRepo}`);
+    console.log(
+      `[STAKGRAPH_INGEST] Starting ingest trigger - use_lsp: ${use_lsp}, swarm: ${swarm.name}, repo: ${finalRepo}`,
+    );
 
     const swarmVanityAddress = getSwarmVanityAddress(swarm.name);
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     const stakgraphCallbackUrl = getStakgraphWebhookCallbackUrl(request);
 
-    console.log(`[STAKGRAPH_INGEST] Ingest parameters - vanity address: ${swarmVanityAddress}, callback URL: ${stakgraphCallbackUrl}, API key present: ${!!decryptedApiKey}`);
+    console.log(
+      `[STAKGRAPH_INGEST] Ingest parameters - vanity address: ${swarmVanityAddress}, callback URL: ${stakgraphCallbackUrl}, API key present: ${!!decryptedApiKey}`,
+    );
 
     const startTime = Date.now();
     const apiResult = await triggerIngestAsync(
@@ -126,7 +143,9 @@ export async function POST(request: NextRequest) {
     );
 
     const ingestDuration = Date.now() - startTime;
-    console.log(`[STAKGRAPH_INGEST] Ingest trigger completed in ${ingestDuration}ms - success: ${apiResult.ok}, status: ${apiResult.status}`);
+    console.log(
+      `[STAKGRAPH_INGEST] Ingest trigger completed in ${ingestDuration}ms - success: ${apiResult.ok}, status: ${apiResult.status}`,
+    );
 
     try {
       console.log(`[STAKGRAPH_INGEST] Setting up GitHub webhook for repository: ${finalRepo}`);
@@ -208,7 +227,9 @@ export async function GET(request: NextRequest) {
     console.log(`[STAKGRAPH_STATUS] Found swarm - ID: ${swarm.id}, name: ${swarm.name}`);
 
     if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-      console.log(`[STAKGRAPH_STATUS] Swarm missing required fields - swarmUrl: ${!!swarm.swarmUrl}, swarmApiKey: ${!!swarm.swarmApiKey}`);
+      console.log(
+        `[STAKGRAPH_STATUS] Swarm missing required fields - swarmUrl: ${!!swarm.swarmUrl}, swarmApiKey: ${!!swarm.swarmApiKey}`,
+      );
       return NextResponse.json({ success: false, message: "Swarm URL or API key not set" }, { status: 400 });
     }
 
@@ -224,7 +245,9 @@ export async function GET(request: NextRequest) {
     });
 
     const apiDuration = Date.now() - startTime;
-    console.log(`[STAKGRAPH_STATUS] Status API call completed in ${apiDuration}ms - status: ${apiResult.status}, ok: ${apiResult.ok}`);
+    console.log(
+      `[STAKGRAPH_STATUS] Status API call completed in ${apiDuration}ms - status: ${apiResult.status}, ok: ${apiResult.ok}`,
+    );
 
     return NextResponse.json(
       {

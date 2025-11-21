@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React from 'react'
+import React from "react";
 
 const PauseIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="1em" height="1em" viewBox="0 0 38 38" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -11,6 +11,6 @@ const PauseIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
       />
     </g>
   </svg>
-)
+);
 
-export default PauseIcon
+export default PauseIcon;

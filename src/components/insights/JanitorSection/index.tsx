@@ -29,36 +29,37 @@ export interface JanitorSectionProps {
 }
 
 const getStatusBadge = (isOn: boolean, itemComingSoon: boolean, sectionComingSoon: boolean) => {
-  if (itemComingSoon || sectionComingSoon) return <Badge variant="outline" className="text-xs text-gray-500">Coming Soon</Badge>;
-  if (isOn) return <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge>;
-  return <Badge variant="outline" className="text-gray-600 border-gray-300">Idle</Badge>;
+  if (itemComingSoon || sectionComingSoon)
+    return (
+      <Badge variant="outline" className="text-xs text-gray-500">
+        Coming Soon
+      </Badge>
+    );
+  if (isOn)
+    return (
+      <Badge variant="outline" className="text-green-600 border-green-300">
+        Active
+      </Badge>
+    );
+  return (
+    <Badge variant="outline" className="text-gray-600 border-gray-300">
+      Idle
+    </Badge>
+  );
 };
 
 const canManuallyRun = (janitorId: string): boolean => {
   return Object.values(JanitorType).includes(janitorId as JanitorType);
 };
 
-export function JanitorSection({
-  title,
-  description,
-  icon,
-  janitors,
-  comingSoon = false
-}: JanitorSectionProps) {
+export function JanitorSection({ title, description, icon, janitors, comingSoon = false }: JanitorSectionProps) {
   const { workspace } = useWorkspace();
   const { toast } = useToast();
 
   const open = useModal();
 
   // Get state and actions from store
-  const {
-    janitorConfig,
-    loading,
-    runningJanitors,
-    fetchJanitorConfig,
-    toggleJanitor,
-    runJanitor
-  } = useInsightsStore();
+  const { janitorConfig, loading, runningJanitors, fetchJanitorConfig, toggleJanitor, runJanitor } = useInsightsStore();
 
   // Fetch janitor config for real janitors
   useEffect(() => {
@@ -80,7 +81,6 @@ export function JanitorSection({
   };
 
   const handleToggle = async (janitor: JanitorItem) => {
-
     if (workspace?.poolState !== "COMPLETE") {
       open("ServicesWizard");
       return;
@@ -137,18 +137,17 @@ export function JanitorSection({
             return (
               <div
                 key={janitor.id}
-                className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${isItemComingSoon ? 'opacity-60' : ''
-                  }`}
+                className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${
+                  isItemComingSoon ? "opacity-60" : ""
+                }`}
               >
                 <div className="flex items-center space-x-3 flex-1">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${isOn
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-background border-gray-200'
-                    }`}>
-                    <Icon className={`h-4 w-4 ${isOn
-                      ? 'text-green-600'
-                      : 'text-muted-foreground'
-                      }`} />
+                  <div
+                    className={`flex items-center justify-center w-8 h-8 rounded-full border ${
+                      isOn ? "bg-green-50 border-green-200" : "bg-background border-gray-200"
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 ${isOn ? "text-green-600" : "text-muted-foreground"}`} />
                   </div>
 
                   <div className="flex-1">
@@ -164,7 +163,8 @@ export function JanitorSection({
                   {isItemComingSoon ? (
                     <Clock className="h-4 w-4 text-gray-400" />
                   ) : (
-                    isOn && canManuallyRun(janitor.id) && (
+                    isOn &&
+                    canManuallyRun(janitor.id) && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -174,11 +174,7 @@ export function JanitorSection({
                             onClick={() => handleManualRun(janitor)}
                             disabled={isRunning || loading}
                           >
-                            {isRunning ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Play className="h-3 w-3" />
-                            )}
+                            {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>

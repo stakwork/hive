@@ -8,15 +8,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { ErrorDisplay } from "@/components/ui/error-display";
 
 export function WorkspaceForm() {
-  const {
-    formData,
-    errors,
-    loading,
-    apiError,
-    updateName,
-    updateField,
-    submitForm,
-  } = useWorkspaceForm();
+  const { formData, errors, loading, apiError, updateName, updateField, submitForm } = useWorkspaceForm();
 
   const { refreshWorkspaces } = useWorkspace();
   const handleSubmit = async (e: React.FormEvent) => {

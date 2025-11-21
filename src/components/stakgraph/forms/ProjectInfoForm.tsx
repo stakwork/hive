@@ -2,12 +2,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ProjectInfoData, FormSectionProps } from "../types";
 
-export default function ProjectInfoForm({
-  data,
-  errors,
-  loading,
-  onChange,
-}: FormSectionProps<ProjectInfoData>) {
+export default function ProjectInfoForm({ data, errors, loading, onChange }: FormSectionProps<ProjectInfoData>) {
   const handleInputChange = (field: keyof ProjectInfoData, value: string) => {
     onChange({ [field]: value });
   };
@@ -26,9 +21,7 @@ export default function ProjectInfoForm({
           className={errors.name ? "border-destructive" : ""}
           disabled={loading}
         />
-        {errors.name && (
-          <p className="text-sm text-destructive">{errors.name}</p>
-        )}
+        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
       </div>
 
       <div className="space-y-2">
@@ -41,9 +34,7 @@ export default function ProjectInfoForm({
           className={errors.description ? "border-destructive" : ""}
           disabled={loading}
         />
-        {errors.description && (
-          <p className="text-sm text-destructive">{errors.description}</p>
-        )}
+        {errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
       </div>
     </div>
   );

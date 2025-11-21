@@ -134,7 +134,7 @@ export const janitorMocks = {
 
   createMockRecommendationWithRun(
     recOverrides: MockJanitorRecommendationOptions = {},
-    runOverrides: MockJanitorRunOptions = {}
+    runOverrides: MockJanitorRunOptions = {},
   ) {
     const run = this.createMockRun(runOverrides);
     const recommendation = this.createMockRecommendation({ janitorRunId: run.id, ...recOverrides });
@@ -220,7 +220,7 @@ export const janitorMockSetup = {
 
   mockWorkspaceMemberExists(db: any, exists: boolean) {
     vi.mocked(db.workspaceMember.findFirst).mockResolvedValue(
-      exists ? { id: "member-1", userId: "user-1", workspaceId: "ws-1", role: "DEVELOPER" } : null
+      exists ? { id: "member-1", userId: "user-1", workspaceId: "ws-1", role: "DEVELOPER" } : null,
     );
   },
 
@@ -228,7 +228,7 @@ export const janitorMockSetup = {
     vi.mocked(db.repository.findFirst).mockResolvedValue(
       exists
         ? { id: "repo-1", name: "test-repo", repositoryUrl: "https://github.com/test/repo", workspaceId: "ws-1" }
-        : null
+        : null,
     );
   },
 

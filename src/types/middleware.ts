@@ -23,7 +23,4 @@ export interface NextRequestWithContext extends NextRequest {
 }
 
 // Helper type for route handlers that use middleware context
-export type RouteHandler<T = unknown> = (
-  request: NextRequestWithContext,
-  context?: T
-) => Promise<Response>;
+export type RouteHandler<T = unknown> = (request: NextRequestWithContext, context?: T) => Promise<Response>;

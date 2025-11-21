@@ -199,7 +199,6 @@ export async function GET(request: NextRequest) {
         });
 
         if (workspace) {
-
           // Check repositoryDraft first, then fall back to primary repository
           let repoUrl = workspace.repositoryDraft;
           if (!repoUrl) {
@@ -373,7 +372,6 @@ export async function GET(request: NextRequest) {
       let targetRepositoryUrl: string | undefined;
 
       if (workspace) {
-
         // Check repositoryDraft first, then fall back to primary repository
         targetRepositoryUrl = workspace.repositoryDraft ?? undefined;
         if (!targetRepositoryUrl) {
@@ -396,12 +394,10 @@ export async function GET(request: NextRequest) {
 
       if (targetRepositoryUrl) {
         try {
-
-          console.log('checking repository access for', targetRepositoryUrl)
+          console.log("checking repository access for", targetRepositoryUrl);
           const repositoryAccess = await checkRepositoryAccess(userAccessToken, targetRepositoryUrl);
 
-
-          console.log('repositoryAccess', repositoryAccess)
+          console.log("repositoryAccess", repositoryAccess);
 
           if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
             console.log(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`);

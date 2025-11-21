@@ -3,16 +3,16 @@ import { GET } from "@/app/api/tasks/stats/route";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@/lib/chat";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
-import {
-  createAuthenticatedGetRequest,
-  createGetRequest,
-} from "@/__tests__/support/helpers/request-builders";
+import { createAuthenticatedGetRequest, createGetRequest } from "@/__tests__/support/helpers/request-builders";
 import { generateUniqueSlug, generateUniqueId } from "@/__tests__/support/helpers/ids";
 import type { User, Workspace } from "@prisma/client";
 
 // Test Helpers
 const TestHelpers = {
-  expectSuccess: async (response: Response, expected: { total: number; inProgress: number; waitingForInput: number }) => {
+  expectSuccess: async (
+    response: Response,
+    expected: { total: number; inProgress: number; waitingForInput: number },
+  ) => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.success).toBe(true);
@@ -147,10 +147,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should proceed with valid authenticated session", async () => {
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0 });
@@ -167,10 +164,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
     test("should return 403 for non-existent workspace", async () => {
       const fakeWorkspaceId = generateUniqueId("workspace");
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${fakeWorkspaceId}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${fakeWorkspaceId}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectNotFound(response);
@@ -178,10 +172,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
     test("should return 403 for soft-deleted workspace", async () => {
       const deletedWorkspace = await createTestWorkspace(testUser.id, { deleted: true });
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${deletedWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${deletedWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectNotFound(response);
@@ -190,10 +181,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
   describe("Authorization", () => {
     test("should allow workspace owner to access stats", async () => {
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0 });
@@ -206,10 +194,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
       await addWorkspaceMember(testWorkspace.id, memberUser.id, "DEVELOPER");
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        memberUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, memberUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0 });
@@ -220,10 +205,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         email: `outsider-${Date.now()}@example.com`,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        outsiderUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, outsiderUser);
       const response = await GET(request);
 
       await TestHelpers.expectForbidden(response);
@@ -237,10 +219,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "FAILED" });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 4, inProgress: 1, waitingForInput: 0 });
@@ -251,20 +230,14 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING", deleted: true });
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING", deleted: true });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 1, inProgress: 0, waitingForInput: 0 });
     });
 
     test("should return zero when workspace has no tasks", async () => {
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0 });
@@ -278,10 +251,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "PENDING" });
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 4, inProgress: 2, waitingForInput: 0 });
@@ -291,10 +261,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "IN_PROGRESS" });
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "IN_PROGRESS", deleted: true });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 1, inProgress: 1, waitingForInput: 0 });
@@ -312,10 +279,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         withFormArtifact: true,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 2, inProgress: 2, waitingForInput: 2 });
@@ -331,10 +295,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         withFormArtifact: true,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 2, inProgress: 0, waitingForInput: 2 });
@@ -350,10 +311,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         withFormArtifact: false,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 2, inProgress: 1, waitingForInput: 0 });
@@ -365,10 +323,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         withFormArtifact: true,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 1, inProgress: 0, waitingForInput: 0 });
@@ -380,10 +335,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         withFormArtifact: true,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 1, inProgress: 0, waitingForInput: 0 });
@@ -400,10 +352,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         deleted: true,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 1, inProgress: 1, waitingForInput: 1 });
@@ -443,10 +392,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         deleted: true,
       });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 4, inProgress: 2, waitingForInput: 2 });
@@ -462,10 +408,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         });
       }
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       expect(response.status).toBe(200);
@@ -478,10 +421,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
 
   describe("Response Format", () => {
     test("should return correct response structure", async () => {
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
       const data = await response.json();
 
@@ -496,10 +436,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
     });
 
     test("should return correct status code and headers", async () => {
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       expect(response.status).toBe(200);
@@ -514,24 +451,11 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
         withFormArtifact: true,
       });
 
-      const request1 = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
-      const request2 = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
-      const request3 = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request1 = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
+      const request2 = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
+      const request3 = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
 
-      const [response1, response2, response3] = await Promise.all([
-        GET(request1),
-        GET(request2),
-        GET(request3),
-      ]);
+      const [response1, response2, response3] = await Promise.all([GET(request1), GET(request2), GET(request3)]);
 
       await TestHelpers.expectSuccess(response1, { total: 1, inProgress: 1, waitingForInput: 1 });
       await TestHelpers.expectSuccess(response2, { total: 1, inProgress: 1, waitingForInput: 1 });
@@ -544,10 +468,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await createTestTask(testWorkspace.id, testUser.id, { deleted: true });
       await createTestTask(testWorkspace.id, testUser.id, { deleted: true });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 0, inProgress: 0, waitingForInput: 0 });
@@ -558,10 +479,7 @@ describe("GET /api/tasks/stats - Integration Tests", () => {
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
       await createTestTask(testWorkspace.id, testUser.id, { workflowStatus: "COMPLETED" });
 
-      const request = createAuthenticatedGetRequest(
-        `/api/tasks/stats?workspaceId=${testWorkspace.id}`,
-        testUser
-      );
+      const request = createAuthenticatedGetRequest(`/api/tasks/stats?workspaceId=${testWorkspace.id}`, testUser);
       const response = await GET(request);
 
       await TestHelpers.expectSuccess(response, { total: 3, inProgress: 0, waitingForInput: 0 });

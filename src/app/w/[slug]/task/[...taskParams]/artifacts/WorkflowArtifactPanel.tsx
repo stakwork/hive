@@ -25,11 +25,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
   const projectId = workflowContent?.projectId;
 
   // Polling hook - only active when tab is active
-  const { workflowData, isLoading, error } = useWorkflowPolling(
-    projectId || null,
-    isActive,
-    1000
-  );
+  const { workflowData, isLoading, error } = useWorkflowPolling(projectId || null, isActive, 1000);
 
   useEffect(() => {
     if (error) {

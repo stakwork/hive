@@ -6,24 +6,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { Edit3, Loader2, X, Upload, Edit } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -128,18 +115,15 @@ export function WorkspaceSettings() {
     setIsUploadingLogo(true);
 
     try {
-      const uploadUrlResponse = await fetch(
-        `/api/workspaces/${workspace.slug}/settings/image/upload-url`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type,
-            size: file.size,
-          }),
-        }
-      );
+      const uploadUrlResponse = await fetch(`/api/workspaces/${workspace.slug}/settings/image/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+        }),
+      });
 
       if (!uploadUrlResponse.ok) {
         const error = await uploadUrlResponse.json();
@@ -156,19 +140,16 @@ export function WorkspaceSettings() {
         },
       });
 
-      const confirmResponse = await fetch(
-        `/api/workspaces/${workspace.slug}/settings/image/confirm`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            s3Path,
-            filename: file.name,
-            mimeType: file.type,
-            size: file.size,
-          }),
-        }
-      );
+      const confirmResponse = await fetch(`/api/workspaces/${workspace.slug}/settings/image/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          s3Path,
+          filename: file.name,
+          mimeType: file.type,
+          size: file.size,
+        }),
+      });
 
       if (!confirmResponse.ok) {
         const error = await confirmResponse.json();
@@ -213,12 +194,9 @@ export function WorkspaceSettings() {
     setIsDeletingLogo(true);
 
     try {
-      const response = await fetch(
-        `/api/workspaces/${workspace.slug}/settings/image`,
-        {
-          method: "DELETE",
-        }
-      );
+      const response = await fetch(`/api/workspaces/${workspace.slug}/settings/image`, {
+        method: "DELETE",
+      });
 
       if (!response.ok) {
         const error = await response.json();
@@ -298,12 +276,8 @@ export function WorkspaceSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Details
-        </CardTitle>
-        <CardDescription>
-          Update your workspace name, URL, and description
-        </CardDescription>
+        <CardTitle className="flex items-center gap-2">Details</CardTitle>
+        <CardDescription>Update your workspace name, URL, and description</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -328,11 +302,7 @@ export function WorkspaceSettings() {
                                     </div>
                                   ) : logoPreview ? (
                                     <>
-                                      <img
-                                        src={logoPreview}
-                                        alt="Logo"
-                                        className="w-full h-full object-cover"
-                                      />
+                                      <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
                                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <Edit className="w-4 h-4 text-white" />
                                       </div>
@@ -408,13 +378,11 @@ export function WorkspaceSettings() {
                   <FormLabel>URL</FormLabel>
                   <FormControl>
                     <div className="flex items-center">
-                      <span className="text-sm text-muted-foreground mr-1">
-                        /w/
-                      </span>
-                      <Input 
+                      <span className="text-sm text-muted-foreground mr-1">/w/</span>
+                      <Input
                         data-testid="workspace-settings-slug-input"
-                        placeholder="lowercase, use hyphens for spaces" 
-                        {...field} 
+                        placeholder="lowercase, use hyphens for spaces"
+                        {...field}
                         disabled={isSubmitting}
                       />
                     </div>
@@ -431,11 +399,11 @@ export function WorkspaceSettings() {
                 <FormItem>
                   <FormLabel>Description</FormLabel>
                   <FormControl>
-                    <Textarea 
+                    <Textarea
                       data-testid="workspace-settings-description-input"
                       placeholder="A brief description of your workspace"
                       className="resize-none"
-                      {...field} 
+                      {...field}
                       disabled={isSubmitting}
                     />
                   </FormControl>
@@ -445,8 +413,8 @@ export function WorkspaceSettings() {
             />
 
             <div className="flex justify-end">
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 data-testid="workspace-settings-save-button"
                 disabled={isSubmitting || !form.formState.isDirty}
               >

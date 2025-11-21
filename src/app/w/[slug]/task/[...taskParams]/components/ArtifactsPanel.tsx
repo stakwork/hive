@@ -5,7 +5,13 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
-import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
+import {
+  CodeArtifactPanel,
+  BrowserArtifactPanel,
+  GraphArtifactPanel,
+  WorkflowArtifactPanel,
+  DiffArtifactPanel,
+} from "../artifacts";
 import { ArtifactsHeader } from "./ArtifactsHeader";
 
 interface ArtifactsPanelProps {
@@ -17,7 +23,14 @@ interface ArtifactsPanelProps {
   onTogglePreview?: () => void;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage, isMobile = false, onTogglePreview }: ArtifactsPanelProps) {
+export function ArtifactsPanel({
+  artifacts,
+  workspaceId,
+  taskId,
+  onDebugMessage,
+  isMobile = false,
+  onTogglePreview,
+}: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -37,7 +50,14 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
     if (codeArtifacts.length > 0) tabs.push("CODE");
     if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
+  }, [
+    codeArtifacts.length,
+    browserArtifacts.length,
+    ideArtifacts.length,
+    graphArtifacts.length,
+    workflowArtifacts.length,
+    diffArtifacts.length,
+  ]);
 
   // Auto-select first tab when artifacts become available
   useEffect(() => {
@@ -61,11 +81,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
     >
       <div className="flex-1 flex flex-col min-h-0">
         {!isMobile && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
             <ArtifactsHeader
               availableArtifacts={availableTabs}
               activeArtifact={activeTab}
@@ -80,12 +96,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4 }}
           >
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onTogglePreview}
-              className="gap-2"
-            >
+            <Button variant="ghost" size="sm" onClick={onTogglePreview} className="gap-2">
               <Monitor className="w-4 h-4" />
               Back to Chat
             </Button>
@@ -133,10 +144,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
           )}
           {workflowArtifacts.length > 0 && (
             <div className="h-full" hidden={activeTab !== "WORKFLOW"}>
-              <WorkflowArtifactPanel
-                artifacts={workflowArtifacts}
-                isActive={activeTab === "WORKFLOW"}
-              />
+              <WorkflowArtifactPanel artifacts={workflowArtifacts} isActive={activeTab === "WORKFLOW"} />
             </div>
           )}
           {diffArtifacts.length > 0 && (

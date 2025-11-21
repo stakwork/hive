@@ -1,8 +1,8 @@
-import ClearIcon from '@/components/Icons/ClearIcon'
-import { useDataStore } from '@/stores/useStores'
+import ClearIcon from "@/components/Icons/ClearIcon";
+import { useDataStore } from "@/stores/useStores";
 
 export const GraphClear = () => {
-  const { resetGraph } = useDataStore((s) => s)
+  const { resetGraph } = useDataStore((s) => s);
 
   return (
     <div title="Clear Graph">
@@ -15,5 +15,5 @@ export const GraphClear = () => {
         </div>
       </button>
     </div>
-  )
-}
+  );
+};

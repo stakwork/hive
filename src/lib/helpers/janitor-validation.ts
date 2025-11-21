@@ -74,4 +74,3 @@ export function validatePaginationParams(limit?: string | number | null, page?: 
     skip: (validatedPage - 1) * validatedLimit,
   };
 }
-

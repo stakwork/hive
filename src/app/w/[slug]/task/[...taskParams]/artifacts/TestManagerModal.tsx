@@ -73,9 +73,7 @@ export function TestManagerModal({
             />
           </div>
           {errorMessage && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
-              {errorMessage}
-            </div>
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{errorMessage}</div>
           )}
         </div>
 

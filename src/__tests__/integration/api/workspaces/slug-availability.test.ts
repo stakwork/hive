@@ -1,10 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/workspaces/slug-availability/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
@@ -79,9 +76,10 @@ describe("Slug Availability API - Integration Tests", () => {
           const slug = generateUniqueSlug("mixedcase");
           await createTestWorkspace({ ownerId: user.id, slug });
           // Create mixed case version for query
-          const mixedCaseSlug = slug.split('').map((c, i) => 
-            i % 2 === 0 ? c.toUpperCase() : c.toLowerCase()
-          ).join('');
+          const mixedCaseSlug = slug
+            .split("")
+            .map((c, i) => (i % 2 === 0 ? c.toUpperCase() : c.toLowerCase()))
+            .join("");
           return { user, slug: mixedCaseSlug };
         },
         expectedStatus: 200,
@@ -98,26 +96,26 @@ describe("Slug Availability API - Integration Tests", () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("deleted");
           const workspace = await createTestWorkspace({ ownerId: user.id, slug });
-          
+
           // Soft-delete the workspace
           await db.workspace.update({
             where: { id: workspace.id },
             data: { deleted: true, deletedAt: new Date() },
           });
-          
+
           return { user, slug };
         },
         expectedStatus: 200,
         assertions: async (response: Response, context: { user: any; slug: string }) => {
           const data = await expectSuccess(response, 200);
           expect(data.success).toBe(true);
-          
+
           // CURRENT BUG: Endpoint returns false (unavailable) because it doesn't filter by deleted: false
           // The database query: db.workspace.findUnique({ where: { slug: slug.toLowerCase() } })
           // does not exclude soft-deleted workspaces, so they still show as unavailable.
           expect(data.data.isAvailable).toBe(false);
           expect(data.data.message).toBe("A workspace with this slug already exists");
-          
+
           // EXPECTED BEHAVIOR (after bug fix):
           // The endpoint should filter soft-deleted workspaces:
           // db.workspace.findUnique({ where: { slug: slug.toLowerCase(), deleted: false } })
@@ -131,18 +129,18 @@ describe("Slug Availability API - Integration Tests", () => {
         setup: async () => {
           const user = await createTestUser();
           const slug = generateUniqueSlug("reusable");
-          
+
           // Create workspace with different slug, then soft-delete it
           const differentSlug = generateUniqueSlug("different");
-          const workspace = await createTestWorkspace({ 
-            ownerId: user.id, 
-            slug: differentSlug 
+          const workspace = await createTestWorkspace({
+            ownerId: user.id,
+            slug: differentSlug,
           });
           await db.workspace.update({
             where: { id: workspace.id },
             data: { deleted: true, deletedAt: new Date() },
           });
-          
+
           return { user, slug }; // Query for slug that was never used
         },
         expectedStatus: 200,
@@ -158,10 +156,9 @@ describe("Slug Availability API - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(context.user));
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/slug-availability",
-        { slug: context.slug }
-      );
+      const request = createGetRequest("http://localhost:3000/api/workspaces/slug-availability", {
+        slug: context.slug,
+      });
 
       const response = await GET(request);
       await assertions(response, context);
@@ -170,10 +167,7 @@ describe("Slug Availability API - Integration Tests", () => {
     test("rejects unauthenticated requests", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/slug-availability",
-        { slug: "test-slug" }
-      );
+      const request = createGetRequest("http://localhost:3000/api/workspaces/slug-availability", { slug: "test-slug" });
 
       const response = await GET(request);
 
@@ -185,9 +179,7 @@ describe("Slug Availability API - Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Create request without slug query parameter
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/slug-availability"
-      );
+      const request = createGetRequest("http://localhost:3000/api/workspaces/slug-availability");
 
       const response = await GET(request);
 
@@ -198,10 +190,7 @@ describe("Slug Availability API - Integration Tests", () => {
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/slug-availability",
-        { slug: "" }
-      );
+      const request = createGetRequest("http://localhost:3000/api/workspaces/slug-availability", { slug: "" });
 
       const response = await GET(request);
 
@@ -214,11 +203,8 @@ describe("Slug Availability API - Integration Tests", () => {
 
       // Create a slug longer than typical database field limits
       const longSlug = "a".repeat(100);
-      
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/slug-availability",
-        { slug: longSlug }
-      );
+
+      const request = createGetRequest("http://localhost:3000/api/workspaces/slug-availability", { slug: longSlug });
 
       const response = await GET(request);
 
@@ -233,11 +219,8 @@ describe("Slug Availability API - Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const specialSlug = "test-slug_123";
-      
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/slug-availability",
-        { slug: specialSlug }
-      );
+
+      const request = createGetRequest("http://localhost:3000/api/workspaces/slug-availability", { slug: specialSlug });
 
       const response = await GET(request);
 

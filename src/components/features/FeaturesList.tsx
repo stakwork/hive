@@ -52,10 +52,7 @@ function FeatureRow({
   onClick: () => void;
 }) {
   return (
-    <TableRow
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
-      onClick={onClick}
-    >
+    <TableRow className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={onClick}>
       <TableCell className="w-[300px] font-medium truncate">{feature.title}</TableCell>
       <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
@@ -74,9 +71,7 @@ function FeatureRow({
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
         {new Date(feature.createdAt).toLocaleDateString()}
       </TableCell>
-      <TableCell className="w-[150px] text-muted-foreground text-sm">
-        {feature.createdBy?.name || "Unknown"}
-      </TableCell>
+      <TableCell className="w-[150px] text-muted-foreground text-sm">{feature.createdBy?.name || "Unknown"}</TableCell>
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
         <ActionMenu
           actions={[
@@ -97,8 +92,10 @@ function FeatureRow({
   );
 }
 
-const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, FeaturesListProps>(
-  function FeaturesList({ workspaceId }, ref) {
+const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, FeaturesListProps>(function FeaturesList(
+  { workspaceId },
+  ref,
+) {
   const router = useRouter();
   const { slug: workspaceSlug } = useWorkspace();
 
@@ -209,7 +206,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       setIsCreating(true);
       setViewType("list");
       localStorage.setItem("features-view-preference", "list");
-    }
+    },
   }));
 
   const fetchFeatures = async (pageNum: number) => {
@@ -227,7 +224,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
 
       // Add filter params
       if (statusFilters.length > 0) {
-        params.append("status", statusFilters.join(','));
+        params.append("status", statusFilters.join(","));
       }
       if (assigneeFilter !== "ALL") {
         params.append("assigneeId", assigneeFilter);
@@ -269,7 +266,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   };
 
   // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
+  const hasActiveFilters =
+    statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -532,23 +530,11 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
             <Lightbulb className="h-5 w-5" />
             Features
           </div>
-          <ToggleGroup
-            type="single"
-            value={viewType}
-            onValueChange={handleViewChange}
-          >
-            <ToggleGroupItem
-              value="list"
-              aria-label="List view"
-              className="h-8 px-2"
-            >
+          <ToggleGroup type="single" value={viewType} onValueChange={handleViewChange}>
+            <ToggleGroupItem value="list" aria-label="List view" className="h-8 px-2">
               <List className="h-4 w-4" />
             </ToggleGroupItem>
-            <ToggleGroupItem
-              value="kanban"
-              aria-label="Kanban view"
-              className="h-8 px-2"
-            >
+            <ToggleGroupItem value="kanban" aria-label="Kanban view" className="h-8 px-2">
               <LayoutGrid className="h-4 w-4" />
             </ToggleGroupItem>
           </ToggleGroup>
@@ -600,290 +586,286 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
         ) : (
           <>
             {!isCreating && (
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search features..."
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9 pr-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => handleSearchChange("")}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            {hasActiveFilters && viewType === "list" && (
-              <Button variant="outline" size="sm" onClick={handleClearFilters}>
-                <X className="h-4 w-4 mr-2" />
-                Clear filters
-              </Button>
-            )}
-          </div>
-        )}
-
-        {isCreating && (
-          <div className="mb-4">
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <div className="space-y-3">
-                <div>
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    ref={featureInputRef}
-                    placeholder="Feature title..."
-                    value={newFeatureTitle}
-                    onChange={(e) => setNewFeatureTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !creating) {
-                        handleCreateFeature();
-                      } else if (e.key === "Escape") {
-                        handleCancelCreate();
-                      }
-                    }}
-                    autoFocus
-                    disabled={creating}
+                    placeholder="Search features..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="pl-9 pr-9"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => handleSearchChange("")}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
-                <div className="flex items-center gap-4">
-                  <StatusPopover
-                    statusType="feature"
-                    currentStatus={newFeatureStatus}
-                    onUpdate={async (status) => setNewFeatureStatus(status)}
-                  />
-                  <AssigneeCombobox
-                    workspaceSlug={workspaceSlug}
-                    currentAssignee={newFeatureAssigneeDisplay}
-                    onSelect={async (assigneeId, assigneeData) => {
-                      setNewFeatureAssigneeId(assigneeId);
-                      setNewFeatureAssigneeDisplay(assigneeData || null);
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
-                    Cancel
+                {hasActiveFilters && viewType === "list" && (
+                  <Button variant="outline" size="sm" onClick={handleClearFilters}>
+                    <X className="h-4 w-4 mr-2" />
+                    Clear filters
                   </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleCreateFeature}
-                    disabled={creating || !newFeatureTitle.trim()}
-                  >
-                    {creating ? (
-                      <>
-                        <Spinner className="h-4 w-4 mr-2" />
-                        Creating...
-                      </>
-                    ) : (
-                      "Create"
-                    )}
-                  </Button>
+                )}
+              </div>
+            )}
+
+            {isCreating && (
+              <div className="mb-4">
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <div className="space-y-3">
+                    <div>
+                      <Input
+                        ref={featureInputRef}
+                        placeholder="Feature title..."
+                        value={newFeatureTitle}
+                        onChange={(e) => setNewFeatureTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !creating) {
+                            handleCreateFeature();
+                          } else if (e.key === "Escape") {
+                            handleCancelCreate();
+                          }
+                        }}
+                        autoFocus
+                        disabled={creating}
+                      />
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <StatusPopover
+                        statusType="feature"
+                        currentStatus={newFeatureStatus}
+                        onUpdate={async (status) => setNewFeatureStatus(status)}
+                      />
+                      <AssigneeCombobox
+                        workspaceSlug={workspaceSlug}
+                        currentAssignee={newFeatureAssigneeDisplay}
+                        onSelect={async (assigneeId, assigneeData) => {
+                          setNewFeatureAssigneeId(assigneeId);
+                          setNewFeatureAssigneeDisplay(assigneeData || null);
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleCreateFeature}
+                        disabled={creating || !newFeatureTitle.trim()}
+                      >
+                        {creating ? (
+                          <>
+                            <Spinner className="h-4 w-4 mr-2" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {viewType === "list" ? (
-          hasLoadedOnce && (workspaceHasFeatures || hasActiveFilters) ? (
-            <div className="rounded-md border">
-            <Table className="table-fixed">
-              <TableHeader className="bg-muted/50">
-                <TableRow>
-                  <TableHead className="w-[300px]">
-                    <SortableColumnHeader
-                      label="Title"
-                      field="title"
-                      currentSort={sortBy === "title" ? sortOrder : null}
-                      onSort={(order) => handleSort("title", order)}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[120px]">
-                    <FilterDropdownHeader
-                      label="Status"
-                      options={statusOptions}
-                      value={statusFilters}
-                      onChange={handleStatusFiltersChange}
-                      showSearch={false}
-                      multiSelect={true}
-                      showStatusBadges={true}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[180px]">
-                    <FilterDropdownHeader
-                      label="Assigned"
-                      options={assigneeOptions}
-                      value={assigneeFilter}
-                      onChange={handleAssigneeFilterChange}
-                      showSearch={true}
-                      showAvatars={true}
-                    />
-                  </TableHead>
-                  <TableHead className="w-[150px] text-right">
-                    <SortableColumnHeader
-                      label="Created"
-                      field="createdAt"
-                      currentSort={sortBy === "createdAt" ? sortOrder : null}
-                      onSort={(order) => handleSort("createdAt", order)}
-                      align="right"
-                    />
-                  </TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {features.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center">
-                      <p className="text-muted-foreground">No features match your filters</p>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  features.map((feature) => (
-                    <FeatureRow
-                      key={feature.id}
-                      feature={feature}
-                      workspaceSlug={workspaceSlug}
-                      onStatusUpdate={handleUpdateStatus}
-                      onAssigneeUpdate={handleUpdateAssignee}
-                      onDelete={handleDeleteFeature}
-                      onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
-                    />
-                  ))
+            {viewType === "list" ? (
+              hasLoadedOnce && (workspaceHasFeatures || hasActiveFilters) ? (
+                <div className="rounded-md border">
+                  <Table className="table-fixed">
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead className="w-[300px]">
+                          <SortableColumnHeader
+                            label="Title"
+                            field="title"
+                            currentSort={sortBy === "title" ? sortOrder : null}
+                            onSort={(order) => handleSort("title", order)}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[120px]">
+                          <FilterDropdownHeader
+                            label="Status"
+                            options={statusOptions}
+                            value={statusFilters}
+                            onChange={handleStatusFiltersChange}
+                            showSearch={false}
+                            multiSelect={true}
+                            showStatusBadges={true}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[180px]">
+                          <FilterDropdownHeader
+                            label="Assigned"
+                            options={assigneeOptions}
+                            value={assigneeFilter}
+                            onChange={handleAssigneeFilterChange}
+                            showSearch={true}
+                            showAvatars={true}
+                          />
+                        </TableHead>
+                        <TableHead className="w-[150px] text-right">
+                          <SortableColumnHeader
+                            label="Created"
+                            field="createdAt"
+                            currentSort={sortBy === "createdAt" ? sortOrder : null}
+                            onSort={(order) => handleSort("createdAt", order)}
+                            align="right"
+                          />
+                        </TableHead>
+                        <TableHead className="w-[150px]">Created by</TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {features.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-32 text-center">
+                            <p className="text-muted-foreground">No features match your filters</p>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        features.map((feature) => (
+                          <FeatureRow
+                            key={feature.id}
+                            feature={feature}
+                            workspaceSlug={workspaceSlug}
+                            onStatusUpdate={handleUpdateStatus}
+                            onAssigneeUpdate={handleUpdateAssignee}
+                            onDelete={handleDeleteFeature}
+                            onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
+                          />
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : null
+            ) : (
+              <KanbanView
+                items={features}
+                columns={FEATURE_KANBAN_COLUMNS}
+                getItemStatus={(feature) => feature.status}
+                getItemId={(feature) => feature.id}
+                renderCard={(feature) => (
+                  <FeatureCard feature={feature} workspaceSlug={workspaceSlug} hideStatus={true} />
                 )}
-              </TableBody>
-            </Table>
-            </div>
-          ) : null
-        ) : (
-          <KanbanView
-            items={features}
-            columns={FEATURE_KANBAN_COLUMNS}
-            getItemStatus={(feature) => feature.status}
-            getItemId={(feature) => feature.id}
-            renderCard={(feature) => (
-              <FeatureCard
-                feature={feature}
-                workspaceSlug={workspaceSlug}
-                hideStatus={true}
+                sortItems={(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()}
+                loading={loading}
+                enableDragDrop={true}
+                onStatusChange={handleFeatureStatusChange}
               />
             )}
-            sortItems={(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()}
-            loading={loading}
-            enableDragDrop={true}
-            onStatusChange={handleFeatureStatusChange}
-          />
-        )}
 
-        {viewType === "list" && features.length > 0 && (
-          <div className="pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm text-muted-foreground">
-                Page {page} of {totalPages}
+            {viewType === "list" && features.length > 0 && (
+              <div className="pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </div>
+                </div>
+                <Pagination>
+                  <PaginationContent>
+                    {/* Previous button */}
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPage((p) => Math.max(1, p - 1));
+                        }}
+                        aria-disabled={page === 1}
+                        className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+
+                    {/* Always show page 1 */}
+                    {totalPages > 0 && (
+                      <PaginationItem>
+                        <PaginationLink
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPage(1);
+                          }}
+                          isActive={page === 1}
+                          className={page === 1 ? "pointer-events-none" : "cursor-pointer"}
+                        >
+                          1
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+
+                    {/* Show ellipsis if there's a gap between page 1 and the range */}
+                    {page > 4 && totalPages > 7 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+
+                    {/* Show page range (3 pages on each side of current) */}
+                    {getPageRange(page, totalPages).map((pageNum) => (
+                      <PaginationItem key={pageNum}>
+                        <PaginationLink
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPage(pageNum);
+                          }}
+                          isActive={page === pageNum}
+                          className={page === pageNum ? "pointer-events-none" : "cursor-pointer"}
+                        >
+                          {pageNum}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+
+                    {/* Show ellipsis if there's a gap between the range and last page */}
+                    {page < totalPages - 3 && totalPages > 7 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+
+                    {/* Always show last page (if > 1) */}
+                    {totalPages > 1 && (
+                      <PaginationItem>
+                        <PaginationLink
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setPage(totalPages);
+                          }}
+                          isActive={page === totalPages}
+                          className={page === totalPages ? "pointer-events-none" : "cursor-pointer"}
+                        >
+                          {totalPages}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+
+                    {/* Next button */}
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPage((p) => Math.min(totalPages, p + 1));
+                        }}
+                        aria-disabled={page >= totalPages}
+                        className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
-            </div>
-            <Pagination>
-              <PaginationContent>
-                {/* Previous button */}
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.max(1, p - 1));
-                    }}
-                    aria-disabled={page === 1}
-                    className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-
-                {/* Always show page 1 */}
-                {totalPages > 0 && (
-                  <PaginationItem>
-                    <PaginationLink
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(1);
-                      }}
-                      isActive={page === 1}
-                      className={page === 1 ? "pointer-events-none" : "cursor-pointer"}
-                    >
-                      1
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-
-                {/* Show ellipsis if there's a gap between page 1 and the range */}
-                {page > 4 && totalPages > 7 && (
-                  <PaginationItem>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                )}
-
-                {/* Show page range (3 pages on each side of current) */}
-                {getPageRange(page, totalPages).map((pageNum) => (
-                  <PaginationItem key={pageNum}>
-                    <PaginationLink
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(pageNum);
-                      }}
-                      isActive={page === pageNum}
-                      className={page === pageNum ? "pointer-events-none" : "cursor-pointer"}
-                    >
-                      {pageNum}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-
-                {/* Show ellipsis if there's a gap between the range and last page */}
-                {page < totalPages - 3 && totalPages > 7 && (
-                  <PaginationItem>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                )}
-
-                {/* Always show last page (if > 1) */}
-                {totalPages > 1 && (
-                  <PaginationItem>
-                    <PaginationLink
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(totalPages);
-                      }}
-                      isActive={page === totalPages}
-                      className={page === totalPages ? "pointer-events-none" : "cursor-pointer"}
-                    >
-                      {totalPages}
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-
-                {/* Next button */}
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setPage((p) => Math.min(totalPages, p + 1));
-                    }}
-                    aria-disabled={page >= totalPages}
-                    className={page >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
-        )}
+            )}
           </>
         )}
       </CardContent>

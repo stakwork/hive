@@ -4,10 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { stakworkService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -18,10 +15,7 @@ export async function GET(
     const { projectId } = await params;
 
     if (!projectId) {
-      return NextResponse.json(
-        { error: "Missing required parameter: projectId" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required parameter: projectId" }, { status: 400 });
     }
 
     const result = await stakworkService().getWorkflowData(projectId);
@@ -43,9 +37,6 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(
-      { error: "Failed to fetch workflow data" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch workflow data" }, { status: 500 });
   }
 }

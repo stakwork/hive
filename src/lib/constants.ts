@@ -125,15 +125,12 @@ export const WORKSPACE_LIMITS = {
 export const WORKSPACE_ERRORS = {
   NOT_FOUND: "Workspace not found",
   ACCESS_DENIED: "Access denied to this workspace",
-  SLUG_RESERVED:
-    "This workspace name is reserved. Please choose a different name.",
+  SLUG_RESERVED: "This workspace name is reserved. Please choose a different name.",
   SLUG_INVALID_FORMAT:
     "Workspace name must start and end with letters or numbers, and can only contain letters, numbers, and hyphens.",
   SLUG_INVALID_LENGTH: "Workspace name must be between 2 and 50 characters.",
-  SLUG_ALREADY_EXISTS:
-    "A workspace with this name already exists. Please choose a different name.",
-  WORKSPACE_LIMIT_EXCEEDED:
-    `You can only create up to ${WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER} workspaces. Please delete an existing workspace first.`,
+  SLUG_ALREADY_EXISTS: "A workspace with this name already exists. Please choose a different name.",
+  WORKSPACE_LIMIT_EXCEEDED: `You can only create up to ${WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER} workspaces. Please delete an existing workspace first.`,
 } as const;
 
 // Swarm creation defaults
@@ -158,8 +155,8 @@ import {
   SiRust,
   SiSvelte,
   SiSwift,
-  SiTypescript
-} from 'react-icons/si';
+  SiTypescript,
+} from "react-icons/si";
 
 type TSupportedLanguage = {
   name: string;
@@ -168,17 +165,17 @@ type TSupportedLanguage = {
 };
 
 export const SupportedLanguages: TSupportedLanguage[] = [
-  { name: 'Golang', icon: SiGo, color: 'text-cyan-500' },
-  { name: 'React', icon: SiReact, color: 'text-blue-500' },
-  { name: 'Ruby on Rails', icon: SiRubyonrails, color: 'text-red-600' },
-  { name: 'TypeScript', icon: SiTypescript, color: 'text-blue-600' },
-  { name: 'Python', icon: SiPython, color: 'text-yellow-500' },
-  { name: 'Swift', icon: SiSwift, color: 'text-orange-500' },
-  { name: 'Kotlin', icon: SiKotlin, color: 'text-purple-500' },
-  { name: 'Rust', icon: SiRust, color: 'text-orange-600' },
-  { name: 'Java', icon: SiOpenjdk, color: 'text-red-500' },
-  { name: 'Angular', icon: SiAngular, color: 'text-red-600' },
-  { name: 'Svelte', icon: SiSvelte, color: 'text-orange-500' }
+  { name: "Golang", icon: SiGo, color: "text-cyan-500" },
+  { name: "React", icon: SiReact, color: "text-blue-500" },
+  { name: "Ruby on Rails", icon: SiRubyonrails, color: "text-red-600" },
+  { name: "TypeScript", icon: SiTypescript, color: "text-blue-600" },
+  { name: "Python", icon: SiPython, color: "text-yellow-500" },
+  { name: "Swift", icon: SiSwift, color: "text-orange-500" },
+  { name: "Kotlin", icon: SiKotlin, color: "text-purple-500" },
+  { name: "Rust", icon: SiRust, color: "text-orange-600" },
+  { name: "Java", icon: SiOpenjdk, color: "text-red-500" },
+  { name: "Angular", icon: SiAngular, color: "text-red-600" },
+  { name: "Svelte", icon: SiSvelte, color: "text-orange-500" },
 ];
 
 // UI Layout constants

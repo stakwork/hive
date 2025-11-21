@@ -33,10 +33,7 @@ async function resolveSeedUser(args: { userId?: string; email?: string; githubUs
       where: { githubUsername: args.githubUsername },
       include: { user: true },
     });
-    if (!gh || !gh.user)
-      throw new Error(
-        `No GitHubAuth/User found for username ${args.githubUsername}`,
-      );
+    if (!gh || !gh.user) throw new Error(`No GitHubAuth/User found for username ${args.githubUsername}`);
     return gh.user;
   }
 
@@ -95,9 +92,7 @@ describe("resolveSeedUser function", () => {
     test("should throw error when user not found by userId", async () => {
       mockPrismaInstance.user.findUnique.mockResolvedValue(null);
 
-      await expect(resolveSeedUser({ userId: "nonexistent" })).rejects.toThrow(
-        "No user found for id nonexistent"
-      );
+      await expect(resolveSeedUser({ userId: "nonexistent" })).rejects.toThrow("No user found for id nonexistent");
 
       expect(mockPrismaInstance.user.findUnique).toHaveBeenCalledWith({
         where: { id: "nonexistent" },
@@ -129,7 +124,7 @@ describe("resolveSeedUser function", () => {
       mockPrismaInstance.user.findUnique.mockResolvedValue(null);
 
       await expect(resolveSeedUser({ email: "missing@example.com" })).rejects.toThrow(
-        "No user found for email missing@example.com"
+        "No user found for email missing@example.com",
       );
 
       expect(mockPrismaInstance.user.findUnique).toHaveBeenCalledWith({
@@ -170,7 +165,7 @@ describe("resolveSeedUser function", () => {
       mockPrismaInstance.gitHubAuth.findFirst.mockResolvedValue(null);
 
       await expect(resolveSeedUser({ githubUsername: "missinguser" })).rejects.toThrow(
-        "No GitHubAuth/User found for username missinguser"
+        "No GitHubAuth/User found for username missinguser",
       );
 
       expect(mockPrismaInstance.gitHubAuth.findFirst).toHaveBeenCalledWith({
@@ -190,7 +185,7 @@ describe("resolveSeedUser function", () => {
       mockPrismaInstance.gitHubAuth.findFirst.mockResolvedValue(mockGitHubAuth);
 
       await expect(resolveSeedUser({ githubUsername: "testuser" })).rejects.toThrow(
-        "No GitHubAuth/User found for username testuser"
+        "No GitHubAuth/User found for username testuser",
       );
     });
   });
@@ -234,7 +229,7 @@ describe("resolveSeedUser function", () => {
       };
 
       const mockUser2 = {
-        id: "account-user-2", 
+        id: "account-user-2",
         email: "account2@example.com",
         name: "Account User 2",
         createdAt: new Date(),
@@ -249,7 +244,7 @@ describe("resolveSeedUser function", () => {
         },
         {
           userId: "account-user-2",
-          provider: "github", 
+          provider: "github",
           user: mockUser2,
         },
       ];
@@ -282,7 +277,7 @@ describe("resolveSeedUser function", () => {
       mockPrismaInstance.account.findMany.mockResolvedValue(mockAccounts);
 
       await expect(resolveSeedUser({})).rejects.toThrow(
-        "No GitHub-linked user found. Ensure someone signed up via GitHub or pass --email/--userId/--githubUsername"
+        "No GitHub-linked user found. Ensure someone signed up via GitHub or pass --email/--userId/--githubUsername",
       );
     });
 
@@ -291,7 +286,7 @@ describe("resolveSeedUser function", () => {
       mockPrismaInstance.account.findMany.mockResolvedValue([]);
 
       await expect(resolveSeedUser({})).rejects.toThrow(
-        "No GitHub-linked user found. Ensure someone signed up via GitHub or pass --email/--userId/--githubUsername"
+        "No GitHub-linked user found. Ensure someone signed up via GitHub or pass --email/--userId/--githubUsername",
       );
 
       expect(mockPrismaInstance.gitHubAuth.findFirst).toHaveBeenCalledWith({
@@ -309,7 +304,7 @@ describe("resolveSeedUser function", () => {
     test("should sort accounts by user.updatedAt descending", async () => {
       const oldDate = new Date("2023-01-01");
       const newDate = new Date("2023-12-01");
-      
+
       const olderUser = {
         id: "old-user",
         email: "old@example.com",
@@ -318,7 +313,7 @@ describe("resolveSeedUser function", () => {
       };
 
       const newerUser = {
-        id: "new-user", 
+        id: "new-user",
         email: "new@example.com",
         name: "New User",
         updatedAt: newDate,
@@ -349,7 +344,7 @@ describe("resolveSeedUser function", () => {
     test("should handle accounts with users that have null updatedAt", async () => {
       const userWithDate = {
         id: "user-with-date",
-        email: "withdate@example.com", 
+        email: "withdate@example.com",
         name: "User With Date",
         updatedAt: new Date("2023-12-01"),
       };
@@ -357,7 +352,7 @@ describe("resolveSeedUser function", () => {
       const userWithoutDate = {
         id: "user-without-date",
         email: "withoutdate@example.com",
-        name: "User Without Date", 
+        name: "User Without Date",
         updatedAt: null,
       };
 
@@ -368,7 +363,7 @@ describe("resolveSeedUser function", () => {
           user: userWithoutDate,
         },
         {
-          userId: "user-with-date", 
+          userId: "user-with-date",
           provider: "github",
           user: userWithDate,
         },
@@ -391,9 +386,7 @@ describe("resolveSeedUser function", () => {
       mockPrismaInstance.gitHubAuth.findFirst.mockResolvedValue(null);
       mockPrismaInstance.account.findMany.mockResolvedValue([]);
 
-      await expect(resolveSeedUser({ userId: "user-123" })).rejects.toThrow(
-        "Database connection failed"
-      );
+      await expect(resolveSeedUser({ userId: "user-123" })).rejects.toThrow("Database connection failed");
     });
 
     test("should handle empty string arguments by falling back to default behavior", async () => {
@@ -402,7 +395,7 @@ describe("resolveSeedUser function", () => {
       mockPrismaInstance.account.findMany.mockResolvedValue([]);
 
       await expect(resolveSeedUser({ userId: "" })).rejects.toThrow(
-        "No GitHub-linked user found. Ensure someone signed up via GitHub or pass --email/--userId/--githubUsername"
+        "No GitHub-linked user found. Ensure someone signed up via GitHub or pass --email/--userId/--githubUsername",
       );
     });
 

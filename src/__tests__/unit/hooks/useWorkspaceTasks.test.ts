@@ -1,10 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  clearStoredPage,
-  TASKS_PAGE_STORAGE_KEY,
-  saveCurrentPage,
-  getStoredPage,
-} from "@/hooks/useWorkspaceTasks";
+import { clearStoredPage, TASKS_PAGE_STORAGE_KEY, saveCurrentPage, getStoredPage } from "@/hooks/useWorkspaceTasks";
 
 describe("useWorkspaceTasks - sessionStorage helpers", () => {
   const originalWindow = global.window;
@@ -102,9 +97,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         clearStoredPage(workspaceId);
 
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId));
       });
 
       test("should only call removeItem once per invocation", () => {
@@ -140,9 +133,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         clearStoredPage(workspaceId);
 
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId));
       });
     });
 
@@ -153,9 +144,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
         clearStoredPage(workspaceId);
 
         expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(1);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-isolated"
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith("tasks_page_workspace-isolated");
       });
 
       test("should handle multiple workspace IDs independently", () => {
@@ -163,16 +152,12 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
         const workspace2 = "workspace-beta";
 
         clearStoredPage(workspace1);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-alpha"
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith("tasks_page_workspace-alpha");
 
         vi.clearAllMocks();
 
         clearStoredPage(workspace2);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-beta"
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith("tasks_page_workspace-beta");
       });
 
       test("should not affect other sessionStorage keys", () => {
@@ -197,9 +182,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         clearStoredPage(workspaceId);
 
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace-!@#$%^&*()"
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith("tasks_page_workspace-!@#$%^&*()");
       });
 
       test("should handle very long workspaceId", () => {
@@ -207,9 +190,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         clearStoredPage(workspaceId);
 
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          `tasks_page_${workspaceId}`
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(`tasks_page_${workspaceId}`);
       });
 
       test("should handle workspaceId with whitespace", () => {
@@ -217,9 +198,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         clearStoredPage(workspaceId);
 
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          "tasks_page_workspace with spaces"
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith("tasks_page_workspace with spaces");
       });
 
       test("should handle numeric string workspaceId", () => {
@@ -237,9 +216,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         clearStoredPage(workspaceId);
 
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId));
       });
 
       test("should clear stored page for error recovery", () => {
@@ -247,9 +224,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         clearStoredPage(workspaceId);
 
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId));
       });
     });
 
@@ -262,9 +237,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
         clearStoredPage(workspaceId);
 
         expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(3);
-        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-          TASKS_PAGE_STORAGE_KEY(workspaceId)
-        );
+        expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId));
       });
 
       test("should handle rapid sequential calls", () => {
@@ -274,9 +247,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
         expect(mockSessionStorage.removeItem).toHaveBeenCalledTimes(3);
         workspaceIds.forEach((id) => {
-          expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-            TASKS_PAGE_STORAGE_KEY(id)
-          );
+          expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(id));
         });
       });
     });
@@ -289,10 +260,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
       saveCurrentPage(workspaceId, page);
 
-      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId),
-        "2"
-      );
+      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId), "2");
     });
 
     test("should handle SSR context safely", () => {
@@ -307,10 +275,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
       saveCurrentPage(workspaceId, page);
 
-      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId),
-        "5"
-      );
+      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId), "5");
     });
   });
 
@@ -321,9 +286,7 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
 
       const result = getStoredPage(workspaceId);
 
-      expect(mockSessionStorage.getItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId)
-      );
+      expect(mockSessionStorage.getItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId));
       expect(result).toBe(3);
     });
 
@@ -360,19 +323,14 @@ describe("useWorkspaceTasks - sessionStorage helpers", () => {
       const page = 3;
 
       saveCurrentPage(workspaceId, page);
-      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId),
-        "3"
-      );
+      expect(mockSessionStorage.setItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId), "3");
 
       mockSessionStorage.getItem.mockReturnValue("3");
       const retrievedPage = getStoredPage(workspaceId);
       expect(retrievedPage).toBe(3);
 
       clearStoredPage(workspaceId);
-      expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(
-        TASKS_PAGE_STORAGE_KEY(workspaceId)
-      );
+      expect(mockSessionStorage.removeItem).toHaveBeenCalledWith(TASKS_PAGE_STORAGE_KEY(workspaceId));
     });
 
     test("should handle complete pagination lifecycle", () => {

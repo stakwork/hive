@@ -26,12 +26,12 @@ describe("db", () => {
     it("should have standard Prisma client methods", () => {
       // In test environments, these methods may not be present on mocked instances
       // Focus on model accessors that are essential for the application
-      expect(db).toHaveProperty('user');
-      expect(db).toHaveProperty('workspace');
-      expect(db).toHaveProperty('task');
-      expect(db).toHaveProperty('workspaceMember');
-      expect(db).toHaveProperty('account');
-      expect(db).toHaveProperty('session');
+      expect(db).toHaveProperty("user");
+      expect(db).toHaveProperty("workspace");
+      expect(db).toHaveProperty("task");
+      expect(db).toHaveProperty("workspaceMember");
+      expect(db).toHaveProperty("account");
+      expect(db).toHaveProperty("session");
     });
 
     it("should have model accessors", () => {

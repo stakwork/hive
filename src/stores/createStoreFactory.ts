@@ -32,16 +32,18 @@ export function getStoreRegistryInfo() {
 
 export function logStoreInstances() {
   const info = getStoreRegistryInfo();
-  console.log('=== STORE REGISTRY INFO ===');
+  console.log("=== STORE REGISTRY INFO ===");
   console.log(`Total instances: ${info.totalInstances}`);
-  console.log('Store IDs:', info.storeIds);
-  console.table(info.entries.map(entry => ({
-    id: entry.id,
-    hasStores: `${entry.hasData ? 'D' : ''}${entry.hasGraph ? 'G' : ''}${entry.hasSimulation ? 'S' : ''}`,
-    dataNodes: entry.dataState?.dataInitial?.nodes?.length || 0,
-    simulationNodes: entry.simulationState?.simulation?.nodes()?.length || 0,
-    isSleeping: entry.simulationState?.isSleeping || false,
-  })));
+  console.log("Store IDs:", info.storeIds);
+  console.table(
+    info.entries.map((entry) => ({
+      id: entry.id,
+      hasStores: `${entry.hasData ? "D" : ""}${entry.hasGraph ? "G" : ""}${entry.hasSimulation ? "S" : ""}`,
+      dataNodes: entry.dataState?.dataInitial?.nodes?.length || 0,
+      simulationNodes: entry.simulationState?.simulation?.nodes()?.length || 0,
+      isSleeping: entry.simulationState?.isSleeping || false,
+    })),
+  );
   return info;
 }
 
@@ -58,7 +60,7 @@ export function getStoreBundle(id: string): StoreBundle {
     const simulation = createSimulationStore(data, {
       getState: () => getGraphStore().getState(),
       subscribe: () => () => {},
-      destroy: () => {}
+      destroy: () => {},
     });
 
     // Now create graph with simulation reference

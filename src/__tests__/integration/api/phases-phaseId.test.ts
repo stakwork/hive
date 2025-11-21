@@ -1,10 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, PATCH, DELETE } from "@/app/api/phases/[phaseId]/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -112,10 +109,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
   describe("GET /api/phases/[phaseId]", () => {
     test("owner can fetch phase details with tickets and feature context", async () => {
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId }),
@@ -145,10 +139,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("member can fetch phase details", async () => {
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        member
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/phases/${phaseId}`, member);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId }),
@@ -161,10 +152,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("outsider cannot fetch phase", async () => {
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        outsider
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/phases/${phaseId}`, outsider);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId }),
@@ -174,9 +162,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("unauthenticated user cannot fetch phase", async () => {
-      const request = createGetRequest(
-        `http://localhost:3000/api/phases/${phaseId}`
-      );
+      const request = createGetRequest(`http://localhost:3000/api/phases/${phaseId}`);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId }),
@@ -186,10 +172,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("returns 404 for non-existent phase", async () => {
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/phases/non-existent-id`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/phases/non-existent-id`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId: "non-existent-id" }),
@@ -210,10 +193,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
       // Current implementation doesn't filter by deleted flag in validatePhaseAccess
       // so soft-deleted phases still return 200
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId }),
@@ -234,10 +214,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
         },
       });
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId }),
@@ -264,10 +241,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
         },
       });
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ phaseId }),
@@ -286,7 +260,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "Updated Phase Name" },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -308,7 +282,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { description: "Updated description" },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -323,7 +297,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { status: "IN_PROGRESS" },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -344,7 +318,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { order: 5 },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -364,7 +338,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
           status: "DONE",
           order: 3,
         },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -382,7 +356,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "Member Update" },
-        member
+        member,
       );
 
       const response = await PATCH(request, {
@@ -397,7 +371,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "   " },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -411,7 +385,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "" },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -425,7 +399,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "  Trimmed Name  " },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -440,7 +414,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { description: "  Trimmed Description  " },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -455,7 +429,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { order: "not-a-number" as any },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -469,7 +443,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "Hacked" },
-        outsider
+        outsider,
       );
 
       const response = await PATCH(request, {
@@ -480,10 +454,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("unauthenticated user cannot update phase", async () => {
-      const request = createPatchRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        { name: "Hacked" }
-      );
+      const request = createPatchRequest(`http://localhost:3000/api/phases/${phaseId}`, { name: "Hacked" });
 
       const response = await PATCH(request, {
         params: Promise.resolve({ phaseId }),
@@ -496,7 +467,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/non-existent-id`,
         { name: "Update" },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -520,7 +491,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "Update Deleted" },
-        owner
+        owner,
       );
 
       const response = await PATCH(request, {
@@ -536,13 +507,13 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request1 = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "Update 1" },
-        owner
+        owner,
       );
 
       const request2 = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { status: "IN_PROGRESS" },
-        owner
+        owner,
       );
 
       // Execute concurrently
@@ -561,18 +532,13 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       });
 
       // At least one update should be present
-      expect(
-        finalPhase?.name === "Update 1" || finalPhase?.status === "IN_PROGRESS"
-      ).toBe(true);
+      expect(finalPhase?.name === "Update 1" || finalPhase?.status === "IN_PROGRESS").toBe(true);
     });
   });
 
   describe("DELETE /api/phases/[phaseId]", () => {
     test("owner can soft delete phase", async () => {
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       const response = await DELETE(request, {
         params: Promise.resolve({ phaseId }),
@@ -592,10 +558,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("member can soft delete phase", async () => {
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        member
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/${phaseId}`, member);
 
       const response = await DELETE(request, {
         params: Promise.resolve({ phaseId }),
@@ -620,10 +583,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       expect(ticketsBefore[0].phaseId).toBe(phaseId);
 
       // Delete phase (soft delete)
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       await DELETE(request, {
         params: Promise.resolve({ phaseId }),
@@ -652,10 +612,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const ticketIds = ticketsBefore.map((t) => t.id);
 
       // Delete phase
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       await DELETE(request, {
         params: Promise.resolve({ phaseId }),
@@ -673,10 +630,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("outsider cannot delete phase", async () => {
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        outsider
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/${phaseId}`, outsider);
 
       const response = await DELETE(request, {
         params: Promise.resolve({ phaseId }),
@@ -692,9 +646,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("unauthenticated user cannot delete phase", async () => {
-      const request = createDeleteRequest(
-        `http://localhost:3000/api/phases/${phaseId}`
-      );
+      const request = createDeleteRequest(`http://localhost:3000/api/phases/${phaseId}`);
 
       const response = await DELETE(request, {
         params: Promise.resolve({ phaseId }),
@@ -710,10 +662,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
     });
 
     test("returns 404 for non-existent phase", async () => {
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/non-existent-id`,
-        owner
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/non-existent-id`, owner);
 
       const response = await DELETE(request, {
         params: Promise.resolve({ phaseId: "non-existent-id" }),
@@ -734,10 +683,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
 
       // Try to delete again - current implementation doesn't check deleted flag
       // so it returns 200 success (idempotent behavior)
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/${phaseId}`,
-        owner
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/${phaseId}`, owner);
 
       const response = await DELETE(request, {
         params: Promise.resolve({ phaseId }),
@@ -771,10 +717,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       });
 
       // Delete middle phase
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/phases/${phase2.id}`,
-        owner
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/phases/${phase2.id}`, owner);
 
       await DELETE(request, {
         params: Promise.resolve({ phaseId: phase2.id }),
@@ -839,7 +782,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/phases/${phaseId}`,
         { name: "Updated Name" },
-        owner
+        owner,
       );
 
       await PATCH(request, {
@@ -850,9 +793,7 @@ describe("Phase API: /api/phases/[phaseId]", () => {
         where: { id: phaseId },
       });
 
-      expect(phaseAfter?.updatedAt.getTime()).toBeGreaterThan(
-        phaseBefore?.updatedAt.getTime() || 0
-      );
+      expect(phaseAfter?.updatedAt.getTime()).toBeGreaterThan(phaseBefore?.updatedAt.getTime() || 0);
     });
   });
 });

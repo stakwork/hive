@@ -88,7 +88,7 @@ describe("callStakwork - Unit Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Mock console.error to prevent test output pollution
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -126,12 +126,12 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("STAKWORK_API_KEY is required");
-      
+
       // Restore original value
       (config as any).STAKWORK_API_KEY = originalApiKey;
     });
@@ -147,12 +147,12 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required");
-      
+
       (config as any).STAKWORK_USER_JOURNEY_WORKFLOW_ID = originalWorkflowId;
     });
 
@@ -167,12 +167,12 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required");
-      
+
       (config as any).STAKWORK_USER_JOURNEY_WORKFLOW_ID = originalWorkflowId;
     });
   });
@@ -196,7 +196,7 @@ describe("callStakwork - Unit Tests", () => {
         testParams.poolName,
         testParams.repo2GraphUrl,
         testParams.accessToken,
-        testParams.username
+        testParams.username,
       );
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -239,7 +239,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         null,
-        null
+        null,
       );
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
@@ -248,15 +248,7 @@ describe("callStakwork - Unit Tests", () => {
     });
 
     it("should handle null swarm parameters in payload", async () => {
-      await callStakwork(
-        "Test message",
-        null,
-        null,
-        null,
-        "",
-        "token",
-        "username"
-      );
+      await callStakwork("Test message", null, null, null, "", "token", "username");
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
       expect(payload.workflow_params.set_var.attributes.vars.swarmUrl).toBeNull();
@@ -273,7 +265,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
@@ -289,7 +281,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
@@ -321,7 +313,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(true);
@@ -345,7 +337,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
@@ -376,7 +368,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.data).toEqual(mockData);
@@ -398,14 +390,12 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Internal Server Error");
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Failed to send message to Stakwork: Internal Server Error"
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to send message to Stakwork: Internal Server Error");
     });
 
     it("should handle 401 Unauthorized response", async () => {
@@ -422,7 +412,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
@@ -443,7 +433,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
@@ -464,7 +454,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
@@ -483,15 +473,12 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Network error");
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error calling Stakwork:",
-        expect.any(Error)
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Error calling Stakwork:", expect.any(Error));
     });
 
     it("should handle timeout error", async () => {
@@ -504,7 +491,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
@@ -521,7 +508,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
@@ -544,7 +531,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(false);
@@ -561,7 +548,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(true);
@@ -571,7 +558,7 @@ describe("callStakwork - Unit Tests", () => {
 
     it("should handle very long message", async () => {
       const longMessage = "A".repeat(10000);
-      
+
       const result = await callStakwork(
         longMessage,
         "https://test.com/api",
@@ -579,7 +566,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(true);
@@ -589,7 +576,7 @@ describe("callStakwork - Unit Tests", () => {
 
     it("should handle special characters in message", async () => {
       const messageWithSpecialChars = "Test <script>alert('xss')</script> & special chars: ü ñ 中文";
-      
+
       const result = await callStakwork(
         messageWithSpecialChars,
         "https://test.com/api",
@@ -597,7 +584,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(true);
@@ -613,7 +600,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://тест.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(true);
@@ -627,7 +614,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "",
         "token",
-        "username"
+        "username",
       );
 
       expect(result.success).toBe(true);
@@ -645,7 +632,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       const [, options] = fetchSpy.mock.calls[0];
@@ -663,12 +650,12 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       const [, options] = fetchSpy.mock.calls[0];
       expect(options.headers.Authorization).toBe("Token token=custom-api-key-123");
-      
+
       (config as any).STAKWORK_API_KEY = originalApiKey;
     });
   });
@@ -682,7 +669,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       const [url] = fetchSpy.mock.calls[0];
@@ -700,12 +687,12 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       const [url] = fetchSpy.mock.calls[0];
       expect(url).toBe("https://custom-stakwork.com/v2/projects");
-      
+
       (config as any).STAKWORK_BASE_URL = originalBaseUrl;
     });
   });
@@ -725,12 +712,10 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Failed to send message to Stakwork: Bad Request"
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to send message to Stakwork: Bad Request");
     });
 
     it("should log error when exception is thrown", async () => {
@@ -744,20 +729,17 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error calling Stakwork:",
-        testError
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Error calling Stakwork:", testError);
     });
   });
 
   describe("workspaceId Parameter", () => {
     it("should include workspaceId in payload when provided", async () => {
       const workspaceId = "workspace-test-123";
-      
+
       await callStakwork(
         "Test message",
         "https://test.com/api",
@@ -766,7 +748,7 @@ describe("callStakwork - Unit Tests", () => {
         "https://test.com:3355",
         "token",
         "username",
-        workspaceId
+        workspaceId,
       );
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
@@ -781,7 +763,7 @@ describe("callStakwork - Unit Tests", () => {
         "pool-name",
         "https://test.com:3355",
         "token",
-        "username"
+        "username",
       );
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);

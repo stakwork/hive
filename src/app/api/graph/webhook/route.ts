@@ -13,34 +13,27 @@ interface GraphWebhookPayload {
 
 export async function POST(request: NextRequest) {
   try {
-
     console.log("Graph webhook received");
     // API Key authentication
-    const apiKey = request.headers.get('x-api-key');
+    const apiKey = request.headers.get("x-api-key");
     console.log("apiKey:", apiKey);
     console.log("process.env.GRAPH_WEBHOOK_API_KEY:", process.env.GRAPH_WEBHOOK_API_KEY);
     if (!apiKey || apiKey !== process.env.GRAPH_WEBHOOK_API_KEY) {
       console.error("Invalid or missing API key for graph webhook");
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await request.json()) as GraphWebhookPayload;
     const { node_ids, workspace_id, depth, title } = body;
 
-    console.log(body)
+    console.log(body);
 
     console.log("node_ids:", node_ids);
     console.log("workspace_id:", workspace_id);
 
     if (!node_ids || !Array.isArray(node_ids) || node_ids.length === 0) {
       console.error("No node_ids provided in webhook or invalid format");
-      return NextResponse.json(
-        { error: "node_ids array is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "node_ids array is required" }, { status: 400 });
     }
 
     const workspace = await db.workspace.findUnique({
@@ -63,11 +56,7 @@ export async function POST(request: NextRequest) {
           timestamp: Date.now(),
         };
 
-        await pusherServer.trigger(
-          channelName,
-          PUSHER_EVENTS.HIGHLIGHT_NODES,
-          eventPayload,
-        );
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.HIGHLIGHT_NODES, eventPayload);
 
         console.log(`Broadcasted highlight event to workspace: ${workspace_id}`);
       } catch (error) {
@@ -90,9 +79,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error processing Graph webhook:", error);
-    return NextResponse.json(
-      { error: "Failed to process webhook" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 });
   }
 }

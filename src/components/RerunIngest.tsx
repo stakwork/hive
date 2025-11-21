@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -25,10 +19,7 @@ interface RerunIngestProps {
   readonly workspaceName: string;
 }
 
-export function RerunIngest({
-  workspaceId,
-  workspaceName,
-}: RerunIngestProps) {
+export function RerunIngest({ workspaceId, workspaceName }: RerunIngestProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
   const { toast } = useToast();
@@ -97,15 +88,12 @@ export function RerunIngest({
             Rerun Code Ingestion
           </CardTitle>
           <CardDescription>
-            Re-ingest your codebase to update the graph database with the latest changes.
-            This will refresh all analysis and recommendations.
+            Re-ingest your codebase to update the graph database with the latest changes. This will refresh all analysis
+            and recommendations.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button
-            variant="destructive"
-            onClick={() => setIsOpen(true)}
-          >
+          <Button variant="destructive" onClick={() => setIsOpen(true)}>
             <Database className="w-4 h-4 mr-2" />
             Rerun Ingest
           </Button>
@@ -120,23 +108,15 @@ export function RerunIngest({
               Rerun Code Ingestion
             </DialogTitle>
             <DialogDescription>
-              This will re-ingest the codebase for <strong>{workspaceName}</strong>.
-              The process may take several minutes depending on the size of your repository.
+              This will re-ingest the codebase for <strong>{workspaceName}</strong>. The process may take several
+              minutes depending on the size of your repository.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsOpen(false)}
-              disabled={isIngesting}
-            >
+            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isIngesting}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRerunIngest}
-              disabled={isIngesting}
-            >
+            <Button variant="destructive" onClick={handleRerunIngest} disabled={isIngesting}>
               <Database className="w-4 h-4 mr-2" />
               {isIngesting ? "Starting..." : "Start Ingestion"}
             </Button>

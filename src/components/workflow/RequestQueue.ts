@@ -1,5 +1,5 @@
 // RequestQueue - A class to handle sequential workflow updates
-import { AxiosResponse } from 'axios';
+import { AxiosResponse } from "axios";
 
 interface RequestMetadata {
   type: string;
@@ -33,16 +33,16 @@ class RequestQueue {
   enqueue(
     requestFn: (version?: string | null) => Promise<AxiosResponse<any>>,
     metadata: RequestMetadata,
-    currentVersion?: string
+    currentVersion?: string,
   ): Promise<AxiosResponse<any>> {
     return new Promise((resolve, reject) => {
       // Track these changes in our pending changes map
       if (metadata.nodeIds) {
-        metadata.nodeIds.forEach(nodeId => {
+        metadata.nodeIds.forEach((nodeId) => {
           this.pendingChanges.set(nodeId, {
             type: metadata.type,
             timestamp: Date.now(),
-            version: this.latestVersion || currentVersion || null
+            version: this.latestVersion || currentVersion || null,
           });
         });
       }
@@ -52,7 +52,7 @@ class RequestQueue {
         metadata,
         version: this.latestVersion || currentVersion || null,
         resolve,
-        reject
+        reject,
       });
 
       if (!this.isProcessing) {
@@ -78,15 +78,13 @@ class RequestQueue {
       const response = await nextRequest.requestFn(this.latestVersion || nextRequest.version);
 
       // Update our tracked version
-      if (response.data &&
-        response.data.data &&
-        response.data.data.workflow_version_id) {
+      if (response.data && response.data.data && response.data.data.workflow_version_id) {
         this.latestVersion = response.data.data.workflow_version_id;
       }
 
       // Clean up the pending changes map for processed nodeIds
       if (nextRequest.metadata.nodeIds) {
-        nextRequest.metadata.nodeIds.forEach(nodeId => {
+        nextRequest.metadata.nodeIds.forEach((nodeId) => {
           this.pendingChanges.delete(nodeId);
         });
       }
@@ -123,8 +121,8 @@ class RequestQueue {
    */
   clear(): void {
     // Reject all pending requests
-    this.queue.forEach(request => {
-      request.reject(new Error('Queue cleared'));
+    this.queue.forEach((request) => {
+      request.reject(new Error("Queue cleared"));
     });
 
     this.queue = [];

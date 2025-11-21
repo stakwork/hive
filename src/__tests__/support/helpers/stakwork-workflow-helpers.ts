@@ -6,7 +6,7 @@ import { Response } from "node-fetch";
 export function createMockWorkflowResponse(
   transitions: Array<{ id: string; title: string; status: string; position?: { x: number; y: number } }>,
   connections: Array<{ source: string; target: string }>,
-  workflowState: string
+  workflowState: string,
 ): Response {
   return {
     ok: true,
@@ -43,7 +43,7 @@ export function createDefaultMockWorkflowResponse(): Response {
         target: "transition-2",
       },
     ],
-    "in_progress"
+    "in_progress",
   );
 }
 
@@ -61,7 +61,7 @@ export function createStakworkApiError(
   message: string,
   status: number,
   projectId: string,
-  details?: Record<string, unknown>
+  details?: Record<string, unknown>,
 ) {
   return {
     message,

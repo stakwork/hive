@@ -1,8 +1,18 @@
-import Nodes from './Nodes';
-import Edges from './Edges';
-import { HumanIcon, AutomatedIcon, ApiIcon, CheckBoxIcon, WarningIcon, ErrorIcon, EditIcon, TrueCheck, FalseCross } from './StakIcons';
-import moment from 'moment';
-import { WorkflowTransition } from '@/types/stakwork/workflow';
+import Nodes from "./Nodes";
+import Edges from "./Edges";
+import {
+  HumanIcon,
+  AutomatedIcon,
+  ApiIcon,
+  CheckBoxIcon,
+  WarningIcon,
+  ErrorIcon,
+  EditIcon,
+  TrueCheck,
+  FalseCross,
+} from "./StakIcons";
+import moment from "moment";
+import { WorkflowTransition } from "@/types/stakwork/workflow";
 
 interface Position {
   x: number;
@@ -53,10 +63,10 @@ class NodeArray {
     projectId: string | undefined,
     isAdmin: boolean = false,
     workflowId: string,
-    workflowVersion: string
+    workflowVersion: string,
   ) {
     this.connecting_edges = connecting_edges;
-    this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, 'system.succeed');
+    this.connected_to_end = this.findDirectlyConnectedNodes(connecting_edges, "system.succeed");
 
     console.log("connected_to_end", this.connected_to_end);
 
@@ -85,12 +95,12 @@ class NodeArray {
       return [];
     }
 
-    const directConnections = edges.filter(edge => edge.target === targetNode);
-    return directConnections.map(edge => edge.source);
+    const directConnections = edges.filter((edge) => edge.target === targetNode);
+    return directConnections.map((edge) => edge.source);
   }
 
   setTimer(): void {
-    const timeElements = document.querySelectorAll('.step-time[data-start-time]');
+    const timeElements = document.querySelectorAll(".step-time[data-start-time]");
 
     if (timeElements.length === 0) {
       return;
@@ -108,7 +118,7 @@ class NodeArray {
         const hours = Math.floor(diff / 1000 / 60 / 60);
         const minutes = Math.floor((diff / 1000 / 60) % 60);
         const seconds = Math.floor((diff / 1000) % 60);
-        htmlElement.innerHTML = `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+        htmlElement.innerHTML = `${hours}:${minutes < 10 ? "0" : ""}${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
       }, 1000);
     });
   }
@@ -118,18 +128,21 @@ class NodeArray {
       const targetNode = this.nodes.find((node) => node.id === edge.target);
       const sourceNode = this.nodes.find((node) => node.id === edge.source);
       if (targetNode && sourceNode) {
-        if (sourceNode.id === 'start' && (targetNode.status === 'finished' || targetNode.status === 'in_progress')) {
-          edge.edgeColor = '#67C083';
+        if (sourceNode.id === "start" && (targetNode.status === "finished" || targetNode.status === "in_progress")) {
+          edge.edgeColor = "#67C083";
         } else if (!sourceNode.status) {
           //Nothing to do here
-        } else if (sourceNode.status === 'skipped' || targetNode.status === 'skipped') {
-          edge.edgeColor = '#8F979D';
+        } else if (sourceNode.status === "skipped" || targetNode.status === "skipped") {
+          edge.edgeColor = "#8F979D";
           edge.animate = false;
-        } else if ((sourceNode.status === 'finished' && targetNode.id === 'system.succeed') || (sourceNode.status === 'finished' && targetNode.id === 'system.fail')) {
-          edge.edgeColor = '#67C083';
+        } else if (
+          (sourceNode.status === "finished" && targetNode.id === "system.succeed") ||
+          (sourceNode.status === "finished" && targetNode.id === "system.fail")
+        ) {
+          edge.edgeColor = "#67C083";
           edge.animate = false;
-        } else if (sourceNode.status === 'finished' || targetNode.status === 'finished') {
-          edge.edgeColor = '#67C083';
+        } else if (sourceNode.status === "finished" || targetNode.status === "finished") {
+          edge.edgeColor = "#67C083";
           edge.animate = false;
         }
       }
@@ -162,67 +175,71 @@ class NodeArray {
   }
 
   createTrueFalseEdge(type: string, index: number | string, source: string, target: string): any {
-    return this.createEdge('default', index, source, target);
+    return this.createEdge("default", index, source, target);
   }
 
   setSkippedNode(node: any): void {
-    node.status = 'skipped';
-    node.textColor = '#8F979D';
-    node.bgColor = '#DFE3E5';
-    node.borderColor = '#DFE3E5';
+    node.status = "skipped";
+    node.textColor = "#8F979D";
+    node.bgColor = "#DFE3E5";
+    node.borderColor = "#DFE3E5";
   }
 
   setSelectedNode(node: any): void {
-    node.status = 'finished';
+    node.status = "finished";
 
     if (node.stepType === "True") {
-      node.bgColor = '#67C083';
-      node.borderColor = '#67C083';
-      node.textColor = '#FFFFFF';
+      node.bgColor = "#67C083";
+      node.borderColor = "#67C083";
+      node.textColor = "#FFFFFF";
     } else {
-      node.bgColor = '#9747FF';
-      node.borderColor = '#9747FF';
-      node.textColor = '#FFFFFF';
+      node.bgColor = "#9747FF";
+      node.borderColor = "#9747FF";
+      node.textColor = "#FFFFFF";
     }
   }
 
   setErrorNode(node: any): void {
-    node.bgColor = '#F5F6F8';
-    node.borderColor = '#FF5252';
+    node.bgColor = "#F5F6F8";
+    node.borderColor = "#FF5252";
   }
 
   setHaltedNodeStyle(): void {
-    const haltNode = this.nodes.find(node => node.id === 'system.fail');
+    const haltNode = this.nodes.find((node) => node.id === "system.fail");
     if (haltNode) {
-      haltNode.bgColor = '#FF5252';
-      haltNode.borderColor = '#FF5252';
+      haltNode.bgColor = "#FF5252";
+      haltNode.borderColor = "#FF5252";
     }
   }
 
   setSuccessNodeStyle(node: any): void {
-    node.bgColor = '#67C083';
-    node.borderColor = '#67C083';
+    node.bgColor = "#67C083";
+    node.borderColor = "#67C083";
   }
 
   setTrueFalseEdges(node: any, i: number, type: string): void {
-    const targetPosition = type === 'false' ? 'bottom' : 'top';
+    const targetPosition = type === "false" ? "bottom" : "top";
     const targetNode = this.nodes.find((n) => n.id === node.targetNode);
     if (targetNode === undefined) {
       return;
     }
 
-    if (node.status !== 'skipped' && node.status !== undefined) {
-      if (node.nextStep === node.targetNode || targetNode.status === 'finished' || targetNode.status === 'in_progress') {
+    if (node.status !== "skipped" && node.status !== undefined) {
+      if (
+        node.nextStep === node.targetNode ||
+        targetNode.status === "finished" ||
+        targetNode.status === "in_progress"
+      ) {
         const edge = this.createTrueFalseEdge(type, i, node.id, node.targetNode);
-        edge.edgeColor = '#67C083';
+        edge.edgeColor = "#67C083";
         targetNode.targetPosition = targetPosition;
 
         this.setSelectedNode(node);
         node.edges.push(edge);
       } else {
-        const edge = this.createEdge('skipped', i, node.id, node.targetNode);
+        const edge = this.createEdge("skipped", i, node.id, node.targetNode);
         targetNode.targetPosition = targetPosition;
-        edge.edgeColor = '#8F979D';
+        edge.edgeColor = "#8F979D";
         node.edges.push(edge);
       }
     } else {
@@ -235,17 +252,17 @@ class NodeArray {
 
   createEdge(type: string, index: number | string, source: string, target: string): any {
     switch (type) {
-      case 'skipped':
+      case "skipped":
         return Edges.skippedEdge(`${index}-skipped`, source, target);
-      case 'false':
+      case "false":
         return Edges.trueEdge(`${source}${index}-false`, source, target);
-      case 'true':
+      case "true":
         return Edges.trueEdge(`${source}${index}-true`, source, target);
-      case 'default':
+      case "default":
         return Edges.defaultEdge(`${target}${index}`, source, target);
-      case 'falseAnimated':
+      case "falseAnimated":
         return Edges.falseAnimatedEdge(`${index}-falseAnimated`, source, target);
-      case 'trueAnimated':
+      case "trueAnimated":
         return Edges.trueAnimatedEdge(`${index}-trueAnimated`, source, target);
       default:
         throw new Error(`Invalid edge type: ${type}`);
@@ -254,9 +271,9 @@ class NodeArray {
 
   setIfConditionEdges(node: any, i: number): void {
     if (node.status) {
-      node.bgColor = '#67C083';
-      node.borderColor = '#67C083';
-      node.textColor = '#FFFFFF';
+      node.bgColor = "#67C083";
+      node.borderColor = "#67C083";
+      node.textColor = "#FFFFFF";
     }
   }
 
@@ -264,17 +281,17 @@ class NodeArray {
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const nextNode = nodes[i + 1];
-      if (node.id === 'start') {
-        const edge = this.createEdge('default', i, node.id, nodes[1].id);
+      if (node.id === "start") {
+        const edge = this.createEdge("default", i, node.id, nodes[1].id);
         node.edges.push(edge);
 
-        if (nextNode?.stepType === 'Add') {
+        if (nextNode?.stepType === "Add") {
           nextNode.targetNode = nodes[2].id;
         }
-      } else if (node.id === 'system.succeed' || node.id === 'system.fail') {
+      } else if (node.id === "system.succeed" || node.id === "system.fail") {
         // Nothing to do here
-      } else if (['IfCondition', 'IfElseCondition', 'False', 'True'].includes(node.stepType)) {
-        if (['IfCondition', 'IfElseCondition'].includes(node.stepType)) {
+      } else if (["IfCondition", "IfElseCondition", "False", "True"].includes(node.stepType)) {
+        if (["IfCondition", "IfElseCondition"].includes(node.stepType)) {
           node.connection_edges?.forEach((conn_edge: any) => {
             node.edges.push({
               id: `${node.id}-${conn_edge.name}`,
@@ -282,24 +299,24 @@ class NodeArray {
               target: conn_edge.target_id,
               data: conn_edge,
               custom_label: conn_edge.name,
-              disable_edge: true
+              disable_edge: true,
             });
           });
 
           this.setIfConditionEdges(node, i);
         }
-      } else if (nextNode?.stepType === 'Add') {
+      } else if (nextNode?.stepType === "Add") {
         nextNode.targetNode = node.targetNode;
         node.targetNode = nextNode.id;
-        const edge = this.createEdge('default', i, node.id, node.targetNode);
+        const edge = this.createEdge("default", i, node.id, node.targetNode);
         node.edges.push(edge);
       } else if (Array.isArray(node.targetNode) && node.targetNode.length > 0) {
         node.targetNode.forEach((target: string, j: number) => {
-          const edge = this.createEdge('default', `${i}-${j}`, node.id, target);
+          const edge = this.createEdge("default", `${i}-${j}`, node.id, target);
           node.edges.push(edge);
         });
       } else {
-        const edge = this.createEdge('default', i, node.id, node.targetNode);
+        const edge = this.createEdge("default", i, node.id, node.targetNode);
         node.edges.push(edge);
       }
     }
@@ -327,26 +344,23 @@ class NodeArray {
 
     const firstPosition: Position = {
       x: -this.nodes[0].position.x - 300 * 2,
-      y: this.nodes[0].position.y + (this.nodes[0].height / 2) - 40
+      y: this.nodes[0].position.y + this.nodes[0].height / 2 - 40,
     };
-    const start = Nodes.startNode('1', firstPosition);
-    start.borderColor = '#67c083';
+    const start = Nodes.startNode("1", firstPosition);
+    start.borderColor = "#67c083";
 
     this.nodes.splice(0, 0, start);
 
-    const endNodes = Nodes.endNodes(
-      String(this.nodes.length + 1),
-      this.calcPosition()
-    );
+    const endNodes = Nodes.endNodes(String(this.nodes.length + 1), this.calcPosition());
 
     endNodes.forEach((node) => {
       this.addNode(node);
     });
 
-    if (this.workflow_state === 'halted') {
+    if (this.workflow_state === "halted") {
       this.setHaltedNodeStyle();
-    } else if (this.workflow_state === 'completed') {
-      const node = this.nodes.find(node => node.id === 'system.succeed');
+    } else if (this.workflow_state === "completed") {
+      const node = this.nodes.find((node) => node.id === "system.succeed");
       if (node) {
         this.setSuccessNodeStyle(node);
       }
@@ -355,7 +369,8 @@ class NodeArray {
 
   addNode(node: any): void {
     if (!this.isProject) {
-      node.clickCallback = (clickedNode: any) => this.setStepPos({ x: clickedNode.position.x, y: clickedNode.position.y });
+      node.clickCallback = (clickedNode: any) =>
+        this.setStepPos({ x: clickedNode.position.x, y: clickedNode.position.y });
     }
     this.nodes.push(node);
   }
@@ -365,7 +380,7 @@ class NodeArray {
       if (transitions.hasOwnProperty(stepId)) {
         const step = transitions[stepId];
 
-        let type = 'automated';
+        let type = "automated";
         if (step.skill?.type) {
           type = step.skill.type;
         }
@@ -373,19 +388,19 @@ class NodeArray {
         const name = step.display_id;
         const connections = this.parseConnections(step);
 
-        if (step.name === 'IfCondition' || step.name === 'IfElseCondition') {
+        if (step.name === "IfCondition" || step.name === "IfElseCondition") {
           const ifConditionNode = Nodes.ifConditionNode({
             show_only: this.show_only,
             id: step.id,
             uniqueId: step.unique_id,
             position: step.position || this.calcPosition(),
             data: name,
-            status: step.next_step ? 'finished' : undefined,
+            status: step.next_step ? "finished" : undefined,
             nextStep: step.next_step,
             result: this.getIfconResult(step),
             rotation: "45",
             connection_edges: step.connection_edges,
-            project_id: this.projectId
+            project_id: this.projectId,
           });
 
           this.addNode(ifConditionNode);
@@ -399,21 +414,21 @@ class NodeArray {
   parseConnections(step: WorkflowTransition): string | string[] {
     let connections: string | string[];
 
-    if (step.name === 'IfCondition') {
-      let statement = step.step?.attributes?.statement || 'system.fail';
-      let elseStatement = step.step?.attributes?.else_statement || 'system.fail';
+    if (step.name === "IfCondition") {
+      let statement = step.step?.attributes?.statement || "system.fail";
+      let elseStatement = step.step?.attributes?.else_statement || "system.fail";
 
-      if (statement.includes('goTo(')) {
-        statement = statement.replace('goTo(', '').replace(')', '');
+      if (statement.includes("goTo(")) {
+        statement = statement.replace("goTo(", "").replace(")", "");
       }
 
-      if (elseStatement.includes('goTo(')) {
-        elseStatement = elseStatement.replace('goTo(', '').replace(')', '');
+      if (elseStatement.includes("goTo(")) {
+        elseStatement = elseStatement.replace("goTo(", "").replace(")", "");
       }
 
       connections = [statement, elseStatement];
     } else {
-      connections = Object.values(step.connections || {})[0] || '';
+      connections = Object.values(step.connections || {})[0] || "";
     }
     return connections;
   }
@@ -437,25 +452,25 @@ class NodeArray {
 
     const nodePosition = step.position || this.calcPosition();
 
-    if (type === 'human') {
+    if (type === "human") {
       const data = this.newStandardData(type, step);
       node = Nodes.standardNode(id, nodePosition, data);
 
-      if (step.name === 'Boolean' && this.isProject && step.has_output) {
+      if (step.name === "Boolean" && this.isProject && step.has_output) {
         resultNode = this.addBooleanNode(node, step, connections);
         connections = resultNode.id;
       }
-    } else if (type === 'api') {
+    } else if (type === "api") {
       const data = this.newAutomatedData(type, step);
       node = Nodes.automatedNode(id, nodePosition, data);
-    } else if (type === 'automated') {
+    } else if (type === "automated") {
       const data = this.newAutomatedData(type, step);
       node = Nodes.automatedNode(id, nodePosition, data);
-    } else if (type === 'loop') {
+    } else if (type === "loop") {
       const data = this.newLoopData(type, step);
       node = Nodes.loopNode(id, nodePosition, data);
     } else {
-      node = Nodes.standardNode(id, nodePosition, { html: '  ' });
+      node = Nodes.standardNode(id, nodePosition, { html: "  " });
     }
 
     if (step.position) {
@@ -470,13 +485,13 @@ class NodeArray {
       node.deletable = false;
     }
 
-    if (status === 'error' || status === 'halted') {
+    if (status === "error" || status === "halted") {
       this.setErrorNode(node);
     }
 
     node.targetNode = connections;
 
-    if (status === 'finished') {
+    if (status === "finished") {
       if (this.connected_to_end.includes(node.id)) {
         this.setFinishNode(node.position);
       } else {
@@ -496,21 +511,21 @@ class NodeArray {
   }
 
   setNodeStyle(node: any, status: string | null, type: string): any {
-    if (status === 'finished') {
-      if (type === 'api') {
-        node.borderColor = '#4BCDC4';
-        node.bgColor = '#BEF6F2';
+    if (status === "finished") {
+      if (type === "api") {
+        node.borderColor = "#4BCDC4";
+        node.bgColor = "#BEF6F2";
       } else {
-        node.bgColor = '#D3F6CF';
-        node.borderColor = '#67c083';
+        node.bgColor = "#D3F6CF";
+        node.borderColor = "#67c083";
       }
-    } else if (status === 'in_progress') {
-      if (type === 'api') {
-        node.borderColor = '#4BCDC4';
-        node.bgColor = 'white';
+    } else if (status === "in_progress") {
+      if (type === "api") {
+        node.borderColor = "#4BCDC4";
+        node.bgColor = "white";
       } else {
-        node.bgColor = 'white';
-        node.borderColor = '#67c083';
+        node.bgColor = "white";
+        node.borderColor = "#67c083";
       }
     }
 
@@ -527,12 +542,14 @@ class NodeArray {
     return { x: lastNodePosition.x + lastNode.width + 150, y: 0 };
   }
 
-  newGenerateStepHTML({ type, step, bottomHtml }: { type: string; step: WorkflowTransition; bottomHtml?: string }): { html: string } {
+  newGenerateStepHTML({ type, step, bottomHtml }: { type: string; step: WorkflowTransition; bottomHtml?: string }): {
+    html: string;
+  } {
     const status = this.getStatus(step);
     const rightIcon = this.setStatusIcon(step, type);
 
     const stepIcon = {
-      mainIcon: step?.custom_icon || step?.skill_icon || null
+      mainIcon: step?.custom_icon || step?.skill_icon || null,
     };
 
     const stepLog = step?.log;
@@ -542,9 +559,9 @@ class NodeArray {
     const jobDetails = this.getJobDetails(step);
     const parsed_completion_time = this.parseCompletionTime(jobDetails?.completion_time?.value || null);
     const startTime = jobDetails?.start_time || { value: "0:00" };
-    let stepType = '';
-    let time = '';
-    let stepIconHtml = '';
+    let stepType = "";
+    let time = "";
+    let stepIconHtml = "";
     const displayName = step.display_name;
 
     if (this.isAdmin && stepLog) {
@@ -555,7 +572,7 @@ class NodeArray {
       } else if (step?.custom_icon) {
         stepIconHtml = `<img class="step-img" src="${stepIcon.mainIcon}" alt="step icon" id="custom-icon" />`;
       } else {
-        if (status !== 'finished' && status !== 'in_progress') {
+        if (status !== "finished" && status !== "in_progress") {
           stepIconHtml = `<img class="step-img" src="${(stepIcon.mainIcon as any).default}" alt="step icon" />`;
         } else {
           stepIconHtml = `<img class="step-img" src="${(stepIcon.mainIcon as any).active}" alt="step icon" />`;
@@ -574,20 +591,20 @@ class NodeArray {
     let actionButton = ``;
     let debugButton = ``;
 
-    if (status === 'finished') {
+    if (status === "finished") {
       time = `<span class="workflow-step-time">${parsed_completion_time}</span>`;
       if (step.needs_human_review) {
         actionButton = `<a href="/admin/project_folders/${step.project_step_id}/review" data-turbo-frame="modal" class="workflow-step-action-item">Review Step</a>`;
       }
-    } else if (status === 'in_progress') {
-      if (!type || type === 'human') {
+    } else if (status === "in_progress") {
+      if (!type || type === "human") {
         actionButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#doJobs" data-project-step-id="${step.project_step_id}">Complete Jobs</div>`;
-      } else if (name === 'Prompt') {
+      } else if (name === "Prompt") {
         actionButton = `<a href="/admin/project_folders/${step.project_step_id}/prompt" data-turbo-frame="modal" class="workflow-step-action-item">Answer Prompt</a>`;
       }
       time = `<span class="workflow-step-time" data-start-time="${startTime.value}"></span>`;
       this.setTimer();
-    } else if (this.getStatus(step) === 'error') {
+    } else if (this.getStatus(step) === "error") {
       // Fix/Debug buttons removed - Rails-specific features not available in Hive
       // actionButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-workflow-id="${this.workflowId}">Fix</div>`;
       // debugButton = `<div class="workflow-step-action-item" data-action="click->project-buttons#redirectToDebugWorkflow" data-unique-id="${uniqueId}" data-workflow-version="${this.workflowVersion}" data-project-folder-id="${step.project_step_id}" data-workflow-id="${this.workflowId}">Debug</div>`;
@@ -598,7 +615,7 @@ class NodeArray {
 
     const idFull = id;
     if (id.length > 30) {
-      id = id.substring(0, 30) + '...';
+      id = id.substring(0, 30) + "...";
     }
     const sub = `<div class="workflow-name-container"><span class="workflow-step-name" title=${idFull}>Skill: ${displayName}</span><span class="workflow-step-name" title=${idFull}>Alias: ${id}</span></div>`;
     let menu: string;
@@ -606,13 +623,13 @@ class NodeArray {
 
     if (this.isProject) {
       menu = `<div class="workflow-step-actions-menu" data-unique-id="${uniqueId}">${actionButton}${debugButton}</div>`;
-      const step_class_detail = stepLog ? 'workflow-step-main-log' : 'workflow-step-main';
+      const step_class_detail = stepLog ? "workflow-step-main-log" : "workflow-step-main";
       // Step click navigation removed - Rails-specific modal not available in Hive
       // Clicking on steps no longer attempts to link to admin routes
       main = `<div class="workflow-step-main-log-container"><div class="${step_class_detail} workflow-show-modal">${stepIconHtml}</div></div>`;
-    } else if (this.mode === 'edit' || this.mode === 'alter') {
-      let copyButton = '';
-      if (this.mode === 'edit') {
+    } else if (this.mode === "edit" || this.mode === "alter") {
+      let copyButton = "";
+      if (this.mode === "edit") {
         copyButton = `<div class="step-action-item step-copy material-icons" data-action="click->workflow-buttons#copy"  data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" >content_copy</div>`;
       }
       const editButton = `<div class="step-menu-edit step-action-item" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${EditIcon}</div>`;
@@ -626,15 +643,15 @@ class NodeArray {
     const top = `<div class="workflow-top">${iconElement}${stepType}${time}</div>`;
     const subHead = `<div class="workflow-sub">${sub}${menu}</div>`;
 
-    const bottom = bottomHtml ? `<div class="workflow-step-bottom">${bottomHtml}</div>` : '';
+    const bottom = bottomHtml ? `<div class="workflow-step-bottom">${bottomHtml}</div>` : "";
 
-    if (type === 'automated' || type === 'api') {
+    if (type === "automated" || type === "api") {
       return {
         html: `${rightIcon}<div class="workflow-automated-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`,
       };
-    } else if (type === 'loop') {
+    } else if (type === "loop") {
       return {
-        html: `${rightIcon}<div class="workflow-standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`
+        html: `${rightIcon}<div class="workflow-standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`,
       };
     }
     const html = `${rightIcon}<div class="workflow-standard-template ${type}-${status}">${top}${subHead}${main}${bottom}</div>`;
@@ -648,7 +665,7 @@ class NodeArray {
     const status = this.getStatus(step);
     const jobDetails = this.getJobDetails(step);
     const childProjectId = step.step?.attributes?.workflow_id;
-    const childProjectName = step.step?.attributes?.workflow_name?.substring(0, 20) + '...';
+    const childProjectName = step.step?.attributes?.workflow_name?.substring(0, 20) + "...";
     // Rails admin links removed - display workflow name without clickable link
     const workflowDisplay = `<span class="workflow-number">${childProjectName}</span>`;
 
@@ -682,9 +699,9 @@ class NodeArray {
       loopTotal = `<div class="workflow-loop-total">${workflowDisplay} <span class="workflow-number">${total_projects.value} child processes</span></div>`;
     }
 
-    let percent = '';
+    let percent = "";
 
-    if (status === 'finished' || status === 'in_progress') {
+    if (status === "finished" || status === "in_progress") {
       percent = `<div class="workflow-percent workflow-active"><span class="workflow-percent-num">${perc}</span>%</div>`;
     } else if (childProjectId) {
       percent = ``;
@@ -721,21 +738,27 @@ class NodeArray {
       const avatars = jobDetails.account_nicknames?.value || [];
 
       for (let i = 0; i < numCircles; i++) {
-        if (status === 'finished') {
+        if (status === "finished") {
           if (avatars[i]) {
-            avatarElement.push(`<div class="workflow-complete_img"><img src="${avatars[i]}" class="workflow-completed" alt="avatar"><span class="material-icons check">check</span></div>`);
+            avatarElement.push(
+              `<div class="workflow-complete_img"><img src="${avatars[i]}" class="workflow-completed" alt="avatar"><span class="material-icons check">check</span></div>`,
+            );
           } else {
             avatarElement.push(`<span class="material-icons complete_img">check</span>`);
           }
         } else if (i < completedJobs) {
           if (avatars[i]) {
-            avatarElement.push(`<div class="workflow-complete_img"><img src="${avatars[i]}" class="workflow-completed" alt="avatar"><span class="material-icons check">check</span></div>`);
+            avatarElement.push(
+              `<div class="workflow-complete_img"><img src="${avatars[i]}" class="workflow-completed" alt="avatar"><span class="material-icons check">check</span></div>`,
+            );
           } else {
             avatarElement.push(`<span class="material-icons complete_img">check</span>`);
           }
         } else if (i >= completedJobs && i <= jobTotal - pending_jobs) {
           if (avatars[i]) {
-            avatarElement.push(`<div class="in_progress_img in_progress"><img src="${avatars[i]}" class="workflow-in_progress_avatar" alt="avatar"></div>`);
+            avatarElement.push(
+              `<div class="in_progress_img in_progress"><img src="${avatars[i]}" class="workflow-in_progress_avatar" alt="avatar"></div>`,
+            );
           } else {
             avatarElement.push(`<span class="material-icons in_progress_img in_progress">schedule</span>`);
           }
@@ -745,7 +768,7 @@ class NodeArray {
       }
     }
 
-    const bottomHtml = `<div class="workflow-step-bottom standard">${avatarElement.join('')}</div>`;
+    const bottomHtml = `<div class="workflow-step-bottom standard">${avatarElement.join("")}</div>`;
     return this.newGenerateStepHTML({ type: type, step: step, bottomHtml: bottomHtml });
   }
 
@@ -756,7 +779,7 @@ class NodeArray {
   setStatusIcon(step: WorkflowTransition, type: string): string {
     const status = this.getStatus(step);
 
-    let icon = '';
+    let icon = "";
     const pendingSVG = `
       <svg class="workflow-right-icon" width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M224 128C224 181.019 181.019 224 128 224C74.9807 224 32 181.019 32 128C32 74.9807 74.9807 32 128 32C181.019 32 224 74.9807 224 128Z" fill="white"/>
@@ -764,34 +787,34 @@ class NodeArray {
       </svg>
     `;
 
-    if (status === 'finished') {
+    if (status === "finished") {
       if (step.needs_human_review) {
         icon = WarningIcon;
       } else {
         icon = CheckBoxIcon;
       }
-    } else if (status === 'in_progress') {
-      if (step.name === 'Prompt') {
+    } else if (status === "in_progress") {
+      if (step.name === "Prompt") {
         icon = WarningIcon;
       } else {
         icon = pendingSVG;
       }
-    } else if (status === 'error') {
+    } else if (status === "error") {
       icon = ErrorIcon;
     }
 
-    if (icon === '') {
-      return '';
+    if (icon === "") {
+      return "";
     }
 
-    let element = '';
-    if (type === 'api') {
-      if (status === 'in_progress') {
+    let element = "";
+    if (type === "api") {
+      if (status === "in_progress") {
         icon = icon.replace('fill="#67C083"', 'fill="#4BCDC4"');
       }
     }
 
-    if (status === 'in_progress') {
+    if (status === "in_progress") {
       element = icon;
     } else {
       element = `<img class="workflow-right-icon" src="${icon}" />`;
@@ -804,8 +827,30 @@ class NodeArray {
     if (!step.status) {
       return null;
     }
-    const { completed_jobs, total_jobs, marked_correct, pending_jobs, account_nicknames, total_projects, completed_projects, completion_time, start_time, parsed_completion_time } = step.status.job_statuses || {};
-    return { completed_jobs, total_jobs, marked_correct, pending_jobs, account_nicknames, total_projects, completed_projects, completion_time, start_time, parsed_completion_time };
+    const {
+      completed_jobs,
+      total_jobs,
+      marked_correct,
+      pending_jobs,
+      account_nicknames,
+      total_projects,
+      completed_projects,
+      completion_time,
+      start_time,
+      parsed_completion_time,
+    } = step.status.job_statuses || {};
+    return {
+      completed_jobs,
+      total_jobs,
+      marked_correct,
+      pending_jobs,
+      account_nicknames,
+      total_projects,
+      completed_projects,
+      completion_time,
+      start_time,
+      parsed_completion_time,
+    };
   }
 
   getStatus(step: WorkflowTransition): string | null {
@@ -819,14 +864,14 @@ class NodeArray {
   }
 
   setIcon(type: string): string {
-    let icon = 'question_mark';
-    if (type === 'human') {
+    let icon = "question_mark";
+    if (type === "human") {
       icon = HumanIcon;
-    } else if (type === 'api') {
+    } else if (type === "api") {
       icon = ApiIcon;
-    } else if (type === 'automated') {
+    } else if (type === "automated") {
       icon = AutomatedIcon;
-    } else if (type === 'loop') {
+    } else if (type === "loop") {
       icon = AutomatedIcon;
     }
 
@@ -847,9 +892,11 @@ class NodeArray {
 
   humanize(str: string): string {
     return str
-      .replace(/^[\s_]+|[\s_]+$/g, '')
-      .replace(/[_\s]+/g, ' ')
-      .replace(/^[a-z]/, function (m) { return m.toUpperCase(); });
+      .replace(/^[\s_]+|[\s_]+$/g, "")
+      .replace(/[_\s]+/g, " ")
+      .replace(/^[a-z]/, function (m) {
+        return m.toUpperCase();
+      });
   }
 
   setPolyPreview(step: WorkflowTransition): string {
@@ -871,13 +918,19 @@ class NodeArray {
     return `<div class="poly-preview">${data} ${name}</div>`;
   }
 
-  generateFileNodes(step: WorkflowTransition, node: any, id: string, status: string | null, connections: string | string[]): void {
-    if (step.name === 'Polygon') {
+  generateFileNodes(
+    step: WorkflowTransition,
+    node: any,
+    id: string,
+    status: string | null,
+    connections: string | string[],
+  ): void {
+    if (step.name === "Polygon") {
       const data = this.setPolyPreview(step);
       const polyNode = Nodes.polyNode(`${id}-output`, this.calcPosition(), { html: data });
 
       polyNode.position.x = polyNode.position.x - 50;
-      polyNode.borderColor = '#67c083';
+      polyNode.borderColor = "#67c083";
       polyNode.targetNode = node.targetNode;
       node.targetNode = polyNode.id;
       this.addNode(polyNode);
@@ -917,16 +970,16 @@ class NodeArray {
         }
       } else {
         fileNode = Nodes.fileNode(`${id}-output-${i}`, this.calcPosition(), { html: file });
-        fileNode.position.y = firstFile.position.y - (i * 140);
+        fileNode.position.y = firstFile.position.y - i * 140;
         fileNode.position.x = firstFile.position.x;
         node.targetNode.push(fileNode.id);
       }
 
       fileNode.targetNode = connections;
 
-      if (status === 'finished') {
+      if (status === "finished") {
         this.setCompletedStepPos(fileNode.position);
-        fileNode.borderColor = '#67c083';
+        fileNode.borderColor = "#67c083";
       }
 
       this.addNode(fileNode);
@@ -938,7 +991,7 @@ class NodeArray {
 
     const position = {
       x: node.width + node.position.x + 90,
-      y: node.position.y + (node.height / 2 - 50)
+      y: node.position.y + (node.height / 2 - 50),
     };
 
     let output: boolean | undefined;
@@ -951,13 +1004,13 @@ class NodeArray {
     if (step.output) {
       output = step.output.value;
       if (output === true) {
-        bgColor = '#67c083';
-        borderColor = '#67c083';
+        bgColor = "#67c083";
+        borderColor = "#67c083";
         outputIcon = `<img src="${TrueCheck}" alt="yes icon" class="workflow-bool-output-icon">`;
         data = `<div class="workflow-bool-output">${outputIcon}<span class="workflow-bool-text">Yes</span></div>`;
       } else {
-        bgColor = '#9747FF';
-        borderColor = '#9747FF';
+        bgColor = "#9747FF";
+        borderColor = "#9747FF";
         outputIcon = `<img src="${FalseCross}" alt="no icon" class="workflow-bool-output-icon">`;
         data = `<div class="workflow-bool-output">${outputIcon}<span class="workflow-bool-text">No</span></div>`;
       }
@@ -974,7 +1027,7 @@ class NodeArray {
       result: output !== undefined ? String(output) : undefined,
       bgColor: bgColor,
       className: `bool-node-${output}`,
-      status: step.status?.step_state
+      status: step.status?.step_state,
     });
 
     if (textColor) {
@@ -989,17 +1042,17 @@ class NodeArray {
 
   parseCompletionTime(completionTime: number | null): string {
     if (completionTime === null) {
-      return '0:00';
+      return "0:00";
     }
 
-    const duration = moment.duration(completionTime, 'seconds');
+    const duration = moment.duration(completionTime, "seconds");
     const days = duration.days();
     const hours = duration.hours();
     const minutes = duration.minutes();
     const seconds = duration.seconds();
     const milliseconds = duration.milliseconds();
 
-    let timeString = '';
+    let timeString = "";
     if (days > 0) {
       timeString += `${days}d `;
     }
@@ -1012,12 +1065,12 @@ class NodeArray {
     if (seconds > 0) {
       timeString += `${seconds}s`;
     }
-    if (milliseconds > 0 && timeString === '') {
+    if (milliseconds > 0 && timeString === "") {
       timeString += `${parseInt(String(milliseconds))}ms`;
     }
 
-    if (timeString === '') {
-      return '0:00';
+    if (timeString === "") {
+      return "0:00";
     } else {
       return timeString;
     }
@@ -1037,7 +1090,7 @@ class NodeArray {
   }
 
   isProjectMode(): boolean {
-    return this.mode === 'project';
+    return this.mode === "project";
   }
 }
 

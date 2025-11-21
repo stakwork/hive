@@ -40,7 +40,9 @@ function VMCard({ vm }: { vm: VMData }) {
             <span className="font-mono text-sm font-medium truncate">{vm.subdomain}</span>
           </div>
           {vm.state === "pending" && (
-            <Badge variant="outline" className="text-xs">Pending</Badge>
+            <Badge variant="outline" className="text-xs">
+              Pending
+            </Badge>
           )}
         </div>
 
@@ -57,15 +59,13 @@ function VMCard({ vm }: { vm: VMData }) {
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">CPU</span>
-                <span className={`font-medium tabular-nums ${isHighUsage && cpuPercent > 70 ? 'text-amber-600' : ''}`}>
+                <span className={`font-medium tabular-nums ${isHighUsage && cpuPercent > 70 ? "text-amber-600" : ""}`}>
                   {cpuPercent.toFixed(1)}%
                 </span>
               </div>
               <div className="h-1 bg-muted rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all ${
-                    cpuPercent > 70 ? 'bg-amber-500' : 'bg-primary'
-                  }`}
+                  className={`h-full transition-all ${cpuPercent > 70 ? "bg-amber-500" : "bg-primary"}`}
                   style={{ width: `${Math.min(cpuPercent, 100)}%` }}
                 />
               </div>
@@ -74,15 +74,15 @@ function VMCard({ vm }: { vm: VMData }) {
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Memory</span>
-                <span className={`font-medium tabular-nums ${isHighUsage && memoryPercent > 70 ? 'text-amber-600' : ''}`}>
+                <span
+                  className={`font-medium tabular-nums ${isHighUsage && memoryPercent > 70 ? "text-amber-600" : ""}`}
+                >
                   {memoryPercent.toFixed(1)}%
                 </span>
               </div>
               <div className="h-1 bg-muted rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all ${
-                    memoryPercent > 70 ? 'bg-amber-500' : 'bg-primary'
-                  }`}
+                  className={`h-full transition-all ${memoryPercent > 70 ? "bg-amber-500" : "bg-primary"}`}
                   style={{ width: `${Math.min(memoryPercent, 100)}%` }}
                 />
               </div>

@@ -47,7 +47,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const phaseIds = useMemo(() => phases.map((phase) => phase.id), [phases]);
@@ -90,7 +90,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
 
   const handleUpdatePhase = async (
     phaseId: string,
-    updates: { name?: string; description?: string; status?: PhaseStatus }
+    updates: { name?: string; description?: string; status?: PhaseStatus },
   ) => {
     try {
       const response = await fetch(`/api/phases/${phaseId}`, {
@@ -105,9 +105,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
 
       const result = await response.json();
       if (result.success) {
-        const updatedPhases = phases.map((p) =>
-          p.id === phaseId ? result.data : p
-        );
+        const updatedPhases = phases.map((p) => (p.id === phaseId ? result.data : p));
         onUpdate(updatedPhases);
       }
     } catch (error) {
@@ -145,12 +143,10 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
     const newIndex = phases.findIndex((p) => p.id === over.id);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      const reorderedPhases = arrayMove(phases, oldIndex, newIndex).map(
-        (phase, index) => ({
-          ...phase,
-          order: index,
-        })
-      );
+      const reorderedPhases = arrayMove(phases, oldIndex, newIndex).map((phase, index) => ({
+        ...phase,
+        order: index,
+      }));
 
       // Optimistic update
       onUpdate(reorderedPhases);
@@ -162,14 +158,11 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
           order: index,
         }));
 
-        const response = await fetch(
-          `/api/features/${featureId}/phases/reorder`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phases: reorderData }),
-          }
-        );
+        const response = await fetch(`/api/features/${featureId}/phases/reorder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phases: reorderData }),
+        });
 
         if (!response.ok) {
           throw new Error("Failed to reorder phases");
@@ -249,9 +242,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
             iconOnly
           />
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          Organize work into phases with specific tickets.
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">Organize work into phases with specific tickets.</p>
       </div>
 
       {/* AI Suggestion Preview */}
@@ -277,12 +268,10 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
                       )}
                       <div className="flex-1">
                         <p className="text-sm font-medium">{phase.name}</p>
-                        {phase.description && (
-                          <p className="text-xs text-muted-foreground">{phase.description}</p>
-                        )}
+                        {phase.description && <p className="text-xs text-muted-foreground">{phase.description}</p>}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {phase.tasks.length} ticket{phase.tasks.length !== 1 ? 's' : ''}
+                        {phase.tasks.length} ticket{phase.tasks.length !== 1 ? "s" : ""}
                       </span>
                     </button>
 
@@ -298,12 +287,17 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
                                   <p className="text-xs text-muted-foreground mt-0.5">{ticket.description}</p>
                                 )}
                                 <div className="flex items-center gap-2 mt-1">
-                                  <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                    ticket.priority === "CRITICAL" ? "bg-red-100 text-red-700" :
-                                    ticket.priority === "HIGH" ? "bg-orange-100 text-orange-700" :
-                                    ticket.priority === "MEDIUM" ? "bg-blue-100 text-blue-700" :
-                                    "bg-gray-100 text-gray-700"
-                                  }`}>
+                                  <span
+                                    className={`text-xs px-1.5 py-0.5 rounded ${
+                                      ticket.priority === "CRITICAL"
+                                        ? "bg-red-100 text-red-700"
+                                        : ticket.priority === "HIGH"
+                                          ? "bg-orange-100 text-orange-700"
+                                          : ticket.priority === "MEDIUM"
+                                            ? "bg-blue-100 text-blue-700"
+                                            : "bg-gray-100 text-gray-700"
+                                    }`}
+                                  >
                                     {ticket.priority}
                                   </span>
                                   {ticket.dependsOn && ticket.dependsOn.length > 0 && (
@@ -325,12 +319,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
           </div>
 
           <div className="flex gap-2 justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAcceptAi}
-              disabled={accepting}
-            >
+            <Button size="sm" variant="outline" onClick={handleAcceptAi} disabled={accepting}>
               {accepting ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -338,12 +327,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
               )}
               Accept All
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleRejectAi}
-              disabled={accepting}
-            >
+            <Button size="sm" variant="ghost" onClick={handleRejectAi} disabled={accepting}>
               <X className="h-4 w-4 mr-2 text-red-600" />
               Reject
             </Button>
@@ -369,11 +353,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
               disabled={creatingPhase}
               className="flex-1"
             />
-            <Button
-              size="sm"
-              onClick={handleAddPhase}
-              disabled={creatingPhase || !newPhaseName.trim()}
-            >
+            <Button size="sm" onClick={handleAddPhase} disabled={creatingPhase || !newPhaseName.trim()}>
               {creatingPhase ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -387,11 +367,7 @@ export function PhaseSection({ featureId, workspaceSlug, phases, onUpdate }: Pha
 
           {/* Phases List */}
           {phases.length > 0 ? (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={phaseIds} strategy={verticalListSortingStrategy}>
                 <div className="px-4 pb-4 flex flex-col gap-2 overflow-hidden">
                   {phases

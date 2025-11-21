@@ -47,9 +47,7 @@ async function syncDoneTasksWorkflowStatus() {
     console.log(`✅ Successfully updated ${result.count} tasks`);
     console.log("\nUpdated tasks:");
     tasksToUpdate.forEach((task) => {
-      console.log(
-        `  - ${task.title} (${task.id}): ${task.workflowStatus} → COMPLETED`
-      );
+      console.log(`  - ${task.title} (${task.id}): ${task.workflowStatus} → COMPLETED`);
     });
   } catch (error) {
     console.error("Error syncing tasks:", error);

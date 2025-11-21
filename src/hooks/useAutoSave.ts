@@ -56,7 +56,7 @@ export function useAutoSave<T extends Record<string, unknown>>({ data, onSave }:
         }
       }
     },
-    [data, originalData, onSave]
+    [data, originalData, onSave],
   );
 
   // Manual baseline reset for full data updates (e.g., after server response)

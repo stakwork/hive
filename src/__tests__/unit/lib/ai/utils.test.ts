@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseOwnerRepo, buildFeatureContext } from "@/lib/ai/utils";
-import {
-  createMinimalFeatureData,
-  createCompleteFeatureData,
-} from "@/__tests__/support/fixtures";
+import { createMinimalFeatureData, createCompleteFeatureData } from "@/__tests__/support/fixtures";
 
 describe("ai/utils", () => {
   describe("parseOwnerRepo", () => {
@@ -129,7 +126,8 @@ describe("ai/utils", () => {
         brief: "Add Stripe payment processing",
         workspaceDesc: "\n\nWorkspace Context: E-commerce platform for online retail",
         personasText: "\n\nTarget Personas:\n- Customer\n- Admin\n- Developer",
-        userStoriesText: "\n\nUser Stories:\n- Customer can checkout with credit card\n- Admin can view payment history",
+        userStoriesText:
+          "\n\nUser Stories:\n- Customer can checkout with credit card\n- Admin can view payment history",
         requirementsText: "Must support credit cards and ACH payments",
         architectureText: "Use Stripe SDK with webhook handlers",
       });
@@ -157,7 +155,7 @@ describe("ai/utils", () => {
       const result = buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe(
-        "\n\nUser Stories:\n- User can sign in with Google\n- User can reset password via email\n- User can enable two-factor authentication"
+        "\n\nUser Stories:\n- User can sign in with Google\n- User can reset password via email\n- User can enable two-factor authentication",
       );
     });
 
@@ -321,11 +319,7 @@ describe("ai/utils", () => {
 
     it("should handle arrays with empty strings in user stories", () => {
       const featureData = createMinimalFeatureData({
-        userStories: [
-          { title: "Valid story" },
-          { title: "" },
-          { title: "Another valid story" },
-        ],
+        userStories: [{ title: "Valid story" }, { title: "" }, { title: "Another valid story" }],
       });
 
       const result = buildFeatureContext(featureData);
@@ -375,11 +369,7 @@ describe("ai/utils", () => {
 
     it("should handle arrays with whitespace-only strings in user stories", () => {
       const featureData = createMinimalFeatureData({
-        userStories: [
-          { title: "Valid story" },
-          { title: "  " },
-          { title: "\t" },
-        ],
+        userStories: [{ title: "Valid story" }, { title: "  " }, { title: "\t" }],
       });
 
       const result = buildFeatureContext(featureData);
@@ -440,7 +430,7 @@ describe("ai/utils", () => {
       const result = buildFeatureContext(featureData);
 
       expect(result.personasText).toBe(
-        "\n\nTarget Personas:\n- Developer (Senior)\n- Product Manager @ Company\n- Designer/UX Lead"
+        "\n\nTarget Personas:\n- Developer (Senior)\n- Product Manager @ Company\n- Designer/UX Lead",
       );
     });
 
@@ -456,7 +446,7 @@ describe("ai/utils", () => {
       const result = buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe(
-        "\n\nUser Stories:\n- User can: authenticate via OAuth 2.0\n- Admin can [manage] user permissions\n- User can export data (CSV/JSON format)"
+        "\n\nUser Stories:\n- User can: authenticate via OAuth 2.0\n- Admin can [manage] user permissions\n- User can export data (CSV/JSON format)",
       );
     });
 

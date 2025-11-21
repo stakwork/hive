@@ -1,5 +1,5 @@
-import ELK from 'elkjs/lib/elk.bundled.js';
-import { Node, Edge } from '@xyflow/react';
+import ELK from "elkjs/lib/elk.bundled.js";
+import { Node, Edge } from "@xyflow/react";
 
 // Create ELK instance
 const elk = new ELK();
@@ -48,7 +48,7 @@ interface EdgePath {
 }
 
 export const smartLayout = async (nodes: Node[], edges: Edge[]): Promise<Node[]> => {
-  console.log('Applying smart layout with edge-node clash prevention...');
+  console.log("Applying smart layout with edge-node clash prevention...");
 
   // Clone nodes to avoid modifying originals
   const nodesCopy: Node[] = JSON.parse(JSON.stringify(nodes));
@@ -63,55 +63,51 @@ export const smartLayout = async (nodes: Node[], edges: Edge[]): Promise<Node[]>
     // Step 3: Ensure edges don't cross through nodes
     return optimizeEdgePaths(noOverlapNodes, edges);
   } catch (error) {
-    console.error('Smart layout error:', error);
+    console.error("Smart layout error:", error);
     return nodesCopy;
   }
 };
 
 async function applyBasicLayout(nodes: Node[], edges: Edge[]): Promise<Node[]> {
   // Identify special nodes
-  const diamondNodes = nodes.filter(node =>
-    node.data?.stepType === 'IfCondition' ||
-    node.data?.stepType === 'IfElseCondition' ||
-    (typeof node.data?.className === 'string' && node.data.className.includes('diamond')) ||
-    (node.data?.bgColor === '#f5e8d5')
+  const diamondNodes = nodes.filter(
+    (node) =>
+      node.data?.stepType === "IfCondition" ||
+      node.data?.stepType === "IfElseCondition" ||
+      (typeof node.data?.className === "string" && node.data.className.includes("diamond")) ||
+      node.data?.bgColor === "#f5e8d5",
   );
 
-  const startNodes = nodes.filter(node =>
-    node.id === 'start'
-  );
+  const startNodes = nodes.filter((node) => node.id === "start");
 
-  const endNodes = nodes.filter(node =>
-    node.id === 'system.succeed' ||
-    node.id === 'system.fail'
-  );
+  const endNodes = nodes.filter((node) => node.id === "system.succeed" || node.id === "system.fail");
 
   // Create ELK graph with generous spacing
   const elkGraph: ElkGraph = {
-    id: 'root',
+    id: "root",
     layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': 'RIGHT',
-      'elk.spacing.nodeNode': '350',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '300',
-      'elk.spacing.edgeEdge': '180',
-      'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-      'elk.edgeRouting': 'ORTHOGONAL',
-      'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-      'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-      'elk.aspectRatio': '2.0',
-      'elk.padding': '[top=80, left=80, bottom=80, right=80]',
-      'elk.edgeLabels.inline': 'true',
-      'elk.layered.spacing.edgeNodeBetweenLayers': '150',
-      'elk.layered.spacing.edgeNode': '100',
-      'elk.layered.mergeEdges': 'true',
-      'elk.layered.thoroughness': '10',
+      "elk.algorithm": "layered",
+      "elk.direction": "RIGHT",
+      "elk.spacing.nodeNode": "350",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "300",
+      "elk.spacing.edgeEdge": "180",
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+      "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+      "elk.aspectRatio": "2.0",
+      "elk.padding": "[top=80, left=80, bottom=80, right=80]",
+      "elk.edgeLabels.inline": "true",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "150",
+      "elk.layered.spacing.edgeNode": "100",
+      "elk.layered.mergeEdges": "true",
+      "elk.layered.thoroughness": "10",
     },
-    children: nodes.map(node => {
+    children: nodes.map((node) => {
       // Determine if this is a special node type
-      const isDiamond = diamondNodes.some(n => n.id === node.id);
-      const isStart = startNodes.some(n => n.id === node.id);
-      const isEnd = endNodes.some(n => n.id === node.id);
+      const isDiamond = diamondNodes.some((n) => n.id === node.id);
+      const isStart = startNodes.some((n) => n.id === node.id);
+      const isEnd = endNodes.some((n) => n.id === node.id);
 
       // Set width and height based on node type
       const width: number = (node?.data?.width as number | undefined) || (isDiamond ? 170 : 200);
@@ -121,16 +117,16 @@ async function applyBasicLayout(nodes: Node[], edges: Edge[]): Promise<Node[]> {
       const nodeOptions: Record<string, string> = {};
 
       if (isStart) {
-        nodeOptions['elk.layered.layering.layerConstraint'] = 'FIRST';
+        nodeOptions["elk.layered.layering.layerConstraint"] = "FIRST";
       }
 
       if (isEnd) {
-        nodeOptions['elk.layered.layering.layerConstraint'] = 'LAST';
+        nodeOptions["elk.layered.layering.layerConstraint"] = "LAST";
       }
 
       if (isDiamond) {
-        nodeOptions['elk.padding'] = '[top=80, left=80, bottom=80, right=80]';
-        nodeOptions['elk.portConstraints'] = 'FREE';
+        nodeOptions["elk.padding"] = "[top=80, left=80, bottom=80, right=80]";
+        nodeOptions["elk.portConstraints"] = "FREE";
       }
 
       return {
@@ -142,23 +138,23 @@ async function applyBasicLayout(nodes: Node[], edges: Edge[]): Promise<Node[]> {
         layoutOptions: nodeOptions,
       };
     }),
-    edges: edges.map(edge => ({
+    edges: edges.map((edge) => ({
       id: edge.id,
       sources: [edge.source],
       targets: [edge.target],
       layoutOptions: {
-        'elk.edgeRouting': 'ORTHOGONAL',
-        'elk.layered.feedbackEdges': 'true',
-      }
+        "elk.edgeRouting": "ORTHOGONAL",
+        "elk.layered.feedbackEdges": "true",
+      },
     })),
   };
 
   // Run ELK layout
-  const layoutedGraph = await elk.layout(elkGraph) as { children?: ElkNode[] };
+  const layoutedGraph = (await elk.layout(elkGraph)) as { children?: ElkNode[] };
 
   // Apply positions to nodes
-  return nodes.map(node => {
-    const layoutedNode = layoutedGraph.children?.find(n => n.id === node.id);
+  return nodes.map((node) => {
+    const layoutedNode = layoutedGraph.children?.find((n) => n.id === node.id);
 
     if (layoutedNode) {
       return {
@@ -197,8 +193,8 @@ function fixNodeOverlaps(nodes: Node[]): Node[] {
 
         // Calculate overlap with additional safety margin
         const safetyMargin = 30;
-        const xOverlap = Math.abs(nodeA.position.x - nodeB.position.x) < (nodeSize.width + safetyMargin);
-        const yOverlap = Math.abs(nodeA.position.y - nodeB.position.y) < (nodeSize.height + safetyMargin);
+        const xOverlap = Math.abs(nodeA.position.x - nodeB.position.x) < nodeSize.width + safetyMargin;
+        const yOverlap = Math.abs(nodeA.position.y - nodeB.position.y) < nodeSize.height + safetyMargin;
 
         if (xOverlap && yOverlap) {
           foundOverlap = true;
@@ -240,7 +236,7 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
 
   // Create a node map for quick lookup
   const nodeMap: Record<string, NodeWithBounds> = {};
-  fixedNodes.forEach(node => {
+  fixedNodes.forEach((node) => {
     nodeMap[node.id] = {
       ...node,
       // Add boundary information
@@ -248,14 +244,14 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
         left: node.position.x,
         top: node.position.y,
         right: node.position.x + ((node.data?.width as number | undefined) || 200),
-        bottom: node.position.y + ((node.data?.height as number | undefined) || 120)
-      }
+        bottom: node.position.y + ((node.data?.height as number | undefined) || 120),
+      },
     };
   });
 
   // First pass: Identify problem edges that might cross nodes
   const edgePathMap: Record<string, EdgePath> = {};
-  edges.forEach(edge => {
+  edges.forEach((edge) => {
     const source = nodeMap[edge.source];
     const target = nodeMap[edge.target];
 
@@ -273,7 +269,7 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
       sourceCenterX,
       sourceCenterY,
       targetCenterX,
-      targetCenterY
+      targetCenterY,
     };
   });
 
@@ -300,19 +296,30 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
       left: node.bounds.left - safetyMargin,
       top: node.bounds.top - safetyMargin,
       right: node.bounds.right + safetyMargin,
-      bottom: node.bounds.bottom + safetyMargin
+      bottom: node.bounds.bottom + safetyMargin,
     };
 
     // Simple bounding box check first
-    if (Math.max(lineStartX, lineEndX) < nodeBounds.left ||
+    if (
+      Math.max(lineStartX, lineEndX) < nodeBounds.left ||
       Math.min(lineStartX, lineEndX) > nodeBounds.right ||
       Math.max(lineStartY, lineEndY) < nodeBounds.top ||
-      Math.min(lineStartY, lineEndY) > nodeBounds.bottom) {
+      Math.min(lineStartY, lineEndY) > nodeBounds.bottom
+    ) {
       return false;
     }
 
     // Helper function to check line segment intersection
-    const lineIntersects = (x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, x4: number, y4: number): boolean => {
+    const lineIntersects = (
+      x1: number,
+      y1: number,
+      x2: number,
+      y2: number,
+      x3: number,
+      y3: number,
+      x4: number,
+      y4: number,
+    ): boolean => {
       const den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
       if (den === 0) return false;
 
@@ -323,22 +330,62 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
     };
 
     // Check against each edge of the rectangle
-    if (lineIntersects(lineStartX, lineStartY, lineEndX, lineEndY,
-        nodeBounds.left, nodeBounds.top, nodeBounds.right, nodeBounds.top) ||
-      lineIntersects(lineStartX, lineStartY, lineEndX, lineEndY,
-        nodeBounds.right, nodeBounds.top, nodeBounds.right, nodeBounds.bottom) ||
-      lineIntersects(lineStartX, lineStartY, lineEndX, lineEndY,
-        nodeBounds.right, nodeBounds.bottom, nodeBounds.left, nodeBounds.bottom) ||
-      lineIntersects(lineStartX, lineStartY, lineEndX, lineEndY,
-        nodeBounds.left, nodeBounds.bottom, nodeBounds.left, nodeBounds.top)) {
+    if (
+      lineIntersects(
+        lineStartX,
+        lineStartY,
+        lineEndX,
+        lineEndY,
+        nodeBounds.left,
+        nodeBounds.top,
+        nodeBounds.right,
+        nodeBounds.top,
+      ) ||
+      lineIntersects(
+        lineStartX,
+        lineStartY,
+        lineEndX,
+        lineEndY,
+        nodeBounds.right,
+        nodeBounds.top,
+        nodeBounds.right,
+        nodeBounds.bottom,
+      ) ||
+      lineIntersects(
+        lineStartX,
+        lineStartY,
+        lineEndX,
+        lineEndY,
+        nodeBounds.right,
+        nodeBounds.bottom,
+        nodeBounds.left,
+        nodeBounds.bottom,
+      ) ||
+      lineIntersects(
+        lineStartX,
+        lineStartY,
+        lineEndX,
+        lineEndY,
+        nodeBounds.left,
+        nodeBounds.bottom,
+        nodeBounds.left,
+        nodeBounds.top,
+      )
+    ) {
       return true;
     }
 
     // Special case: line is completely inside node
-    if (lineStartX >= nodeBounds.left && lineStartX <= nodeBounds.right &&
-      lineStartY >= nodeBounds.top && lineStartY <= nodeBounds.bottom &&
-      lineEndX >= nodeBounds.left && lineEndX <= nodeBounds.right &&
-      lineEndY >= nodeBounds.top && lineEndY <= nodeBounds.bottom) {
+    if (
+      lineStartX >= nodeBounds.left &&
+      lineStartX <= nodeBounds.right &&
+      lineStartY >= nodeBounds.top &&
+      lineStartY <= nodeBounds.bottom &&
+      lineEndX >= nodeBounds.left &&
+      lineEndX <= nodeBounds.right &&
+      lineEndY >= nodeBounds.top &&
+      lineEndY <= nodeBounds.bottom
+    ) {
       return true;
     }
 
@@ -355,9 +402,9 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
     iterationCount++;
 
     // For each edge
-    edges.forEach(edge => {
+    edges.forEach((edge) => {
       // For each node (that is not part of this edge)
-      Object.keys(nodeMap).forEach(nodeId => {
+      Object.keys(nodeMap).forEach((nodeId) => {
         if (checkObstacles(edge, nodeId)) {
           const node = nodeMap[nodeId];
           const sourceCenterX = edgePathMap[edge.id].sourceCenterX;
@@ -379,8 +426,7 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
           const nodeCenterY = node.bounds.top + (node.bounds.bottom - node.bounds.top) / 2;
 
           // Make perpendicular vector point away from the edge
-          const dotProduct = perpVectorX * (nodeCenterX - sourceCenterX) +
-            perpVectorY * (nodeCenterY - sourceCenterY);
+          const dotProduct = perpVectorX * (nodeCenterX - sourceCenterX) + perpVectorY * (nodeCenterY - sourceCenterY);
           if (dotProduct < 0) {
             perpVectorX = -perpVectorX;
             perpVectorY = -perpVectorY;
@@ -390,7 +436,7 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
           const displacementAmount = 120;
 
           // Find the node in fixedNodes and update its position
-          const nodeIndex = fixedNodes.findIndex(n => n.id === nodeId);
+          const nodeIndex = fixedNodes.findIndex((n) => n.id === nodeId);
           if (nodeIndex >= 0) {
             fixedNodes[nodeIndex].position.x += perpVectorX * displacementAmount;
             fixedNodes[nodeIndex].position.y += perpVectorY * displacementAmount;
@@ -401,7 +447,7 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
               left: fixedNodes[nodeIndex].position.x,
               top: fixedNodes[nodeIndex].position.y,
               right: fixedNodes[nodeIndex].position.x + (node.bounds.right - node.bounds.left),
-              bottom: fixedNodes[nodeIndex].position.y + (node.bounds.bottom - node.bounds.top)
+              bottom: fixedNodes[nodeIndex].position.y + (node.bounds.bottom - node.bounds.top),
             };
 
             madeChanges = true;
@@ -412,22 +458,23 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
   }
 
   // Final step: Make sure diamond nodes have proper space for branches
-  const diamondNodes = fixedNodes.filter(node =>
-    node.data?.stepType === 'IfCondition' ||
-    node.data?.stepType === 'IfElseCondition' ||
-    (typeof node.data?.className === 'string' && node.data.className.includes('diamond')) ||
-    (node.data?.bgColor === '#f5e8d5')
+  const diamondNodes = fixedNodes.filter(
+    (node) =>
+      node.data?.stepType === "IfCondition" ||
+      node.data?.stepType === "IfElseCondition" ||
+      (typeof node.data?.className === "string" && node.data.className.includes("diamond")) ||
+      node.data?.bgColor === "#f5e8d5",
   );
 
-  diamondNodes.forEach(diamond => {
+  diamondNodes.forEach((diamond) => {
     // Find outgoing edges
-    const outEdges = edges.filter(edge => edge.source === diamond.id);
+    const outEdges = edges.filter((edge) => edge.source === diamond.id);
 
     // If this diamond has multiple outgoing edges
     if (outEdges.length > 1) {
       // Get target nodes
       const targetNodes = outEdges
-        .map(edge => fixedNodes.find(node => node.id === edge.target))
+        .map((edge) => fixedNodes.find((node) => node.id === edge.target))
         .filter((node): node is Node => node !== undefined);
 
       // If we have multiple targets, ensure they have vertical separation
@@ -438,7 +485,7 @@ function optimizeEdgePaths(nodes: Node[], edges: Edge[]): Node[] {
         // Ensure minimum vertical spacing of 300px between targets of a diamond
         const minSpace = 300;
         for (let i = 1; i < targetNodes.length; i++) {
-          const prevNode = targetNodes[i-1];
+          const prevNode = targetNodes[i - 1];
           const currNode = targetNodes[i];
 
           if (currNode.position.y - prevNode.position.y < minSpace) {

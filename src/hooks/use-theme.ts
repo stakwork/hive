@@ -22,8 +22,8 @@ export function useTheme() {
   };
 
   return {
-    theme,              // Original stored value (can be "system")
-    resolvedTheme,      // Always "light" or "dark"
+    theme, // Original stored value (can be "system")
+    resolvedTheme, // Always "light" or "dark"
     setTheme,
     toggleTheme,
     mounted,

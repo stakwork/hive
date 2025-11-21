@@ -19,15 +19,12 @@ export async function DELETE(request: NextRequest) {
       // Handle empty body or malformed JSON
       body = {};
     }
-    
+
     const { name } = body;
 
     // Validate required fields
     if (!name) {
-      return NextResponse.json(
-        { error: "Missing required field: name" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required field: name" }, { status: 400 });
     }
 
     const pool = await poolManagerService().deletePool({ name });
@@ -49,9 +46,6 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(
-      { error: "Failed to delete pool" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to delete pool" }, { status: 500 });
   }
 }

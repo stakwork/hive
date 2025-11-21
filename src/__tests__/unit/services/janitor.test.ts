@@ -88,7 +88,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -111,7 +119,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -139,7 +155,7 @@ describe("Janitor Service", () => {
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
       await expect(getOrCreateJanitorConfig("non-existent", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.WORKSPACE_NOT_FOUND
+        JANITOR_ERRORS.WORKSPACE_NOT_FOUND,
       );
 
       expect(db.janitorConfig.findUnique).not.toHaveBeenCalled();
@@ -151,13 +167,21 @@ describe("Janitor Service", () => {
         canRead: false,
         canWrite: false,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
       await expect(getOrCreateJanitorConfig("test-workspace", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.WORKSPACE_NOT_FOUND
+        JANITOR_ERRORS.WORKSPACE_NOT_FOUND,
       );
     });
   });
@@ -174,7 +198,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: true,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -206,7 +238,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: true,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -233,14 +273,22 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
-      await expect(
-        updateJanitorConfig("test-workspace", "user-1", { unitTestsEnabled: true })
-      ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+      await expect(updateJanitorConfig("test-workspace", "user-1", { unitTestsEnabled: true })).rejects.toThrow(
+        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS,
+      );
 
       expect(db.janitorConfig.findUnique).not.toHaveBeenCalled();
     });
@@ -255,9 +303,9 @@ describe("Janitor Service", () => {
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
-      await expect(
-        updateJanitorConfig("non-existent", "user-1", { unitTestsEnabled: true })
-      ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+      await expect(updateJanitorConfig("non-existent", "user-1", { unitTestsEnabled: true })).rejects.toThrow(
+        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS,
+      );
     });
   });
 
@@ -266,14 +314,22 @@ describe("Janitor Service", () => {
       const mockConfig = janitorMocks.createMockConfig({ unitTestsEnabled: true });
       const mockRun = janitorMocks.createMockRunWithConfig(
         { status: "RUNNING", stakworkProjectId: 12345 },
-        { unitTestsEnabled: true }
+        { unitTestsEnabled: true },
       );
       const mockValidation = {
         hasAccess: true,
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -311,7 +367,7 @@ describe("Janitor Service", () => {
         },
         include: expect.any(Object),
       });
-      
+
       // Verify ignoreDirs is included in the Stakwork payload
       expect(mockStakworkRequest).toHaveBeenCalledWith(
         "/projects",
@@ -325,9 +381,9 @@ describe("Janitor Service", () => {
               }),
             }),
           }),
-        })
+        }),
       );
-      
+
       expect(result.status).toBe("RUNNING");
       expect(result.stakworkProjectId).toBe(12345);
     });
@@ -338,14 +394,22 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
-      await expect(
-        createJanitorRun("test-workspace", "user-1", "INVALID_TYPE")
-      ).rejects.toThrow("Invalid janitor type: INVALID_TYPE");
+      await expect(createJanitorRun("test-workspace", "user-1", "INVALID_TYPE")).rejects.toThrow(
+        "Invalid janitor type: INVALID_TYPE",
+      );
     });
 
     test("should throw error when janitor type is disabled", async () => {
@@ -357,15 +421,23 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
 
-      await expect(
-        createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")
-      ).rejects.toThrow(JANITOR_ERRORS.JANITOR_DISABLED);
+      await expect(createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")).rejects.toThrow(
+        JANITOR_ERRORS.JANITOR_DISABLED,
+      );
     });
 
     test("should throw error when user lacks write permission", async () => {
@@ -374,14 +446,22 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: false,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
-      await expect(
-        createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")
-      ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+      await expect(createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")).rejects.toThrow(
+        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS,
+      );
     });
 
     test("should handle Stakwork integration failure", async () => {
@@ -392,7 +472,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -405,9 +493,9 @@ describe("Janitor Service", () => {
         stakworkRequest: vi.fn().mockRejectedValue(new Error("Stakwork API error")),
       } as any);
 
-      await expect(
-        createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")
-      ).rejects.toThrow("Failed to start janitor run: Stakwork API error");
+      await expect(createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")).rejects.toThrow(
+        "Failed to start janitor run: Stakwork API error",
+      );
 
       expect(db.janitorRun.update).toHaveBeenCalledWith({
         where: { id: mockRun.id },
@@ -432,7 +520,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -471,7 +567,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -507,7 +611,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -523,7 +635,7 @@ describe("Janitor Service", () => {
         expect.objectContaining({
           skip: 10,
           take: 10,
-        })
+        }),
       );
       expect(result.pagination).toEqual({
         page: 2,
@@ -541,14 +653,20 @@ describe("Janitor Service", () => {
         canRead: false,
         canWrite: false,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
-      await expect(getJanitorRuns("test-workspace", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.WORKSPACE_NOT_FOUND
-      );
+      await expect(getJanitorRuns("test-workspace", "user-1")).rejects.toThrow(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
     });
   });
 
@@ -564,7 +682,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -578,11 +704,7 @@ describe("Janitor Service", () => {
           workspaceId: mockValidation.workspace.id,
           status: "PENDING",
         },
-        orderBy: [
-          { status: "asc" },
-          { priority: "desc" },
-          { createdAt: "desc" },
-        ],
+        orderBy: [{ status: "asc" }, { priority: "desc" }, { createdAt: "desc" }],
         skip: 0,
         take: 10,
         include: expect.any(Object),
@@ -595,7 +717,7 @@ describe("Janitor Service", () => {
       const mockRecommendations = [
         janitorMocks.createMockRecommendationWithRun(
           { status: "ACCEPTED", priority: "HIGH" },
-          { janitorType: "UNIT_TESTS" }
+          { janitorType: "UNIT_TESTS" },
         ),
       ];
       const mockValidation = {
@@ -603,7 +725,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -638,7 +768,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
@@ -683,7 +821,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test-workspace",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
@@ -747,7 +893,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test-workspace",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
@@ -784,7 +938,7 @@ describe("Janitor Service", () => {
       janitorMockSetup.mockRecommendationNotFound(mockedDb);
 
       await expect(acceptJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND
+        JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND,
       );
     });
 
@@ -808,7 +962,7 @@ describe("Janitor Service", () => {
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
 
       await expect(acceptJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED
+        JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED,
       );
     });
 
@@ -833,14 +987,22 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: false,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test-workspace",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
       await expect(acceptJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS
+        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS,
       );
     });
 
@@ -865,16 +1027,24 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test-workspace",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockWorkspaceMemberExists(mockedDb, false);
 
-      await expect(
-        acceptJanitorRecommendation("rec-1", "user-1", { assigneeId: "non-member" })
-      ).rejects.toThrow(JANITOR_ERRORS.ASSIGNEE_NOT_MEMBER);
+      await expect(acceptJanitorRecommendation("rec-1", "user-1", { assigneeId: "non-member" })).rejects.toThrow(
+        JANITOR_ERRORS.ASSIGNEE_NOT_MEMBER,
+      );
     });
 
     test("should throw error when repository not found", async () => {
@@ -898,16 +1068,24 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test-workspace",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockRepositoryExists(mockedDb, false);
 
-      await expect(
-        acceptJanitorRecommendation("rec-1", "user-1", { repositoryId: "non-existent" })
-      ).rejects.toThrow(JANITOR_ERRORS.REPOSITORY_NOT_FOUND);
+      await expect(acceptJanitorRecommendation("rec-1", "user-1", { repositoryId: "non-existent" })).rejects.toThrow(
+        JANITOR_ERRORS.REPOSITORY_NOT_FOUND,
+      );
     });
   });
 
@@ -945,7 +1123,15 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: true,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test-workspace",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
@@ -983,7 +1169,7 @@ describe("Janitor Service", () => {
       janitorMockSetup.mockRecommendationNotFound(mockedDb);
 
       await expect(dismissJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND
+        JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND,
       );
     });
 
@@ -1007,7 +1193,7 @@ describe("Janitor Service", () => {
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
 
       await expect(dismissJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED
+        JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED,
       );
     });
 
@@ -1032,14 +1218,22 @@ describe("Janitor Service", () => {
         canRead: true,
         canWrite: false,
         canAdmin: false,
-        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        workspace: {
+          id: "ws-1",
+          name: "Test",
+          slug: "test-workspace",
+          ownerId: "owner-1",
+          description: null,
+          createdAt: TEST_DATE_ISO,
+          updatedAt: TEST_DATE_ISO,
+        },
       };
 
       janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
 
       await expect(dismissJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
-        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS
+        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS,
       );
     });
   });
@@ -1077,7 +1271,7 @@ describe("Janitor Service", () => {
       janitorMockSetup.mockTransactionSuccess(
         mockedDb,
         vi.fn().mockResolvedValue({}),
-        vi.fn().mockResolvedValue({ count: 2 })
+        vi.fn().mockResolvedValue({ count: 2 }),
       );
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
@@ -1101,7 +1295,7 @@ describe("Janitor Service", () => {
           workspaceSlug: "test-workspace",
           newRecommendationCount: 2,
           totalRecommendationCount: 2,
-        })
+        }),
       );
       expect(result.status).toBe("COMPLETED");
       expect(result.recommendationCount).toBe(2);
@@ -1176,9 +1370,7 @@ describe("Janitor Service", () => {
 
       vi.mocked(db.janitorRun.updateMany).mockResolvedValue({ count: 0 });
 
-      await expect(processJanitorWebhook(webhookPayload)).rejects.toThrow(
-        JANITOR_ERRORS.RUN_NOT_FOUND
-      );
+      await expect(processJanitorWebhook(webhookPayload)).rejects.toThrow(JANITOR_ERRORS.RUN_NOT_FOUND);
     });
 
     test("should handle webhook with no recommendations", async () => {
@@ -1200,7 +1392,7 @@ describe("Janitor Service", () => {
       janitorMockSetup.mockTransactionSuccess(
         mockedDb,
         vi.fn().mockResolvedValue({}),
-        vi.fn().mockResolvedValue({ count: 0 })
+        vi.fn().mockResolvedValue({ count: 0 }),
       );
 
       const result = await processJanitorWebhook(webhookPayload);
@@ -1235,7 +1427,7 @@ describe("Janitor Service", () => {
       janitorMockSetup.mockTransactionSuccess(
         mockedDb,
         vi.fn().mockResolvedValue({}),
-        vi.fn().mockResolvedValue({ count: 1 })
+        vi.fn().mockResolvedValue({ count: 1 }),
       );
       mockedPusherServer.trigger = vi.fn().mockRejectedValue(new Error("Pusher error"));
 

@@ -9,29 +9,19 @@ export default function NotFound() {
       <div className="max-w-lg w-full text-center space-y-8">
         {/* Main Error Display */}
         <div className="space-y-6">
-          <h1 className="text-8xl md:text-9xl font-bold text-muted-foreground/30">
-            404
-          </h1>
+          <h1 className="text-8xl md:text-9xl font-bold text-muted-foreground/30">404</h1>
 
           <div className="space-y-3">
-            <h2 className="text-2xl md:text-3xl font-bold">
-              Still waiting on design
-            </h2>
-            <p className="text-muted-foreground">
-              Every great feature starts with a 404.
-            </p>
+            <h2 className="text-2xl md:text-3xl font-bold">Still waiting on design</h2>
+            <p className="text-muted-foreground">Every great feature starts with a 404.</p>
           </div>
         </div>
 
         {/* PM Humor Card */}
         <Card className="bg-muted/20">
           <CardContent className="p-6">
-            <p className="text-sm italic text-muted-foreground">
-              &quot;It’s MVP for now—we’ll iterate later.&quot;
-            </p>
-            <p className="text-xs text-muted-foreground/70 mt-2">
-              — Never iterated again
-            </p>
+            <p className="text-sm italic text-muted-foreground">&quot;It’s MVP for now—we’ll iterate later.&quot;</p>
+            <p className="text-xs text-muted-foreground/70 mt-2">— Never iterated again</p>
           </CardContent>
         </Card>
 
@@ -54,8 +44,7 @@ export default function NotFound() {
 
         {/* Footer */}
         <p className="text-xs text-muted-foreground/60">
-          In loving memory of the feature this page was meant to be.{" "}
-          <Heart className="w-3 h-3 inline" />
+          In loving memory of the feature this page was meant to be. <Heart className="w-3 h-3 inline" />
         </p>
       </div>
     </div>

@@ -1,9 +1,12 @@
 // Function to fetch repository default branch using authenticated request
-export const getRepositoryDefaultBranch = async (repositoryUrl: string, workspaceSlug?: string): Promise<string | null> => {
+export const getRepositoryDefaultBranch = async (
+  repositoryUrl: string,
+  workspaceSlug?: string,
+): Promise<string | null> => {
   try {
     // Use our authenticated API endpoint to get repository info
     // Since we've already verified access, this should always work
-    const url = `/api/github/repository?repoUrl=${encodeURIComponent(repositoryUrl)}${workspaceSlug ? `&workspaceSlug=${encodeURIComponent(workspaceSlug)}` : ''}`;
+    const url = `/api/github/repository?repoUrl=${encodeURIComponent(repositoryUrl)}${workspaceSlug ? `&workspaceSlug=${encodeURIComponent(workspaceSlug)}` : ""}`;
     const response = await fetch(url);
 
     if (response.ok) {

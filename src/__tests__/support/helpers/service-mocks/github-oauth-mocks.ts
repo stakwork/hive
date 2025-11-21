@@ -57,14 +57,9 @@ export interface MockRepositoryOptions {
  */
 export function mockGitHubTokenExchange(
   mockFetch: ReturnType<typeof vi.fn>,
-  options: MockTokenExchangeOptions = {}
+  options: MockTokenExchangeOptions = {},
 ): void {
-  const {
-    accessToken = "ghu_test_access_token",
-    refreshToken,
-    error,
-    status = 200,
-  } = options;
+  const { accessToken = "ghu_test_access_token", refreshToken, error, status = 200 } = options;
 
   if (error || status !== 200) {
     mockFetch.mockResolvedValueOnce({
@@ -94,10 +89,7 @@ export function mockGitHubTokenExchange(
 /**
  * Mock GitHub user API response
  */
-export function mockGitHubUser(
-  mockFetch: ReturnType<typeof vi.fn>,
-  options: MockGitHubUserOptions = {}
-): void {
+export function mockGitHubUser(mockFetch: ReturnType<typeof vi.fn>, options: MockGitHubUserOptions = {}): void {
   const {
     id = 12345,
     login = "test-owner",
@@ -130,7 +122,7 @@ export function mockGitHubUser(
  */
 export function mockGitHubInstallations(
   mockFetch: ReturnType<typeof vi.fn>,
-  options: MockInstallationsOptions = {}
+  options: MockInstallationsOptions = {},
 ): void {
   const { installations = [], status = 200 } = options;
 
@@ -151,10 +143,7 @@ export function mockGitHubInstallations(
 /**
  * Mock GitHub repository API response
  */
-export function mockGitHubRepository(
-  mockFetch: ReturnType<typeof vi.fn>,
-  options: MockRepositoryOptions = {}
-): void {
+export function mockGitHubRepository(mockFetch: ReturnType<typeof vi.fn>, options: MockRepositoryOptions = {}): void {
   const {
     name = "test-repo",
     full_name = "test-owner/test-repo",
@@ -200,7 +189,7 @@ export function mockSuccessfulGitHubAppFlow(
     repoName?: string;
     repoFullName?: string;
     canPush?: boolean;
-  } = {}
+  } = {},
 ): void {
   const {
     accessToken = "ghu_test_access_token",

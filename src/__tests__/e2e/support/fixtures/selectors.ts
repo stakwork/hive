@@ -42,10 +42,10 @@ export const selectors = {
 
   // Workspace
   workspace: {
-    switcher: 'button', // Will be filtered by workspace name
-    nameInput: 'input.border-input.flex.h-9',
-    slugInput: 'input.border-input.flex.h-9',
-    descriptionTextarea: 'textarea.border-input.flex.field-sizing-content',
+    switcher: "button", // Will be filtered by workspace name
+    nameInput: "input.border-input.flex.h-9",
+    slugInput: "input.border-input.flex.h-9",
+    descriptionTextarea: "textarea.border-input.flex.field-sizing-content",
     updateButton: 'button:has-text("Update Workspace")',
     createButton: 'button:has-text("Create")',
   },
@@ -111,7 +111,7 @@ export const selectors = {
     taskCard: '[data-testid="task-card"]',
     connectRepoButton: 'button:has-text("Connect Repository")',
     taskListContainer: '[data-testid="task-card"]',
-    recentTasksHeading: 'text=/Recent Tasks|Tasks/i',
+    recentTasksHeading: "text=/Recent Tasks|Tasks/i",
   },
 
   // Dashboard
@@ -119,19 +119,19 @@ export const selectors = {
     vmSection: '[data-testid="vm-config-section"]',
     repoSection: '[data-testid="repository-card"]',
     coverageSection: '[data-testid="coverage-card"]',
-    recentTasksSection: 'text=/Recent Tasks|No tasks yet/i',
+    recentTasksSection: "text=/Recent Tasks|No tasks yet/i",
   },
 
   // Insights
   insights: {
-    coverageCard: 'text=/Test Coverage|Coverage/i',
-    testingSection: 'text=/Testing/i',
-    securitySection: 'text=/Security/i',
-    maintainabilitySection: 'text=/Maintainability/i',
-    recommendationsSection: 'text=/Recommendations|Recent/i',
-    unitTestJanitor: 'text=/Unit Tests|Unit Testing/i',
-    integrationTestJanitor: 'text=/Integration Tests|Integration Testing/i',
-    comingSoonBadge: 'text=/Coming Soon|Disabled/i',
+    coverageCard: "text=/Test Coverage|Coverage/i",
+    testingSection: "text=/Testing/i",
+    securitySection: "text=/Security/i",
+    maintainabilitySection: "text=/Maintainability/i",
+    recommendationsSection: "text=/Recommendations|Recent/i",
+    unitTestJanitor: "text=/Unit Tests|Unit Testing/i",
+    integrationTestJanitor: "text=/Integration Tests|Integration Testing/i",
+    comingSoonBadge: "text=/Coming Soon|Disabled/i",
     toggleButton: 'button[role="switch"], input[type="checkbox"]',
     acceptButton: 'button:has-text("Accept"), button[aria-label*="accept" i]',
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
@@ -139,7 +139,7 @@ export const selectors = {
 
   // Onboarding
   onboarding: {
-    welcomeText: 'text=/Welcome|Get Started|Create.*Workspace/i',
+    welcomeText: "text=/Welcome|Get Started|Create.*Workspace/i",
     nextButton: 'button:has-text("Next"), button:has-text("Continue")',
     backButton: 'button:has-text("Back"), button:has-text("Previous")',
     nameInput: 'input[name="name"], input[placeholder*="workspace" i]',
@@ -173,14 +173,14 @@ export const selectors = {
   // Calls
   calls: {
     startCallButton: 'button:has-text("Start Call")',
-    callRecordingsCard: 'text=/Call Recordings/i',
+    callRecordingsCard: "text=/Call Recordings/i",
   },
 
   // Common UI elements
   common: {
-    loader: 'text=/Loading/i',
-    errorMessage: 'text=/error|failed/i',
-    successMessage: 'text=/success|complete/i',
+    loader: "text=/Loading/i",
+    errorMessage: "text=/error|failed/i",
+    successMessage: "text=/success|complete/i",
     modalOverlay: '[role="dialog"], .modal',
     closeButton: 'button[aria-label="Close"], button:has-text("Close")',
   },
@@ -193,32 +193,27 @@ export const dynamicSelectors = {
   /**
    * Select workspace switcher by workspace name
    */
-  workspaceSwitcher: (workspaceName: string) =>
-    `button:has-text("${workspaceName}")`,
+  workspaceSwitcher: (workspaceName: string) => `button:has-text("${workspaceName}")`,
 
   /**
    * Select task by title
    */
-  taskByTitle: (title: string) =>
-    `text="${title}"`,
+  taskByTitle: (title: string) => `text="${title}"`,
 
   /**
    * Select page by title
    */
-  pageTitle: (title: string) =>
-    `h1:has-text("${title}")`,
+  pageTitle: (title: string) => `h1:has-text("${title}")`,
 
   /**
    * Select button by text
    */
-  buttonByText: (text: string) =>
-    `button:has-text("${text}")`,
+  buttonByText: (text: string) => `button:has-text("${text}")`,
 
   /**
    * Select link by text
    */
-  linkByText: (text: string) =>
-    `a:has-text("${text}")`,
+  linkByText: (text: string) => `a:has-text("${text}")`,
 
   workspaceMemberRowByUsername: (username: string) =>
     `[data-testid="workspace-member-row"][data-member-username="${username}"]`,

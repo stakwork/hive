@@ -49,7 +49,7 @@ describe("ensureUniqueWorkspaceSlug", () => {
       expect(result).toBe(baseSlug);
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledTimes(1);
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: baseSlug }
+        where: { slug: baseSlug },
       });
     });
 
@@ -61,7 +61,7 @@ describe("ensureUniqueWorkspaceSlug", () => {
 
       expect(result).toBe("");
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: "" }
+        where: { slug: "" },
       });
     });
 
@@ -73,7 +73,7 @@ describe("ensureUniqueWorkspaceSlug", () => {
 
       expect(result).toBe(baseSlug);
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: baseSlug }
+        where: { slug: baseSlug },
       });
     });
   });
@@ -81,7 +81,7 @@ describe("ensureUniqueWorkspaceSlug", () => {
   describe("Suffix increment scenarios", () => {
     test("should increment suffix when base slug exists once", async () => {
       const baseSlug = "existing-workspace";
-      
+
       // Mock first call returns existing workspace, second call returns null
       mockPrisma.workspace.findUnique
         .mockResolvedValueOnce({ id: "workspace-1", slug: baseSlug })
@@ -92,16 +92,16 @@ describe("ensureUniqueWorkspaceSlug", () => {
       expect(result).toBe(`${baseSlug}-2`);
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledTimes(2);
       expect(mockPrisma.workspace.findUnique).toHaveBeenNthCalledWith(1, {
-        where: { slug: baseSlug }
+        where: { slug: baseSlug },
       });
       expect(mockPrisma.workspace.findUnique).toHaveBeenNthCalledWith(2, {
-        where: { slug: `${baseSlug}-2` }
+        where: { slug: `${baseSlug}-2` },
       });
     });
 
     test("should increment suffix multiple times until unique", async () => {
       const baseSlug = "popular-workspace";
-      
+
       // Mock multiple existing workspaces
       mockPrisma.workspace.findUnique
         .mockResolvedValueOnce({ id: "workspace-1", slug: baseSlug })
@@ -114,20 +114,20 @@ describe("ensureUniqueWorkspaceSlug", () => {
       expect(result).toBe(`${baseSlug}-4`);
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledTimes(4);
       expect(mockPrisma.workspace.findUnique).toHaveBeenNthCalledWith(4, {
-        where: { slug: `${baseSlug}-4` }
+        where: { slug: `${baseSlug}-4` },
       });
     });
 
     test("should handle many iterations efficiently", async () => {
       const baseSlug = "very-popular-workspace";
       const maxIterations = 10;
-      
+
       // Mock workspace exists for first 9 attempts, unique on 10th
       for (let i = 0; i < maxIterations - 1; i++) {
         const expectedSlug = i === 0 ? baseSlug : `${baseSlug}-${i + 1}`;
         mockPrisma.workspace.findUnique.mockResolvedValueOnce({
           id: `workspace-${i + 1}`,
-          slug: expectedSlug
+          slug: expectedSlug,
         });
       }
       mockPrisma.workspace.findUnique.mockResolvedValueOnce(null);
@@ -147,13 +147,13 @@ describe("ensureUniqueWorkspaceSlug", () => {
       await ensureUniqueWorkspaceSlug(baseSlug);
 
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: baseSlug }
+        where: { slug: baseSlug },
       });
     });
 
     test("should handle database query with incremented slug", async () => {
       const baseSlug = "increment-test";
-      
+
       mockPrisma.workspace.findUnique
         .mockResolvedValueOnce({ id: "existing", slug: baseSlug })
         .mockResolvedValueOnce(null);
@@ -161,13 +161,13 @@ describe("ensureUniqueWorkspaceSlug", () => {
       await ensureUniqueWorkspaceSlug(baseSlug);
 
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: `${baseSlug}-2` }
+        where: { slug: `${baseSlug}-2` },
       });
     });
 
     test("should maintain correct call sequence", async () => {
       const baseSlug = "sequence-test";
-      
+
       mockPrisma.workspace.findUnique
         .mockResolvedValueOnce({ id: "1", slug: baseSlug })
         .mockResolvedValueOnce({ id: "2", slug: `${baseSlug}-2` })
@@ -179,26 +179,20 @@ describe("ensureUniqueWorkspaceSlug", () => {
       expect(calls).toEqual([
         [{ where: { slug: baseSlug } }],
         [{ where: { slug: `${baseSlug}-2` } }],
-        [{ where: { slug: `${baseSlug}-3` } }]
+        [{ where: { slug: `${baseSlug}-3` } }],
       ]);
     });
   });
 
   describe("Realistic workspace scenarios", () => {
     test("should handle typical user workspace naming patterns", async () => {
-      const scenarios = [
-        "john-doe-workspace",
-        "developer-workspace", 
-        "test-env",
-        "my-project-2024",
-        "stakgraph-dev"
-      ];
+      const scenarios = ["john-doe-workspace", "developer-workspace", "test-env", "my-project-2024", "stakgraph-dev"];
 
       for (const baseSlug of scenarios) {
         mockPrisma.workspace.findUnique.mockResolvedValueOnce(null);
-        
+
         const result = await ensureUniqueWorkspaceSlug(baseSlug);
-        
+
         expect(result).toBe(baseSlug);
       }
     });
@@ -206,7 +200,7 @@ describe("ensureUniqueWorkspaceSlug", () => {
     test("should handle workspace creation collision scenario", async () => {
       // Simulate real-world scenario where multiple users create similar workspaces
       const baseSlug = "my-awesome-project";
-      
+
       mockPrisma.workspace.findUnique
         .mockResolvedValueOnce({ id: "user1-workspace", slug: baseSlug })
         .mockResolvedValueOnce({ id: "user2-workspace", slug: `${baseSlug}-2` })
@@ -227,7 +221,7 @@ describe("ensureUniqueWorkspaceSlug", () => {
 
       expect(result).toBe(longSlug);
       expect(mockPrisma.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: longSlug }
+        where: { slug: longSlug },
       });
     });
 
@@ -256,9 +250,9 @@ describe("ensureUniqueWorkspaceSlug", () => {
     test("should properly await database queries", async () => {
       const baseSlug = "async-test";
       let queryResolved = false;
-      
+
       mockPrisma.workspace.findUnique.mockImplementation(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10)); // Small delay
+        await new Promise((resolve) => setTimeout(resolve, 10)); // Small delay
         queryResolved = true;
         return null;
       });
@@ -272,7 +266,7 @@ describe("ensureUniqueWorkspaceSlug", () => {
     test("should handle Promise rejections gracefully", async () => {
       const baseSlug = "error-test";
       const dbError = new Error("Database connection failed");
-      
+
       mockPrisma.workspace.findUnique.mockRejectedValueOnce(dbError);
 
       await expect(ensureUniqueWorkspaceSlug(baseSlug)).rejects.toThrow("Database connection failed");
@@ -292,12 +286,12 @@ describe("ensureUniqueWorkspaceSlug", () => {
     test("should call database exactly once per iteration", async () => {
       const baseSlug = "performance-test";
       const iterations = 5;
-      
+
       // Mock existing workspaces for first 4 calls, unique on 5th
       for (let i = 0; i < iterations - 1; i++) {
         mockPrisma.workspace.findUnique.mockResolvedValueOnce({
           id: `workspace-${i}`,
-          slug: i === 0 ? baseSlug : `${baseSlug}-${i + 1}`
+          slug: i === 0 ? baseSlug : `${baseSlug}-${i + 1}`,
         });
       }
       mockPrisma.workspace.findUnique.mockResolvedValueOnce(null);

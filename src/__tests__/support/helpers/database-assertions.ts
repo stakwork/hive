@@ -43,10 +43,7 @@ export async function expectWorkspaceNotExists(workspaceId: string): Promise<voi
  * @param workspaceId - Workspace ID to check
  * @param expectedCount - Expected number of active members
  */
-export async function expectMemberCount(
-  workspaceId: string,
-  expectedCount: number
-): Promise<void> {
+export async function expectMemberCount(workspaceId: string, expectedCount: number): Promise<void> {
   const members = await db.workspaceMember.findMany({
     where: { workspaceId, leftAt: null },
   });
@@ -62,7 +59,7 @@ export async function expectMemberCount(
 export async function expectMemberRole(
   workspaceId: string,
   userId: string,
-  expectedRole: WorkspaceRole
+  expectedRole: WorkspaceRole,
 ): Promise<void> {
   const member = await db.workspaceMember.findFirst({
     where: { workspaceId, userId, leftAt: null },
@@ -76,10 +73,7 @@ export async function expectMemberRole(
  * @param workspaceId - Workspace ID to check
  * @param userId - User ID to check
  */
-export async function expectMemberNotExists(
-  workspaceId: string,
-  userId: string
-): Promise<void> {
+export async function expectMemberNotExists(workspaceId: string, userId: string): Promise<void> {
   const member = await db.workspaceMember.findFirst({
     where: { workspaceId, userId, leftAt: null },
   });
@@ -91,10 +85,7 @@ export async function expectMemberNotExists(
  * @param workspaceId - Workspace ID to check
  * @param userId - User ID to check
  */
-export async function expectMemberExists(
-  workspaceId: string,
-  userId: string
-): Promise<void> {
+export async function expectMemberExists(workspaceId: string, userId: string): Promise<void> {
   const member = await db.workspaceMember.findFirst({
     where: { workspaceId, userId },
   });
@@ -106,10 +97,7 @@ export async function expectMemberExists(
  * @param workspaceId - Workspace ID to check
  * @param userId - User ID to check
  */
-export async function expectMemberLeft(
-  workspaceId: string,
-  userId: string
-): Promise<void> {
+export async function expectMemberLeft(workspaceId: string, userId: string): Promise<void> {
   const member = await db.workspaceMember.findFirst({
     where: { workspaceId, userId },
   });
@@ -148,7 +136,7 @@ export async function expectUserNotExists(userId: string): Promise<void> {
 export async function expectRepositoryStatus(
   workspaceId: string,
   repositoryUrl: string,
-  expectedStatus: string
+  expectedStatus: string,
 ): Promise<void> {
   const repository = await db.repository.findUnique({
     where: {

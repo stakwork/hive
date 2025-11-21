@@ -9,12 +9,7 @@ interface SaveIndicatorProps {
   saved: boolean;
 }
 
-export function SaveIndicator({
-  field,
-  savedField,
-  saving,
-  saved,
-}: SaveIndicatorProps) {
+export function SaveIndicator({ field, savedField, saving, saved }: SaveIndicatorProps) {
   // Show saved indicator if this field was saved
   const isSavedField = savedField === field;
 

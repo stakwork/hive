@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  encryptEnvVars,
-  decryptEnvVars,
-  isEncrypted,
-  EncryptionService,
-} from "@/lib/encryption";
+import { encryptEnvVars, decryptEnvVars, isEncrypted, EncryptionService } from "@/lib/encryption";
 
 describe("env var helpers", () => {
   it("encrypts and decrypts arrays of env vars", () => {

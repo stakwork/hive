@@ -1,20 +1,9 @@
 import { db } from "@/lib/db";
-import type {
-  Swarm,
-  User,
-  Workspace,
-  WorkspaceMember,
-} from "@prisma/client";
+import type { Swarm, User, Workspace, WorkspaceMember } from "@prisma/client";
 import type { WorkspaceRole } from "@/lib/auth/roles";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
-import {
-  createTestUser,
-  type CreateTestUserOptions,
-} from "./user";
-import {
-  createTestSwarm,
-  type CreateTestSwarmOptions,
-} from "./swarm";
+import { createTestUser, type CreateTestUserOptions } from "./user";
+import { createTestSwarm, type CreateTestSwarmOptions } from "./swarm";
 
 export interface CreateTestWorkspaceOptions {
   name?: string;
@@ -33,31 +22,23 @@ export interface CreateTestMembershipOptions {
   leftAt?: Date;
 }
 
-export async function createTestWorkspace(
-  options: CreateTestWorkspaceOptions,
-): Promise<Workspace> {
+export async function createTestWorkspace(options: CreateTestWorkspaceOptions): Promise<Workspace> {
   const uniqueId = generateUniqueId("workspace");
 
   return db.workspace.create({
     data: {
       name: options.name || `Test Workspace ${uniqueId}`,
-      description:
-        options.description === undefined ? null : options.description,
+      description: options.description === undefined ? null : options.description,
       slug: options.slug || `test-workspace-${uniqueId}`,
       ownerId: options.ownerId,
-      stakworkApiKey:
-        options.stakworkApiKey === undefined ? null : options.stakworkApiKey,
-      sourceControlOrgId:
-        options.sourceControlOrgId === undefined ? null : options.sourceControlOrgId,
-      repositoryDraft:
-        options.repositoryDraft === undefined ? null : options.repositoryDraft,
+      stakworkApiKey: options.stakworkApiKey === undefined ? null : options.stakworkApiKey,
+      sourceControlOrgId: options.sourceControlOrgId === undefined ? null : options.sourceControlOrgId,
+      repositoryDraft: options.repositoryDraft === undefined ? null : options.repositoryDraft,
     },
   });
 }
 
-export async function createTestMembership(
-  options: CreateTestMembershipOptions,
-): Promise<WorkspaceMember> {
+export async function createTestMembership(options: CreateTestMembershipOptions): Promise<WorkspaceMember> {
   return db.workspaceMember.create({
     data: {
       workspaceId: options.workspaceId,
@@ -120,13 +101,7 @@ export async function createTestWorkspaceScenario(
     stakworkApiKey: workspaceOverrides.stakworkApiKey ?? "test-api-key",
   });
 
-  const defaultRoles: WorkspaceRole[] = [
-    "ADMIN",
-    "PM",
-    "DEVELOPER",
-    "STAKEHOLDER",
-    "VIEWER",
-  ];
+  const defaultRoles: WorkspaceRole[] = ["ADMIN", "PM", "DEVELOPER", "STAKEHOLDER", "VIEWER"];
 
   const effectiveMemberBlueprints =
     memberBlueprints.length > 0

@@ -1,5 +1,5 @@
-import { createConsumer } from '@anycable/web';
-import type { WorkflowEditData } from '@/types/stakwork/websocket';
+import { createConsumer } from "@anycable/web";
+import type { WorkflowEditData } from "@/types/stakwork/websocket";
 
 class WorkflowEdit {
   private cable: ReturnType<typeof createConsumer>;
@@ -15,13 +15,13 @@ class WorkflowEdit {
 
   subscribe = (): void => {
     this.channel = this.cable.subscriptions.create(
-      { channel: 'WorkflowEditChannel', id: this.workflowId },
+      { channel: "WorkflowEditChannel", id: this.workflowId },
       {
         connected: this.connected,
         disconnected: this.disconnected,
         received: this.received,
         rejected: this.rejected,
-      }
+      },
     );
   };
 
@@ -39,7 +39,7 @@ class WorkflowEdit {
   };
 
   private rejected = (): void => {
-    console.warn('I was rejected! :(');
+    console.warn("I was rejected! :(");
   };
 }
 

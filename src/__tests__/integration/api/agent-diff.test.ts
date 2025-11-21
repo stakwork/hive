@@ -14,11 +14,7 @@ import {
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-  createTestTask,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario, createTestTask } from "@/__tests__/support/fixtures";
 
 // Mock external dependencies
 global.fetch = vi.fn();

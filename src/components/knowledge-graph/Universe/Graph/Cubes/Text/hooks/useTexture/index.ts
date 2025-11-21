@@ -1,31 +1,31 @@
-import { useEffect, useState } from 'react'
-import * as THREE from 'three' // Use * as THREE for consistency
-import { loader } from './constants'
+import { useEffect, useState } from "react";
+import * as THREE from "three"; // Use * as THREE for consistency
+import { loader } from "./constants";
 
 type MaterialRecord = {
-  texture: THREE.Texture
-  material: THREE.MeshStandardMaterial
-}
+  texture: THREE.Texture;
+  material: THREE.MeshStandardMaterial;
+};
 
-const cachedMaterials: Record<string, MaterialRecord> = {}
+const cachedMaterials: Record<string, MaterialRecord> = {};
 
 export const useTexture = (url: string) => {
-  const [texture, setTexture] = useState<THREE.Texture | null>(null)
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
   useEffect(() => {
     if (!url) {
-      setTexture(null)
+      setTexture(null);
 
-      return
+      return;
     }
 
-    const cachePath = url
+    const cachePath = url;
 
     // Check if texture is already cached
     if (cachedMaterials[cachePath]?.texture) {
-      setTexture(cachedMaterials[cachePath].texture)
+      setTexture(cachedMaterials[cachePath].texture);
 
-      return
+      return;
     }
 
     // Load texture and cache it
@@ -35,30 +35,30 @@ export const useTexture = (url: string) => {
         cachedMaterials[cachePath] = {
           texture: loadedTexture,
           material: new THREE.MeshStandardMaterial({ map: loadedTexture }),
-        }
+        };
 
-        setTexture(loadedTexture)
+        setTexture(loadedTexture);
       },
       undefined,
       () => {
-        setTexture(null) // Handle loading error
+        setTexture(null); // Handle loading error
       },
-    )
-  }, [url])
+    );
+  }, [url]);
 
   useEffect(
     () => () => {
       if (texture) {
         // Avoid disposing of cached textures
-        const isCached = Object.values(cachedMaterials).some((entry) => entry.texture === texture)
+        const isCached = Object.values(cachedMaterials).some((entry) => entry.texture === texture);
 
         if (!isCached) {
-          texture.dispose()
+          texture.dispose();
         }
       }
     },
     [texture],
-  )
+  );
 
-  return { texture }
-}
+  return { texture };
+};

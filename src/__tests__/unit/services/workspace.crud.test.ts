@@ -1,4 +1,8 @@
-import { TEST_DATE_ISO, workspaceMocks, workspaceMockSetup } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
+import {
+  TEST_DATE_ISO,
+  workspaceMocks,
+  workspaceMockSetup,
+} from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
 import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
 import { db } from "@/lib/db";
 import {
@@ -8,7 +12,7 @@ import {
   getUserWorkspaces,
   getWorkspaceBySlug,
   getWorkspacesByUserId,
-  updateWorkspace
+  updateWorkspace,
 } from "@/services/workspace";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -52,9 +56,7 @@ describe("Workspace CRUD Operations", () => {
     test("should throw error when workspace limit exceeded", async () => {
       mockedDb.workspace.count.mockResolvedValue(WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER);
 
-      await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(
-        WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
-      );
+      await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
       expect(db.workspace.count).toHaveBeenCalledWith({
         where: { ownerId: "user1", deleted: false },
@@ -66,18 +68,14 @@ describe("Workspace CRUD Operations", () => {
     test("should throw error for invalid slug", async () => {
       const invalidData = { ...mockWorkspaceData, slug: "invalid_slug" };
 
-      await expect(createWorkspace(invalidData)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
+      await expect(createWorkspace(invalidData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
     });
 
     test("should throw error if slug already exists", async () => {
       const existingWorkspace = workspaceMocks.createMockWorkspace({ id: "existing" });
       workspaceMockSetup.mockWorkspaceSlugExists(mockedDb, existingWorkspace);
 
-      await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS
-      );
+      await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
     });
 
     test("should handle Prisma unique constraint error", async () => {
@@ -85,9 +83,7 @@ describe("Workspace CRUD Operations", () => {
       mockedDb.workspace.findUnique.mockResolvedValue(null);
       workspaceMockSetup.mockPrismaError(mockedDb, "create");
 
-      await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS
-      );
+      await expect(createWorkspace(mockWorkspaceData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
     });
 
     test("should re-throw non-constraint errors", async () => {
@@ -153,8 +149,19 @@ describe("Workspace CRUD Operations", () => {
         where: { slug: "test-workspace", deleted: false },
         include: {
           owner: { select: { id: true, name: true, email: true } },
-          swarm: { select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true } },
-          repositories: { select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true } },
+          swarm: {
+            select: {
+              id: true,
+              status: true,
+              ingestRefId: true,
+              poolState: true,
+              containerFilesSetUp: true,
+              swarmUrl: true,
+            },
+          },
+          repositories: {
+            select: { id: true, name: true, repositoryUrl: true, branch: true, status: true, updatedAt: true },
+          },
         },
       });
       expect(result).toEqual({
@@ -244,8 +251,14 @@ describe("Workspace CRUD Operations", () => {
       mockedDb.workspaceMember.findMany
         .mockResolvedValueOnce(mockMemberships)
         .mockResolvedValueOnce([
-          { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" },
-          { workspaceId: "ws2" }, { workspaceId: "ws2" }, { workspaceId: "ws2" }
+          { workspaceId: "ws1" },
+          { workspaceId: "ws1" },
+          { workspaceId: "ws1" },
+          { workspaceId: "ws1" },
+          { workspaceId: "ws1" },
+          { workspaceId: "ws2" },
+          { workspaceId: "ws2" },
+          { workspaceId: "ws2" },
         ]);
 
       const result = await getUserWorkspaces("user1");
@@ -337,7 +350,7 @@ describe("Workspace CRUD Operations", () => {
       const mockWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
         { ownerId: "user1" },
         { id: "user1", name: "Owner", email: "owner@example.com" },
-        null
+        null,
       );
 
       workspaceMockSetup.mockWorkspaceWithOwnerAccess(mockedDb, mockWorkspace);
@@ -353,7 +366,7 @@ describe("Workspace CRUD Operations", () => {
           deleted: true,
           deletedAt: expect.any(Date),
           originalSlug: "test-workspace",
-          slug: expect.stringMatching(/^test-workspace-deleted-\d+$/)
+          slug: expect.stringMatching(/^test-workspace-deleted-\d+$/),
         },
       });
     });
@@ -361,21 +374,23 @@ describe("Workspace CRUD Operations", () => {
     test("should throw error if workspace not found", async () => {
       workspaceMockSetup.mockWorkspaceNotFound(mockedDb);
 
-      await expect(deleteWorkspaceBySlug("test-workspace", "user1"))
-        .rejects.toThrow("Workspace not found or access denied");
+      await expect(deleteWorkspaceBySlug("test-workspace", "user1")).rejects.toThrow(
+        "Workspace not found or access denied",
+      );
     });
 
     test("should throw error if user is not owner", async () => {
       const mockWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
         { ownerId: "different-user" },
         { id: "different-user", name: "Other Owner", email: "other@example.com" },
-        null
+        null,
       );
 
       workspaceMockSetup.mockWorkspaceWithMemberAccess(mockedDb, mockWorkspace, "ADMIN");
 
-      await expect(deleteWorkspaceBySlug("test-workspace", "user1"))
-        .rejects.toThrow("Only workspace owners can delete workspaces");
+      await expect(deleteWorkspaceBySlug("test-workspace", "user1")).rejects.toThrow(
+        "Only workspace owners can delete workspaces",
+      );
     });
   });
 
@@ -396,7 +411,7 @@ describe("Workspace CRUD Operations", () => {
           updatedAt: new Date("2023-01-01T00:00:00.000Z"),
         },
         { id: "user1", name: "User", email: "user@example.com" },
-        null
+        null,
       );
 
       const updatedWorkspace = workspaceMocks.createMockWorkspace({
@@ -453,18 +468,20 @@ describe("Workspace CRUD Operations", () => {
         description: "Updated description",
       };
 
-      await expect(updateWorkspace("nonexistent", "user1", updateData)).rejects.toThrow("Workspace not found or access denied");
+      await expect(updateWorkspace("nonexistent", "user1", updateData)).rejects.toThrow(
+        "Workspace not found or access denied",
+      );
     });
 
     test("should throw error if user is not OWNER or ADMIN", async () => {
       const mockWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
         { ownerId: "owner1" },
         { id: "owner1", name: "Owner", email: "owner@example.com" },
-        null
+        null,
       );
 
       workspaceMockSetup.mockWorkspaceUpdateScenario(mockedDb, mockWorkspace, mockWorkspace, {
-        memberRole: "DEVELOPER"
+        memberRole: "DEVELOPER",
       });
 
       const updateData = {
@@ -473,14 +490,16 @@ describe("Workspace CRUD Operations", () => {
         description: "Updated description",
       };
 
-      await expect(updateWorkspace("test-workspace", "user1", updateData)).rejects.toThrow("Only workspace owners and admins can update workspace settings");
+      await expect(updateWorkspace("test-workspace", "user1", updateData)).rejects.toThrow(
+        "Only workspace owners and admins can update workspace settings",
+      );
     });
 
     test("should validate new slug if slug is changing", async () => {
       const mockWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
         { slug: "original-slug", ownerId: "user1" },
         { id: "user1", name: "User", email: "user@example.com" },
-        null
+        null,
       );
 
       vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
@@ -492,18 +511,20 @@ describe("Workspace CRUD Operations", () => {
         description: "Test description",
       };
 
-      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_RESERVED);
+      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(
+        WORKSPACE_ERRORS.SLUG_RESERVED,
+      );
     });
 
     test("should throw error if new slug already exists", async () => {
       const mockWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
         { slug: "original-slug", ownerId: "user1" },
         { id: "user1", name: "User", email: "user@example.com" },
-        null
+        null,
       );
 
       workspaceMockSetup.mockWorkspaceUpdateScenario(mockedDb, mockWorkspace, mockWorkspace, {
-        slugExists: true
+        slugExists: true,
       });
 
       const updateData = {
@@ -512,7 +533,9 @@ describe("Workspace CRUD Operations", () => {
         description: "Test description",
       };
 
-      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
+      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(
+        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS,
+      );
     });
 
     test("should allow updating same slug (no change)", async () => {
@@ -523,7 +546,7 @@ describe("Workspace CRUD Operations", () => {
           ownerId: "user1",
         },
         { id: "user1", name: "User", email: "user@example.com" },
-        null
+        null,
       );
 
       const updatedWorkspace = workspaceMocks.createMockWorkspace({
@@ -550,7 +573,7 @@ describe("Workspace CRUD Operations", () => {
       const mockWorkspace = workspaceMocks.createMockWorkspaceWithRelations(
         { slug: "original-slug", ownerId: "user1" },
         { id: "user1", name: "User", email: "user@example.com" },
-        null
+        null,
       );
 
       vi.mocked(db.workspace.findFirst).mockResolvedValue(mockWorkspace);
@@ -565,7 +588,9 @@ describe("Workspace CRUD Operations", () => {
         description: "Test description",
       };
 
-      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
+      await expect(updateWorkspace("original-slug", "user1", updateData)).rejects.toThrow(
+        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS,
+      );
     });
   });
 });

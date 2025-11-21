@@ -69,15 +69,11 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "Setup",
-          tasks: [
-            { title: "Database", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Database", priority: "HIGH" as const, tempId: "T1", dependsOn: [] }],
         },
         {
           name: "Features",
-          tasks: [
-            { title: "Feature X", priority: "MEDIUM" as const, tempId: "T5", dependsOn: ["T1"] },
-          ],
+          tasks: [{ title: "Feature X", priority: "MEDIUM" as const, tempId: "T5", dependsOn: ["T1"] }],
         },
       ];
 
@@ -150,9 +146,7 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Independent Task", priority: "LOW" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Independent Task", priority: "LOW" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
@@ -249,15 +243,11 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "P1 Task", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "P1 Task", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
         {
           name: "Phase 2",
-          tasks: [
-            { title: "P2 Task", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
-          ],
+          tasks: [{ title: "P2 Task", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] }],
         },
       ];
 
@@ -297,9 +287,7 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
         },
         {
           name: "Phase 2",
-          tasks: [
-            { title: "T3", priority: "MEDIUM" as const, tempId: "T3", dependsOn: [] },
-          ],
+          tasks: [{ title: "T3", priority: "MEDIUM" as const, tempId: "T3", dependsOn: [] }],
         },
       ];
 
@@ -374,21 +362,15 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "Setup",
-          tasks: [
-            { title: "T1", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "T1", priority: "HIGH" as const, tempId: "T1", dependsOn: [] }],
         },
         {
           name: "Build",
-          tasks: [
-            { title: "T2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
-          ],
+          tasks: [{ title: "T2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] }],
         },
         {
           name: "Deploy",
-          tasks: [
-            { title: "T3", priority: "LOW" as const, tempId: "T3", dependsOn: [] },
-          ],
+          tasks: [{ title: "T3", priority: "LOW" as const, tempId: "T3", dependsOn: [] }],
         },
       ];
 
@@ -433,9 +415,7 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "New Phase",
-          tasks: [
-            { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
@@ -468,15 +448,11 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
-      await expect(
-        batchCreatePhasesWithTasks(feature.id, nonMember.id, phases)
-      ).rejects.toThrow("Access denied");
+      await expect(batchCreatePhasesWithTasks(feature.id, nonMember.id, phases)).rejects.toThrow("Access denied");
     });
 
     test("throws error when user not found", async () => {
@@ -499,15 +475,13 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
-      await expect(
-        batchCreatePhasesWithTasks(feature.id, "non-existent-user-id", phases)
-      ).rejects.toThrow("Access denied");
+      await expect(batchCreatePhasesWithTasks(feature.id, "non-existent-user-id", phases)).rejects.toThrow(
+        "Access denied",
+      );
     });
 
     test("throws error for non-existent feature", async () => {
@@ -516,15 +490,13 @@ describe("batchCreatePhasesWithTasks Service - Integration Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "T1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
-      await expect(
-        batchCreatePhasesWithTasks("non-existent-feature-id", user.id, phases)
-      ).rejects.toThrow("Feature not found");
+      await expect(batchCreatePhasesWithTasks("non-existent-feature-id", user.id, phases)).rejects.toThrow(
+        "Feature not found",
+      );
     });
   });
 });

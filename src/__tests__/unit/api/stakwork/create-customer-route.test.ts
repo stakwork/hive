@@ -14,7 +14,7 @@ vi.mock("next-auth/next", () => ({
 vi.mock("@/lib/service-factory", () => {
   const mockCreateCustomer = vi.fn();
   const mockCreateSecret = vi.fn();
-  
+
   return {
     stakworkService: vi.fn(() => ({
       createCustomer: mockCreateCustomer,
@@ -641,9 +641,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       mockSwarmFindFirst.mockResolvedValue(swarm);
 
       // First decryption returns JSON string, second decryption returns plaintext
-      mockDecryptField
-        .mockReturnValueOnce(JSON.stringify(firstEncryption))
-        .mockReturnValueOnce(plaintextSwarmKey);
+      mockDecryptField.mockReturnValueOnce(JSON.stringify(firstEncryption)).mockReturnValueOnce(plaintextSwarmKey);
 
       mockCreateSecret.mockResolvedValue({ success: true });
 
@@ -817,10 +815,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
       await POST(request);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error creating Stakwork customer:",
-        testError
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Error creating Stakwork customer:", testError);
 
       consoleErrorSpy.mockRestore();
     });

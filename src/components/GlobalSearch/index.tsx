@@ -12,13 +12,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
-import {
-  Circle,
-  CheckCircle,
-  Loader2,
-  AlertCircle,
-  XCircle
-} from "lucide-react";
+import { Circle, CheckCircle, Loader2, AlertCircle, XCircle } from "lucide-react";
 import type { SearchResponse, SearchResult } from "@/types/search";
 import type { TaskStatus, FeatureStatus, PhaseStatus } from "@prisma/client";
 
@@ -94,9 +88,7 @@ export function GlobalSearch() {
 
       setLoading(true);
       try {
-        const response = await fetch(
-          `/api/workspaces/${workspace.slug}/search?q=${encodeURIComponent(query)}`
-        );
+        const response = await fetch(`/api/workspaces/${workspace.slug}/search?q=${encodeURIComponent(query)}`);
 
         if (response.ok) {
           const data: SearchResponse = await response.json();
@@ -116,12 +108,15 @@ export function GlobalSearch() {
     return () => clearTimeout(timeoutId);
   }, [query, workspace?.slug]);
 
-  const handleSelect = useCallback((url: string) => {
-    setOpen(false);
-    setQuery("");
-    setResults(null);
-    router.push(url);
-  }, [router]);
+  const handleSelect = useCallback(
+    (url: string) => {
+      setOpen(false);
+      setQuery("");
+      setResults(null);
+      router.push(url);
+    },
+    [router],
+  );
 
   const handleOpenChange = useCallback((open: boolean) => {
     setOpen(open);
@@ -150,9 +145,7 @@ export function GlobalSearch() {
             <span className="font-medium truncate">{result.title}</span>
           </div>
           {result.metadata.featureTitle && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              in {result.metadata.featureTitle}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">in {result.metadata.featureTitle}</p>
           )}
         </div>
       </CommandItem>
@@ -161,11 +154,7 @@ export function GlobalSearch() {
 
   if (!workspace) return null;
 
-  const hasResults = results && (
-    results.tasks.length > 0 ||
-    results.features.length > 0 ||
-    results.phases.length > 0
-  );
+  const hasResults = results && (results.tasks.length > 0 || results.features.length > 0 || results.phases.length > 0);
 
   const showEmpty = query.length >= 2 && !loading && !hasResults;
 
@@ -173,11 +162,7 @@ export function GlobalSearch() {
 
   return (
     <CommandDialog open={open} onOpenChange={handleOpenChange}>
-      <CommandInput
-        placeholder="Search..."
-        value={query}
-        onValueChange={setQuery}
-      />
+      <CommandInput placeholder="Search..." value={query} onValueChange={setQuery} />
       <CommandList>
         {loading && (
           <div className="flex items-center justify-center py-6">
@@ -185,36 +170,26 @@ export function GlobalSearch() {
           </div>
         )}
 
-        {showEmpty && (
-          <CommandEmpty>No results found for "{query}"</CommandEmpty>
-        )}
+        {showEmpty && <CommandEmpty>No results found for "{query}"</CommandEmpty>}
 
         {!loading && hasResults && (
           <>
             {results.tasks.length > 0 && (
-              <CommandGroup heading="Tasks">
-                {results.tasks.map(renderResultItem)}
-              </CommandGroup>
+              <CommandGroup heading="Tasks">{results.tasks.map(renderResultItem)}</CommandGroup>
             )}
 
             {results.features.length > 0 && (
-              <CommandGroup heading="Features">
-                {results.features.map(renderResultItem)}
-              </CommandGroup>
+              <CommandGroup heading="Features">{results.features.map(renderResultItem)}</CommandGroup>
             )}
 
             {results.phases.length > 0 && (
-              <CommandGroup heading="Phases">
-                {results.phases.map(renderResultItem)}
-              </CommandGroup>
+              <CommandGroup heading="Phases">{results.phases.map(renderResultItem)}</CommandGroup>
             )}
           </>
         )}
 
         {query.length < 2 && !loading && (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            Type at least 2 characters to search
-          </div>
+          <div className="py-6 text-center text-sm text-muted-foreground">Type at least 2 characters to search</div>
         )}
       </CommandList>
     </CommandDialog>

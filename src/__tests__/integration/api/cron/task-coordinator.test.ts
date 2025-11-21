@@ -6,12 +6,12 @@ import { NextRequest } from "next/server";
 
 /**
  * Integration tests for Task Coordinator Cron Endpoint
- * 
+ *
  * Verifies:
  * 1. Orchestration - All 3 phases execute in correct order
  * 2. State Transitions - Real database updates (TODO → IN_PROGRESS → DONE/HALTED)
  * 3. Data Integrity - No loss/duplication, correct sourceType markers
- * 
+ *
  * Note: Mocks only external APIs (Stakwork, Pool Manager), uses real database
  */
 
@@ -41,14 +41,14 @@ vi.mock("@/config/services", () => ({
 // Mock Stakwork API responses (not the database layer)
 globalThis.fetch = vi.fn().mockImplementation((url: string) => {
   // Mock Stakwork API calls
-  if (url.includes('/projects')) {
+  if (url.includes("/projects")) {
     return Promise.resolve({
       ok: true,
       status: 200,
       json: async () => ({
         success: true,
         project_id: 123,
-        status: 'active'
+        status: "active",
       }),
     } as Response);
   }

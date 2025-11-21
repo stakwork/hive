@@ -18,11 +18,7 @@ export interface TaskCoordinatorExecutionResult {
 /**
  * Process ticket sweep - find and process eligible tasks assigned to TASK_COORDINATOR
  */
-async function processTicketSweep(
-  workspaceId: string,
-  workspaceSlug: string,
-  ownerId: string
-): Promise<boolean> {
+async function processTicketSweep(workspaceId: string, workspaceSlug: string, ownerId: string): Promise<boolean> {
   console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug}`);
 
   // Query for eligible tickets: TODO status, TASK_COORDINATOR assignee, no dependencies
@@ -145,9 +141,7 @@ export async function haltStaleAgentTasks(): Promise<{
         await haltTask(task.id);
 
         tasksHalted++;
-        console.log(
-          `[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - created at ${task.createdAt}`
-        );
+        console.log(`[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - created at ${task.createdAt}`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[HaltStaleAgentTasks] Error halting task ${task.id}:`, errorMessage);
@@ -158,9 +152,7 @@ export async function haltStaleAgentTasks(): Promise<{
       }
     }
 
-    console.log(
-      `[HaltStaleAgentTasks] Execution completed. Halted ${tasksHalted} tasks, ${errors.length} errors`
-    );
+    console.log(`[HaltStaleAgentTasks] Execution completed. Halted ${tasksHalted} tasks, ${errors.length} errors`);
 
     return {
       success: errors.length === 0,
@@ -204,10 +196,10 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       const haltResult = await haltStaleAgentTasks();
       console.log(`[TaskCoordinator] Halted ${haltResult.tasksHalted} stale agent tasks`);
       if (!haltResult.success) {
-        haltResult.errors.forEach(error => {
+        haltResult.errors.forEach((error) => {
           errors.push({
             workspaceSlug: "SYSTEM",
-            error: `Failed to halt task ${error.taskId}: ${error.error}`
+            error: `Failed to halt task ${error.taskId}: ${error.error}`,
           });
         });
       }
@@ -216,7 +208,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       console.error("[TaskCoordinator] Error halting stale tasks:", errorMessage);
       errors.push({
         workspaceSlug: "SYSTEM",
-        error: `Failed to halt stale tasks: ${errorMessage}`
+        error: `Failed to halt stale tasks: ${errorMessage}`,
       });
     }
 
@@ -224,11 +216,8 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
     const enabledWorkspaces = await db.workspace.findMany({
       where: {
         janitorConfig: {
-          OR: [
-            { recommendationSweepEnabled: true },
-            { ticketSweepEnabled: true }
-          ]
-        }
+          OR: [{ recommendationSweepEnabled: true }, { ticketSweepEnabled: true }],
+        },
       },
       include: {
         janitorConfig: true,
@@ -237,10 +226,10 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
           select: {
             id: true,
             name: true,
-            email: true
-          }
-        }
-      }
+            email: true,
+          },
+        },
+      },
     });
 
     console.log(`[TaskCoordinator] Found ${enabledWorkspaces.length} workspaces with Task Coordinator Sweeps enabled`);
@@ -262,14 +251,16 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
 
         const poolStatusResponse = await poolManagerService.getPoolStatus(
           workspace.swarm.id,
-          workspace.swarm.poolApiKey
+          workspace.swarm.poolApiKey,
         );
 
         const availablePods = poolStatusResponse.status.unusedVms;
         console.log(`[TaskCoordinator] Workspace ${workspace.slug} has ${availablePods} available pods`);
 
         if (availablePods <= 1) {
-          console.log(`[TaskCoordinator] Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`);
+          console.log(
+            `[TaskCoordinator] Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`,
+          );
           continue;
         }
 
@@ -278,11 +269,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         // Priority 1: Ticket Sweep (if enabled)
         if (workspace.janitorConfig?.ticketSweepEnabled) {
           try {
-            itemProcessed = await processTicketSweep(
-              workspace.id,
-              workspace.slug,
-              workspace.owner.id
-            );
+            itemProcessed = await processTicketSweep(workspace.id, workspace.slug, workspace.owner.id);
             if (itemProcessed) {
               tasksCreated++;
               console.log(`[TaskCoordinator] Processed ticket sweep for workspace ${workspace.slug}`);
@@ -292,7 +279,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
             console.error(`[TaskCoordinator] Ticket sweep failed for workspace ${workspace.slug}:`, errorMessage);
             errors.push({
               workspaceSlug: workspace.slug,
-              error: `Ticket sweep failed: ${errorMessage}`
+              error: `Ticket sweep failed: ${errorMessage}`,
             });
           }
         }
@@ -306,38 +293,42 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
                 status: "PENDING",
                 janitorRun: {
                   janitorConfig: {
-                    workspaceId: workspace.id
-                  }
-                }
+                    workspaceId: workspace.id,
+                  },
+                },
               },
               include: {
                 janitorRun: {
                   include: {
                     janitorConfig: {
                       include: {
-                        workspace: true
-                      }
-                    }
-                  }
-                }
+                        workspace: true,
+                      },
+                    },
+                  },
+                },
               },
               orderBy: [
                 {
-                  priority: "desc" // CRITICAL first, then HIGH, MEDIUM, LOW
+                  priority: "desc", // CRITICAL first, then HIGH, MEDIUM, LOW
                 },
                 {
-                  createdAt: "asc" // Oldest first for same priority
-                }
+                  createdAt: "asc", // Oldest first for same priority
+                },
               ],
-              take: 1 // Only process one recommendation at a time
+              take: 1, // Only process one recommendation at a time
             });
 
-            console.log(`[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`);
+            console.log(
+              `[TaskCoordinator] Found ${pendingRecommendations.length} pending recommendations for workspace ${workspace.slug}`,
+            );
 
             // Accept recommendations while reserving 1 pod (only processes when 2+ pods available)
             for (const recommendation of pendingRecommendations) {
               try {
-                console.log(`[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`);
+                console.log(
+                  `[TaskCoordinator] Auto-accepting recommendation ${recommendation.id} (${recommendation.priority}) for workspace ${workspace.slug}`,
+                );
 
                 // Use the existing acceptJanitorRecommendation service
                 const { acceptJanitorRecommendation } = await import("@/services/janitor");
@@ -347,38 +338,39 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
                   recommendation.id,
                   workspace.owner.id, // Use workspace owner as the accepting user
                   {}, // No specific assignee or repository
-                  "TASK_COORDINATOR" // Mark as auto-accepted by Task Coordinator
+                  "TASK_COORDINATOR", // Mark as auto-accepted by Task Coordinator
                 );
 
                 tasksCreated++;
                 itemProcessed = true;
                 console.log(`[TaskCoordinator] Successfully created task from recommendation ${recommendation.id}`);
-
               } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 console.error(`[TaskCoordinator] Failed to accept recommendation ${recommendation.id}:`, errorMessage);
                 errors.push({
                   workspaceSlug: workspace.slug,
-                  error: `Failed to accept recommendation ${recommendation.id}: ${errorMessage}`
+                  error: `Failed to accept recommendation ${recommendation.id}: ${errorMessage}`,
                 });
               }
             }
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`[TaskCoordinator] Recommendation sweep failed for workspace ${workspace.slug}:`, errorMessage);
+            console.error(
+              `[TaskCoordinator] Recommendation sweep failed for workspace ${workspace.slug}:`,
+              errorMessage,
+            );
             errors.push({
               workspaceSlug: workspace.slug,
-              error: `Recommendation sweep failed: ${errorMessage}`
+              error: `Recommendation sweep failed: ${errorMessage}`,
             });
           }
         }
-
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[TaskCoordinator] Error processing workspace ${workspace.slug}:`, errorMessage);
         errors.push({
           workspaceSlug: workspace.slug,
-          error: errorMessage
+          error: errorMessage,
         });
       }
     }
@@ -386,7 +378,9 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
     const endTime = new Date();
     const duration = endTime.getTime() - startTime.getTime();
 
-    console.log(`[TaskCoordinator] Execution completed in ${duration}ms. Processed ${workspacesProcessed} workspaces, created ${tasksCreated} tasks, ${errors.length} errors`);
+    console.log(
+      `[TaskCoordinator] Execution completed in ${duration}ms. Processed ${workspacesProcessed} workspaces, created ${tasksCreated} tasks, ${errors.length} errors`,
+    );
 
     return {
       success: errors.length === 0,
@@ -394,9 +388,8 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
       tasksCreated,
       errorCount: errors.length,
       errors,
-      timestamp: endTime.toISOString()
+      timestamp: endTime.toISOString(),
     };
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[TaskCoordinator] Critical error during execution:", errorMessage);
@@ -410,10 +403,10 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
         ...errors,
         {
           workspaceSlug: "SYSTEM",
-          error: `Critical execution error: ${errorMessage}`
-        }
+          error: `Critical execution error: ${errorMessage}`,
+        },
       ],
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 }

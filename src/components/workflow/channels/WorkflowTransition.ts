@@ -1,5 +1,5 @@
-import { createConsumer } from '@anycable/web';
-import type { WorkflowTransitionData } from '@/types/stakwork/websocket';
+import { createConsumer } from "@anycable/web";
+import type { WorkflowTransitionData } from "@/types/stakwork/websocket";
 
 class WorkflowTransition {
   // Configuration
@@ -24,13 +24,13 @@ class WorkflowTransition {
 
   subscribe = (): WorkflowTransition => {
     this.channel = this.cable.subscriptions.create(
-      { channel: 'WorkflowChannel', id: this.projectId },
+      { channel: "WorkflowChannel", id: this.projectId },
       {
         connected: this.connected,
         disconnected: this.disconnected,
         received: this.received,
         rejected: this.rejected,
-      }
+      },
     );
     return this;
   };

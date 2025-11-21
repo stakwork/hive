@@ -79,9 +79,8 @@ export const SynchronizedGraphComponent = ({
   height = "h-full",
   width = "w-full",
   currentTime = 0,
-  onTimeMarkerClick
+  onTimeMarkerClick,
 }: SynchronizedGraphComponentProps) => {
-
   return (
     <SynchronizedGraphComponentInner
       endpoint={propEndpoint}
@@ -102,7 +101,7 @@ const SynchronizedGraphComponentInner = ({
   height = "h-full",
   width = "w-full",
   currentTime = 0,
-  onTimeMarkerClick
+  onTimeMarkerClick,
 }: SynchronizedGraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
@@ -111,7 +110,7 @@ const SynchronizedGraphComponentInner = ({
 
   const requestRef = useRef<number | null>(null);
   const previousTimeRef = useRef<number | null>(null);
-  const nodesAndEdgesRef = useRef<{ nodes: Node[], edges: Link[] } | null>(null);
+  const nodesAndEdgesRef = useRef<{ nodes: Node[]; edges: Link[] } | null>(null);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
@@ -123,7 +122,7 @@ const SynchronizedGraphComponentInner = ({
   const setActiveFilterTab = useGraphStoreStandalone((s) => s.setActiveFilterTab);
 
   // Calculate markers from data
-  const calculateMarkers = useCallback((data: { nodes: Node[], edges: Link[] }): NodeWithTimestamp[] => {
+  const calculateMarkers = useCallback((data: { nodes: Node[]; edges: Link[] }): NodeWithTimestamp[] => {
     const edgesWithStart = data.edges
       .filter((e) => e?.properties?.start)
       .map((edge) => ({
@@ -138,7 +137,14 @@ const SynchronizedGraphComponentInner = ({
         const matchingEdge = edgesWithStart.find((ed) => node.ref_id === ed.source || node.ref_id === ed.target);
         return { ...node, start: matchingEdge?.start || 0 } as NodeWithTimestamp;
       })
-      .filter((node) => node && node.node_type !== 'Clip' && node.node_type !== 'Episode' && node.node_type !== 'Call' && node.node_type !== 'Show');
+      .filter(
+        (node) =>
+          node &&
+          node.node_type !== "Clip" &&
+          node.node_type !== "Episode" &&
+          node.node_type !== "Call" &&
+          node.node_type !== "Show",
+      );
 
     return markers;
   }, []);
@@ -149,7 +155,8 @@ const SynchronizedGraphComponentInner = ({
       if (previousTimeRef.current !== null) {
         const deltaTime = time - previousTimeRef.current;
 
-        if (deltaTime > 2000) { // Update every 2 seconds
+        if (deltaTime > 2000) {
+          // Update every 2 seconds
           if (nodesAndEdgesRef.current) {
             const { nodes, edges } = nodesAndEdgesRef.current;
 
@@ -163,7 +170,7 @@ const SynchronizedGraphComponentInner = ({
                 }
                 return [matches, remaining];
               },
-              [[], []]
+              [[], []],
             );
 
             const [matchingNodes, remainingNodes] = nodes.reduce<[Node[], Node[]]>(
@@ -175,7 +182,7 @@ const SynchronizedGraphComponentInner = ({
                 }
                 return [matches, remaining];
               },
-              [[], []]
+              [[], []],
             );
 
             nodesAndEdgesRef.current = {
@@ -185,14 +192,14 @@ const SynchronizedGraphComponentInner = ({
 
             if (matchingNodes.length || matchingLinks.length) {
               addNewNode({
-                nodes: matchingNodes.map(node => ({
+                nodes: matchingNodes.map((node) => ({
                   ...node,
                   x: 0,
                   y: 0,
                   z: 0,
-                  edge_count: 0
+                  edge_count: 0,
                 })),
-                edges: matchingLinks
+                edges: matchingLinks,
               });
             }
           }
@@ -263,31 +270,31 @@ const SynchronizedGraphComponentInner = ({
         if (!data.success) throw new Error("Failed to fetch nodes data");
 
         if (data.data?.nodes && data.data.nodes.length > 0) {
-          const nodesWithPosition = data.data.nodes.map(node => ({
+          const nodesWithPosition = data.data.nodes.map((node) => ({
             ...node,
             x: 0,
             y: 0,
             z: 0,
-            edge_count: 0
+            edge_count: 0,
           }));
 
           // Store data for time-based processing
           nodesAndEdgesRef.current = {
             nodes: nodesWithPosition,
-            edges: data.data.edges || []
+            edges: data.data.edges || [],
           };
 
           // Calculate and set markers
           const computedMarkers = calculateMarkers({
             nodes: nodesWithPosition,
-            edges: data.data.edges || []
+            edges: data.data.edges || [],
           });
           setMarkers(computedMarkers);
 
           // Add initial nodes to store
           addNewNode({
             nodes: nodesWithPosition,
-            edges: data.data.edges || []
+            edges: data.data.edges || [],
           });
         }
       } catch (err) {
@@ -301,103 +308,109 @@ const SynchronizedGraphComponentInner = ({
   }, [workspaceId, addNewNode, resetData, propEndpoint, calculateMarkers]);
 
   // Fetch data based on active filter tab
-  const fetchFilteredData = useCallback(async (tab: FilterTab) => {
-    if (!workspaceId) return;
+  const fetchFilteredData = useCallback(
+    async (tab: FilterTab) => {
+      if (!workspaceId) return;
 
-    resetData();
-    setNodesLoading(true);
+      resetData();
+      setNodesLoading(true);
 
-    try {
-      let requestUrl: string;
+      try {
+        let requestUrl: string;
 
-      switch (tab) {
-        case 'all':
-          // Use existing graph/search/latest endpoint
-          requestUrl = propEndpoint
-            ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}`
-            : `/api/swarm/jarvis/nodes?id=${workspaceId}`;
-          break;
+        switch (tab) {
+          case "all":
+            // Use existing graph/search/latest endpoint
+            requestUrl = propEndpoint
+              ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}`
+              : `/api/swarm/jarvis/nodes?id=${workspaceId}`;
+            break;
 
-        case 'code':
-          // Filter for code-related nodes
-          const codeNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel']);
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search`)}&node_type=${encodeURIComponent(codeNodeTypes)}`;
-          break;
+          case "code":
+            // Filter for code-related nodes
+            const codeNodeTypes = JSON.stringify(["Function", "Endpoint", "Page", "Datamodel"]);
+            requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search`)}&node_type=${encodeURIComponent(codeNodeTypes)}`;
+            break;
 
-        case 'comms':
-          // Filter for communication nodes
-          const commsNodeTypes = JSON.stringify(['Episode', 'Call', 'Message']);
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
-          break;
+          case "comms":
+            // Filter for communication nodes
+            const commsNodeTypes = JSON.stringify(["Episode", "Call", "Message"]);
+            requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
+            break;
 
-        case 'tasks':
-          // Fetch latest 10 tasks from tasks API
-          requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=10`;
-          const tasksResponse = await fetch(requestUrl);
-          const tasksData = await tasksResponse.json();
+          case "tasks":
+            // Fetch latest 10 tasks from tasks API
+            requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=10`;
+            const tasksResponse = await fetch(requestUrl);
+            const tasksData = await tasksResponse.json();
 
-          if (tasksData.success && Array.isArray(tasksData.data)) {
-            // Transform tasks to graph nodes
-            const taskNodes = tasksData.data.map((task: any) => ({
-              ref_id: task.id,
-              node_type: 'Task',
-              name: task.title,
-              label: task.title,
-              properties: {
+            if (tasksData.success && Array.isArray(tasksData.data)) {
+              // Transform tasks to graph nodes
+              const taskNodes = tasksData.data.map((task: any) => ({
+                ref_id: task.id,
+                node_type: "Task",
                 name: task.title,
-                description: task.description,
-                status: task.status,
-                priority: task.priority,
-              } as any,
-              x: 0,
-              y: 0,
-              z: 0,
-              edge_count: 0,
-            }));
+                label: task.title,
+                properties: {
+                  name: task.title,
+                  description: task.description,
+                  status: task.status,
+                  priority: task.priority,
+                } as any,
+                x: 0,
+                y: 0,
+                z: 0,
+                edge_count: 0,
+              }));
 
-            addNewNode({
-              nodes: taskNodes,
-              edges: [],
-            });
-          }
-          setNodesLoading(false);
-          return;
+              addNewNode({
+                nodes: taskNodes,
+                edges: [],
+              });
+            }
+            setNodesLoading(false);
+            return;
 
-        default:
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}`;
+          default:
+            requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}`;
+        }
+
+        const response = await fetch(requestUrl);
+        const data: ApiResponse = await response.json();
+
+        if (!data.success) throw new Error("Failed to fetch filtered data");
+
+        if (data.data?.nodes && data.data.nodes.length > 0) {
+          const nodesWithPosition = data.data.nodes.map((node: Node) => ({
+            ...node,
+            x: 0,
+            y: 0,
+            z: 0,
+            edge_count: 0,
+          }));
+
+          addNewNode({
+            nodes: nodesWithPosition,
+            edges: data.data.edges || [],
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load filtered data:", err);
+      } finally {
+        setNodesLoading(false);
       }
-
-      const response = await fetch(requestUrl);
-      const data: ApiResponse = await response.json();
-
-      if (!data.success) throw new Error("Failed to fetch filtered data");
-
-      if (data.data?.nodes && data.data.nodes.length > 0) {
-        const nodesWithPosition = data.data.nodes.map((node: Node) => ({
-          ...node,
-          x: 0,
-          y: 0,
-          z: 0,
-          edge_count: 0,
-        }));
-
-        addNewNode({
-          nodes: nodesWithPosition,
-          edges: data.data.edges || [],
-        });
-      }
-    } catch (err) {
-      console.error("Failed to load filtered data:", err);
-    } finally {
-      setNodesLoading(false);
-    }
-  }, [workspaceId, resetData, addNewNode, propEndpoint]);
+    },
+    [workspaceId, resetData, addNewNode, propEndpoint],
+  );
 
   // Handle filter tab changes
-  const handleTabChange = useCallback((tab: FilterTab) => {
-    setActiveFilterTab(tab);
-    fetchFilteredData(tab);
-  }, [setActiveFilterTab, fetchFilteredData]);
+  const handleTabChange = useCallback(
+    (tab: FilterTab) => {
+      setActiveFilterTab(tab);
+      fetchFilteredData(tab);
+    },
+    [setActiveFilterTab, fetchFilteredData],
+  );
 
   // Load initial data when filter tab changes
   useEffect(() => {
@@ -409,13 +422,15 @@ const SynchronizedGraphComponentInner = ({
   return (
     <div
       data-testid="synchronized-graph-component"
-      className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}
+      className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ""}`}
     >
       {/* Current Time Indicator */}
       {currentTime > 0 && (
         <div className="absolute top-4 left-4 z-10 bg-background/80 backdrop-blur-sm px-3 py-1 rounded-md text-sm">
           <span className="text-muted-foreground">Time: </span>
-          <span className="font-mono">{Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, '0')}</span>
+          <span className="font-mono">
+            {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")}
+          </span>
         </div>
       )}
 
@@ -462,9 +477,7 @@ const SynchronizedGraphComponentInner = ({
           </div>
         ) : !dataInitial?.nodes || dataInitial.nodes.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <div className="text-lg text-gray-300">
-              No synchronized data found
-            </div>
+            <div className="text-lg text-gray-300">No synchronized data found</div>
           </div>
         ) : (
           <Universe />

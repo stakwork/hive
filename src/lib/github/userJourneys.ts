@@ -28,10 +28,7 @@ interface E2eTestNode {
  * @param githubToken - User's GitHub access token
  * @returns PR status: open | merged | closed
  */
-export async function getPRStatus(
-  prUrl: string,
-  githubToken: string,
-): Promise<"open" | "merged" | "closed"> {
+export async function getPRStatus(prUrl: string, githubToken: string): Promise<"open" | "merged" | "closed"> {
   try {
     const octokit = new Octokit({ auth: githubToken });
 
@@ -72,10 +69,7 @@ export async function getPRStatus(
  * @param githubToken - User's GitHub access token
  * @returns Array of file paths changed in PR
  */
-export async function getPRChangedFiles(
-  prUrl: string,
-  githubToken: string,
-): Promise<string[]> {
+export async function getPRChangedFiles(prUrl: string, githubToken: string): Promise<string[]> {
   try {
     const octokit = new Octokit({ auth: githubToken });
 
@@ -167,11 +161,7 @@ export async function matchTaskToGraphViaPR(
 
     // Filter to test files (common E2E patterns)
     const testFiles = changedFiles.filter(
-      (file) =>
-        file.includes("e2e") ||
-        file.includes("test") ||
-        file.includes(".spec.") ||
-        file.includes(".test."),
+      (file) => file.includes("e2e") || file.includes("test") || file.includes(".spec.") || file.includes(".test."),
     );
 
     console.log("[matchTaskToGraphViaPR] Found test files in PR", {

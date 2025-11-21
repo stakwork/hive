@@ -26,12 +26,10 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{ hasAccess: bool
 };
 
 export function RepositoryAccessChecker({ repositoryUrl, onAccessResult }: RepositoryAccessCheckerProps) {
-
   useEffect(() => {
     if (!repositoryUrl) return;
 
     const checkAccess = async () => {
-
       try {
         const result = await checkRepositoryAccess(repositoryUrl);
         onAccessResult(result.hasAccess, result.error);

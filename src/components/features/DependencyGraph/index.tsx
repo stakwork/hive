@@ -80,19 +80,16 @@ export function DependencyGraph<T extends GraphEntity>({
         onNodeClick(node.id);
       }
     },
-    [onNodeClick]
+    [onNodeClick],
   );
 
-  const CustomNode = useCallback(
-    ({ data }: { data: T }) => <>{renderNode(data)}</>,
-    [renderNode]
-  );
+  const CustomNode = useCallback(({ data }: { data: T }) => <>{renderNode(data)}</>, [renderNode]);
 
   const nodeTypes = useMemo(
     () => ({
       customNode: CustomNode,
     }),
-    [CustomNode]
+    [CustomNode],
   );
 
   if (entities.length === 0) {
@@ -105,9 +102,7 @@ export function DependencyGraph<T extends GraphEntity>({
     );
   }
 
-  const hasDependencies = entities.some(
-    (entity) => getDependencies(entity).length > 0
-  );
+  const hasDependencies = entities.some((entity) => getDependencies(entity).length > 0);
 
   if (!hasDependencies) {
     return (
@@ -155,26 +150,12 @@ export function DependencyGraph<T extends GraphEntity>({
               orient="auto"
               markerUnits="userSpaceOnUse"
             >
-              <polygon
-                points="0 0, 20 10, 0 20, 5 10"
-                fill="#3b82f6"
-                stroke="#3b82f6"
-                strokeWidth="1"
-              />
+              <polygon points="0 0, 20 10, 0 20, 5 10" fill="#3b82f6" stroke="#3b82f6" strokeWidth="1" />
             </marker>
           </defs>
         </svg>
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={20}
-          size={1.5}
-          color="#94a3b8"
-        />
-        <Controls
-          showZoom={true}
-          showFitView={true}
-          showInteractive={false}
-        />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1.5} color="#94a3b8" />
+        <Controls showZoom={true} showFitView={true} showInteractive={false} />
       </ReactFlow>
     </div>
   );

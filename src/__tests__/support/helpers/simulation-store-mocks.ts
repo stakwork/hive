@@ -1,6 +1,6 @@
-import { vi } from 'vitest'
-import * as d3Force from 'd3-force-3d'
-import { useGraphStore } from '@/stores/useGraphStore'
+import { vi } from "vitest";
+import * as d3Force from "d3-force-3d";
+import { useGraphStore } from "@/stores/useGraphStore";
 
 /**
  * Creates a mock simulation object with chained methods for testing
@@ -8,28 +8,28 @@ import { useGraphStore } from '@/stores/useGraphStore'
 export function createMockSimulation(mockNodes: any[] = [], mockLinks: any[] = []) {
   const mockLinkForce = {
     links: vi.fn().mockReturnValue(mockLinks),
-  }
+  };
 
   return {
-    nodes: vi.fn().mockImplementation(function(nodes?: any) {
+    nodes: vi.fn().mockImplementation(function (nodes?: any) {
       if (arguments.length === 0) {
-        return mockNodes
+        return mockNodes;
       }
-      return this
+      return this;
     }),
-    force: vi.fn().mockImplementation(function(name: string, forceValue?: any) {
+    force: vi.fn().mockImplementation(function (name: string, forceValue?: any) {
       if (arguments.length === 2) {
-        return this
+        return this;
       }
-      if (name === 'link') {
-        return mockLinkForce
+      if (name === "link") {
+        return mockLinkForce;
       }
-      return null
+      return null;
     }),
     on: vi.fn().mockReturnThis(),
     alpha: vi.fn().mockReturnThis(),
     restart: vi.fn().mockReturnThis(),
-  }
+  };
 }
 
 /**
@@ -45,7 +45,7 @@ export function createMockForces() {
     collide: vi.fn().mockReturnThis(),
     radial: vi.fn().mockReturnThis(),
     center: vi.fn().mockReturnThis(),
-  }
+  };
 }
 
 /**
@@ -63,16 +63,14 @@ export function createMockNodes(count: number = 2) {
     vx: 5 * (i + 1),
     vy: 10 * (i + 1),
     vz: 15 * (i + 1),
-  }))
+  }));
 }
 
 /**
  * Creates mock link data for testing
  */
-export function createMockLinks(nodeIds: string[] = ['node1', 'node2']) {
-  return [
-    { source: { ref_id: nodeIds[0] }, target: { ref_id: nodeIds[1] } },
-  ]
+export function createMockLinks(nodeIds: string[] = ["node1", "node2"]) {
+  return [{ source: { ref_id: nodeIds[0] }, target: { ref_id: nodeIds[1] } }];
 }
 
 /**
@@ -81,81 +79,80 @@ export function createMockLinks(nodeIds: string[] = ['node1', 'node2']) {
 export function setupD3ForceMocks(mockForces: ReturnType<typeof createMockForces>) {
   vi.mocked(d3Force.forceManyBody).mockReturnValue({
     strength: vi.fn().mockReturnValue(mockForces.charge),
-  } as any)
+  } as any);
 
   vi.mocked(d3Force.forceX).mockReturnValue({
     strength: vi.fn().mockReturnValue(mockForces.x),
-  } as any)
+  } as any);
 
   vi.mocked(d3Force.forceY).mockReturnValue({
     strength: vi.fn().mockReturnValue(mockForces.y),
-  } as any)
+  } as any);
 
   vi.mocked(d3Force.forceZ).mockReturnValue({
     strength: vi.fn().mockReturnValue(mockForces.z),
-  } as any)
+  } as any);
 
   const mockLinkForceInstance = {
     links: vi.fn().mockReturnThis(),
     strength: vi.fn().mockReturnThis(),
     distance: vi.fn().mockReturnThis(),
     id: vi.fn().mockReturnThis(),
-  }
+  };
 
-  vi.mocked(d3Force.forceLink).mockReturnValue(mockLinkForceInstance as any)
+  vi.mocked(d3Force.forceLink).mockReturnValue(mockLinkForceInstance as any);
 
   vi.mocked(d3Force.forceCollide).mockReturnValue({
     radius: vi.fn().mockReturnThis(),
     strength: vi.fn().mockReturnThis(),
     iterations: vi.fn().mockReturnValue(mockForces.collide),
-  } as any)
+  } as any);
 
   vi.mocked(d3Force.forceRadial).mockReturnValue({
     strength: vi.fn().mockReturnValue(mockForces.radial),
-  } as any)
+  } as any);
 
   vi.mocked(d3Force.forceCenter).mockReturnValue({
     strength: vi.fn().mockReturnValue(mockForces.center),
-  } as any)
+  } as any);
 }
 
 /**
  * Sets up mock graph store with neighbourhoods and graph style
  */
-export function setupMockGraphStore(
-  neighbourhoods: any[] = [],
-  graphStyle: string = 'force'
-) {
+export function setupMockGraphStore(neighbourhoods: any[] = [], graphStyle: string = "force") {
   vi.mocked(useGraphStore.getState).mockReturnValue({
     neighbourhoods,
     graphStyle,
     setGraphRadius: vi.fn(),
     setGraphStyle: vi.fn(),
     highlightNodes: [],
-  } as any)
+  } as any);
 }
 
 /**
  * Creates a complete mock setup for simulation store tests
  * This is a convenience function that combines all the individual setup functions
  */
-export function setupSimulationStoreMocks(options: {
-  nodeCount?: number
-  graphStyle?: string
-  neighbourhoods?: any[]
-} = {}) {
-  const mockNodes = createMockNodes(options.nodeCount || 2)
-  const mockLinks = createMockLinks()
-  const mockForces = createMockForces()
-  const mockSimulation = createMockSimulation(mockNodes, mockLinks)
+export function setupSimulationStoreMocks(
+  options: {
+    nodeCount?: number;
+    graphStyle?: string;
+    neighbourhoods?: any[];
+  } = {},
+) {
+  const mockNodes = createMockNodes(options.nodeCount || 2);
+  const mockLinks = createMockLinks();
+  const mockForces = createMockForces();
+  const mockSimulation = createMockSimulation(mockNodes, mockLinks);
 
-  setupD3ForceMocks(mockForces)
-  setupMockGraphStore(options.neighbourhoods || [], options.graphStyle || 'force')
+  setupD3ForceMocks(mockForces);
+  setupMockGraphStore(options.neighbourhoods || [], options.graphStyle || "force");
 
   return {
     mockSimulation,
     mockForces,
     mockNodes,
     mockLinks,
-  }
+  };
 }

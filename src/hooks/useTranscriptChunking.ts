@@ -56,7 +56,7 @@ export function useTranscriptChunking({
         console.error("Error sending transcript chunk:", error);
       }
     },
-    [workspaceSlug]
+    [workspaceSlug],
   );
 
   // Check if we should send a chunk based on pause and word count

@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  StakworkRunType,
-  StakworkRunDecision,
-  WorkflowStatus,
-} from "@prisma/client";
+import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/client";
 
 // Stakwork-specific types and interfaces
 export interface StakworkResponse {
@@ -97,9 +93,7 @@ export const StakworkRunQuerySchema = z.object({
 // Type inference from Zod schemas
 export type CreateStakworkRunInput = z.infer<typeof CreateStakworkRunSchema>;
 export type StakworkRunWebhookPayload = z.infer<typeof StakworkRunWebhookSchema>;
-export type UpdateStakworkRunDecisionInput = z.infer<
-  typeof UpdateStakworkRunDecisionSchema
->;
+export type UpdateStakworkRunDecisionInput = z.infer<typeof UpdateStakworkRunDecisionSchema>;
 export type StakworkRunQuery = z.infer<typeof StakworkRunQuerySchema>;
 
 // API Response types

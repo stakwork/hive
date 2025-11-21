@@ -18,20 +18,14 @@ export async function signCookie(value: string): Promise<string> {
   const messageData = encoder.encode(value);
 
   // Import key for HMAC
-  const key = await crypto.subtle.importKey(
-    "raw",
-    keyData,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
+  const key = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 
   // Sign the message
   const signatureBuffer = await crypto.subtle.sign("HMAC", key, messageData);
 
   // Convert to hex string
   const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-  const signature = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const signature = signatureArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
   return `${value}.${signature}`;
 }
@@ -74,17 +68,11 @@ export async function verifyCookie(signedValue: string): Promise<boolean> {
     const keyData = encoder.encode(secret);
     const messageData = encoder.encode(timestamp);
 
-    const key = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
+    const key = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 
     const expectedSignatureBuffer = await crypto.subtle.sign("HMAC", key, messageData);
     const expectedSignatureArray = Array.from(new Uint8Array(expectedSignatureBuffer));
-    const expectedSignature = expectedSignatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const expectedSignature = expectedSignatureArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
     // Constant-time comparison
     return constantTimeCompare(signature, expectedSignature);
@@ -104,8 +92,8 @@ export async function verifyCookie(signedValue: string): Promise<boolean> {
 export function constantTimeCompare(a: string, b: string): boolean {
   // If lengths differ, still compare to prevent timing leaks
   const maxLength = Math.max(a.length, b.length);
-  const paddedA = a.padEnd(maxLength, '\0');
-  const paddedB = b.padEnd(maxLength, '\0');
+  const paddedA = a.padEnd(maxLength, "\0");
+  const paddedB = b.padEnd(maxLength, "\0");
 
   let result = 0;
   for (let i = 0; i < maxLength; i++) {
@@ -121,9 +109,5 @@ export function constantTimeCompare(a: string, b: string): boolean {
  */
 export function isLandingPageEnabled(): boolean {
   const landingPassword = process.env.LANDING_PAGE_PASSWORD;
-  return (
-    process.env.NODE_ENV !== "test" &&
-    !!landingPassword &&
-    landingPassword.trim() !== ""
-  );
+  return process.env.NODE_ENV !== "test" && !!landingPassword && landingPassword.trim() !== "";
 }

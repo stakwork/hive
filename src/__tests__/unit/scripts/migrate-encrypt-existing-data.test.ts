@@ -27,8 +27,8 @@ describe("isAlreadyEncrypted", () => {
       const validPayload = JSON.stringify({
         data: "encrypted-data-string",
         iv: "initialization-vector",
-        tag: "authentication-tag", 
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        tag: "authentication-tag",
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(validPayload);
@@ -42,7 +42,7 @@ describe("isAlreadyEncrypted", () => {
         tag: "authentication-tag",
         encryptedAt: "2024-01-01T00:00:00.000Z",
         version: "v1",
-        keyId: "key-123"
+        keyId: "key-123",
       });
 
       const result = await isAlreadyEncrypted(validPayload);
@@ -54,7 +54,7 @@ describe("isAlreadyEncrypted", () => {
         data: "",
         iv: "",
         tag: "",
-        encryptedAt: ""
+        encryptedAt: "",
       });
 
       const result = await isAlreadyEncrypted(validPayload);
@@ -66,7 +66,7 @@ describe("isAlreadyEncrypted", () => {
         data: "a".repeat(1000),
         iv: "b".repeat(500),
         tag: "c".repeat(100),
-        encryptedAt: new Date().toISOString()
+        encryptedAt: new Date().toISOString(),
       });
 
       const result = await isAlreadyEncrypted(validPayload);
@@ -104,12 +104,12 @@ describe("isAlreadyEncrypted", () => {
         '{"data": "value"', // missing closing brace
         '{"data": }', // invalid value
         "{data: 'value'}", // unquoted key
-        'undefined',
-        'null',
-        'true',
-        'false',
-        '123',
-        '"just-a-string"'
+        "undefined",
+        "null",
+        "true",
+        "false",
+        "123",
+        '"just-a-string"',
       ];
 
       for (const input of invalidJsonInputs) {
@@ -119,16 +119,7 @@ describe("isAlreadyEncrypted", () => {
     });
 
     test("should return false for JSON primitive values", async () => {
-      const primitiveValues = [
-        "null",
-        "true", 
-        "false",
-        "123",
-        '"string-value"',
-        "0",
-        "-1",
-        "3.14"
-      ];
+      const primitiveValues = ["null", "true", "false", "123", '"string-value"', "0", "-1", "3.14"];
 
       for (const value of primitiveValues) {
         const result = await isAlreadyEncrypted(value);
@@ -137,12 +128,7 @@ describe("isAlreadyEncrypted", () => {
     });
 
     test("should return false for JSON arrays", async () => {
-      const arrayInputs = [
-        "[]",
-        "[1, 2, 3]",
-        '["data", "iv", "tag", "encryptedAt"]',
-        '[{"data": "value"}]'
-      ];
+      const arrayInputs = ["[]", "[1, 2, 3]", '["data", "iv", "tag", "encryptedAt"]', '[{"data": "value"}]'];
 
       for (const input of arrayInputs) {
         const result = await isAlreadyEncrypted(input);
@@ -161,7 +147,7 @@ describe("isAlreadyEncrypted", () => {
       const payload = JSON.stringify({
         iv: "initialization-vector",
         tag: "authentication-tag",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(payload);
@@ -172,7 +158,7 @@ describe("isAlreadyEncrypted", () => {
       const payload = JSON.stringify({
         data: "encrypted-data-string",
         tag: "authentication-tag",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(payload);
@@ -183,7 +169,7 @@ describe("isAlreadyEncrypted", () => {
       const payload = JSON.stringify({
         data: "encrypted-data-string",
         iv: "initialization-vector",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(payload);
@@ -193,8 +179,8 @@ describe("isAlreadyEncrypted", () => {
     test("should return false for object missing 'encryptedAt' property", async () => {
       const payload = JSON.stringify({
         data: "encrypted-data-string",
-        iv: "initialization-vector", 
-        tag: "authentication-tag"
+        iv: "initialization-vector",
+        tag: "authentication-tag",
       });
 
       const result = await isAlreadyEncrypted(payload);
@@ -205,7 +191,7 @@ describe("isAlreadyEncrypted", () => {
       const partialPayloads = [
         JSON.stringify({ data: "value" }),
         JSON.stringify({ iv: "value", tag: "value" }),
-        JSON.stringify({ encryptedAt: "2024-01-01T00:00:00.000Z" })
+        JSON.stringify({ encryptedAt: "2024-01-01T00:00:00.000Z" }),
       ];
 
       for (const payload of partialPayloads) {
@@ -222,7 +208,7 @@ describe("isAlreadyEncrypted", () => {
         JSON.stringify({ data: true, iv: "iv", tag: "tag", encryptedAt: "2024-01-01" }),
         JSON.stringify({ data: null, iv: "iv", tag: "tag", encryptedAt: "2024-01-01" }),
         JSON.stringify({ data: {}, iv: "iv", tag: "tag", encryptedAt: "2024-01-01" }),
-        JSON.stringify({ data: [], iv: "iv", tag: "tag", encryptedAt: "2024-01-01" })
+        JSON.stringify({ data: [], iv: "iv", tag: "tag", encryptedAt: "2024-01-01" }),
       ];
 
       for (const payload of payloadsWithWrongDataType) {
@@ -237,7 +223,7 @@ describe("isAlreadyEncrypted", () => {
         JSON.stringify({ data: "data", iv: false, tag: "tag", encryptedAt: "2024-01-01" }),
         JSON.stringify({ data: "data", iv: null, tag: "tag", encryptedAt: "2024-01-01" }),
         JSON.stringify({ data: "data", iv: {}, tag: "tag", encryptedAt: "2024-01-01" }),
-        JSON.stringify({ data: "data", iv: [], tag: "tag", encryptedAt: "2024-01-01" })
+        JSON.stringify({ data: "data", iv: [], tag: "tag", encryptedAt: "2024-01-01" }),
       ];
 
       for (const payload of payloadsWithWrongIvType) {
@@ -252,7 +238,7 @@ describe("isAlreadyEncrypted", () => {
         JSON.stringify({ data: "data", iv: "iv", tag: true, encryptedAt: "2024-01-01" }),
         JSON.stringify({ data: "data", iv: "iv", tag: null, encryptedAt: "2024-01-01" }),
         JSON.stringify({ data: "data", iv: "iv", tag: {}, encryptedAt: "2024-01-01" }),
-        JSON.stringify({ data: "data", iv: "iv", tag: [], encryptedAt: "2024-01-01" })
+        JSON.stringify({ data: "data", iv: "iv", tag: [], encryptedAt: "2024-01-01" }),
       ];
 
       for (const payload of payloadsWithWrongTagType) {
@@ -267,7 +253,7 @@ describe("isAlreadyEncrypted", () => {
         JSON.stringify({ data: "data", iv: "iv", tag: "tag", encryptedAt: true }),
         JSON.stringify({ data: "data", iv: "iv", tag: "tag", encryptedAt: null }),
         JSON.stringify({ data: "data", iv: "iv", tag: "tag", encryptedAt: {} }),
-        JSON.stringify({ data: "data", iv: "iv", tag: "tag", encryptedAt: [] })
+        JSON.stringify({ data: "data", iv: "iv", tag: "tag", encryptedAt: [] }),
         // Note: new Date() gets serialized to string by JSON.stringify, so it would actually pass
       ];
 
@@ -282,7 +268,7 @@ describe("isAlreadyEncrypted", () => {
         data: 123,
         iv: false,
         tag: null,
-        encryptedAt: {}
+        encryptedAt: {},
       });
 
       const result = await isAlreadyEncrypted(payload);
@@ -296,7 +282,7 @@ describe("isAlreadyEncrypted", () => {
         data: "encrypted-data-🔐",
         iv: "iv-with-émojis-🎯",
         tag: "tag-with-ñ-character",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(validPayload);
@@ -309,7 +295,7 @@ describe("isAlreadyEncrypted", () => {
         data: longData,
         iv: "iv",
         tag: "tag",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(validPayload);
@@ -319,11 +305,11 @@ describe("isAlreadyEncrypted", () => {
     test("should return false for nested objects", async () => {
       const nestedPayload = JSON.stringify({
         data: {
-          nestedData: "value"
+          nestedData: "value",
         },
         iv: "iv",
         tag: "tag",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(nestedPayload);
@@ -336,7 +322,7 @@ describe("isAlreadyEncrypted", () => {
         data: "data",
         iv: undefined,
         tag: "tag",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       };
       const payload = JSON.stringify(objWithUndefined);
 
@@ -346,10 +332,10 @@ describe("isAlreadyEncrypted", () => {
 
     test("should handle JSON with escaped characters", async () => {
       const validPayload = JSON.stringify({
-        data: "data\"with\"quotes",
+        data: 'data"with"quotes',
         iv: "iv\\with\\backslashes",
         tag: "tag\nwith\nnewlines",
-        encryptedAt: "2024-01-01T00:00:00.000Z"
+        encryptedAt: "2024-01-01T00:00:00.000Z",
       });
 
       const result = await isAlreadyEncrypted(validPayload);
@@ -359,8 +345,8 @@ describe("isAlreadyEncrypted", () => {
     test("should return false for malformed JSON with control characters", async () => {
       const malformedInputs = [
         "{\x00data: 'value'}",
-        "{\"data\": \"value\x01\"}",
-        "{\r\n\"data\": \"value\"" // missing closing brace
+        '{"data": "value\x01"}',
+        '{\r\n"data": "value"', // missing closing brace
       ];
 
       for (const input of malformedInputs) {
@@ -376,7 +362,7 @@ describe("isAlreadyEncrypted", () => {
         data: "AES256GCM:base64encrypteddata==",
         iv: "randomIvBytes123==",
         tag: "authenticationTag==",
-        encryptedAt: new Date().toISOString()
+        encryptedAt: new Date().toISOString(),
       });
 
       const result = await isAlreadyEncrypted(realWorldPayload);
@@ -390,7 +376,7 @@ describe("isAlreadyEncrypted", () => {
         tag: "auth-tag-hex",
         encryptedAt: "2024-01-15T10:30:00.000Z",
         version: "1",
-        keyId: "key-rotation-id-123"
+        keyId: "key-rotation-id-123",
       });
 
       const result = await isAlreadyEncrypted(payloadWithMetadata);
@@ -400,10 +386,10 @@ describe("isAlreadyEncrypted", () => {
     test("should validate all properties are strings even with realistic values", async () => {
       const payloadWithNumberVersion = JSON.stringify({
         data: "encrypted-data",
-        iv: "iv-value", 
+        iv: "iv-value",
         tag: "tag-value",
         encryptedAt: "2024-01-15T10:30:00.000Z",
-        version: 1 // number instead of string - should still pass since we only check required properties
+        version: 1, // number instead of string - should still pass since we only check required properties
       });
 
       const result = await isAlreadyEncrypted(payloadWithNumberVersion);

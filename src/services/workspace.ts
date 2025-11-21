@@ -52,9 +52,7 @@ function hasValidApiKey(stakworkApiKey: string | null): boolean {
 // Type assertion to help IDE recognize Prisma client methods
 
 // Existing functions
-export async function createWorkspace(
-  data: CreateWorkspaceRequest,
-): Promise<WorkspaceResponse> {
+export async function createWorkspace(data: CreateWorkspaceRequest): Promise<WorkspaceResponse> {
   // Validate the slug before creating
   const slugValidation = validateWorkspaceSlug(data.slug);
   if (!slugValidation.isValid) {
@@ -113,9 +111,7 @@ export async function createWorkspace(
   }
 }
 
-export async function getWorkspacesByUserId(
-  userId: string,
-): Promise<WorkspaceResponse[]> {
+export async function getWorkspacesByUserId(userId: string): Promise<WorkspaceResponse[]> {
   const workspaces = await db.workspace.findMany({
     where: { ownerId: userId, deleted: false },
   });
@@ -130,10 +126,7 @@ export async function getWorkspacesByUserId(
 /**
  * Gets a workspace by ID if user has access (owner or member)
  */
-export async function getWorkspaceById(
-  workspaceId: string,
-  userId: string,
-): Promise<WorkspaceWithAccess | null> {
+export async function getWorkspaceById(workspaceId: string, userId: string): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
     where: {
@@ -145,7 +138,14 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
+        select: {
+          id: true,
+          status: true,
+          ingestRefId: true,
+          poolState: true,
+          containerFilesSetUp: true,
+          swarmUrl: true,
+        },
       },
       repositories: {
         select: {
@@ -155,7 +155,6 @@ export async function getWorkspaceById(
           branch: true,
           status: true,
           updatedAt: true,
-
         },
       },
     },
@@ -181,16 +180,16 @@ export async function getWorkspaceById(
       containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
       repositoryDraft: workspace.repositoryDraft || null,
       swarmId: workspace.swarm?.id || null,
-      isCodeGraphSetup:
-        workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      isCodeGraphSetup: workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
       swarmUrl: workspace.swarm?.swarmUrl || null,
-      repositories: workspace.repositories?.map((repo) => ({
-        ...repo,
-        updatedAt: repo.updatedAt.toISOString(),
-      })) || [],
+      repositories:
+        workspace.repositories?.map((repo) => ({
+          ...repo,
+          updatedAt: repo.updatedAt.toISOString(),
+        })) || [],
     };
   }
 
@@ -221,26 +220,23 @@ export async function getWorkspaceById(
     swarmId: workspace.swarm?.id || null,
     owner: workspace.owner,
     hasKey: hasValidApiKey(workspace.stakworkApiKey),
-    isCodeGraphSetup:
-      workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    isCodeGraphSetup: workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
     swarmUrl: workspace.swarm?.swarmUrl || null,
-    repositories: workspace.repositories?.map((repo) => ({
-      ...repo,
-      updatedAt: repo.updatedAt.toISOString(),
-    })) || [],
+    repositories:
+      workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
   };
 }
 
 /**
  * Gets a workspace by slug if user has access (owner or member)
  */
-export async function getWorkspaceBySlug(
-  slug: string,
-  userId: string,
-): Promise<WorkspaceWithAccess | null> {
+export async function getWorkspaceBySlug(slug: string, userId: string): Promise<WorkspaceWithAccess | null> {
   // Get the workspace with owner info, swarm status, and repositories
   const workspace = await db.workspace.findFirst({
     where: {
@@ -252,7 +248,14 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
+        select: {
+          id: true,
+          status: true,
+          ingestRefId: true,
+          poolState: true,
+          containerFilesSetUp: true,
+          swarmUrl: true,
+        },
       },
       repositories: {
         select: {
@@ -287,18 +290,18 @@ export async function getWorkspaceBySlug(
       containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
       repositoryDraft: workspace.repositoryDraft || null,
       swarmId: workspace.swarm?.id || null,
-      isCodeGraphSetup:
-        workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+      isCodeGraphSetup: workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
       swarmStatus: workspace.swarm?.status || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
       swarmUrl: workspace.swarm?.swarmUrl || null,
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
-      repositories: workspace.repositories?.map((repo) => ({
-        ...repo,
-        updatedAt: repo.updatedAt.toISOString(),
-      })) || [],
+      repositories:
+        workspace.repositories?.map((repo) => ({
+          ...repo,
+          updatedAt: repo.updatedAt.toISOString(),
+        })) || [],
     };
   }
 
@@ -329,27 +332,25 @@ export async function getWorkspaceBySlug(
     containerFilesSetUp: workspace.swarm?.containerFilesSetUp || null,
     repositoryDraft: workspace.repositoryDraft || null,
     swarmId: workspace.swarm?.id || null,
-    isCodeGraphSetup:
-      workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
+    isCodeGraphSetup: workspace.swarm !== null && workspace.swarm.status === "ACTIVE",
     swarmStatus: workspace.swarm?.status || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
     swarmUrl: workspace.swarm?.swarmUrl || null,
     logoKey: workspace.logoKey,
     logoUrl: workspace.logoUrl,
-    repositories: workspace.repositories?.map((repo) => ({
-      ...repo,
-      updatedAt: repo.updatedAt.toISOString(),
-    })) || [],
+    repositories:
+      workspace.repositories?.map((repo) => ({
+        ...repo,
+        updatedAt: repo.updatedAt.toISOString(),
+      })) || [],
   };
 }
 
 /**
  * Gets all workspaces a user has access to, including their role
  */
-export async function getUserWorkspaces(
-  userId: string,
-): Promise<WorkspaceWithRole[]> {
+export async function getUserWorkspaces(userId: string): Promise<WorkspaceWithRole[]> {
   // Get all workspaces the user owns or is a member of in a single query
   const [ownedWorkspaces, memberships] = await Promise.all([
     db.workspace.findMany({
@@ -371,10 +372,8 @@ export async function getUserWorkspaces(
 
   // Get all workspace IDs to batch the member count query
   const allWorkspaceIds = [
-    ...ownedWorkspaces.map(w => w.id),
-    ...memberships
-      .filter(m => m.workspace && !m.workspace.deleted)
-      .map(m => m.workspace!.id)
+    ...ownedWorkspaces.map((w) => w.id),
+    ...memberships.filter((m) => m.workspace && !m.workspace.deleted).map((m) => m.workspace!.id),
   ];
 
   // Get all member counts in a single query if we have workspace IDs
@@ -441,10 +440,7 @@ export async function getUserWorkspaces(
 /**
  * Validates user access to a workspace and returns permission details
  */
-export async function validateWorkspaceAccess(
-  slug: string,
-  userId: string,
-): Promise<WorkspaceAccessValidation> {
+export async function validateWorkspaceAccess(slug: string, userId: string): Promise<WorkspaceAccessValidation> {
   const workspace = await getWorkspaceBySlug(slug, userId);
 
   if (!workspace) {
@@ -517,9 +513,7 @@ export async function validateWorkspaceAccessById(
 /**
  * Gets the user's default/primary workspace (first owned, then first member)
  */
-export async function getDefaultWorkspaceForUser(
-  userId: string,
-): Promise<WorkspaceResponse | null> {
+export async function getDefaultWorkspaceForUser(userId: string): Promise<WorkspaceResponse | null> {
   // Try to get the first owned workspace
   const ownedWorkspace = await db.workspace.findFirst({
     where: {
@@ -564,14 +558,13 @@ export async function getDefaultWorkspaceForUser(
  * Soft deletes a workspace by ID
  */
 export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
-
   // Get the current workspace to access its slug
   const workspace = await db.workspace.findUnique({
-    where: { id: workspaceId }
+    where: { id: workspaceId },
   });
 
   if (!workspace) {
-    throw new Error('Workspace not found');
+    throw new Error("Workspace not found");
   }
 
   const timestamp = Date.now();
@@ -583,7 +576,7 @@ export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
       deleted: true,
       deletedAt: new Date(),
       originalSlug: workspace.slug, // Store original slug for recovery
-      slug: deletedSlug // Modify slug to allow reuse of original
+      slug: deletedSlug, // Modify slug to allow reuse of original
     },
   });
 }
@@ -591,10 +584,7 @@ export async function softDeleteWorkspace(workspaceId: string): Promise<void> {
 /**
  * Deletes a workspace by slug if user has admin access (owner)
  */
-export async function deleteWorkspaceBySlug(
-  slug: string,
-  userId: string,
-): Promise<void> {
+export async function deleteWorkspaceBySlug(slug: string, userId: string): Promise<void> {
   // First check if user has access and is owner
   const workspace = await getWorkspaceBySlug(slug, userId);
 
@@ -644,7 +634,9 @@ export async function deleteWorkspaceBySlug(
           // 401 means the pool API key is invalid/expired, 404 means pool doesn't exist
           // Both cases mean we can proceed with workspace deletion
           if (response.status === 401) {
-            console.log(`Pool API key appears invalid/expired for pool ${poolName}, proceeding with workspace deletion`);
+            console.log(
+              `Pool API key appears invalid/expired for pool ${poolName}, proceeding with workspace deletion`,
+            );
           } else if (response.status === 404) {
             console.log(`Pool ${poolName} not found, proceeding with workspace deletion`);
           } else {
@@ -743,17 +735,14 @@ export async function deleteWorkspaceBySlug(
 /**
  * Recovers a soft-deleted workspace by ID
  */
-export async function recoverWorkspace(
-  workspaceId: string,
-  userId: string,
-): Promise<WorkspaceResponse> {
+export async function recoverWorkspace(workspaceId: string, userId: string): Promise<WorkspaceResponse> {
   // Get the deleted workspace
   const workspace = await db.workspace.findFirst({
     where: {
       id: workspaceId,
       ownerId: userId,
-      deleted: true
-    }
+      deleted: true,
+    },
   });
 
   if (!workspace) {
@@ -768,8 +757,8 @@ export async function recoverWorkspace(
   const existingWorkspace = await db.workspace.findFirst({
     where: {
       slug: workspace.originalSlug,
-      deleted: false
-    }
+      deleted: false,
+    },
   });
 
   // Determine the slug to use for recovery
@@ -784,8 +773,8 @@ export async function recoverWorkspace(
       deleted: false,
       deletedAt: null,
       slug: recoveredSlug,
-      originalSlug: null // Clear original slug after recovery
-    }
+      originalSlug: null, // Clear original slug after recovery
+    },
   });
 
   return {
@@ -808,10 +797,7 @@ export function validateWorkspaceSlug(slug: string): {
   }
 
   // Check length
-  if (
-    slug.length < WORKSPACE_SLUG_PATTERNS.MIN_LENGTH ||
-    slug.length > WORKSPACE_SLUG_PATTERNS.MAX_LENGTH
-  ) {
+  if (slug.length < WORKSPACE_SLUG_PATTERNS.MIN_LENGTH || slug.length > WORKSPACE_SLUG_PATTERNS.MAX_LENGTH) {
     return { isValid: false, error: WORKSPACE_ERRORS.SLUG_INVALID_LENGTH };
   }
 
@@ -821,11 +807,7 @@ export function validateWorkspaceSlug(slug: string): {
   }
 
   // Check against reserved slugs
-  if (
-    RESERVED_WORKSPACE_SLUGS.includes(
-      slug as (typeof RESERVED_WORKSPACE_SLUGS)[number],
-    )
-  ) {
+  if (RESERVED_WORKSPACE_SLUGS.includes(slug as (typeof RESERVED_WORKSPACE_SLUGS)[number])) {
     return { isValid: false, error: WORKSPACE_ERRORS.SLUG_RESERVED };
   }
 
@@ -880,12 +862,12 @@ export async function getWorkspaceMembers(workspaceId: string, includeSystemAssi
       image: workspace.owner.image,
       github: workspace.owner.githubAuth
         ? {
-          username: workspace.owner.githubAuth.githubUsername,
-          name: workspace.owner.githubAuth.name,
-          bio: workspace.owner.githubAuth.bio,
-          publicRepos: workspace.owner.githubAuth.publicRepos,
-          followers: workspace.owner.githubAuth.followers,
-        }
+            username: workspace.owner.githubAuth.githubUsername,
+            name: workspace.owner.githubAuth.name,
+            bio: workspace.owner.githubAuth.bio,
+            publicRepos: workspace.owner.githubAuth.publicRepos,
+            followers: workspace.owner.githubAuth.followers,
+          }
         : null,
     },
   };
@@ -932,11 +914,7 @@ export async function getWorkspaceMembers(workspaceId: string, includeSystemAssi
  * Adds an existing Hive user to a workspace by GitHub username
  * Note: User must already be registered in the system
  */
-export async function addWorkspaceMember(
-  workspaceId: string,
-  githubUsername: string,
-  role: WorkspaceRole,
-) {
+export async function addWorkspaceMember(workspaceId: string, githubUsername: string, role: WorkspaceRole) {
   // Find existing user by GitHub username
   const githubAuth = await findUserByGitHubUsername(githubUsername);
   if (!githubAuth) {
@@ -971,11 +949,7 @@ export async function addWorkspaceMember(
 /**
  * Updates a workspace member's role
  */
-export async function updateWorkspaceMemberRole(
-  workspaceId: string,
-  userId: string,
-  newRole: WorkspaceRole,
-) {
+export async function updateWorkspaceMemberRole(workspaceId: string, userId: string, newRole: WorkspaceRole) {
   const member = await findActiveMember(workspaceId, userId);
   if (!member) {
     throw new Error("Member not found");
@@ -993,10 +967,7 @@ export async function updateWorkspaceMemberRole(
 /**
  * Removes a member from a workspace
  */
-export async function removeWorkspaceMember(
-  workspaceId: string,
-  userId: string,
-) {
+export async function removeWorkspaceMember(workspaceId: string, userId: string) {
   const member = await findActiveMember(workspaceId, userId);
   if (!member) {
     throw new Error("Member not found");

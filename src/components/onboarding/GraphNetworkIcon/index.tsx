@@ -109,7 +109,7 @@ export function GraphNetworkIcon({ size = 160, animate = true }: GraphNetworkIco
           duration: 0.5,
           delay: 0,
           repeat: animate ? Infinity : 0,
-          repeatDelay: 1.5
+          repeatDelay: 1.5,
         }}
       />
 
@@ -134,75 +134,123 @@ export function GraphNetworkIcon({ size = 160, animate = true }: GraphNetworkIco
             duration: 0.5,
             delay: index * 0.3,
             repeat: animate ? Infinity : 0,
-            repeatDelay: 1.5
+            repeatDelay: 1.5,
           }}
         />
       ))}
 
       {/* Branch end nodes - matching branch colors */}
       {/* Top Purple branch nodes (1 to 3) */}
-      <motion.circle cx="80" cy="10" r="4" fill="#8250df"
+      <motion.circle
+        cx="80"
+        cy="10"
+        r="4"
+        fill="#8250df"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 1.2, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="100" cy="10" r="4" fill="#8250df"
+      <motion.circle
+        cx="100"
+        cy="10"
+        r="4"
+        fill="#8250df"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 1.3, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="60" cy="10" r="4" fill="#8250df"
+      <motion.circle
+        cx="60"
+        cy="10"
+        r="4"
+        fill="#8250df"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 1.4, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
 
       {/* Right Green branch nodes (1 to 2, then 1 to 1) */}
-      <motion.circle cx="140" cy="40" r="4" fill="#1f883d"
+      <motion.circle
+        cx="140"
+        cy="40"
+        r="4"
+        fill="#1f883d"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 1.7, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="140" cy="60" r="4" fill="#1f883d"
+      <motion.circle
+        cx="140"
+        cy="60"
+        r="4"
+        fill="#1f883d"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 1.8, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="140" cy="90" r="4" fill="#1f883d"
+      <motion.circle
+        cx="140"
+        cy="90"
+        r="4"
+        fill="#1f883d"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 1.9, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
 
       {/* Bottom Orange branch nodes (1 to 3) */}
-      <motion.circle cx="80" cy="130" r="4" fill="#fb8500"
+      <motion.circle
+        cx="80"
+        cy="130"
+        r="4"
+        fill="#fb8500"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 2.2, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="100" cy="130" r="4" fill="#fb8500"
+      <motion.circle
+        cx="100"
+        cy="130"
+        r="4"
+        fill="#fb8500"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 2.3, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="60" cy="130" r="4" fill="#fb8500"
+      <motion.circle
+        cx="60"
+        cy="130"
+        r="4"
+        fill="#fb8500"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 2.4, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
 
       {/* Left Red branch nodes */}
-      <motion.circle cx="20" cy="40" r="4" fill="#da2e65"
+      <motion.circle
+        cx="20"
+        cy="40"
+        r="4"
+        fill="#da2e65"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 2.5, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="20" cy="60" r="4" fill="#da2e65"
+      <motion.circle
+        cx="20"
+        cy="60"
+        r="4"
+        fill="#da2e65"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 2.6, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}
       />
-      <motion.circle cx="20" cy="90" r="4" fill="#da2e65"
+      <motion.circle
+        cx="20"
+        cy="90"
+        r="4"
+        fill="#da2e65"
         initial={{ scale: 0 }}
         animate={animate ? { scale: [0, 1.2, 1] } : { scale: 1 }}
         transition={{ duration: 0.4, delay: 2.7, repeat: animate ? Infinity : 0, repeatDelay: 1.5 }}

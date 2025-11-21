@@ -47,9 +47,7 @@ describe("signCookie", () => {
   it("throws error when NEXTAUTH_SECRET is missing", async () => {
     delete process.env.NEXTAUTH_SECRET;
 
-    await expect(signCookie("123")).rejects.toThrow(
-      "NEXTAUTH_SECRET is required for cookie signing"
-    );
+    await expect(signCookie("123")).rejects.toThrow("NEXTAUTH_SECRET is required for cookie signing");
   });
 
   it("signs timestamps as strings", async () => {
@@ -105,7 +103,7 @@ describe("verifyCookie", () => {
   it("rejects cookie with tampered timestamp", async () => {
     const timestamp = Date.now().toString();
     const signed = await signCookie(timestamp);
-    
+
     // Tamper with timestamp but keep signature
     const [, signature] = signed.split(".");
     const tamperedTimestamp = (parseInt(timestamp) + 1000).toString();
@@ -170,7 +168,7 @@ describe("verifyCookie", () => {
   it("returns false when NEXTAUTH_SECRET is missing", async () => {
     const timestamp = Date.now().toString();
     const signed = await signCookie(timestamp);
-    
+
     delete process.env.NEXTAUTH_SECRET;
 
     const isValid = await verifyCookie(signed);
@@ -184,7 +182,7 @@ describe("verifyCookie", () => {
 
     // Mock crypto.subtle to throw error
     const originalSubtle = crypto.subtle;
-    Object.defineProperty(crypto, 'subtle', {
+    Object.defineProperty(crypto, "subtle", {
       value: {
         importKey: vi.fn().mockRejectedValue(new Error("Crypto error")),
       },
@@ -196,7 +194,7 @@ describe("verifyCookie", () => {
     expect(isValid).toBe(false);
 
     // Restore crypto.subtle
-    Object.defineProperty(crypto, 'subtle', {
+    Object.defineProperty(crypto, "subtle", {
       value: originalSubtle,
       configurable: true,
     });
@@ -289,17 +287,17 @@ describe("constantTimeCompare", () => {
     const diff2 = "a".repeat(99) + "b"; // Differs at position 99
 
     const times: number[] = [];
-    
+
     // Measure multiple comparisons
     for (let i = 0; i < 10; i++) {
       const start1 = performance.now();
       constantTimeCompare(base, diff1);
       const time1 = performance.now() - start1;
-      
+
       const start2 = performance.now();
       constantTimeCompare(base, diff2);
       const time2 = performance.now() - start2;
-      
+
       times.push(Math.abs(time1 - time2));
     }
 

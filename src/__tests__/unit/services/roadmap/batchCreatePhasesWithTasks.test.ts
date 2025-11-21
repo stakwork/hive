@@ -180,21 +180,15 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Setup",
-          tasks: [
-            { title: "Task 1", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "HIGH" as const, tempId: "T1", dependsOn: [] }],
         },
         {
           name: "Build",
-          tasks: [
-            { title: "Task 2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 2", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] }],
         },
         {
           name: "Deploy",
-          tasks: [
-            { title: "Task 3", priority: "LOW" as const, tempId: "T3", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 3", priority: "LOW" as const, tempId: "T3", dependsOn: [] }],
         },
       ];
 
@@ -259,16 +253,12 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
 
     test("appends to existing phases with correct order", async () => {
       // Mock existing phases
-      mockedDb.phase.findMany.mockResolvedValueOnce([
-        { order: 2 },
-      ] as any);
+      mockedDb.phase.findMany.mockResolvedValueOnce([{ order: 2 }] as any);
 
       const phases = [
         {
           name: "New Phase",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
@@ -458,15 +448,11 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Setup",
-          tasks: [
-            { title: "Database", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Database", priority: "HIGH" as const, tempId: "T1", dependsOn: [] }],
         },
         {
           name: "Features",
-          tasks: [
-            { title: "Feature X", priority: "MEDIUM" as const, tempId: "T5", dependsOn: ["T1"] },
-          ],
+          tasks: [{ title: "Feature X", priority: "MEDIUM" as const, tempId: "T5", dependsOn: ["T1"] }],
         },
       ];
 
@@ -513,9 +499,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Independent Task", priority: "LOW" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Independent Task", priority: "LOW" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
@@ -619,15 +603,11 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "P1 Task", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "P1 Task", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
         {
           name: "Phase 2",
-          tasks: [
-            { title: "P2 Task", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] },
-          ],
+          tasks: [{ title: "P2 Task", priority: "MEDIUM" as const, tempId: "T2", dependsOn: [] }],
         },
       ];
 
@@ -671,15 +651,11 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
-      await expect(
-        batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)
-      ).rejects.toThrow("Access denied");
+      await expect(batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)).rejects.toThrow("Access denied");
 
       expect(mockedValidateFeatureAccess).toHaveBeenCalledWith(mockFeatureId, mockUserId);
       expect(mockedDb.$transaction).not.toHaveBeenCalled();
@@ -691,15 +667,13 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
-      await expect(
-        batchCreatePhasesWithTasks("non-existent-feature-id", mockUserId, phases)
-      ).rejects.toThrow("Feature not found");
+      await expect(batchCreatePhasesWithTasks("non-existent-feature-id", mockUserId, phases)).rejects.toThrow(
+        "Feature not found",
+      );
 
       expect(mockedDb.$transaction).not.toHaveBeenCalled();
     });
@@ -710,15 +684,13 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
-      await expect(
-        batchCreatePhasesWithTasks(mockFeatureId, "non-existent-user-id", phases)
-      ).rejects.toThrow("User not found");
+      await expect(batchCreatePhasesWithTasks(mockFeatureId, "non-existent-user-id", phases)).rejects.toThrow(
+        "User not found",
+      );
 
       expect(mockedDb.user.findUnique).toHaveBeenCalledWith({
         where: { id: "non-existent-user-id" },
@@ -731,15 +703,13 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
-      await expect(
-        batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)
-      ).rejects.toThrow("Database connection failed");
+      await expect(batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)).rejects.toThrow(
+        "Database connection failed",
+      );
     });
   });
 
@@ -748,9 +718,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
@@ -777,9 +745,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "Phase 1",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 
@@ -792,9 +758,9 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       // Task creation fails
       mockedDb.task.create.mockRejectedValueOnce(new Error("Task creation failed"));
 
-      await expect(
-        batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)
-      ).rejects.toThrow("Task creation failed");
+      await expect(batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)).rejects.toThrow(
+        "Task creation failed",
+      );
 
       // Transaction was attempted but failed
       expect(mockedDb.$transaction).toHaveBeenCalledTimes(1);
@@ -813,9 +779,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
         },
       ];
 
-      mockedEnsureUniqueBountyCode
-        .mockResolvedValueOnce("BOUNTY-001")
-        .mockResolvedValueOnce("BOUNTY-002");
+      mockedEnsureUniqueBountyCode.mockResolvedValueOnce("BOUNTY-001").mockResolvedValueOnce("BOUNTY-002");
 
       mockedDb.phase.create.mockResolvedValueOnce({
         id: "phase-1",
@@ -858,9 +822,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
       const phases = [
         {
           name: "  Phase with spaces  ",
-          tasks: [
-            { title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-          ],
+          tasks: [{ title: "Task 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
         },
       ];
 

@@ -8,7 +8,7 @@ describe("icons", () => {
     it("should return Code icon for 'code' type", () => {
       const icon = getIcon("code");
       expect(icon).toBeTruthy();
-      
+
       const { container } = render(<>{icon}</>);
       expect(container.querySelector("svg")).toBeInTheDocument();
     });
@@ -16,7 +16,7 @@ describe("icons", () => {
     it("should return Bot icon for 'agent' type", () => {
       const icon = getIcon("agent");
       expect(icon).toBeTruthy();
-      
+
       const { container } = render(<>{icon}</>);
       expect(container.querySelector("svg")).toBeInTheDocument();
     });
@@ -24,7 +24,7 @@ describe("icons", () => {
     it("should return Phone icon for 'call' type", () => {
       const icon = getIcon("call");
       expect(icon).toBeTruthy();
-      
+
       const { container } = render(<>{icon}</>);
       expect(container.querySelector("svg")).toBeInTheDocument();
     });
@@ -32,7 +32,7 @@ describe("icons", () => {
     it("should return MessageSquare icon for 'message' type", () => {
       const icon = getIcon("message");
       expect(icon).toBeTruthy();
-      
+
       const { container } = render(<>{icon}</>);
       expect(container.querySelector("svg")).toBeInTheDocument();
     });
@@ -41,7 +41,7 @@ describe("icons", () => {
       const lowerIcon = getIcon("code");
       const upperIcon = getIcon("CODE");
       const mixedIcon = getIcon("Code");
-      
+
       expect(lowerIcon).toBeTruthy();
       expect(upperIcon).toBeTruthy();
       expect(mixedIcon).toBeTruthy();
@@ -56,7 +56,7 @@ describe("icons", () => {
       const icon = getIcon("code");
       const { container } = render(<>{icon}</>);
       const svg = container.querySelector("svg");
-      
+
       expect(svg).toHaveClass("h-4");
       expect(svg).toHaveClass("w-4");
     });
@@ -65,7 +65,7 @@ describe("icons", () => {
       const icon = getIcon("code", "h-6 w-6 text-blue-500");
       const { container } = render(<>{icon}</>);
       const svg = container.querySelector("svg");
-      
+
       expect(svg).toHaveClass("h-6");
       expect(svg).toHaveClass("w-6");
       expect(svg).toHaveClass("text-blue-500");
@@ -81,7 +81,7 @@ describe("icons", () => {
     it("should return Code icon for 'code' type", () => {
       const icon = getArtifactIcon("code");
       expect(icon).toBeTruthy();
-      
+
       const { container } = render(<>{icon}</>);
       expect(container.querySelector("svg")).toBeInTheDocument();
     });
@@ -90,7 +90,7 @@ describe("icons", () => {
       const icon = getArtifactIcon("code");
       const { container } = render(<>{icon}</>);
       const svg = container.querySelector("svg");
-      
+
       expect(svg).toHaveClass("h-5");
       expect(svg).toHaveClass("w-5");
       expect(svg).toHaveClass("flex-shrink-0");
@@ -103,7 +103,7 @@ describe("icons", () => {
 
     it("should handle all valid icon types", () => {
       const types = ["code", "agent", "call", "message"];
-      
+
       types.forEach((type) => {
         const icon = getArtifactIcon(type);
         expect(icon).toBeTruthy();
@@ -115,7 +115,7 @@ describe("icons", () => {
     it("should return Bot icon", () => {
       const icon = getAgentIcon();
       expect(icon).toBeTruthy();
-      
+
       const { container } = render(<>{icon}</>);
       expect(container.querySelector("svg")).toBeInTheDocument();
     });
@@ -124,7 +124,7 @@ describe("icons", () => {
       const icon = getAgentIcon();
       const { container } = render(<>{icon}</>);
       const svg = container.querySelector("svg");
-      
+
       expect(svg).toHaveClass("h-4");
       expect(svg).toHaveClass("w-4");
       expect(svg).toHaveClass("flex-shrink-0");
@@ -134,7 +134,7 @@ describe("icons", () => {
       const icon = getAgentIcon("h-8 w-8 text-purple-500");
       const { container } = render(<>{icon}</>);
       const svg = container.querySelector("svg");
-      
+
       expect(svg).toHaveClass("h-8");
       expect(svg).toHaveClass("w-8");
       expect(svg).toHaveClass("text-purple-500");
@@ -143,7 +143,7 @@ describe("icons", () => {
     it("should always return same icon type", () => {
       const icon1 = getAgentIcon();
       const icon2 = getAgentIcon("custom-class");
-      
+
       expect(icon1).toBeTruthy();
       expect(icon2).toBeTruthy();
     });

@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React from 'react'
+import React from "react";
 
 const FlipIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="1em" height="1em" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -18,6 +18,6 @@ const FlipIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
       stroke-linejoin="round"
     />
   </svg>
-)
+);
 
-export default FlipIcon
+export default FlipIcon;

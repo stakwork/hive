@@ -56,10 +56,7 @@ describe("StakworkGenerationService", () => {
       const result = await service.createRun(input);
 
       expect(result).toEqual({ run: mockRun });
-      expect(mockHttpClient.post).toHaveBeenCalledWith(
-        "/api/stakwork/ai/generate",
-        input
-      );
+      expect(mockHttpClient.post).toHaveBeenCalledWith("/api/stakwork/ai/generate", input);
     });
 
     it("should handle creation errors", async () => {
@@ -103,9 +100,7 @@ describe("StakworkGenerationService", () => {
       const result = await service.getRuns(params);
 
       expect(result).toEqual({ runs: mockRuns });
-      expect(mockHttpClient.get).toHaveBeenCalledWith(
-        expect.stringContaining("/api/stakwork/runs?")
-      );
+      expect(mockHttpClient.get).toHaveBeenCalledWith(expect.stringContaining("/api/stakwork/runs?"));
     });
   });
 
@@ -130,10 +125,7 @@ describe("StakworkGenerationService", () => {
       const result = await service.updateDecision("run-123", decision);
 
       expect(result).toEqual({ run: mockRun });
-      expect(mockHttpClient.patch).toHaveBeenCalledWith(
-        "/api/stakwork/runs/run-123/decision",
-        decision
-      );
+      expect(mockHttpClient.patch).toHaveBeenCalledWith("/api/stakwork/runs/run-123/decision", decision);
     });
 
     it("should reject run with feedback", async () => {
@@ -156,10 +148,7 @@ describe("StakworkGenerationService", () => {
       const result = await service.updateDecision("run-123", decision);
 
       expect(result).toEqual({ run: mockRun });
-      expect(mockHttpClient.patch).toHaveBeenCalledWith(
-        "/api/stakwork/runs/run-123/decision",
-        decision
-      );
+      expect(mockHttpClient.patch).toHaveBeenCalledWith("/api/stakwork/runs/run-123/decision", decision);
     });
   });
 });

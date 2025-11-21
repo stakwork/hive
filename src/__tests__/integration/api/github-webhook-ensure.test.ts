@@ -4,9 +4,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { NextRequest } from "next/server";
-import {
-  createTestRepository,
-} from "@/__tests__/support/fixtures/github-webhook";
+import { createTestRepository } from "@/__tests__/support/fixtures/github-webhook";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock external services only
@@ -60,25 +58,25 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const originalFetch = global.fetch;
       global.fetch = vi.fn((url, options) => {
         const urlStr = url.toString();
-        
+
         // Mock verifyHookExists (GET /repos/{owner}/{repo}/hooks/{hookId})
         if (options?.method === "GET" && urlStr.includes("/hooks/")) {
           return Promise.resolve(
             new Response(JSON.stringify({ id: webhookId }), {
               status: 404, // Webhook doesn't exist, need to create
-            })
+            }),
           );
         }
-        
+
         // Mock createHook (POST /repos/{owner}/{repo}/hooks)
         if (options?.method === "POST" && urlStr.includes("/hooks")) {
           return Promise.resolve(
             new Response(JSON.stringify({ id: webhookId }), {
               status: 201,
-            })
+            }),
           );
         }
-        
+
         return originalFetch(url, options);
       }) as typeof global.fetch;
     },
@@ -87,16 +85,16 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const originalFetch = global.fetch;
       global.fetch = vi.fn((url, options) => {
         const urlStr = url.toString();
-        
+
         // Mock verifyHookExists - webhook exists
         if (options?.method === "GET" && urlStr.includes("/hooks/")) {
           return Promise.resolve(
             new Response(JSON.stringify({ id: webhookId }), {
               status: 200, // Webhook exists
-            })
+            }),
           );
         }
-        
+
         return originalFetch(url, options);
       }) as typeof global.fetch;
     },
@@ -105,15 +103,15 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const originalFetch = global.fetch;
       global.fetch = vi.fn((url, options) => {
         const urlStr = url.toString();
-        
+
         if (options?.method === "POST" && urlStr.includes("/hooks")) {
           return Promise.resolve(
             new Response(JSON.stringify({ message: "Forbidden" }), {
               status: 403,
-            })
+            }),
           );
         }
-        
+
         return originalFetch(url, options);
       }) as typeof global.fetch;
     },
@@ -122,15 +120,15 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const originalFetch = global.fetch;
       global.fetch = vi.fn((url, options) => {
         const urlStr = url.toString();
-        
+
         if (urlStr.includes("/hooks")) {
           return Promise.resolve(
             new Response(JSON.stringify({ message: "Internal Server Error" }), {
               status: 500,
-            })
+            }),
           );
         }
-        
+
         return originalFetch(url, options);
       }) as typeof global.fetch;
     },
@@ -157,7 +155,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should proceed with valid authentication", async () => {
       const { repository, workspace } = await createTestRepository();
-      
+
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         token: "github_pat_test",
@@ -170,7 +168,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -208,7 +206,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should accept request with repositoryUrl", async () => {
       const { repository, workspace } = await createTestRepository();
-      
+
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         token: "github_pat_test",
@@ -221,7 +219,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -231,7 +229,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should accept request with repositoryId", async () => {
       const { repository, workspace } = await createTestRepository();
-      
+
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
         token: "github_pat_test",
@@ -244,7 +242,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryId: repository.id,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -262,7 +260,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: workspace.id,
           repositoryId: "nonexistent-repo-id",
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -275,7 +273,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should return 404 when repository workspace does not match provided workspaceId", async () => {
       const { repository, workspace } = await createTestRepository();
-      
+
       // Create another workspace
       const differentWorkspace = await db.workspace.create({
         data: {
@@ -290,7 +288,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: differentWorkspace.id,
           repositoryId: repository.id,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -309,7 +307,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
         githubWebhookId: null as any,
         webhookSecret: null as any,
       });
-      
+
       // Directly update to remove webhook data
       await db.repository.update({
         where: { id: repository.id },
@@ -332,7 +330,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -354,11 +352,8 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
       // Verify encryption
       const encryptionService = EncryptionService.getInstance();
-      const decryptedSecret = encryptionService.decryptField(
-        "githubWebhookSecret",
-        updatedRepo!.githubWebhookSecret!
-      );
-      
+      const decryptedSecret = encryptionService.decryptField("githubWebhookSecret", updatedRepo!.githubWebhookSecret!);
+
       expect(decryptedSecret).toBeTruthy();
       expect(typeof decryptedSecret).toBe("string");
       expect(decryptedSecret.length).toBe(64); // 32 bytes hex = 64 chars
@@ -382,7 +377,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -419,7 +414,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -464,7 +459,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -501,7 +496,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -521,7 +516,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -560,7 +555,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       await POST(request);
@@ -571,7 +566,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       });
 
       expect(storedRepo?.githubWebhookSecret).toBeTruthy();
-      
+
       // Encrypted secret should be JSON string containing encryption metadata
       const encryptedData = JSON.parse(storedRepo!.githubWebhookSecret!);
       expect(encryptedData).toHaveProperty("data");
@@ -611,7 +606,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -624,10 +619,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
         where: { id: repository.id },
       });
 
-      const decrypted = encryptionService.decryptField(
-        "githubWebhookSecret",
-        unchangedRepo!.githubWebhookSecret!
-      );
+      const decrypted = encryptionService.decryptField("githubWebhookSecret", unchangedRepo!.githubWebhookSecret!);
 
       expect(decrypted).toBe(plainSecret);
     });
@@ -661,7 +653,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -682,10 +674,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
       // Verify encryption roundtrip
       const encryptionService = EncryptionService.getInstance();
-      const decrypted = encryptionService.decryptField(
-        "githubWebhookSecret",
-        finalRepo!.githubWebhookSecret!
-      );
+      const decrypted = encryptionService.decryptField("githubWebhookSecret", finalRepo!.githubWebhookSecret!);
 
       expect(decrypted).toBeTruthy();
       expect(decrypted.length).toBe(64);
@@ -718,7 +707,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryId: repository.id,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response = await POST(request);
@@ -767,7 +756,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response1 = await POST(request1);
@@ -784,7 +773,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
           workspaceId: repository.workspaceId,
           repositoryUrl: repository.repositoryUrl,
         },
-        workspace.ownerId
+        workspace.ownerId,
       );
 
       const response2 = await POST(request2);

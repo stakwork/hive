@@ -33,10 +33,7 @@ function createRequest({
     return new NextRequest(url, { method, headers });
   }
 
-  const payload =
-    typeof body === "string" || body instanceof Blob
-      ? body
-      : JSON.stringify(body);
+  const payload = typeof body === "string" || body instanceof Blob ? body : JSON.stringify(body);
 
   const nextHeaders = new Headers(headers);
   if (!nextHeaders.has("Content-Type")) {
@@ -50,22 +47,14 @@ function createRequest({
   });
 }
 
-export async function invokeRoute(
-  handler: RouteHandler,
-  options: InvokeRouteOptions = {},
-): Promise<InvokeRouteResult> {
+export async function invokeRoute(handler: RouteHandler, options: InvokeRouteOptions = {}): Promise<InvokeRouteResult> {
   const request = createRequest(options);
 
-  vi.mocked(getServerSession).mockResolvedValue(
-    options.session === undefined ? null : options.session,
-  );
+  vi.mocked(getServerSession).mockResolvedValue(options.session === undefined ? null : options.session);
 
   const context = options.params
     ? {
-        params:
-          options.params instanceof Promise
-            ? options.params
-            : Promise.resolve(options.params),
+        params: options.params instanceof Promise ? options.params : Promise.resolve(options.params),
       }
     : undefined;
 

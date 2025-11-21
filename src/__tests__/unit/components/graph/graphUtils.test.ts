@@ -193,9 +193,7 @@ describe("graphUtils", () => {
 
     test("should handle empty nodeIds set", () => {
       const nodeIds = new Set<string>();
-      const links: D3Link[] = [
-        { source: "node1", target: "node2" },
-      ];
+      const links: D3Link[] = [{ source: "node1", target: "node2" }];
 
       const result = filterValidLinks(links, nodeIds);
 
@@ -400,9 +398,7 @@ describe("graphUtils", () => {
 
     test("filterValidLinks should handle links with additional properties", () => {
       const nodeIds = new Set(["node1", "node2"]);
-      const links: D3Link[] = [
-        { source: "node1", target: "node2", weight: 5, label: "test" },
-      ];
+      const links: D3Link[] = [{ source: "node1", target: "node2", weight: 5, label: "test" }];
 
       const result = filterValidLinks(links, nodeIds);
 
@@ -426,9 +422,7 @@ describe("graphUtils", () => {
         customProp: "value2",
       };
 
-      const links: D3Link[] = [
-        { source: node1, target: node2 },
-      ];
+      const links: D3Link[] = [{ source: node1, target: node2 }];
 
       const result = getConnectedNodeIds("node1", links);
 
@@ -461,10 +455,7 @@ describe("graphUtils", () => {
 
     beforeEach(() => {
       // Create fresh SVG element for each test
-      svg = d3.select(document.body)
-        .append("svg")
-        .attr("width", 800)
-        .attr("height", 600);
+      svg = d3.select(document.body).append("svg").attr("width", 800).attr("height", 600);
     });
 
     afterEach(() => {
@@ -579,7 +570,8 @@ describe("graphUtils", () => {
         addArrowMarker(svg);
 
         // Create a test line that references the marker
-        const line = svg.append("line")
+        const line = svg
+          .append("line")
           .attr("x1", 0)
           .attr("y1", 0)
           .attr("x2", 100)
@@ -587,7 +579,7 @@ describe("graphUtils", () => {
           .attr("marker-end", "url(#arrowhead)");
 
         expect(line.attr("marker-end")).toBe("url(#arrowhead)");
-        
+
         // Verify the marker exists for the reference
         const marker = svg.select("#arrowhead");
         expect(marker.empty()).toBe(false);
@@ -617,8 +609,7 @@ describe("graphUtils", () => {
 
     describe("Integration with SVG container", () => {
       test("should work with empty SVG element", () => {
-        const emptySvg = d3.select(document.body)
-          .append("svg");
+        const emptySvg = d3.select(document.body).append("svg");
 
         addArrowMarker(emptySvg);
 
@@ -630,16 +621,13 @@ describe("graphUtils", () => {
       });
 
       test("should work with SVG that already has content", () => {
-        svg.append("circle")
-          .attr("cx", 50)
-          .attr("cy", 50)
-          .attr("r", 10);
+        svg.append("circle").attr("cx", 50).attr("cy", 50).attr("r", 10);
 
         addArrowMarker(svg);
 
         const marker = svg.select("marker");
         expect(marker.empty()).toBe(false);
-        
+
         // Verify existing content is preserved
         const circle = svg.select("circle");
         expect(circle.empty()).toBe(false);
@@ -650,7 +638,7 @@ describe("graphUtils", () => {
 
         const defs = svg.select("defs");
         expect(defs.empty()).toBe(false);
-        
+
         // Verify defs is direct child of SVG
         const parent = d3.select(defs.node()?.parentNode as Element);
         expect(parent.node()).toBe(svg.node());

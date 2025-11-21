@@ -1,11 +1,5 @@
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorDisplay } from "@/components/ui/error-display";
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -43,7 +37,6 @@ function extractRepoNameFromUrl(url: string): string | null {
   }
 }
 
-
 export function ProjectNameSetupStep() {
   const [error, setError] = useState<string>("");
   const newNamesIsSettled = useRef(false);
@@ -73,13 +66,12 @@ export function ProjectNameSetupStep() {
     }
   }, []);
 
-
   useEffect(() => {
     if (!repoName || projectName) return;
 
     const base = repoName.toLowerCase();
-    const pool = workspaces.map(w => w.slug.toLowerCase());
-    const nextName = nextIndexedName(base, pool)
+    const pool = workspaces.map((w) => w.slug.toLowerCase());
+    const nextName = nextIndexedName(base, pool);
 
     setProjectName(nextName);
   }, [repoName, workspaces, setProjectName, projectName]);
@@ -94,7 +86,9 @@ export function ProjectNameSetupStep() {
 
     const checkSlugAvailability = async () => {
       try {
-        const response = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName.trim().toLowerCase())}`);
+        const response = await fetch(
+          `/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName.trim().toLowerCase())}`,
+        );
         const data = await response.json();
 
         if (response.ok && data.success) {
@@ -129,7 +123,7 @@ export function ProjectNameSetupStep() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: projectName.trim().toLowerCase(),
-          description: '',
+          description: "",
           slug: projectName.trim().toLowerCase(),
           repositoryUrl: repositoryUrlDraft,
         }),
@@ -145,7 +139,9 @@ export function ProjectNameSetupStep() {
         await refreshWorkspaces();
 
         // 2. Check GitHub App status for this workspace/repository
-        const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`);
+        const statusResponse = await fetch(
+          `/api/github/app/check?repositoryUrl=${encodeURIComponent(repositoryUrlDraft)}`,
+        );
         console.log("statusResponse", statusResponse);
         const statusData = await statusResponse.json();
 
@@ -162,14 +158,14 @@ export function ProjectNameSetupStep() {
             },
             body: JSON.stringify({
               workspaceSlug: data.workspace.slug,
-              repositoryUrl: repositoryUrlDraft
+              repositoryUrl: repositoryUrlDraft,
             }),
           });
 
           const installData = await installResponse.json();
 
           if (installData.success && installData.data?.link) {
-            console.log('need installation link')
+            console.log("need installation link");
             // Navigate to GitHub App installation
             window.location.href = installData.data.link;
             return; // Don't reset loading state since we're redirecting
@@ -178,7 +174,6 @@ export function ProjectNameSetupStep() {
           }
         }
       }
-
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unknown error");
       setSwarmIsLoading(false);
@@ -186,19 +181,20 @@ export function ProjectNameSetupStep() {
     }
   };
 
-
   useEffect(() => {
     const validateSlug = async () => {
       setIsLookingForAvailableName(true);
-      const res = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName.trim().toLowerCase())}`);
+      const res = await fetch(
+        `/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName.trim().toLowerCase())}`,
+      );
       const data = await res.json();
       if (data.success) {
         if (!data.data.isAvailable) {
           setInfoMessage("Looking for available project name...");
-          const nameEnding = projectName.split("-").pop() || '';
+          const nameEnding = projectName.split("-").pop() || "";
           const nameHasNumber = /^-?\d+$/.test(nameEnding);
 
-          let newProjectName = '';
+          let newProjectName = "";
           if (nameHasNumber) {
             newProjectName = projectName.replace(nameEnding, `${parseInt(nameEnding) + 1}`);
           } else {
@@ -214,7 +210,7 @@ export function ProjectNameSetupStep() {
       } else {
         setError(data.error);
       }
-    }
+    };
 
     if (repoName && projectName && !newNamesIsSettled.current) {
       validateSlug();
@@ -224,15 +220,13 @@ export function ProjectNameSetupStep() {
   useEffect(() => {
     return () => {
       localStorage.removeItem("repoUrl");
-    }
+    };
   }, []);
-
 
   const resetProgress = () => {
     localStorage.removeItem("repoUrl");
     redirect("/");
-  }
-
+  };
 
   return (
     <Card className="max-w-2xl mx-auto bg-card text-card-foreground">
@@ -241,79 +235,22 @@ export function ProjectNameSetupStep() {
         {!swarmIsLoading && (
           <div className="flex items-center justify-center mx-auto mb-4">
             {/* Original icon for "Set project name" */}
-            <svg
-              width="64"
-              height="64"
-              viewBox="0 0 64 64"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <line
-                x1="32"
-                y1="12"
-                x2="12"
-                y2="32"
-                stroke="#60A5FA"
-                strokeWidth="2"
-              />
-              <line
-                x1="32"
-                y1="12"
-                x2="52"
-                y2="32"
-                stroke="#60A5FA"
-                strokeWidth="2"
-              />
-              <line
-                x1="12"
-                y1="32"
-                x2="32"
-                y2="52"
-                stroke="#60A5FA"
-                strokeWidth="2"
-              />
-              <line
-                x1="52"
-                y1="32"
-                x2="32"
-                y2="52"
-                stroke="#60A5FA"
-                strokeWidth="2"
-              />
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <line x1="32" y1="12" x2="12" y2="32" stroke="#60A5FA" strokeWidth="2" />
+              <line x1="32" y1="12" x2="52" y2="32" stroke="#60A5FA" strokeWidth="2" />
+              <line x1="12" y1="32" x2="32" y2="52" stroke="#60A5FA" strokeWidth="2" />
+              <line x1="52" y1="32" x2="32" y2="52" stroke="#60A5FA" strokeWidth="2" />
               <circle cx="32" cy="12" r="6" fill="#2563EB">
-                <animate
-                  attributeName="r"
-                  values="6;8;6"
-                  dur="1.2s"
-                  repeatCount="indefinite"
-                />
+                <animate attributeName="r" values="6;8;6" dur="1.2s" repeatCount="indefinite" />
               </circle>
               <circle cx="12" cy="32" r="5" fill="#3B82F6">
-                <animate
-                  attributeName="r"
-                  values="5;7;5"
-                  dur="1.2s"
-                  begin="0.3s"
-                  repeatCount="indefinite"
-                />
+                <animate attributeName="r" values="5;7;5" dur="1.2s" begin="0.3s" repeatCount="indefinite" />
               </circle>
               <circle cx="52" cy="32" r="5" fill="#3B82F6">
-                <animate
-                  attributeName="r"
-                  values="5;7;5"
-                  dur="1.2s"
-                  begin="0.6s"
-                  repeatCount="indefinite"
-                />
+                <animate attributeName="r" values="5;7;5" dur="1.2s" begin="0.6s" repeatCount="indefinite" />
               </circle>
               <circle cx="32" cy="52" r="5" fill="#60A5FA">
-                <animate
-                  attributeName="r"
-                  values="5;7;5"
-                  dur="1.2s"
-                  begin="0.9s"
-                  repeatCount="indefinite"
-                />
+                <animate attributeName="r" values="5;7;5" dur="1.2s" begin="0.9s" repeatCount="indefinite" />
               </circle>
             </svg>
           </div>
@@ -328,12 +265,8 @@ export function ProjectNameSetupStep() {
               transition={{ duration: 0.3 }}
               className="flex flex-col gap-1.5"
             >
-              <CardTitle className="text-2xl">
-                Set project name
-              </CardTitle>
-              <CardDescription className="text-lg">
-                Choose a name for your workspace.
-              </CardDescription>
+              <CardTitle className="text-2xl">Set project name</CardTitle>
+              <CardDescription className="text-lg">Choose a name for your workspace.</CardDescription>
             </motion.div>
           ) : (
             <motion.div
@@ -344,18 +277,12 @@ export function ProjectNameSetupStep() {
               transition={{ duration: 0.3 }}
               className="flex flex-col gap-1.5"
             >
-              <CardTitle className="text-2xl">
-                Setting up your workspace…
-              </CardTitle>
-              <CardDescription className="text-lg">
-                This may take a few minutes
-              </CardDescription>
+              <CardTitle className="text-2xl">Setting up your workspace…</CardTitle>
+              <CardDescription className="text-lg">This may take a few minutes</CardDescription>
             </motion.div>
           )}
         </AnimatePresence>
       </CardHeader>
-
-
 
       <CardContent className="space-y-6">
         {swarmIsLoading ? (
@@ -371,7 +298,12 @@ export function ProjectNameSetupStep() {
               <>
                 <div className="flex justify-center items-center text-red-500">{error}</div>
                 <div className="flex justify-center pt-4">
-                  <Button className="px-8 bg-muted text-muted-foreground" variant="outline" type="button" onClick={resetProgress}>
+                  <Button
+                    className="px-8 bg-muted text-muted-foreground"
+                    variant="outline"
+                    type="button"
+                    onClick={resetProgress}
+                  >
                     Try Again
                   </Button>
                 </div>
@@ -380,7 +312,7 @@ export function ProjectNameSetupStep() {
               <>
                 <div>
                   {(isLookingForAvailableName || hasWorkspaceConflict) && (
-                    <p className={`text-sm mb-2 ${hasWorkspaceConflict ? 'text-red-500' : 'text-muted-foreground'}`}>
+                    <p className={`text-sm mb-2 ${hasWorkspaceConflict ? "text-red-500" : "text-muted-foreground"}`}>
                       {infoMessage}
                       {isLookingForAvailableName && <Loader2 className="w-4 h-4 animate-spin ml-2" />}
                     </p>
@@ -389,10 +321,10 @@ export function ProjectNameSetupStep() {
                     id="graphDomain"
                     placeholder={isLookingForAvailableName ? "Looking for available name..." : "Enter workspace name"}
                     value={isLookingForAvailableName ? "" : projectName}
-                    className={`${hasWorkspaceConflict ? 'border-red-500 focus:border-red-600 focus:ring-red-500' : ''}`}
+                    className={`${hasWorkspaceConflict ? "border-red-500 focus:border-red-600 focus:ring-red-500" : ""}`}
                     onChange={(e) => {
                       // Remove spaces and convert to lowercase
-                      const value = e.target.value.replace(/\s+/g, '').toLowerCase();
+                      const value = e.target.value.replace(/\s+/g, "").toLowerCase();
                       setProjectName(value);
                     }}
                   />
@@ -402,12 +334,7 @@ export function ProjectNameSetupStep() {
                 </div>
 
                 <div className="flex justify-between items-center pt-6">
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    onClick={resetProgress}
-                    className="text-muted-foreground"
-                  >
+                  <Button variant="ghost" type="button" onClick={resetProgress} className="text-muted-foreground">
                     Cancel
                   </Button>
                   <Button
@@ -424,9 +351,7 @@ export function ProjectNameSetupStep() {
             )}
           </>
         )}
-
       </CardContent>
-
-    </Card >
+    </Card>
   );
 }

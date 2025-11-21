@@ -50,7 +50,7 @@ const mockSwarm = {
   name: "test-swarm",
   workspaceId: "workspace-123",
   swarmUrl: "https://test.com",
-  swarmApiKey: "encrypted-key"
+  swarmApiKey: "encrypted-key",
 };
 const mockWorkspace = { id: "workspace-123", slug: "test-workspace" };
 const mockRepository = { id: "repo-123", repositoryUrl: "https://github.com/user/repo" };
@@ -74,7 +74,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -86,7 +86,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -98,7 +98,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -108,7 +108,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   test("should successfully trigger ingest", async () => {
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -118,10 +118,10 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
       where: {
         repositoryUrl_workspaceId: {
           repositoryUrl: mockRepository.repositoryUrl,
-          workspaceId: mockSwarm.workspaceId
-        }
+          workspaceId: mockSwarm.workspaceId,
+        },
       },
-      data: { status: RepositoryStatus.PENDING }
+      data: { status: RepositoryStatus.PENDING },
     });
     expect(triggerIngestAsync).toHaveBeenCalled();
   });

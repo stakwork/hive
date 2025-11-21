@@ -10,11 +10,7 @@ import {
   expectForbidden,
   createPostRequest,
 } from "@/__tests__/support/helpers";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-  createTestSwarm,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario, createTestSwarm } from "@/__tests__/support/fixtures";
 import { EncryptionService } from "@/lib/encryption";
 import { db } from "@/lib/db";
 
@@ -54,7 +50,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
   // Helper to setup successful pod claim mocks
   const setupSuccessfulPodClaimMocks = (
     portMappings: Record<string, string> = { "3000": "https://frontend.example.com" },
-    frontendPort: string = "3000"
+    frontendPort: string = "3000",
   ) => {
     mockFetch
       // First call: GET workspace from pool
@@ -86,9 +82,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ([
-          { pid: 123, name: "frontend", status: "online", port: frontendPort },
-        ]),
+        json: async () => [{ pid: 123, name: "frontend", status: "online", port: frontendPort }],
         text: async () => JSON.stringify([{ pid: 123, name: "frontend", status: "online", port: frontendPort }]),
       });
   };
@@ -103,9 +97,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
     test("returns 401 when session is missing", async () => {
       getMockedSession().mockResolvedValue(null);
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/claim-pod/test-workspace-id"
-      );
+      const request = createPostRequest("http://localhost:3000/api/pool-manager/claim-pod/test-workspace-id");
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: "test-workspace-id" }),
@@ -118,9 +110,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
     test("returns 401 when user is missing from session", async () => {
       getMockedSession().mockResolvedValue({ user: null } as any);
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/claim-pod/test-workspace-id"
-      );
+      const request = createPostRequest("http://localhost:3000/api/pool-manager/claim-pod/test-workspace-id");
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: "test-workspace-id" }),
@@ -136,9 +126,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         expires: new Date().toISOString(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/claim-pod/test-workspace-id"
-      );
+      const request = createPostRequest("http://localhost:3000/api/pool-manager/claim-pod/test-workspace-id");
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: "test-workspace-id" }),
@@ -154,9 +142,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/claim-pod/"
-      );
+      const request = createPostRequest("http://localhost:3000/api/pool-manager/claim-pod/");
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: "" }),
@@ -170,9 +156,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/pool-manager/claim-pod/nonexistent-workspace-id"
-      );
+      const request = createPostRequest("http://localhost:3000/api/pool-manager/claim-pod/nonexistent-workspace-id");
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: "nonexistent-workspace-id" }),
@@ -192,9 +176,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -221,9 +203,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -241,9 +221,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMemberUser));
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -274,9 +252,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       setupSuccessfulPodClaimMocks();
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -310,9 +286,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       setupSuccessfulPodClaimMocks();
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -346,9 +320,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         "3000": "https://frontend.example.com",
       });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -379,13 +351,14 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      setupSuccessfulPodClaimMocks({
-        "8080": "https://app.example.com",
-      }, "8080");
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
+      setupSuccessfulPodClaimMocks(
+        {
+          "8080": "https://app.example.com",
+        },
+        "8080",
       );
+
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -416,13 +389,14 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      setupSuccessfulPodClaimMocks({
-        "8080": "https://single-app.example.com",
-      }, "8080");
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
+      setupSuccessfulPodClaimMocks(
+        {
+          "8080": "https://single-app.example.com",
+        },
+        "8080",
       );
+
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -457,9 +431,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         "9090": "https://app2.example.com",
       });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -520,15 +492,11 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => ([
-            { pid: 123, name: "frontend", status: "online", port: "3000" },
-          ]),
+          json: async () => [{ pid: 123, name: "frontend", status: "online", port: "3000" }],
           text: async () => JSON.stringify([{ pid: 123, name: "frontend", status: "online", port: "3000" }]),
         });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -583,9 +551,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
           text: async () => JSON.stringify({ success: true }),
         });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -613,14 +579,15 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      setupSuccessfulPodClaimMocks({
-        "8080": "https://app1.example.com",
-        "9090": "https://app2.example.com",
-      }, "8080");
-
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
+      setupSuccessfulPodClaimMocks(
+        {
+          "8080": "https://app1.example.com",
+          "9090": "https://app2.example.com",
+        },
+        "8080",
       );
+
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -655,9 +622,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       setupSuccessfulPodClaimMocks();
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -672,7 +637,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
             Authorization: "Bearer decrypted-api-key",
             "Content-Type": "application/json",
           }),
-        })
+        }),
       );
     });
 
@@ -701,9 +666,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         text: async () => "Internal Server Error",
       });
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -733,9 +696,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       mockFetch.mockRejectedValue(new Error("Network request failed"));
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -765,9 +726,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       setupSuccessfulPodClaimMocks();
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -781,7 +740,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
           headers: expect.objectContaining({
             Authorization: "Bearer decrypted-api-key",
           }),
-        })
+        }),
       );
     });
 
@@ -806,9 +765,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       setupSuccessfulPodClaimMocks();
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),
@@ -817,7 +774,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       // URL should now use swarm.id (which is a cuid and doesn't need special encoding)
       expect(mockFetch).toHaveBeenCalledWith(
         `https://pool-manager.test.com/pools/${encodeURIComponent(swarm.id)}/workspace`,
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });
@@ -844,9 +801,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        `http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`
-      );
+      const request = createPostRequest(`http://localhost:3000/api/pool-manager/claim-pod/${workspace.id}`);
 
       const response = await POST(request, {
         params: Promise.resolve({ workspaceId: workspace.id }),

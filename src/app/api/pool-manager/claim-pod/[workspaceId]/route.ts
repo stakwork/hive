@@ -110,7 +110,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
     // Get services from swarm
-    const services = workspace.swarm.services as Array<{ name: string; port: number; scripts?: Record<string, string> }> | null | undefined;
+    const services = workspace.swarm.services as
+      | Array<{ name: string; port: number; scripts?: Record<string, string> }>
+      | null
+      | undefined;
 
     const {
       frontend,

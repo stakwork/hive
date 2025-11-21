@@ -59,9 +59,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
         <Card className="max-w-md border-destructive">
           <CardContent className="pt-6 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-destructive" />
-            <p className="text-sm">
-              Workspace not found or you don&apos;t have access to this workspace.
-            </p>
+            <p className="text-sm">Workspace not found or you don&apos;t have access to this workspace.</p>
           </CardContent>
         </Card>
       </div>

@@ -69,9 +69,7 @@ export async function createTestRepository(options?: CreateTestRepositoryOptions
     });
 
     // Encrypt webhook secret only if provided (non-null)
-    const encryptedSecret = webhookSecret
-      ? encryptionService.encryptField("githubWebhookSecret", webhookSecret)
-      : null;
+    const encryptedSecret = webhookSecret ? encryptionService.encryptField("githubWebhookSecret", webhookSecret) : null;
 
     // Create repository with webhook config
     const repository = await tx.repository.create({
@@ -118,7 +116,7 @@ interface GitHubPushPayload {
 export function createGitHubPushPayload(
   ref: string = "refs/heads/main",
   repositoryUrl: string = "https://github.com/test-owner/test-repo",
-  fullName: string = "test-owner/test-repo"
+  fullName: string = "test-owner/test-repo",
 ): GitHubPushPayload {
   return {
     ref,
@@ -139,10 +137,7 @@ export function createGitHubPushPayload(
 /**
  * Computes a valid webhook signature for testing
  */
-export function computeValidWebhookSignature(
-  secret: string,
-  body: string
-): string {
+export function computeValidWebhookSignature(secret: string, body: string): string {
   const hmac = computeHmacSha256Hex(secret, body);
   return `sha256=${hmac}`;
 }
@@ -155,7 +150,7 @@ export function createWebhookRequest(
   payload: GitHubPushPayload,
   signature: string,
   webhookId: string,
-  event: string = "push"
+  event: string = "push",
 ): Request {
   const body = JSON.stringify(payload);
 
@@ -178,7 +173,7 @@ export function createWebhookRequest(
 export function createWebhookRequestWithMissingHeaders(
   url: string,
   payload: GitHubPushPayload,
-  missingHeader: "signature" | "event" | "hookId"
+  missingHeader: "signature" | "event" | "hookId",
 ): Request {
   const body = JSON.stringify(payload);
   const headers: Record<string, string> = {

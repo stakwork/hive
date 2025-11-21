@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -46,7 +40,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
   // Fetch workspace members
   const fetchMembers = async () => {
     if (!slug) return;
-    
+
     try {
       setIsLoading(true);
       setError(null);
@@ -73,7 +67,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
     if (owner && userId === owner.userId) {
       return;
     }
-    
+
     setConfirmRemove({
       open: true,
       userId,
@@ -142,9 +136,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                 <Users className="w-5 h-5" />
                 Workspace Members
               </CardTitle>
-              <CardDescription>
-                Manage who has access to this workspace
-              </CardDescription>
+              <CardDescription>Manage who has access to this workspace</CardDescription>
             </div>
             {canAdmin && (
               <Button onClick={() => setShowAddModal(true)} data-testid="add-member-button">
@@ -168,11 +160,8 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                 </div>
               ))}
             </div>
-          ) : (members.length === 0 && !owner) ? (
-            <div
-              className="text-center py-6 text-muted-foreground"
-              data-testid="members-empty-state"
-            >
+          ) : members.length === 0 && !owner ? (
+            <div className="text-center py-6 text-muted-foreground" data-testid="members-empty-state">
               No members found
             </div>
           ) : (
@@ -187,10 +176,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                 >
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
-                      <AvatarImage 
-                        src={owner.user.image || undefined}
-                        alt={owner.user.name || "Owner"}
-                      />
+                      <AvatarImage src={owner.user.image || undefined} alt={owner.user.name || "Owner"} />
                       <AvatarFallback>
                         {owner.user.name?.charAt(0) || owner.user.github?.username?.charAt(0) || "O"}
                       </AvatarFallback>
@@ -201,14 +187,10 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                           {owner.user.name || owner.user.github?.username || "Unknown"}
                         </p>
                         {owner.user.github?.username && (
-                          <span className="text-sm text-muted-foreground">
-                            @{owner.user.github.username}
-                          </span>
+                          <span className="text-sm text-muted-foreground">@{owner.user.github.username}</span>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {owner.user.email}
-                      </p>
+                      <p className="text-sm text-muted-foreground truncate">{owner.user.email}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -218,7 +200,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                   </div>
                 </div>
               )}
-              
+
               {/* Render regular members */}
               {members.map((member) => (
                 <div
@@ -230,10 +212,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                 >
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
-                      <AvatarImage 
-                        src={member.user.image || undefined}
-                        alt={member.user.name || "User"}
-                      />
+                      <AvatarImage src={member.user.image || undefined} alt={member.user.name || "User"} />
                       <AvatarFallback>
                         {member.user.name?.charAt(0) || member.user.github?.username?.charAt(0) || "U"}
                       </AvatarFallback>
@@ -244,31 +223,20 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                           {member.user.name || member.user.github?.username || "Unknown"}
                         </p>
                         {member.user.github?.username && (
-                          <span className="text-sm text-muted-foreground">
-                            @{member.user.github.username}
-                          </span>
+                          <span className="text-sm text-muted-foreground">@{member.user.github.username}</span>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {member.user.email}
-                      </p>
+                      <p className="text-sm text-muted-foreground truncate">{member.user.email}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge
-                      variant={getRoleBadgeVariant(member.role)}
-                      data-testid="member-role-badge"
-                    >
+                    <Badge variant={getRoleBadgeVariant(member.role)} data-testid="member-role-badge">
                       {member.role}
                     </Badge>
                     {canAdmin && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            data-testid="member-actions-button"
-                          >
+                          <Button variant="ghost" size="sm" data-testid="member-actions-button">
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -305,11 +273,13 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
                               Make Viewer
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem 
-                            onClick={() => handleRemoveMember(
-                              member.userId, 
-                              member.user.name || member.user.github?.username || "this member"
-                            )}
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleRemoveMember(
+                                member.userId,
+                                member.user.name || member.user.github?.username || "this member",
+                              )
+                            }
                             className="text-destructive"
                             data-testid="member-action-remove"
                           >
@@ -338,7 +308,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
 
       <ConfirmDialog
         open={confirmRemove.open}
-        onOpenChange={(open) => setConfirmRemove(prev => ({ ...prev, open }))}
+        onOpenChange={(open) => setConfirmRemove((prev) => ({ ...prev, open }))}
         title="Remove Member"
         description={`Are you sure you want to remove ${confirmRemove.userName} from this workspace? They will lose access to all workspace resources.`}
         confirmText="Remove"

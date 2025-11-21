@@ -156,7 +156,7 @@ async function createTestTask(
     assigneeId?: string | null;
     repositoryId?: string | null;
     deleted?: boolean;
-  }
+  },
 ) {
   return await db.task.create({
     data: {
@@ -189,9 +189,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
     test("returns 401 for unauthenticated requests", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/task/task-123"
-      );
+      const request = createGetRequest("http://localhost:3000/api/task/task-123");
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: "task-123" }),
@@ -206,9 +204,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/task/task-123"
-      );
+      const request = createGetRequest("http://localhost:3000/api/task/task-123");
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: "task-123" }),
@@ -223,10 +219,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       const { owner } = await createTaskTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        "http://localhost:3000/api/task/",
-        owner
-      );
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/task/", owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: "" }),
@@ -239,10 +232,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       const { owner } = await createTaskTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        "http://localhost:3000/api/task/non-existent-task",
-        owner
-      );
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/task/non-existent-task", owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: "non-existent-task" }),
@@ -253,7 +243,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
     test("returns 404 for deleted task (soft-delete filter)", async () => {
       const { owner, workspace } = await createTaskTestSetup();
-      
+
       // Create deleted task
       const deletedTask = await createTestTask(workspace.id, owner.id, {
         title: "Deleted Task",
@@ -262,10 +252,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${deletedTask.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${deletedTask.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: deletedTask.id }),
@@ -277,14 +264,9 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
     test("returns 403 for non-member access", async () => {
       const { task, nonMember } = await createTaskTestSetup();
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(nonMember)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        nonMember
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, nonMember);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -298,10 +280,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -315,10 +294,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        member
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, member);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -342,10 +318,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -357,15 +330,11 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
   describe("Database Integration & Response Structure", () => {
     test("returns complete task data with all relations", async () => {
-      const { owner, task, assignee, repository, workspace } =
-        await createTaskTestSetup();
+      const { owner, task, assignee, repository, workspace } = await createTaskTestSetup();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -395,9 +364,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       expect(data.data.repository).toBeDefined();
       expect(data.data.repository.id).toBe(repository.id);
       expect(data.data.repository.name).toBe("test-repo");
-      expect(data.data.repository.repositoryUrl).toBe(
-        "https://github.com/test/repo"
-      );
+      expect(data.data.repository.repositoryUrl).toBe("https://github.com/test/repo");
 
       // Validate workspace relation
       expect(data.data.workspace).toBeDefined();
@@ -429,10 +396,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${taskNoAssignee.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${taskNoAssignee.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: taskNoAssignee.id }),
@@ -454,10 +418,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${taskNoRepo.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${taskNoRepo.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: taskNoRepo.id }),
@@ -473,10 +434,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -500,10 +458,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -516,12 +471,8 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       messages.forEach((message: any) => {
         if (message.artifacts && message.artifacts.length > 1) {
           for (let i = 0; i < message.artifacts.length - 1; i++) {
-            const currentCreatedAt = new Date(
-              message.artifacts[i].createdAt
-            ).getTime();
-            const nextCreatedAt = new Date(
-              message.artifacts[i + 1].createdAt
-            ).getTime();
+            const currentCreatedAt = new Date(message.artifacts[i].createdAt).getTime();
+            const nextCreatedAt = new Date(message.artifacts[i + 1].createdAt).getTime();
             expect(currentCreatedAt).toBeGreaterThanOrEqual(nextCreatedAt);
           }
         }
@@ -544,10 +495,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -569,10 +517,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -588,16 +533,11 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       const { owner, task } = await createTaskTestSetup();
 
       // Mock extractPrArtifact to throw error
-      mockExtractPrArtifact.mockRejectedValue(
-        new Error("GitHub API error")
-      );
+      mockExtractPrArtifact.mockRejectedValue(new Error("GitHub API error"));
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -618,10 +558,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       const originalFindUnique = db.task.findUnique;
       db.task.findUnique = vi.fn().mockRejectedValue(new Error("Database connection error"));
 
-      const request = createAuthenticatedGetRequest(
-        "http://localhost:3000/api/task/invalid-task-id",
-        owner
-      );
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/task/invalid-task-id", owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: "invalid-task-id" }),
@@ -638,10 +575,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -672,14 +606,9 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
     test("validates all error responses have consistent format", async () => {
       const { nonMember, task } = await createTaskTestSetup();
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(nonMember)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        nonMember
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, nonMember);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -702,14 +631,8 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       // Simulate concurrent requests
-      const request1 = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
-      const request2 = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request1 = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
+      const request2 = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
 
       const [response1, response2] = await Promise.all([
         GET(request1, { params: Promise.resolve({ taskId: task.id }) }),
@@ -741,10 +664,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${largeTask.id}`,
-        owner
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${largeTask.id}`, owner);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: largeTask.id }),
@@ -775,20 +695,14 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       // Active task should be accessible
-      const request1 = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${activeTask.id}`,
-        owner
-      );
+      const request1 = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${activeTask.id}`, owner);
       const response1 = await GET(request1, {
         params: Promise.resolve({ taskId: activeTask.id }),
       });
       await expectSuccess(response1, 200);
 
       // Deleted task should return 404
-      const request2 = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${deletedTask.id}`,
-        owner
-      );
+      const request2 = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${deletedTask.id}`, owner);
       const response2 = await GET(request2, {
         params: Promise.resolve({ taskId: deletedTask.id }),
       });
@@ -802,10 +716,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       // Owner should have access
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-      const request1 = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        owner
-      );
+      const request1 = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, owner);
       const response1 = await GET(request1, {
         params: Promise.resolve({ taskId: task.id }),
       });
@@ -813,23 +724,15 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       // Member should have access (regardless of role)
       getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
-      const request2 = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        member
-      );
+      const request2 = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, member);
       const response2 = await GET(request2, {
         params: Promise.resolve({ taskId: task.id }),
       });
       await expectSuccess(response2, 200);
 
       // Non-member should NOT have access
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(nonMember)
-      );
-      const request3 = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        nonMember
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
+      const request3 = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, nonMember);
       const response3 = await GET(request3, {
         params: Promise.resolve({ taskId: task.id }),
       });
@@ -854,10 +757,7 @@ describe("GET /api/task/[taskId] - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(viewer));
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/task/${task.id}`,
-        viewer
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/task/${task.id}`, viewer);
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: task.id }),

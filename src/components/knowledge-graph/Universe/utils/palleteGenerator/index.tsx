@@ -1,35 +1,35 @@
 /* eslint-disable no-bitwise */
 function shadeColor(color: string, percent: number): string {
   // Remove the hash if it's there.
-  let newColor = color[0] === '#' ? color.slice(1) : color
+  let newColor = color[0] === "#" ? color.slice(1) : color;
 
   // Expand shorthand hex notation (e.g., "D22" → "DD2222")
   if (newColor.length === 3) {
     newColor = newColor
-      .split('')
+      .split("")
       .map((ch) => ch + ch)
-      .join('')
+      .join("");
   }
 
   // Convert the hex color to a number.
-  const num = parseInt(newColor, 16)
+  const num = parseInt(newColor, 16);
 
   // Calculate the adjustment amount.
   // Multiplying by 2.55 converts a percentage to the 0-255 scale.
-  const amt = Math.round(2.55 * percent)
+  const amt = Math.round(2.55 * percent);
 
   // Extract and adjust red, green, and blue components.
-  let R = (num >> 16) + amt
-  let G = ((num >> 8) & 0x00ff) + amt
-  let B = (num & 0x0000ff) + amt
+  let R = (num >> 16) + amt;
+  let G = ((num >> 8) & 0x00ff) + amt;
+  let B = (num & 0x0000ff) + amt;
 
   // Clamp each value between 0 and 255.
-  R = Math.min(255, Math.max(0, R))
-  G = Math.min(255, Math.max(0, G))
-  B = Math.min(255, Math.max(0, B))
+  R = Math.min(255, Math.max(0, R));
+  G = Math.min(255, Math.max(0, G));
+  B = Math.min(255, Math.max(0, B));
 
   // Convert the adjusted values back to a hex string.
-  return `#${((1 << 24) + (R << 16) + (G << 8) + B).toString(16).slice(1).toUpperCase()}`
+  return `#${((1 << 24) + (R << 16) + (G << 8) + B).toString(16).slice(1).toUpperCase()}`;
 }
 
 /**
@@ -53,21 +53,21 @@ function shadeColor(color: string, percent: number): string {
  * @returns {string[]} An array of hex color strings forming the palette.
  */
 export function generatePalette(baseColor: string, steps: number, stepPercent = 10): string[] {
-  const palette: string[] = []
+  const palette: string[] = [];
 
   // Generate tints (lighter colors).
   // Using higher percentages first to get the lightest tint first.
   for (let i = steps; i >= 1; i -= 1) {
-    palette.push(shadeColor(baseColor, i * stepPercent))
+    palette.push(shadeColor(baseColor, i * stepPercent));
   }
 
   // Add the base color (in uppercase for consistency).
-  palette.push(baseColor.toUpperCase())
+  palette.push(baseColor.toUpperCase());
 
   // Generate shades (darker colors).
   for (let i = 1; i <= steps; i += 1) {
-    palette.push(shadeColor(baseColor, -i * stepPercent))
+    palette.push(shadeColor(baseColor, -i * stepPercent));
   }
 
-  return palette
+  return palette;
 }

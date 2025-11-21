@@ -12,10 +12,7 @@ import { isAssignableMemberRole } from "@/lib/auth/roles";
 export const runtime = "nodejs";
 
 // GET /api/workspaces/[slug]/members - Get all workspace members
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -39,18 +36,12 @@ export async function GET(
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching workspace members:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch members" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch members" }, { status: 500 });
   }
 }
 
 // POST /api/workspaces/[slug]/members - Add a member to workspace
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -64,10 +55,7 @@ export async function POST(
     const { githubUsername, role } = body;
 
     if (!githubUsername || !role) {
-      return NextResponse.json(
-        { error: "GitHub username and role are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "GitHub username and role are required" }, { status: 400 });
     }
 
     // Validate role
@@ -89,20 +77,17 @@ export async function POST(
     return NextResponse.json({ member }, { status: 201 });
   } catch (error: unknown) {
     console.error("Error adding workspace member:", error);
-    
+
     if (error instanceof Error) {
       if (error.message.includes("not found")) {
         return NextResponse.json({ error: error.message }, { status: 404 });
       }
-      
+
       if (error.message.includes("already a member") || error.message.includes("Cannot add")) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
     }
 
-    return NextResponse.json(
-      { error: "Failed to add member" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to add member" }, { status: 500 });
   }
 }

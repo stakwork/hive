@@ -64,11 +64,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     test("should create workspace member successfully", async () => {
       (db.workspaceMember.create as Mock).mockResolvedValue(mockWorkspaceMember);
 
-      const result = await createWorkspaceMember(
-        "workspace-1",
-        "user-1",
-        "DEVELOPER" as WorkspaceRole
-      );
+      const result = await createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole);
 
       expect(db.workspaceMember.create).toHaveBeenCalledWith({
         data: {
@@ -85,9 +81,9 @@ describe("Workspace Member Queries - Unit Tests", () => {
       const dbError = new Error("Database connection failed");
       (db.workspaceMember.create as Mock).mockRejectedValue(dbError);
 
-      await expect(
-        createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)
-      ).rejects.toThrow("Database connection failed");
+      await expect(createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)).rejects.toThrow(
+        "Database connection failed",
+      );
 
       expect(db.workspaceMember.create).toHaveBeenCalledWith({
         data: {
@@ -106,20 +102,16 @@ describe("Workspace Member Queries - Unit Tests", () => {
       };
       (db.workspaceMember.create as Mock).mockRejectedValue(constraintError);
 
-      await expect(
-        createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)
-      ).rejects.toEqual(constraintError);
+      await expect(createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)).rejects.toEqual(
+        constraintError,
+      );
     });
 
     test("should create member with different roles", async () => {
       const adminMember = { ...mockWorkspaceMember, role: "ADMIN" };
       (db.workspaceMember.create as Mock).mockResolvedValue(adminMember);
 
-      const result = await createWorkspaceMember(
-        "workspace-1",
-        "user-1",
-        "ADMIN" as WorkspaceRole
-      );
+      const result = await createWorkspaceMember("workspace-1", "user-1", "ADMIN" as WorkspaceRole);
 
       expect(db.workspaceMember.create).toHaveBeenCalledWith({
         data: {
@@ -136,7 +128,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
   describe("reactivateWorkspaceMember", () => {
     const mockReactivatedMember = {
       id: "member-1",
-      workspaceId: "workspace-1", 
+      workspaceId: "workspace-1",
       userId: "user-1",
       role: "DEVELOPER",
       joinedAt: new Date("2024-01-01"),
@@ -159,10 +151,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     test("should reactivate workspace member successfully", async () => {
       (db.workspaceMember.update as Mock).mockResolvedValue(mockReactivatedMember);
 
-      const result = await reactivateWorkspaceMember(
-        "member-1",
-        "DEVELOPER" as WorkspaceRole
-      );
+      const result = await reactivateWorkspaceMember("member-1", "DEVELOPER" as WorkspaceRole);
 
       expect(db.workspaceMember.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
@@ -183,19 +172,16 @@ describe("Workspace Member Queries - Unit Tests", () => {
       };
       (db.workspaceMember.update as Mock).mockRejectedValue(notFoundError);
 
-      await expect(
-        reactivateWorkspaceMember("non-existent-member", "DEVELOPER" as WorkspaceRole)
-      ).rejects.toEqual(notFoundError);
+      await expect(reactivateWorkspaceMember("non-existent-member", "DEVELOPER" as WorkspaceRole)).rejects.toEqual(
+        notFoundError,
+      );
     });
 
     test("should reactivate with new role different from previous", async () => {
       const adminReactivated = { ...mockReactivatedMember, role: "ADMIN" };
       (db.workspaceMember.update as Mock).mockResolvedValue(adminReactivated);
 
-      const result = await reactivateWorkspaceMember(
-        "member-1", 
-        "ADMIN" as WorkspaceRole
-      );
+      const result = await reactivateWorkspaceMember("member-1", "ADMIN" as WorkspaceRole);
 
       expect(db.workspaceMember.update).toHaveBeenCalledWith({
         where: { id: "member-1" },
@@ -214,7 +200,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
     const mockUpdatedMember = {
       id: "member-1",
       workspaceId: "workspace-1",
-      userId: "user-1", 
+      userId: "user-1",
       role: "ADMIN",
       joinedAt: new Date("2024-01-01"),
       leftAt: null,
@@ -248,14 +234,12 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
     test("should handle member not found during role update", async () => {
       const notFoundError = {
-        code: "P2025", 
+        code: "P2025",
         meta: { cause: "Record to update not found." },
       };
       (db.workspaceMember.update as Mock).mockRejectedValue(notFoundError);
 
-      await expect(
-        updateMemberRole("non-existent-member", "ADMIN" as WorkspaceRole)
-      ).rejects.toEqual(notFoundError);
+      await expect(updateMemberRole("non-existent-member", "ADMIN" as WorkspaceRole)).rejects.toEqual(notFoundError);
     });
 
     test("should update role from DEVELOPER to PM", async () => {
@@ -279,7 +263,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         id: "member-1",
         workspaceId: "workspace-1",
         userId: "user-1",
-        role: "DEVELOPER", 
+        role: "DEVELOPER",
         joinedAt: new Date("2024-01-01"),
         leftAt: new Date("2024-02-01"),
       };
@@ -301,9 +285,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
       };
       (db.workspaceMember.update as Mock).mockRejectedValue(notFoundError);
 
-      await expect(softDeleteMember("non-existent-member")).rejects.toEqual(
-        notFoundError
-      );
+      await expect(softDeleteMember("non-existent-member")).rejects.toEqual(notFoundError);
     });
 
     test("should update leftAt timestamp correctly", async () => {
@@ -529,7 +511,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
         userId: "user-1",
         githubUsername: "johndoe",
         user: {
-          id: "user-1", 
+          id: "user-1",
           name: "John Doe",
           email: "john@example.com",
         },
@@ -575,7 +557,7 @@ describe("Workspace Member Queries - Unit Tests", () => {
 
     test("should return false when user is not workspace owner", async () => {
       const mockWorkspace = {
-        id: "workspace-1", 
+        id: "workspace-1",
         ownerId: "different-user",
       };
 
@@ -600,18 +582,16 @@ describe("Workspace Member Queries - Unit Tests", () => {
       const connectionError = new Error("Connection to database failed");
       (db.workspaceMember.create as Mock).mockRejectedValue(connectionError);
 
-      await expect(
-        createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)
-      ).rejects.toThrow("Connection to database failed");
+      await expect(createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)).rejects.toThrow(
+        "Connection to database failed",
+      );
     });
 
     test("should handle timeout errors", async () => {
       const timeoutError = new Error("Query timeout");
       (db.workspaceMember.update as Mock).mockRejectedValue(timeoutError);
 
-      await expect(
-        updateMemberRole("member-1", "ADMIN" as WorkspaceRole)
-      ).rejects.toThrow("Query timeout");
+      await expect(updateMemberRole("member-1", "ADMIN" as WorkspaceRole)).rejects.toThrow("Query timeout");
     });
 
     test("should preserve original error details", async () => {
@@ -622,9 +602,9 @@ describe("Workspace Member Queries - Unit Tests", () => {
       };
       (db.workspaceMember.create as Mock).mockRejectedValue(originalError);
 
-      await expect(
-        createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)  
-      ).rejects.toEqual(originalError);
+      await expect(createWorkspaceMember("workspace-1", "user-1", "DEVELOPER" as WorkspaceRole)).rejects.toEqual(
+        originalError,
+      );
     });
   });
 });

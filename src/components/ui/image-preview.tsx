@@ -65,9 +65,7 @@ export function ImagePreview({ content, className, onRemoveImage }: ImagePreview
 
   return (
     <div className={cn("mt-3 space-y-2", className)}>
-      <div className="text-xs text-muted-foreground font-medium">
-        Uploaded Images ({images.length})
-      </div>
+      <div className="text-xs text-muted-foreground font-medium">Uploaded Images ({images.length})</div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {images.map((image, index) => (
           <div
@@ -96,7 +94,7 @@ export function ImagePreview({ content, className, onRemoveImage }: ImagePreview
                 alt={image.alt}
                 className={cn(
                   "w-full h-auto object-cover aspect-video transition-opacity duration-200",
-                  loadedImages.has(image.url) ? "opacity-100" : "opacity-0"
+                  loadedImages.has(image.url) ? "opacity-100" : "opacity-0",
                 )}
                 onLoad={() => handleImageLoad(image.url)}
                 onError={() => handleImageError(image.url)}

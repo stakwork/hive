@@ -1,14 +1,14 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { POST } from '@/app/api/screenshots/upload/route';
-import { db } from '@/lib/db';
-import { WorkflowStatus } from '@prisma/client';
+import { describe, test, expect, beforeEach, vi } from "vitest";
+import { POST } from "@/app/api/screenshots/upload/route";
+import { db } from "@/lib/db";
+import { WorkflowStatus } from "@prisma/client";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,
   generateUniqueId,
   createPostRequest,
   getMockedSession,
-} from '@/__tests__/support/helpers';
+} from "@/__tests__/support/helpers";
 
 // Create mock S3 service methods
 const mockS3Service = {
@@ -21,23 +21,23 @@ const mockS3Service = {
 };
 
 // Mock S3 service to avoid AWS SDK calls
-vi.mock('@/services/s3', () => ({
+vi.mock("@/services/s3", () => ({
   getS3Service: vi.fn(() => mockS3Service),
 }));
 
 // Mock NextAuth
-vi.mock('next-auth/next', () => ({
+vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/nextauth', () => ({
+vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},
 }));
 
 // Helper to create valid base64 data URL for testing
-function createTestDataUrl(contentType = 'image/jpeg'): string {
+function createTestDataUrl(contentType = "image/jpeg"): string {
   // Create a minimal valid base64 image
-  const base64Data = Buffer.from('fake-image-data').toString('base64');
+  const base64Data = Buffer.from("fake-image-data").toString("base64");
   return `data:${contentType};base64,${base64Data}`;
 }
 
@@ -51,33 +51,33 @@ function createPngBuffer(): Buffer {
   return Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 }
 
-describe('POST /api/screenshots/upload Integration Tests', () => {
+describe("POST /api/screenshots/upload Integration Tests", () => {
   async function createTestUserWithWorkspaceAndTask() {
     return await db.$transaction(async (tx) => {
       const testUser = await tx.user.create({
         data: {
-          id: generateUniqueId('test-user'),
+          id: generateUniqueId("test-user"),
           email: `test-${generateUniqueId()}@example.com`,
-          name: 'Test User',
+          name: "Test User",
         },
       });
 
       const testWorkspace = await tx.workspace.create({
         data: {
-          id: generateUniqueId('workspace'),
-          name: 'Test Workspace',
-          slug: generateUniqueId('test-workspace'),
-          description: 'Test workspace description',
+          id: generateUniqueId("workspace"),
+          name: "Test Workspace",
+          slug: generateUniqueId("test-workspace"),
+          description: "Test workspace description",
           ownerId: testUser.id,
         },
       });
 
       const testTask = await tx.task.create({
         data: {
-          id: generateUniqueId('task'),
-          title: 'Test Task',
-          description: 'Test task description',
-          status: 'TODO',
+          id: generateUniqueId("task"),
+          title: "Test Task",
+          description: "Test task description",
+          status: "TODO",
           workspaceId: testWorkspace.id,
           workflowStatus: WorkflowStatus.PENDING,
           createdById: testUser.id,
@@ -93,19 +93,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     return await db.$transaction(async (tx) => {
       const testUser = await tx.user.create({
         data: {
-          id: generateUniqueId('test-user'),
+          id: generateUniqueId("test-user"),
           email: `test-${generateUniqueId()}@example.com`,
-          name: 'Test User',
+          name: "Test User",
         },
       });
 
       const testWorkspace = await tx.workspace.create({
         data: {
-          id: generateUniqueId('workspace'),
-          name: 'Test Workspace',
-          slug: generateUniqueId('test-workspace'),
-          description: 'Test workspace description',
-          ownerId: generateUniqueId('owner'),
+          id: generateUniqueId("workspace"),
+          name: "Test Workspace",
+          slug: generateUniqueId("test-workspace"),
+          description: "Test workspace description",
+          ownerId: generateUniqueId("owner"),
         },
       });
 
@@ -119,10 +119,10 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       const testTask = await tx.task.create({
         data: {
-          id: generateUniqueId('task'),
-          title: 'Test Task',
-          description: 'Test task description',
-          status: 'TODO',
+          id: generateUniqueId("task"),
+          title: "Test Task",
+          description: "Test task description",
+          status: "TODO",
           workspaceId: testWorkspace.id,
           workflowStatus: WorkflowStatus.PENDING,
           createdById: testUser.id,
@@ -144,20 +144,20 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     mockS3Service.putObject.mockResolvedValue(undefined);
     mockS3Service.deleteObject.mockResolvedValue(undefined);
     mockS3Service.generatePresignedDownloadUrl.mockResolvedValue(
-      'https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/test-presigned-url'
+      "https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/test-presigned-url",
     );
   });
 
-  describe('Authentication Tests', () => {
-    test('should return 401 for unauthenticated request', async () => {
+  describe("Authentication Tests", () => {
+    test("should return 401 for unauthenticated request", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
-        workspaceId: 'test-workspace-id',
+        workspaceId: "test-workspace-id",
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -165,41 +165,41 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(401);
       const data = await response.json();
-      expect(data.error).toBe('Authentication required');
+      expect(data.error).toBe("Authentication required");
       expect(mockS3Service.putObject).not.toHaveBeenCalled();
     });
 
-    test('should return 401 for session without user', async () => {
+    test("should return 401 for session without user", async () => {
       getMockedSession().mockResolvedValue({ user: null });
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
-        workspaceId: 'test-workspace-id',
+        workspaceId: "test-workspace-id",
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
       const response = await POST(request);
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({ error: 'Authentication required' });
+      expect(await response.json()).toEqual({ error: "Authentication required" });
     });
   });
 
-  describe('Authorization Tests', () => {
+  describe("Authorization Tests", () => {
     // NOTE: Two tests below are disabled due to production code bug - returns 200 instead of 201
-    test('should return 404 for non-existent workspace', async () => {
+    test("should return 404 for non-existent workspace", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
-        workspaceId: 'non-existent-workspace-id',
+        workspaceId: "non-existent-workspace-id",
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -207,11 +207,11 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Workspace not found or access denied',
+        error: "Workspace not found or access denied",
       });
     });
 
-    test('should return 404 for deleted workspace', async () => {
+    test("should return 404 for deleted workspace", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
 
       // Mark workspace as deleted
@@ -222,12 +222,12 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -235,45 +235,45 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Workspace not found or access denied',
+        error: "Workspace not found or access denied",
       });
     });
 
-    test('should return 404 for workspace user does not have access to', async () => {
+    test("should return 404 for workspace user does not have access to", async () => {
       const testUser = await db.user.create({
         data: {
-          id: generateUniqueId('test-user'),
+          id: generateUniqueId("test-user"),
           email: `test-${generateUniqueId()}@example.com`,
-          name: 'Test User',
+          name: "Test User",
         },
       });
 
       const otherUser = await db.user.create({
         data: {
-          id: generateUniqueId('other-user'),
+          id: generateUniqueId("other-user"),
           email: `other-${generateUniqueId()}@example.com`,
-          name: 'Other User',
+          name: "Other User",
         },
       });
 
       const testWorkspace = await db.workspace.create({
         data: {
-          id: generateUniqueId('workspace'),
-          name: 'Other User Workspace',
-          slug: generateUniqueId('other-workspace'),
-          description: 'Workspace owned by other user',
+          id: generateUniqueId("workspace"),
+          name: "Other User Workspace",
+          slug: generateUniqueId("other-workspace"),
+          description: "Workspace owned by other user",
           ownerId: otherUser.id,
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -281,20 +281,20 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Workspace not found or access denied',
+        error: "Workspace not found or access denied",
       });
     });
 
-    test('should return 404 for non-existent task', async () => {
+    test("should return 404 for non-existent task", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
-        taskId: 'non-existent-task-id',
+        taskId: "non-existent-task-id",
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -302,11 +302,11 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Task not found or does not belong to workspace',
+        error: "Task not found or does not belong to workspace",
       });
     });
 
-    test('should return 404 for deleted task', async () => {
+    test("should return 404 for deleted task", async () => {
       const { testUser, testWorkspace, testTask } = await createTestUserWithWorkspaceAndTask();
 
       // Mark task as deleted
@@ -317,12 +317,12 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: testTask.id,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -330,30 +330,30 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Task not found or does not belong to workspace',
+        error: "Task not found or does not belong to workspace",
       });
     });
 
-    test('should return 404 for task belonging to different workspace', async () => {
+    test("should return 404 for task belonging to different workspace", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
 
       // Create task in different workspace
       const otherWorkspace = await db.workspace.create({
         data: {
-          id: generateUniqueId('other-workspace'),
-          name: 'Other Workspace',
-          slug: generateUniqueId('other-workspace'),
-          description: 'Different workspace',
+          id: generateUniqueId("other-workspace"),
+          name: "Other Workspace",
+          slug: generateUniqueId("other-workspace"),
+          description: "Different workspace",
           ownerId: testUser.id,
         },
       });
 
       const otherTask = await db.task.create({
         data: {
-          id: generateUniqueId('other-task'),
-          title: 'Other Task',
-          description: 'Task in different workspace',
-          status: 'TODO',
+          id: generateUniqueId("other-task"),
+          title: "Other Task",
+          description: "Task in different workspace",
+          status: "TODO",
           workspaceId: otherWorkspace.id,
           workflowStatus: WorkflowStatus.PENDING,
           createdById: testUser.id,
@@ -363,12 +363,12 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: otherTask.id,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -376,20 +376,20 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({
-        error: 'Task not found or does not belong to workspace',
+        error: "Task not found or does not belong to workspace",
       });
     });
 
-    test.skip('should allow workspace owner to upload', async () => {
+    test.skip("should allow workspace owner to upload", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -404,16 +404,16 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(data.deduplicated).toBe(false);
     });
 
-    test.skip('should allow workspace member to upload', async () => {
-      const { testUser, testWorkspace } = await createTestUserWithRole('DEVELOPER');
+    test.skip("should allow workspace member to upload", async () => {
+      const { testUser, testWorkspace } = await createTestUserWithRole("DEVELOPER");
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -423,17 +423,17 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
   });
 
-  describe('Input Validation Tests', () => {
-    test('should return 400 for missing dataUrl', async () => {
+  describe("Input Validation Tests", () => {
+    test("should return 400 for missing dataUrl", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         // dataUrl missing
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -441,20 +441,20 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
       expect(data.details).toBeDefined();
     });
 
-    test('should return 400 for empty dataUrl', async () => {
+    test("should return 400 for empty dataUrl", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: '',
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
+        dataUrl: "",
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -462,19 +462,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
     });
 
-    test('should return 400 for missing workspaceId', async () => {
+    test("should return 400 for missing workspaceId", async () => {
       const { testUser } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         // workspaceId missing
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -482,20 +482,20 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
       expect(data.details).toBeDefined();
     });
 
-    test('should return 400 for missing actionIndex', async () => {
+    test("should return 400 for missing actionIndex", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         // actionIndex missing
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -503,19 +503,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
     });
 
-    test('should return 400 for negative actionIndex', async () => {
+    test("should return 400 for negative actionIndex", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: -1,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -523,14 +523,14 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
     });
 
-    test('should return 400 for missing pageUrl', async () => {
+    test("should return 400 for missing pageUrl", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
@@ -543,19 +543,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
     });
 
-    test('should return 400 for missing timestamp', async () => {
+    test("should return 400 for missing timestamp", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         // timestamp missing
       });
 
@@ -563,19 +563,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
     });
 
-    test('should return 400 for invalid timestamp (negative)', async () => {
+    test("should return 400 for invalid timestamp (negative)", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: -1,
       });
 
@@ -583,19 +583,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toBe('Invalid request data');
+      expect(data.error).toBe("Invalid request data");
     });
 
-    test.skip('should accept null taskId', async () => {
+    test.skip("should accept null taskId", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -604,16 +604,16 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(response.status).toBe(201);
     });
 
-    test.skip('should accept optional width and height', async () => {
+    test.skip("should accept optional width and height", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
         width: 1920,
         height: 1080,
@@ -634,18 +634,18 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
   });
 
-  describe('File Validation Tests', () => {
+  describe("File Validation Tests", () => {
     // TODO: Fix production code - currently returns 500 instead of 400 for invalid data URL
-    test('should return 400 for invalid data URL format', async () => {
+    test("should return 400 for invalid data URL format", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: 'invalid-data-url-format',
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
+        dataUrl: "invalid-data-url-format",
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -654,26 +654,26 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       // Expecting 400 but currently gets 500 - invalid input should return 400 Bad Request
       expect(response.status).toBe(500); // TODO: Change to 400 when production code is fixed
       const data = await response.json();
-      expect(data.error).toBe('Internal server error');
-      expect(data.message).toContain('Invalid data URL format');
+      expect(data.error).toBe("Internal server error");
+      expect(data.message).toContain("Invalid data URL format");
     });
 
     // TODO: DISABLED - Production code missing file type validation
     // The route needs to call s3Service.validateFileType() and reject invalid types
     // See: src/app/api/screenshots/upload/route.ts - add validation before processScreenshotUpload()
-    test.skip('should return 400 for unsupported file type (PDF)', async () => {
+    test.skip("should return 400 for unsupported file type (PDF)", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock validateFileType to return false for PDF
       mockS3Service.validateFileType.mockReturnValue(false);
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl('application/pdf'),
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
+        dataUrl: createTestDataUrl("application/pdf"),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -683,19 +683,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
 
     // TODO: DISABLED - Production code missing file size validation
-    test.skip('should return 400 for file exceeding size limit', async () => {
+    test.skip("should return 400 for file exceeding size limit", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock validateFileSize to return false
       mockS3Service.validateFileSize.mockReturnValue(false);
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -705,19 +705,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
 
     // TODO: DISABLED - Production code missing image corruption validation
-    test.skip('should return 400 for corrupted image (magic number mismatch)', async () => {
+    test.skip("should return 400 for corrupted image (magic number mismatch)", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock validateImageBuffer to return false (corrupted image)
       mockS3Service.validateImageBuffer.mockReturnValue(false);
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -727,16 +727,16 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
 
     // TODO: DISABLED - Production code returns 200 instead of 201 for new uploads
-    test.skip('should accept valid JPEG image', async () => {
+    test.skip("should accept valid JPEG image", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl('image/jpeg'),
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
+        dataUrl: createTestDataUrl("image/jpeg"),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -746,16 +746,16 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
 
     // TODO: DISABLED - Production code returns 200 instead of 201 for new uploads
-    test.skip('should accept valid PNG image', async () => {
+    test.skip("should accept valid PNG image", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
-        dataUrl: createTestDataUrl('image/png'),
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
+        dataUrl: createTestDataUrl("image/png"),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -765,18 +765,18 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
   });
 
-  describe('Upload Success Tests', () => {
-    test.skip('should successfully upload new screenshot and return 201', async () => {
+  describe("Upload Success Tests", () => {
+    test.skip("should successfully upload new screenshot and return 201", async () => {
       const { testUser, testWorkspace, testTask } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const timestamp = Date.now();
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: testTask.id,
         actionIndex: 0,
-        pageUrl: 'https://example.com/page',
+        pageUrl: "https://example.com/page",
         timestamp,
       });
 
@@ -807,20 +807,20 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(screenshot?.s3Key).toBe(data.s3Key);
       expect(screenshot?.hash).toBe(data.hash);
       expect(screenshot?.actionIndex).toBe(0);
-      expect(screenshot?.pageUrl).toBe('https://example.com/page');
+      expect(screenshot?.pageUrl).toBe("https://example.com/page");
       expect(Number(screenshot?.timestamp)).toBe(timestamp);
     });
 
-    test.skip('should generate correct S3 key format', async () => {
+    test.skip("should generate correct S3 key format", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -834,18 +834,18 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(data.s3Key).toContain(testWorkspace.id);
     });
 
-    test('should set URL expiration to 7 days', async () => {
+    test("should set URL expiration to 7 days", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const beforeUpload = new Date();
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -861,29 +861,27 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expectedExpiration.setDate(expectedExpiration.getDate() + 7);
 
       expect(screenshot?.urlExpiresAt).toBeDefined();
-      expect(screenshot?.urlExpiresAt!.getTime()).toBeGreaterThanOrEqual(
-        expectedExpiration.getTime() - 1000
-      );
+      expect(screenshot?.urlExpiresAt!.getTime()).toBeGreaterThanOrEqual(expectedExpiration.getTime() - 1000);
       expect(screenshot?.urlExpiresAt!.getTime()).toBeLessThanOrEqual(
-        new Date(afterUpload).setDate(afterUpload.getDate() + 7) + 1000
+        new Date(afterUpload).setDate(afterUpload.getDate() + 7) + 1000,
       );
     });
   });
 
-  describe('Deduplication Tests', () => {
-    test.skip('should return existing screenshot when hash matches', async () => {
+  describe("Deduplication Tests", () => {
+    test.skip("should return existing screenshot when hash matches", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const dataUrl = createTestDataUrl();
 
       // First upload
-      const firstRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const firstRequest = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl,
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -902,16 +900,16 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       mockS3Service.validateFileSize.mockReturnValue(true);
       mockS3Service.validateImageBuffer.mockReturnValue(true);
       mockS3Service.generatePresignedDownloadUrl.mockResolvedValue(
-        'https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/test-presigned-url'
+        "https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/test-presigned-url",
       );
 
       // Second upload with same data
-      const secondRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const secondRequest = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl,
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 1,
-        pageUrl: 'https://example.com/different-page',
+        pageUrl: "https://example.com/different-page",
         timestamp: Date.now(),
       });
 
@@ -934,19 +932,19 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(screenshots.length).toBe(1);
     });
 
-    test('should refresh expired URL during deduplication', async () => {
+    test("should refresh expired URL during deduplication", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const dataUrl = createTestDataUrl();
 
       // First upload
-      const firstRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const firstRequest = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl,
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -969,16 +967,16 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       mockS3Service.validateFileSize.mockReturnValue(true);
       mockS3Service.validateImageBuffer.mockReturnValue(true);
       mockS3Service.generatePresignedDownloadUrl.mockResolvedValue(
-        'https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/new-presigned-url'
+        "https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/new-presigned-url",
       );
 
       // Second upload with same data
-      const secondRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const secondRequest = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl,
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 1,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -994,24 +992,24 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       });
 
       expect(updatedScreenshot?.s3Url).toBe(
-        'https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/new-presigned-url'
+        "https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/new-presigned-url",
       );
       expect(updatedScreenshot?.urlExpiresAt!.getTime()).toBeGreaterThan(Date.now());
     });
 
-    test.skip('should not refresh URL if not expired during deduplication', async () => {
+    test.skip("should not refresh URL if not expired during deduplication", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const dataUrl = createTestDataUrl();
 
       // First upload
-      const firstRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const firstRequest = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl,
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -1028,16 +1026,16 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       mockS3Service.validateFileSize.mockReturnValue(true);
       mockS3Service.validateImageBuffer.mockReturnValue(true);
       mockS3Service.generatePresignedDownloadUrl.mockResolvedValue(
-        'https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/should-not-be-used'
+        "https://test-bucket.s3.us-east-1.amazonaws.com/screenshots/should-not-be-used",
       );
 
       // Second upload with same data
-      const secondRequest = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const secondRequest = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl,
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 1,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -1052,20 +1050,20 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
   });
 
-  describe('S3 Failure Tests', () => {
-    test('should return 500 when S3 upload fails', async () => {
+  describe("S3 Failure Tests", () => {
+    test("should return 500 when S3 upload fails", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock S3 putObject to fail
-      mockS3Service.putObject.mockRejectedValue(new Error('S3 upload failed'));
+      mockS3Service.putObject.mockRejectedValue(new Error("S3 upload failed"));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -1073,25 +1071,23 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(500);
       const data = await response.json();
-      expect(data.error).toBe('Internal server error');
-      expect(data.message).toContain('S3 upload failed');
+      expect(data.error).toBe("Internal server error");
+      expect(data.message).toContain("S3 upload failed");
     });
 
-    test('should return 500 when presigned URL generation fails', async () => {
+    test("should return 500 when presigned URL generation fails", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Mock generatePresignedDownloadUrl to fail
-      mockS3Service.generatePresignedDownloadUrl.mockRejectedValue(
-        new Error('Failed to generate presigned URL')
-      );
+      mockS3Service.generatePresignedDownloadUrl.mockRejectedValue(new Error("Failed to generate presigned URL"));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -1099,22 +1095,22 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
 
       expect(response.status).toBe(500);
       const data = await response.json();
-      expect(data.error).toBe('Internal server error');
+      expect(data.error).toBe("Internal server error");
     });
   });
 
-  describe('Database Error Tests', () => {
-    test('should return 500 when database query fails', async () => {
+  describe("Database Error Tests", () => {
+    test("should return 500 when database query fails", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       // Use invalid workspace ID format to trigger database error
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
-        workspaceId: 'invalid-workspace-format-!@#$',
+        workspaceId: "invalid-workspace-format-!@#$",
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -1125,17 +1121,17 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
     });
   });
 
-  describe('Edge Cases', () => {
-    test.skip('should handle very large actionIndex', async () => {
+  describe("Edge Cases", () => {
+    test.skip("should handle very large actionIndex", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 999999,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: Date.now(),
       });
 
@@ -1151,13 +1147,13 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(screenshot?.actionIndex).toBe(999999);
     });
 
-    test.skip('should handle very long pageUrl', async () => {
+    test.skip("should handle very long pageUrl", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const longUrl = 'https://example.com/' + 'a'.repeat(2000);
+      const longUrl = "https://example.com/" + "a".repeat(2000);
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
@@ -1178,13 +1174,13 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(screenshot?.pageUrl).toBe(longUrl);
     });
 
-    test.skip('should handle special characters in pageUrl', async () => {
+    test.skip("should handle special characters in pageUrl", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const specialUrl = 'https://example.com/page?query=test&foo=bar#anchor';
+      const specialUrl = "https://example.com/page?query=test&foo=bar#anchor";
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
@@ -1205,18 +1201,18 @@ describe('POST /api/screenshots/upload Integration Tests', () => {
       expect(screenshot?.pageUrl).toBe(specialUrl);
     });
 
-    test.skip('should handle maximum safe integer timestamp', async () => {
+    test.skip("should handle maximum safe integer timestamp", async () => {
       const { testUser, testWorkspace } = await createTestUserWithWorkspaceAndTask();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       const maxTimestamp = Number.MAX_SAFE_INTEGER;
 
-      const request = createPostRequest('http://localhost:3000/api/screenshots/upload', {
+      const request = createPostRequest("http://localhost:3000/api/screenshots/upload", {
         dataUrl: createTestDataUrl(),
         workspaceId: testWorkspace.id,
         taskId: null,
         actionIndex: 0,
-        pageUrl: 'https://example.com',
+        pageUrl: "https://example.com",
         timestamp: maxTimestamp,
       });
 

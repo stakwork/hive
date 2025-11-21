@@ -3,7 +3,6 @@
 import { ModalProvider } from "@/components/modals/ModlaProvider";
 import ServicesModal from "@/components/modals/ServicesModal";
 
-
 const registry = {
   ServicesWizard: ServicesModal,
 };

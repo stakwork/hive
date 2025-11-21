@@ -23,11 +23,7 @@ interface UseStakworkGenerationOptions {
   enabled?: boolean;
 }
 
-export function useStakworkGeneration({
-  featureId,
-  type,
-  enabled = true,
-}: UseStakworkGenerationOptions) {
+export function useStakworkGeneration({ featureId, type, enabled = true }: UseStakworkGenerationOptions) {
   const [latestRun, setLatestRun] = useState<StakworkRun | null>(null);
   const [querying, setQuerying] = useState(false);
   const { workspace } = useWorkspace();
@@ -53,9 +49,7 @@ export function useStakworkGeneration({
 
       const data = await response.json();
 
-      const runWithoutDecision = data.runs?.find(
-        (run: StakworkRun) => run.decision === null
-      );
+      const runWithoutDecision = data.runs?.find((run: StakworkRun) => run.decision === null);
 
       if (runWithoutDecision) {
         setLatestRun(runWithoutDecision);
@@ -96,11 +90,7 @@ export function useStakworkGeneration({
       }
     };
 
-    const handleRunDecision = (data: {
-      runId: string;
-      decision: StakworkRunDecision;
-      featureId: string;
-    }) => {
+    const handleRunDecision = (data: { runId: string; decision: StakworkRunDecision; featureId: string }) => {
       if (data.featureId === featureId) {
         queryLatestRunRef.current?.();
       }

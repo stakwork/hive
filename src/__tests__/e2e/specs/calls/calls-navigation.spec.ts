@@ -1,14 +1,14 @@
-import { expect } from '@playwright/test';
-import { test } from '../../support/fixtures/test-hooks';
-import { AuthPage, CallsPage, DashboardPage } from '../../support/page-objects';
-import { selectors } from '../../support/fixtures/selectors';
-import { createStandardWorkspaceScenario } from '../../support/fixtures/e2e-scenarios';
+import { expect } from "@playwright/test";
+import { test } from "../../support/fixtures/test-hooks";
+import { AuthPage, CallsPage, DashboardPage } from "../../support/page-objects";
+import { selectors } from "../../support/fixtures/selectors";
+import { createStandardWorkspaceScenario } from "../../support/fixtures/e2e-scenarios";
 
 /**
  * Calls page navigation and interaction tests
  * Tests user journey for navigating to and interacting with the Calls page
  */
-test.describe('Calls Navigation', () => {
+test.describe("Calls Navigation", () => {
   let authPage: AuthPage;
   let dashboardPage: DashboardPage;
   let callsPage: CallsPage;
@@ -30,7 +30,7 @@ test.describe('Calls Navigation', () => {
     await dashboardPage.waitForLoad();
   });
 
-  test('should navigate to calls page via sidebar', async ({ page }) => {
+  test("should navigate to calls page via sidebar", async ({ page }) => {
     // Expand Context section first if needed
     const contextButton = page.locator('[data-testid="nav-context"]');
     const callsLink = page.locator(selectors.navigation.callsLink);
@@ -38,7 +38,7 @@ test.describe('Calls Navigation', () => {
     const isCallsVisible = await callsLink.isVisible().catch(() => false);
     if (!isCallsVisible) {
       await contextButton.click();
-      await callsLink.waitFor({ state: 'visible', timeout: 5000 });
+      await callsLink.waitFor({ state: "visible", timeout: 5000 });
     }
 
     // Click the calls navigation link
@@ -49,10 +49,10 @@ test.describe('Calls Navigation', () => {
 
     // Verify we're on the calls page
     await expect(page.locator(selectors.pageTitle.calls)).toBeVisible();
-    expect(page.url()).toContain('/calls');
+    expect(page.url()).toContain("/calls");
   });
 
-  test('should display calls page title', async ({ page }) => {
+  test("should display calls page title", async ({ page }) => {
     // Navigate to calls page
     await callsPage.goto(workspaceSlug);
 
@@ -60,7 +60,7 @@ test.describe('Calls Navigation', () => {
     await expect(page.locator(selectors.pageTitle.calls)).toBeVisible();
   });
 
-  test('should display Start Call button on calls page', async ({ page }) => {
+  test("should display Start Call button on calls page", async ({ page }) => {
     // Navigate to calls page
     await callsPage.goto(workspaceSlug);
 
@@ -69,7 +69,7 @@ test.describe('Calls Navigation', () => {
     expect(isButtonVisible).toBe(true);
   });
 
-  test('should display Call Recordings card', async ({ page }) => {
+  test("should display Call Recordings card", async ({ page }) => {
     // Navigate to calls page
     await callsPage.goto(workspaceSlug);
 
@@ -78,7 +78,7 @@ test.describe('Calls Navigation', () => {
     expect(isCardVisible).toBe(true);
   });
 
-  test('should complete full user journey: dashboard -> calls -> interact', async ({ page }) => {
+  test("should complete full user journey: dashboard -> calls -> interact", async ({ page }) => {
     // Starting from dashboard
     await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
 

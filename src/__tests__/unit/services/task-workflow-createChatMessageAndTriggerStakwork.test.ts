@@ -119,7 +119,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           data: expect.objectContaining({
             contextTags: JSON.stringify([]),
           }),
-        })
+        }),
       );
     });
 
@@ -133,7 +133,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           taskId: "test-task-id",
           message: "Test message",
           userId: "test-user-id",
-        })
+        }),
       ).rejects.toThrow("Database error");
     });
   });
@@ -201,7 +201,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           taskId: "test-task-id",
           message: "Test message",
           userId: "test-user-id",
-        })
+        }),
       ).rejects.toThrow("GitHub API error");
     });
   });
@@ -217,7 +217,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           taskId: "test-task-id",
           message: "Test message",
           userId: "test-user-id",
-        })
+        }),
       ).rejects.toThrow("User not found");
     });
 
@@ -261,7 +261,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
             Authorization: "Token token=test-stakwork-key",
             "Content-Type": "application/json",
           },
-        })
+        }),
       );
 
       const fetchCall = mockFetch.mock.calls[0];
@@ -382,9 +382,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
         mode: mode,
       });
 
-      const fetchCall = mockFetch.mock.calls.find((call) =>
-        call[0].toString().includes("stakwork")
-      );
+      const fetchCall = mockFetch.mock.calls.find((call) => call[0].toString().includes("stakwork"));
 
       expect(fetchCall).toBeTruthy();
       const payload = JSON.parse(fetchCall![1]!.body as string);
@@ -495,7 +493,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           taskId: "non-existent-task",
           message: "Test message",
           userId: "test-user-id",
-        })
+        }),
       ).rejects.toThrow("Task not found");
     });
 
@@ -555,7 +553,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           data: expect.objectContaining({
             message: longMessage,
           }),
-        })
+        }),
       );
     });
 
@@ -576,7 +574,7 @@ describe("createChatMessageAndTriggerStakwork", () => {
           data: expect.objectContaining({
             message: specialMessage,
           }),
-        })
+        }),
       );
     });
 
@@ -641,11 +639,9 @@ describe("createChatMessageAndTriggerStakwork", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]!.body as string);
 
-      expect(payload.webhook_url).toBe(
-        "http://localhost:3000/api/stakwork/webhook?task_id=test-task-id"
-      );
+      expect(payload.webhook_url).toBe("http://localhost:3000/api/stakwork/webhook?task_id=test-task-id");
       expect(payload.workflow_params.set_var.attributes.vars.webhookUrl).toBe(
-        "http://localhost:3000/api/chat/response"
+        "http://localhost:3000/api/chat/response",
       );
     });
   });

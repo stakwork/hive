@@ -7,9 +7,7 @@ import React from "react";
 // Mock WorkspaceContext provider for testing
 const createMockProvider = (contextValue: any) => {
   return ({ children }: { children: React.ReactNode }) => (
-    <WorkspaceContext.Provider value={contextValue}>
-      {children}
-    </WorkspaceContext.Provider>
+    <WorkspaceContext.Provider value={contextValue}>{children}</WorkspaceContext.Provider>
   );
 };
 
@@ -87,9 +85,7 @@ describe("useWorkspace Hook", () => {
 
     test("should throw error with exact error message when context is undefined", () => {
       const MockProvider = ({ children }: { children: React.ReactNode }) => (
-        <WorkspaceContext.Provider value={undefined as any}>
-          {children}
-        </WorkspaceContext.Provider>
+        <WorkspaceContext.Provider value={undefined as any}>{children}</WorkspaceContext.Provider>
       );
 
       expect(() => {
@@ -103,7 +99,7 @@ describe("useWorkspace Hook", () => {
   describe("Workspace Data Retrieval", () => {
     test("should return all workspace data from context", () => {
       const MockProvider = createMockProvider(mockContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -129,7 +125,7 @@ describe("useWorkspace Hook", () => {
 
     test("should return operations from context", () => {
       const MockProvider = createMockProvider(mockContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -157,7 +153,7 @@ describe("useWorkspace Hook", () => {
         role: null,
       };
       const MockProvider = createMockProvider(loadingContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -176,7 +172,7 @@ describe("useWorkspace Hook", () => {
         loading: false,
       };
       const MockProvider = createMockProvider(errorContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -190,7 +186,7 @@ describe("useWorkspace Hook", () => {
     test("should correctly identify OWNER role", () => {
       const ownerContextValue = { ...mockContextValue, role: "OWNER" as const };
       const MockProvider = createMockProvider(ownerContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -206,7 +202,7 @@ describe("useWorkspace Hook", () => {
     test("should correctly identify ADMIN role", () => {
       const adminContextValue = { ...mockContextValue, role: "ADMIN" as const };
       const MockProvider = createMockProvider(adminContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -222,7 +218,7 @@ describe("useWorkspace Hook", () => {
     test("should correctly identify PM role", () => {
       const pmContextValue = { ...mockContextValue, role: "PM" as const };
       const MockProvider = createMockProvider(pmContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -238,7 +234,7 @@ describe("useWorkspace Hook", () => {
     test("should correctly identify DEVELOPER role", () => {
       const developerContextValue = { ...mockContextValue, role: "DEVELOPER" as const };
       const MockProvider = createMockProvider(developerContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -254,7 +250,7 @@ describe("useWorkspace Hook", () => {
     test("should correctly identify STAKEHOLDER role", () => {
       const stakeholderContextValue = { ...mockContextValue, role: "STAKEHOLDER" as const };
       const MockProvider = createMockProvider(stakeholderContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -270,7 +266,7 @@ describe("useWorkspace Hook", () => {
     test("should correctly identify VIEWER role", () => {
       const viewerContextValue = { ...mockContextValue, role: "VIEWER" as const };
       const MockProvider = createMockProvider(viewerContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -286,7 +282,7 @@ describe("useWorkspace Hook", () => {
     test("should handle null role correctly", () => {
       const nullRoleContextValue = { ...mockContextValue, role: null };
       const MockProvider = createMockProvider(nullRoleContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -303,7 +299,7 @@ describe("useWorkspace Hook", () => {
   describe("Workspace Lookup Utility Methods", () => {
     test("getWorkspaceById should find workspace by ID", () => {
       const MockProvider = createMockProvider(mockContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -317,7 +313,7 @@ describe("useWorkspace Hook", () => {
 
     test("getWorkspaceBySlug should find workspace by slug", () => {
       const MockProvider = createMockProvider(mockContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -334,7 +330,7 @@ describe("useWorkspace Hook", () => {
 
     test("isCurrentWorkspace should correctly identify current workspace", () => {
       const MockProvider = createMockProvider(mockContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -350,7 +346,7 @@ describe("useWorkspace Hook", () => {
         workspaces: [],
       };
       const MockProvider = createMockProvider(emptyWorkspacesContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -369,7 +365,7 @@ describe("useWorkspace Hook", () => {
         switchWorkspace: switchWorkspaceMock,
       };
       const MockProvider = createMockProvider(contextWithMockedSwitchWorkspace);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -388,7 +384,7 @@ describe("useWorkspace Hook", () => {
         refreshWorkspaces: refreshWorkspacesMock,
       };
       const MockProvider = createMockProvider(contextWithMockedRefresh);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -405,7 +401,7 @@ describe("useWorkspace Hook", () => {
         refreshCurrentWorkspace: refreshCurrentWorkspaceMock,
       };
       const MockProvider = createMockProvider(contextWithMockedRefreshCurrent);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -422,7 +418,7 @@ describe("useWorkspace Hook", () => {
         refreshTaskNotifications: refreshTaskNotificationsMock,
       };
       const MockProvider = createMockProvider(contextWithMockedRefreshNotifications);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -441,7 +437,7 @@ describe("useWorkspace Hook", () => {
         waitingForInputCount: 0,
       };
       const MockProvider = createMockProvider(notificationsLoadingContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -456,7 +452,7 @@ describe("useWorkspace Hook", () => {
         waitingForInputCount: 15,
       };
       const MockProvider = createMockProvider(highCountContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -474,7 +470,7 @@ describe("useWorkspace Hook", () => {
         role: null,
       };
       const MockProvider = createMockProvider(noAccessContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -488,7 +484,7 @@ describe("useWorkspace Hook", () => {
 
     test("should maintain referential stability of utility functions", () => {
       const MockProvider = createMockProvider(mockContextValue);
-      
+
       const { result, rerender } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -532,7 +528,7 @@ describe("useWorkspace Hook", () => {
         hasAccess: false,
       };
       const MockProvider = createMockProvider(minimalContextValue);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });
@@ -550,14 +546,12 @@ describe("useWorkspace Hook", () => {
         loading: true,
         workspace: null,
       };
-      
+
       let contextValue = initialContextValue;
       const DynamicProvider = ({ children }: { children: React.ReactNode }) => (
-        <WorkspaceContext.Provider value={contextValue}>
-          {children}
-        </WorkspaceContext.Provider>
+        <WorkspaceContext.Provider value={contextValue}>{children}</WorkspaceContext.Provider>
       );
-      
+
       const { result, rerender } = renderHook(() => useWorkspace(), {
         wrapper: DynamicProvider,
       });
@@ -572,7 +566,7 @@ describe("useWorkspace Hook", () => {
         loading: false,
         workspace: mockWorkspace,
       };
-      
+
       rerender();
 
       // Should reflect the new state
@@ -589,7 +583,7 @@ describe("useWorkspace Hook", () => {
         role: undefined,
       };
       const MockProvider = createMockProvider(contextWithUndefinedProperties);
-      
+
       const { result } = renderHook(() => useWorkspace(), {
         wrapper: MockProvider,
       });

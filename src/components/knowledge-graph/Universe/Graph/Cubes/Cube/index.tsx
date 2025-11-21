@@ -1,53 +1,53 @@
-import { useGraphStore, useSelectedNode } from '@/stores/useStores'
-import { useFrame } from '@react-three/fiber'
-import { NodeExtended } from '@Universe/types'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { Mesh } from 'three'
-import { boxGeometry } from '../constants'
-import { useMaterial } from './hooks/useMaterial'
+import { useGraphStore, useSelectedNode } from "@/stores/useStores";
+import { useFrame } from "@react-three/fiber";
+import { NodeExtended } from "@Universe/types";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { Mesh } from "three";
+import { boxGeometry } from "../constants";
+import { useMaterial } from "./hooks/useMaterial";
 
 type Props = {
-  node: NodeExtended
-  hide?: boolean
-  animated?: boolean
-}
+  node: NodeExtended;
+  hide?: boolean;
+  animated?: boolean;
+};
 
 export const Cube = memo(({ node, hide, animated }: Props) => {
-  const ref = useRef<Mesh | null>(null)
-  const [geometry] = useState(boxGeometry)
-  const selectedNode = useSelectedNode()
-  const { showSelectionGraph } = useGraphStore((s) => s)
-  const isSelected = !!selectedNode && node.ref_id === selectedNode.ref_id
-  const { material } = useMaterial(node.image_url || 'noimage.jpeg', false)
+  const ref = useRef<Mesh | null>(null);
+  const [geometry] = useState(boxGeometry);
+  const selectedNode = useSelectedNode();
+  const { showSelectionGraph } = useGraphStore((s) => s);
+  const isSelected = !!selectedNode && node.ref_id === selectedNode.ref_id;
+  const { material } = useMaterial(node.image_url || "noimage.jpeg", false);
 
   useFrame((_, delta) => {
     if (animated && ref.current) {
       if (isSelected) {
-        ref.current.rotation.y += delta * 1
-        ref.current.rotation.x -= delta * 0.6
+        ref.current.rotation.y += delta * 1;
+        ref.current.rotation.x -= delta * 0.6;
       }
     }
-  })
+  });
 
   useEffect(
     () =>
       function cleanup() {
-        geometry.dispose()
+        geometry.dispose();
       },
     [geometry],
-  )
+  );
 
   const scale = useMemo(() => {
     if (showSelectionGraph && isSelected) {
-      return 20
+      return 20;
     }
 
     if (isSelected) {
-      return (node.scale || 1) * 1.2
+      return (node.scale || 1) * 1.2;
     }
 
-    return node.scale
-  }, [node, isSelected, showSelectionGraph])
+    return node.scale;
+  }, [node, isSelected, showSelectionGraph]);
 
   return (
     <mesh
@@ -60,8 +60,7 @@ export const Cube = memo(({ node, hide, animated }: Props) => {
       userData={node}
       visible={!hide}
     />
+  );
+});
 
-  )
-})
-
-Cube.displayName = 'Cube'
+Cube.displayName = "Cube";

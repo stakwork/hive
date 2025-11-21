@@ -51,8 +51,8 @@ vi.mock("@radix-ui/react-alert-dialog", () => ({
     </div>
   ),
   Content: ({ children, onEscapeKeyDown, ...props }: any) => (
-    <div 
-      data-testid="radix-alert-dialog-content" 
+    <div
+      data-testid="radix-alert-dialog-content"
       {...props}
       onKeyDown={(e: KeyboardEvent) => {
         if (e.key === "Escape" && onEscapeKeyDown) {
@@ -130,20 +130,12 @@ const TestDataFactories = {
 
 // Test utilities
 const TestUtils = {
-  renderComponent: (
-    Component: React.ComponentType<any>,
-    props = {},
-    children = "Test Content"
-  ) => {
+  renderComponent: (Component: React.ComponentType<any>, props = {}, children = "Test Content") => {
     const defaultProps = TestDataFactories.alertDialogProps(props);
     return render(React.createElement(Component, defaultProps, children));
   },
 
-  renderButton: (
-    Component: React.ComponentType<any>,
-    props = {},
-    children = "Button Text"
-  ) => {
+  renderButton: (Component: React.ComponentType<any>, props = {}, children = "Button Text") => {
     const defaultProps = TestDataFactories.buttonProps(props);
     return render(React.createElement(Component, defaultProps, children));
   },
@@ -163,10 +155,7 @@ const TestUtils = {
     expect(cn).toHaveBeenCalledWith(expectedClasses, customClass);
   },
 
-  expectButtonClassNameMerging: (
-    expectedClasses: string,
-    customClass = "custom-button-class"
-  ) => {
+  expectButtonClassNameMerging: (expectedClasses: string, customClass = "custom-button-class") => {
     expect(cn).toHaveBeenCalledWith(expectedClasses, customClass);
   },
 
@@ -177,23 +166,21 @@ const TestUtils = {
 
   renderCompleteAlertDialog: (props = {}) => {
     const dialogProps = TestDataFactories.completeAlertDialog(props);
-    
+
     return render(
       <AlertDialog open={dialogProps.open} onOpenChange={dialogProps.onOpenChange}>
         <AlertDialogTrigger data-testid="trigger">Open Dialog</AlertDialogTrigger>
         <AlertDialogContent data-testid="content">
           <AlertDialogHeader data-testid="header">
             <AlertDialogTitle data-testid="title">{dialogProps.title}</AlertDialogTitle>
-            <AlertDialogDescription data-testid="description">
-              {dialogProps.description}
-            </AlertDialogDescription>
+            <AlertDialogDescription data-testid="description">{dialogProps.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter data-testid="footer">
             <AlertDialogCancel data-testid="cancel">{dialogProps.cancelText}</AlertDialogCancel>
             <AlertDialogAction data-testid="action">{dialogProps.actionText}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>,
     );
   },
 };
@@ -215,13 +202,9 @@ describe("AlertDialog Components", () => {
     test("forwards all props to Radix Root", () => {
       const onOpenChange = vi.fn();
       render(
-        <AlertDialog
-          data-testid="root-test"
-          open={true}
-          onOpenChange={onOpenChange}
-        >
+        <AlertDialog data-testid="root-test" open={true} onOpenChange={onOpenChange}>
           Dialog Content
-        </AlertDialog>
+        </AlertDialog>,
       );
 
       const dialog = screen.getByTestId("root-test");
@@ -234,7 +217,7 @@ describe("AlertDialog Components", () => {
       const { rerender } = render(
         <AlertDialog open={false} onOpenChange={onOpenChange} data-testid="controlled">
           Content
-        </AlertDialog>
+        </AlertDialog>,
       );
 
       let dialog = screen.getByTestId("controlled");
@@ -243,7 +226,7 @@ describe("AlertDialog Components", () => {
       rerender(
         <AlertDialog open={true} onOpenChange={onOpenChange} data-testid="controlled">
           Content
-        </AlertDialog>
+        </AlertDialog>,
       );
 
       dialog = screen.getByTestId("controlled");
@@ -267,7 +250,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogTrigger onClick={handleClick} data-testid="clickable-trigger">
           Open
-        </AlertDialogTrigger>
+        </AlertDialogTrigger>,
       );
 
       const trigger = screen.getByTestId("clickable-trigger");
@@ -280,7 +263,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogTrigger asChild data-testid="custom-trigger">
           <div>Custom Trigger</div>
-        </AlertDialogTrigger>
+        </AlertDialogTrigger>,
       );
 
       const trigger = screen.getByTestId("custom-trigger");
@@ -290,11 +273,11 @@ describe("AlertDialog Components", () => {
 
     test("handles keyboard events", () => {
       const handleKeyDown = vi.fn();
-      
+
       render(
         <AlertDialogTrigger onKeyDown={handleKeyDown} data-testid="keyboard-trigger">
           Trigger
-        </AlertDialogTrigger>
+        </AlertDialogTrigger>,
       );
 
       const trigger = screen.getByTestId("keyboard-trigger");
@@ -319,7 +302,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogPortal container={container} data-testid="portal-with-container">
           Portal Content
-        </AlertDialogPortal>
+        </AlertDialogPortal>,
       );
 
       const portal = screen.getByTestId("portal-with-container");
@@ -333,7 +316,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogPortal data-testid="portal-content">
           <div>Portal Child</div>
-        </AlertDialogPortal>
+        </AlertDialogPortal>,
       );
 
       const portal = screen.getByTestId("portal-content");
@@ -349,18 +332,16 @@ describe("AlertDialog Components", () => {
       TestUtils.expectBasicRendering(overlay, "alert-dialog-overlay");
       TestUtils.expectPropsForwarded(overlay);
       TestUtils.expectClassNameMerging(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50"
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
       );
     });
 
     test("handles custom className merging", () => {
-      render(
-        <AlertDialogOverlay className="custom-overlay" data-testid="overlay-custom" />
-      );
+      render(<AlertDialogOverlay className="custom-overlay" data-testid="overlay-custom" />);
 
       TestUtils.expectClassNameMerging(
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
-        "custom-overlay"
+        "custom-overlay",
       );
     });
 
@@ -371,7 +352,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogOverlay onClick={handleClick} data-testid="clickable-overlay">
           Overlay
-        </AlertDialogOverlay>
+        </AlertDialogOverlay>,
       );
 
       const overlay = screen.getByTestId("clickable-overlay");
@@ -381,12 +362,7 @@ describe("AlertDialog Components", () => {
     });
 
     test("supports animation state attributes", () => {
-      render(
-        <AlertDialogOverlay
-          data-testid="animated-overlay"
-          data-state="open"
-        />
-      );
+      render(<AlertDialogOverlay data-testid="animated-overlay" data-state="open" />);
 
       const overlay = screen.getByTestId("animated-overlay");
       expect(overlay).toHaveAttribute("data-state", "open");
@@ -400,7 +376,7 @@ describe("AlertDialog Components", () => {
 
       TestUtils.expectBasicRendering(content, "alert-dialog-content");
       TestUtils.expectClassNameMerging(
-        "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg"
+        "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
       );
 
       // Should also render the portal and overlay
@@ -416,7 +392,7 @@ describe("AlertDialog Components", () => {
             <p>Description content</p>
             <button>Action Button</button>
           </div>
-        </AlertDialogContent>
+        </AlertDialogContent>,
       );
 
       const content = screen.getByTestId("complex-content");
@@ -429,12 +405,9 @@ describe("AlertDialog Components", () => {
       const handleEscapeKeyDown = vi.fn();
 
       render(
-        <AlertDialogContent
-          data-testid="escape-content"
-          onEscapeKeyDown={handleEscapeKeyDown}
-        >
+        <AlertDialogContent data-testid="escape-content" onEscapeKeyDown={handleEscapeKeyDown}>
           Content
-        </AlertDialogContent>
+        </AlertDialogContent>,
       );
 
       const content = screen.getByTestId("escape-content");
@@ -451,9 +424,7 @@ describe("AlertDialog Components", () => {
 
       TestUtils.expectBasicRendering(header, "alert-dialog-header");
       TestUtils.expectPropsForwarded(header);
-      TestUtils.expectClassNameMerging(
-        "flex flex-col gap-2 text-center sm:text-left"
-      );
+      TestUtils.expectClassNameMerging("flex flex-col gap-2 text-center sm:text-left");
     });
 
     test("handles multiple header elements", () => {
@@ -461,7 +432,7 @@ describe("AlertDialog Components", () => {
         <AlertDialogHeader data-testid="multi-header">
           <AlertDialogTitle>Dialog Title</AlertDialogTitle>
           <AlertDialogDescription>Dialog Description</AlertDialogDescription>
-        </AlertDialogHeader>
+        </AlertDialogHeader>,
       );
 
       const header = screen.getByTestId("multi-header");
@@ -474,7 +445,7 @@ describe("AlertDialog Components", () => {
         <AlertDialogHeader data-testid="custom-header">
           <div>Custom Element 1</div>
           <div>Custom Element 2</div>
-        </AlertDialogHeader>
+        </AlertDialogHeader>,
       );
 
       const header = screen.getByTestId("custom-header");
@@ -491,9 +462,7 @@ describe("AlertDialog Components", () => {
 
       TestUtils.expectBasicRendering(footer, "alert-dialog-footer");
       TestUtils.expectPropsForwarded(footer);
-      TestUtils.expectClassNameMerging(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"
-      );
+      TestUtils.expectClassNameMerging("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end");
     });
 
     test("handles multiple footer buttons with proper layout", () => {
@@ -501,7 +470,7 @@ describe("AlertDialog Components", () => {
         <AlertDialogFooter data-testid="button-footer">
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction>Confirm</AlertDialogAction>
-        </AlertDialogFooter>
+        </AlertDialogFooter>,
       );
 
       const footer = screen.getByTestId("button-footer");
@@ -513,10 +482,7 @@ describe("AlertDialog Components", () => {
     test("maintains responsive layout classes", () => {
       render(<AlertDialogFooter className="custom-footer" data-testid="responsive" />);
 
-      TestUtils.expectClassNameMerging(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
-        "custom-footer"
-      );
+      TestUtils.expectClassNameMerging("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", "custom-footer");
     });
   });
 
@@ -533,13 +499,9 @@ describe("AlertDialog Components", () => {
 
     test("supports different heading levels via props", () => {
       render(
-        <AlertDialogTitle
-          data-testid="custom-title"
-          role="heading"
-          aria-level={3}
-        >
+        <AlertDialogTitle data-testid="custom-title" role="heading" aria-level={3}>
           Custom Title
-        </AlertDialogTitle>
+        </AlertDialogTitle>,
       );
 
       const title = screen.getByTestId("custom-title");
@@ -550,11 +512,7 @@ describe("AlertDialog Components", () => {
 
     test("handles long titles", () => {
       const longTitle = "This is a very long title that should be handled gracefully by the component";
-      render(
-        <AlertDialogTitle data-testid="long-title">
-          {longTitle}
-        </AlertDialogTitle>
-      );
+      render(<AlertDialogTitle data-testid="long-title">{longTitle}</AlertDialogTitle>);
 
       const title = screen.getByTestId("long-title");
       expect(title).toHaveTextContent(longTitle);
@@ -564,7 +522,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogTitle data-testid="html-title">
           <span>HTML</span> <strong>Content</strong>
-        </AlertDialogTitle>
+        </AlertDialogTitle>,
       );
 
       const title = screen.getByTestId("html-title");
@@ -587,11 +545,7 @@ describe("AlertDialog Components", () => {
 
     test("handles multiline descriptions", () => {
       const multilineText = "This is line one.\nThis is line two.\nThis is line three.";
-      render(
-        <AlertDialogDescription data-testid="multiline-desc">
-          {multilineText}
-        </AlertDialogDescription>
-      );
+      render(<AlertDialogDescription data-testid="multiline-desc">{multilineText}</AlertDialogDescription>);
 
       const description = screen.getByTestId("multiline-desc");
       expect(description).toHaveTextContent("This is line one. This is line two. This is line three.");
@@ -601,7 +555,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogDescription data-testid="html-desc">
           This is <em>emphasized</em> and this is <strong>strong</strong> text.
-        </AlertDialogDescription>
+        </AlertDialogDescription>,
       );
 
       const description = screen.getByTestId("html-desc");
@@ -612,13 +566,9 @@ describe("AlertDialog Components", () => {
 
     test("supports accessibility attributes", () => {
       render(
-        <AlertDialogDescription
-          data-testid="accessible-desc"
-          aria-live="polite"
-          id="dialog-description"
-        >
+        <AlertDialogDescription data-testid="accessible-desc" aria-live="polite" id="dialog-description">
           Accessible description
-        </AlertDialogDescription>
+        </AlertDialogDescription>,
       );
 
       const description = screen.getByTestId("accessible-desc");
@@ -647,7 +597,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogAction onClick={handleClick} data-testid="action-click">
           Confirm
-        </AlertDialogAction>
+        </AlertDialogAction>,
       );
 
       const action = screen.getByTestId("action-click");
@@ -658,12 +608,9 @@ describe("AlertDialog Components", () => {
 
     test("supports custom button variants via className", () => {
       render(
-        <AlertDialogAction
-          className="destructive-button"
-          data-testid="destructive-action"
-        >
+        <AlertDialogAction className="destructive-button" data-testid="destructive-action">
           Delete
-        </AlertDialogAction>
+        </AlertDialogAction>,
       );
 
       TestUtils.expectButtonClassNameMerging("btn-default", "destructive-button");
@@ -673,7 +620,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogAction disabled data-testid="disabled-action">
           Disabled Action
-        </AlertDialogAction>
+        </AlertDialogAction>,
       );
 
       const action = screen.getByTestId("disabled-action");
@@ -691,7 +638,7 @@ describe("AlertDialog Components", () => {
           tabIndex={0}
         >
           Submit
-        </AlertDialogAction>
+        </AlertDialogAction>,
       );
 
       const action = screen.getByTestId("full-props-action");
@@ -724,7 +671,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogCancel onClick={handleClick} data-testid="cancel-click">
           Cancel
-        </AlertDialogCancel>
+        </AlertDialogCancel>,
       );
 
       const cancel = screen.getByTestId("cancel-click");
@@ -735,12 +682,9 @@ describe("AlertDialog Components", () => {
 
     test("maintains outline variant with custom className", () => {
       render(
-        <AlertDialogCancel
-          className="custom-cancel"
-          data-testid="custom-cancel-btn"
-        >
+        <AlertDialogCancel className="custom-cancel" data-testid="custom-cancel-btn">
           Custom Cancel
-        </AlertDialogCancel>
+        </AlertDialogCancel>,
       );
 
       expect(buttonVariants).toHaveBeenCalledWith({ variant: "outline" });
@@ -753,7 +697,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogCancel onKeyDown={handleKeyDown} data-testid="keyboard-cancel">
           Cancel
-        </AlertDialogCancel>
+        </AlertDialogCancel>,
       );
 
       const cancel = screen.getByTestId("keyboard-cancel");
@@ -768,16 +712,7 @@ describe("AlertDialog Components", () => {
       TestUtils.renderCompleteAlertDialog();
 
       // Verify all components are rendered
-      const componentTestIds = [
-        "trigger",
-        "content",
-        "header",
-        "title",
-        "description",
-        "footer",
-        "cancel",
-        "action",
-      ];
+      const componentTestIds = ["trigger", "content", "header", "title", "description", "footer", "cancel", "action"];
 
       componentTestIds.forEach((testId) => {
         expect(screen.getByTestId(testId)).toBeInTheDocument();
@@ -833,7 +768,7 @@ describe("AlertDialog Components", () => {
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
-        </AlertDialog>
+        </AlertDialog>,
       );
 
       // Test cancel action
@@ -865,13 +800,7 @@ describe("AlertDialog Components", () => {
       ];
 
       components.forEach(({ Component, name }, index) => {
-        render(
-          React.createElement(
-            Component,
-            { "data-testid": `null-test-${index}`, className: null },
-            null
-          )
-        );
+        render(React.createElement(Component, { "data-testid": `null-test-${index}`, className: null }, null));
         const element = screen.getByTestId(`null-test-${index}`);
         expect(element).toBeInTheDocument();
       });
@@ -886,11 +815,7 @@ describe("AlertDialog Components", () => {
 
     test("handles special characters in content", () => {
       const specialContent = "Special chars: !@#$%^&*()_+{}|:<>?[];',./`~";
-      render(
-        <AlertDialogTitle data-testid="special-chars">
-          {specialContent}
-        </AlertDialogTitle>
-      );
+      render(<AlertDialogTitle data-testid="special-chars">{specialContent}</AlertDialogTitle>);
       const title = screen.getByTestId("special-chars");
 
       expect(title).toHaveTextContent(specialContent);
@@ -903,7 +828,7 @@ describe("AlertDialog Components", () => {
             <span>Fragment Child 1</span>
             <span>Fragment Child 2</span>
           </React.Fragment>
-        </AlertDialogContent>
+        </AlertDialogContent>,
       );
 
       const content = screen.getByTestId("fragment-content");
@@ -912,17 +837,9 @@ describe("AlertDialog Components", () => {
     });
 
     test("handles array of elements as children", () => {
-      const arrayChildren = [
-        <span key="1">First</span>,
-        <span key="2">Second</span>,
-        <span key="3">Third</span>,
-      ];
+      const arrayChildren = [<span key="1">First</span>, <span key="2">Second</span>, <span key="3">Third</span>];
 
-      render(
-        <AlertDialogHeader data-testid="array-children">
-          {arrayChildren}
-        </AlertDialogHeader>
-      );
+      render(<AlertDialogHeader data-testid="array-children">{arrayChildren}</AlertDialogHeader>);
       const header = screen.getByTestId("array-children");
 
       expect(header).toHaveTextContent("First");
@@ -936,7 +853,7 @@ describe("AlertDialog Components", () => {
         <AlertDialogFooter data-testid="conditional-footer">
           {condition && <AlertDialogCancel>Conditional Cancel</AlertDialogCancel>}
           <AlertDialogAction>Always Action</AlertDialogAction>
-        </AlertDialogFooter>
+        </AlertDialogFooter>,
       );
 
       expect(screen.getByText("Conditional Cancel")).toBeInTheDocument();
@@ -956,7 +873,7 @@ describe("AlertDialog Components", () => {
       render(
         <AlertDialogContent data-testid="aria-content" {...ariaProps}>
           Accessible Content
-        </AlertDialogContent>
+        </AlertDialogContent>,
       );
       const content = screen.getByTestId("aria-content");
 
@@ -968,13 +885,9 @@ describe("AlertDialog Components", () => {
 
     test("maintains semantic heading structure", () => {
       render(
-        <AlertDialogTitle
-          data-testid="semantic-title"
-          role="heading"
-          aria-level={2}
-        >
+        <AlertDialogTitle data-testid="semantic-title" role="heading" aria-level={2}>
           Dialog Title
-        </AlertDialogTitle>
+        </AlertDialogTitle>,
       );
 
       const title = screen.getByRole("heading", { level: 2 });
@@ -984,17 +897,15 @@ describe("AlertDialog Components", () => {
     test("supports keyboard navigation", () => {
       render(
         <AlertDialogContent data-testid="keyboard-content" tabIndex={0}>
-          <AlertDialogAction data-testid="keyboard-action">
-            Accessible Action
-          </AlertDialogAction>
-        </AlertDialogContent>
+          <AlertDialogAction data-testid="keyboard-action">Accessible Action</AlertDialogAction>
+        </AlertDialogContent>,
       );
 
       const content = screen.getByTestId("keyboard-content");
       const action = screen.getByTestId("keyboard-action");
 
       expect(content).toHaveAttribute("tabindex", "0");
-      
+
       // Focus should be manageable
       content.focus();
       expect(document.activeElement).toBe(content);
@@ -1002,13 +913,9 @@ describe("AlertDialog Components", () => {
 
     test("handles screen reader announcements", () => {
       render(
-        <AlertDialogDescription
-          data-testid="screen-reader-desc"
-          aria-live="assertive"
-          aria-atomic="true"
-        >
+        <AlertDialogDescription data-testid="screen-reader-desc" aria-live="assertive" aria-atomic="true">
           Important announcement
-        </AlertDialogDescription>
+        </AlertDialogDescription>,
       );
 
       const description = screen.getByTestId("screen-reader-desc");
@@ -1020,13 +927,10 @@ describe("AlertDialog Components", () => {
       const handleEscape = vi.fn();
 
       render(
-        <AlertDialogContent
-          data-testid="focus-trap-content"
-          onEscapeKeyDown={handleEscape}
-        >
+        <AlertDialogContent data-testid="focus-trap-content" onEscapeKeyDown={handleEscape}>
           <AlertDialogAction data-testid="first-focusable">First</AlertDialogAction>
           <AlertDialogCancel data-testid="last-focusable">Last</AlertDialogCancel>
-        </AlertDialogContent>
+        </AlertDialogContent>,
       );
 
       const content = screen.getByTestId("focus-trap-content");
@@ -1053,9 +957,7 @@ describe("AlertDialog Components", () => {
       ];
 
       expectedSlots.forEach(({ Component, slot }, index) => {
-        render(
-          React.createElement(Component, { "data-testid": `slot-test-${index}` })
-        );
+        render(React.createElement(Component, { "data-testid": `slot-test-${index}` }));
         const element = screen.getByTestId(`slot-test-${index}`);
         expect(element).toHaveAttribute("data-slot", slot);
       });
@@ -1067,19 +969,14 @@ describe("AlertDialog Components", () => {
       const action = screen.getByTestId("action-no-slot");
       expect(action).not.toHaveAttribute("data-slot");
 
-      // Test AlertDialogCancel  
+      // Test AlertDialogCancel
       render(<AlertDialogCancel data-testid="cancel-no-slot">Cancel</AlertDialogCancel>);
       const cancel = screen.getByTestId("cancel-no-slot");
       expect(cancel).not.toHaveAttribute("data-slot");
     });
 
     test("data-slot attributes use component values over props", () => {
-      render(
-        <AlertDialogContent
-          data-testid="slot-override-test"
-          data-slot="custom-slot"
-        />
-      );
+      render(<AlertDialogContent data-testid="slot-override-test" data-slot="custom-slot" />);
       const content = screen.getByTestId("slot-override-test");
 
       // Props override component's data-slot (this is how it actually works)

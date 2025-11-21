@@ -2,10 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, PATCH } from "@/app/api/features/[featureId]/route";
 import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -65,10 +62,7 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/features/${feature.id}`,
-        user
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/features/${feature.id}`, user);
 
       // Execute
       const response = await GET(request, {
@@ -110,10 +104,7 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/features/${feature.id}`,
-        creator
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/features/${feature.id}`, creator);
 
       // Execute
       const response = await GET(request, {
@@ -138,9 +129,7 @@ describe("Single Feature API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createGetRequest(
-        "http://localhost:3000/api/features/test-feature-id"
-      );
+      const request = createGetRequest("http://localhost:3000/api/features/test-feature-id");
 
       const response = await GET(request, {
         params: Promise.resolve({ featureId: "test-feature-id" }),
@@ -152,10 +141,7 @@ describe("Single Feature API - Integration Tests", () => {
     test("returns 404 for non-existent feature", async () => {
       const user = await createTestUser();
 
-      const request = createAuthenticatedGetRequest(
-        "http://localhost:3000/api/features/non-existent-id",
-        user
-      );
+      const request = createAuthenticatedGetRequest("http://localhost:3000/api/features/non-existent-id", user);
 
       const response = await GET(request, {
         params: Promise.resolve({ featureId: "non-existent-id" }),
@@ -183,10 +169,7 @@ describe("Single Feature API - Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/features/${feature.id}`,
-        nonMember
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/features/${feature.id}`, nonMember);
 
       // Execute
       const response = await GET(request, {
@@ -220,7 +203,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { title: "Updated Title" },
-        user
+        user,
       );
 
       // Execute
@@ -256,7 +239,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { status: FeatureStatus.IN_PROGRESS },
-        user
+        user,
       );
 
       // Execute
@@ -291,7 +274,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { priority: FeaturePriority.URGENT },
-        user
+        user,
       );
 
       // Execute
@@ -326,7 +309,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { assigneeId: assignee.id },
-        owner
+        owner,
       );
 
       // Execute
@@ -365,7 +348,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { assigneeId: null },
-        owner
+        owner,
       );
 
       // Execute
@@ -406,7 +389,7 @@ describe("Single Feature API - Integration Tests", () => {
           status: FeatureStatus.COMPLETED,
           priority: FeaturePriority.HIGH,
         },
-        user
+        user,
       );
 
       // Execute
@@ -444,7 +427,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { title: "  Trimmed Title  " },
-        user
+        user,
       );
 
       // Execute
@@ -458,10 +441,7 @@ describe("Single Feature API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createPatchRequest(
-        "http://localhost:3000/api/features/test-feature-id",
-        { title: "New Title" }
-      );
+      const request = createPatchRequest("http://localhost:3000/api/features/test-feature-id", { title: "New Title" });
 
       const response = await PATCH(request, {
         params: Promise.resolve({ featureId: "test-feature-id" }),
@@ -476,7 +456,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         "http://localhost:3000/api/features/non-existent-id",
         { title: "New Title" },
-        user
+        user,
       );
 
       const response = await PATCH(request, {
@@ -508,7 +488,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { title: "Updated Title" },
-        nonMember
+        nonMember,
       );
 
       // Execute
@@ -541,7 +521,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { status: "INVALID_STATUS" },
-        user
+        user,
       );
 
       // Execute
@@ -574,7 +554,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { priority: "INVALID_PRIORITY" },
-        user
+        user,
       );
 
       // Execute
@@ -607,7 +587,7 @@ describe("Single Feature API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
         { assigneeId: "non-existent-user-id" },
-        user
+        user,
       );
 
       // Execute

@@ -53,11 +53,11 @@ vi.mock("@/lib/utils/swarm");
 
 /**
  * Unit Tests for callStakwork Function (Chat Message Variant)
- * 
+ *
  * Tests the callStakwork function which is central to the chat message processing
  * workflow. This function integrates with the Stakwork AI service to trigger
  * automated workflows based on user chat messages.
- * 
+ *
  * Test Coverage:
  * 1. Chat Message Processing - message creation, status updates, AI workflow trigger
  * 2. Context Tag Handling - serialization, validation, passing to external API
@@ -169,7 +169,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
 
         expect(response.status).toBe(201);
         expect(data.success).toBe(true);
-        
+
         // Verify chat message was created with correct status
         expect(vi.mocked(db.chatMessage.create)).toHaveBeenCalledWith({
           data: expect.objectContaining({
@@ -288,7 +288,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         const response = await POST(request);
 
         expect(response.status).toBe(201); // Message still created
-        
+
         // Verify task was marked as FAILED
         expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
           where: { id: mockTaskId },
@@ -529,9 +529,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           },
         };
 
-        const contextTags = [
-          { type: "SCHEMATIC", id: "diagram-789" },
-        ];
+        const contextTags = [{ type: "SCHEMATIC", id: "diagram-789" }];
 
         vi.mocked(db.task.findFirst).mockResolvedValue(mockTask as any);
         vi.mocked(db.user.findUnique).mockResolvedValue({ id: mockUserId, name: "Test User" } as any);
@@ -880,7 +878,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
           "http://localhost:3000/api/mock/chat",
           expect.objectContaining({
             method: "POST",
-          })
+          }),
         );
       });
 
@@ -939,7 +937,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
               Authorization: "Token token=test-api-key",
               "Content-Type": "application/json",
             }),
-          })
+          }),
         );
       });
     });
@@ -1281,9 +1279,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         const fetchCall = mockFetch.mock.calls[0];
         const requestBody = JSON.parse(fetchCall[1].body as string);
 
-        expect(requestBody.webhook_url).toBe(
-          `http://localhost:3000/api/stakwork/webhook?task_id=${mockTaskId}`
-        );
+        expect(requestBody.webhook_url).toBe(`http://localhost:3000/api/stakwork/webhook?task_id=${mockTaskId}`);
       });
 
       it("should generate presigned URLs for attachments", async () => {
@@ -1358,10 +1354,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         const requestBody = JSON.parse(fetchCall[1].body as string);
         const vars = requestBody.workflow_params.set_var.attributes.vars;
 
-        expect(vars.attachments).toEqual([
-          "https://s3.test.com/file1.pdf",
-          "https://s3.test.com/file2.jpg",
-        ]);
+        expect(vars.attachments).toEqual(["https://s3.test.com/file1.pdf", "https://s3.test.com/file2.jpg"]);
       });
     });
   });

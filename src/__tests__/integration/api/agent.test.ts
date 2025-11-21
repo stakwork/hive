@@ -28,7 +28,7 @@ vi.mock("ai", () => ({
 describe("POST /api/agent Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Setup default mock for streaming
     mockStreamText.mockResolvedValue({
       toDataStreamResponse: vi.fn(() => new Response("mocked stream")),
@@ -71,7 +71,7 @@ describe("POST /api/agent Integration Tests", () => {
   // NOTE: Most tests commented out due to significant implementation gaps:
   // 1. Production code does NOT validate message field (empty, missing, whitespace)
   // 2. Task/ChatMessage persistence only works with taskId (no standalone messages saved without task)
-  // 3. Task model requires workspaceId which agent API doesn't handle  
+  // 3. Task model requires workspaceId which agent API doesn't handle
   // 4. Streaming mock needs proper async iterator setup for fullStream
   // 5. Error handling tests fail because actual errors aren't caught properly
   //

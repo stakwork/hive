@@ -18,7 +18,7 @@ interface GenerationResult {
   accept: (onSuccess?: () => void) => Promise<void>;
   reject: (feedback?: string) => Promise<void>;
   regenerate: () => Promise<void>;
-  setContent: (content: string | null, source: GenerationSource) => void;
+  setContent: (content: string | null, source: GenerationSource, runId?: string) => void;
   clear: () => void;
 }
 
@@ -34,9 +34,12 @@ export function useAIGeneration({
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const setContentWithSource = useCallback((newContent: string | null, newSource: GenerationSource) => {
+  const setContentWithSource = useCallback((newContent: string | null, newSource: GenerationSource, runId?: string) => {
     setContent(newContent);
     setSource(newSource);
+    if (runId) {
+      setCurrentRunId(runId);
+    }
   }, []);
 
   const accept = useCallback(
@@ -88,7 +91,7 @@ export function useAIGeneration({
         setIsLoading(false);
       }
     },
-    [content, source, currentRunId, featureId, enabled, toast]
+    [content, source, currentRunId, featureId, enabled, toast],
   );
 
   const reject = useCallback(
@@ -136,7 +139,7 @@ export function useAIGeneration({
         setIsLoading(false);
       }
     },
-    [source, currentRunId, enabled, toast]
+    [source, currentRunId, enabled, toast],
   );
 
   const regenerate = useCallback(async () => {

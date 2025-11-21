@@ -16,10 +16,7 @@ interface UseGraphPollingOptions {
   interval?: number;
 }
 
-export function useGraphPolling({
-  enabled = false,
-  interval = 3000
-}: UseGraphPollingOptions = {}) {
+export function useGraphPolling({ enabled = false, interval = 3000 }: UseGraphPollingOptions = {}) {
   const { id: workspaceId } = useWorkspace();
   const [isPolling, setIsPolling] = useState(false);
   const [isPollingActive, setIsPollingActive] = useState(false);
@@ -27,15 +24,12 @@ export function useGraphPolling({
   const addNewNode = useDataStore((s) => s.addNewNode);
   const dataInitial = useDataStore((s) => s.dataInitial);
 
-
-
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isPollingRequestInProgress = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Fetch new nodes and edges for polling
   const fetchLatestNodes = useCallback(async () => {
-
     if (!workspaceId || !enabled || isPollingRequestInProgress.current) return;
 
     // dataInitial is now available from the hook above
@@ -51,7 +45,6 @@ export function useGraphPolling({
       // Use graph/search as base endpoint for polling
       let pollingEndpoint = "/graph/search/latest?skip_cache=true&limit=1000&top_node_count=500";
 
-
       // Add start_date_added_to_graph parameter if we have nodes (use latest node's date)
       const latestNode = dataInitial?.nodes?.at(-1); // Nodes are sorted by date_added_to_graph
       if (latestNode?.date_added_to_graph) {
@@ -66,21 +59,21 @@ export function useGraphPolling({
       console.log(`Polling endpoint: ${pollingEndpoint}`);
 
       const response = await fetch(requestUrl, {
-        signal: abortControllerRef.current.signal
+        signal: abortControllerRef.current.signal,
       });
       const data: ApiResponse = await response.json();
 
       if (data.success && data.data?.nodes) {
         // Add new nodes and edges to the graph (store handles deduplication)
         addNewNode({
-          nodes: data.data.nodes.map(node => ({
+          nodes: data.data.nodes.map((node) => ({
             ...node,
             x: 0,
             y: 0,
             z: 0,
-            edge_count: 0
+            edge_count: 0,
           })),
-          edges: data.data.edges || []
+          edges: data.data.edges || [],
         });
 
         // Log polling results
@@ -90,7 +83,7 @@ export function useGraphPolling({
       }
     } catch (err) {
       // Don't log error if request was aborted (user navigated away)
-      if (err instanceof Error && err.name !== 'AbortError') {
+      if (err instanceof Error && err.name !== "AbortError") {
         console.error("Failed to fetch latest nodes:", err);
       }
     } finally {
@@ -160,6 +153,6 @@ export function useGraphPolling({
     isPolling,
     isPollingActive,
     startPolling,
-    stopPolling
+    stopPolling,
   };
 }

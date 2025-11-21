@@ -4,13 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import { WorkflowUrlLink } from "../components/WorkflowUrlLink";
 import { getArtifactIcon } from "@/lib/icons";
 
-export function LongformArtifactPanel({
-  artifacts,
-  workflowUrl,
-}: {
-  artifacts: Artifact[];
-  workflowUrl?: string;
-}) {
+export function LongformArtifactPanel({ artifacts, workflowUrl }: { artifacts: Artifact[]; workflowUrl?: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showFade, setShowFade] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
@@ -29,7 +23,7 @@ export function LongformArtifactPanel({
   if (artifacts.length === 0) return null;
 
   return (
-    <div 
+    <div
       className="h-full flex flex-col relative"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -44,7 +38,7 @@ export function LongformArtifactPanel({
             <div key={artifact.id}>
               {content.title && (
                 <div className="font-semibold text-lg mb-2 flex items-center gap-2">
-                  {getArtifactIcon(artifact.icon || 'agent')}
+                  {getArtifactIcon(artifact.icon || "agent")}
                   <span className="line-clamp-2">{content.title}</span>
                 </div>
               )}
@@ -56,14 +50,9 @@ export function LongformArtifactPanel({
       {showFade && (
         <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-b from-transparent to-background" />
       )}
-      
+
       {/* Workflow URL Link */}
-      {workflowUrl && (
-        <WorkflowUrlLink 
-          workflowUrl={workflowUrl}
-          className={isHovered ? "opacity-100" : "opacity-0"}
-        />
-      )}
+      {workflowUrl && <WorkflowUrlLink workflowUrl={workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />}
     </div>
   );
 }

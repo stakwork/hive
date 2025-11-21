@@ -74,7 +74,7 @@ describe("BaseServiceClass", () => {
             Authorization: `Bearer ${configWithHeaders.apiKey}`,
             "X-Custom-Header": "custom-value",
           }),
-        })
+        }),
       );
     });
 
@@ -90,7 +90,7 @@ describe("BaseServiceClass", () => {
       expect(HttpClient).toHaveBeenCalledWith(
         expect.objectContaining({
           timeout: 10000,
-        })
+        }),
       );
     });
   });
@@ -160,7 +160,7 @@ describe("BaseServiceClass", () => {
       await expect(
         service.handleRequest(async () => {
           throw apiError;
-        }, "testContext")
+        }, "testContext"),
       ).rejects.toMatchObject({
         message: "test-service testContext: API error",
         status: 500,
@@ -174,7 +174,7 @@ describe("BaseServiceClass", () => {
       await expect(
         service.handleRequest(async () => {
           throw unknownError;
-        }, "testContext")
+        }, "testContext"),
       ).rejects.toMatchObject({
         message: "test-service testContext: An unexpected error occurred",
         status: 500,
@@ -189,7 +189,7 @@ describe("BaseServiceClass", () => {
       await expect(
         service.handleRequest(async () => {
           throw { message: "Error", status: 400 };
-        })
+        }),
       ).rejects.toMatchObject({
         message: "test-service request: Error",
       });
@@ -207,7 +207,7 @@ describe("BaseServiceClass", () => {
         await expect(
           service.handleRequest(async () => {
             throw error;
-          })
+          }),
         ).rejects.toMatchObject({
           status: error.status,
         });

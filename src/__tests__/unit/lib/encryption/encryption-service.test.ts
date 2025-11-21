@@ -13,10 +13,7 @@ class EncryptionTestFactory {
     return this.service;
   }
 
-  static createValidEncryptedData(
-    value: string,
-    keyId?: string,
-  ): EncryptedData {
+  static createValidEncryptedData(value: string, keyId?: string): EncryptedData {
     const service = this.getService();
     if (keyId) {
       return service.encryptFieldWithKeyId("swarmApiKey", value, keyId);
@@ -24,9 +21,7 @@ class EncryptionTestFactory {
     return service.encryptField("swarmApiKey", value);
   }
 
-  static createMalformedEncryptedData(
-    overrides: Partial<EncryptedData>,
-  ): EncryptedData {
+  static createMalformedEncryptedData(overrides: Partial<EncryptedData>): EncryptedData {
     const base: EncryptedData = {
       data: "dGVzdA==",
       iv: "aXZ0ZXN0",
@@ -61,8 +56,14 @@ class EncryptionTestFactory {
       { name: "data field is missing", malformed: factory.createMalformedEncryptedData({ data: undefined as any }) },
       { name: "iv field is missing", malformed: factory.createMalformedEncryptedData({ iv: undefined as any }) },
       { name: "tag field is missing", malformed: factory.createMalformedEncryptedData({ tag: undefined as any }) },
-      { name: "version field is missing", malformed: factory.createMalformedEncryptedData({ version: undefined as any }) },
-      { name: "encryptedAt field is missing", malformed: factory.createMalformedEncryptedData({ encryptedAt: undefined as any }) },
+      {
+        name: "version field is missing",
+        malformed: factory.createMalformedEncryptedData({ version: undefined as any }),
+      },
+      {
+        name: "encryptedAt field is missing",
+        malformed: factory.createMalformedEncryptedData({ encryptedAt: undefined as any }),
+      },
     ];
   }
 
@@ -88,8 +89,7 @@ class EncryptionTestFactory {
 describe("EncryptionService", () => {
   beforeEach(() => {
     process.env.TOKEN_ENCRYPTION_KEY =
-      process.env.TOKEN_ENCRYPTION_KEY ||
-      "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+      process.env.TOKEN_ENCRYPTION_KEY || "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
     process.env.TOKEN_ENCRYPTION_KEY_ID = "k-test";
   });
 
@@ -107,11 +107,7 @@ describe("EncryptionService", () => {
     it("encrypts with explicit key id and decrypts", () => {
       const encSvc = EncryptionService.getInstance();
       encSvc.setKey("k-alt", process.env.TOKEN_ENCRYPTION_KEY!);
-      const enc = encSvc.encryptFieldWithKeyId(
-        "poolApiKey",
-        "pool-secret",
-        "k-alt",
-      );
+      const enc = encSvc.encryptFieldWithKeyId("poolApiKey", "pool-secret", "k-alt");
       expect(enc.keyId).toBe("k-alt");
       const plain = encSvc.decryptField("poolApiKey", enc);
       expect(plain).toBe("pool-secret");
@@ -119,32 +115,24 @@ describe("EncryptionService", () => {
 
     it("throws if key id missing in registry", () => {
       const encSvc = EncryptionService.getInstance();
-      const ciphertext = encSvc.encryptFieldWithKeyId(
-        "stakworkApiKey",
-        "abc",
-        "k-test",
-      );
+      const ciphertext = encSvc.encryptFieldWithKeyId("stakworkApiKey", "abc", "k-test");
       // simulate ciphertext with unknown key id
       const tampered = { ...ciphertext, keyId: "unknown" } as typeof ciphertext;
-      expect(() =>
-        encSvc.decryptField("stakworkApiKey", tampered),
-      ).toThrowError(/Decryption key for keyId 'unknown' not found/);
+      expect(() => encSvc.decryptField("stakworkApiKey", tampered)).toThrowError(
+        /Decryption key for keyId 'unknown' not found/,
+      );
     });
   });
 
   describe("input validation - null/undefined/empty", () => {
     it("throws when decrypting null value", () => {
       const encSvc = EncryptionService.getInstance();
-      expect(() =>
-        encSvc.decryptField("swarmApiKey", null as any),
-      ).toThrowError();
+      expect(() => encSvc.decryptField("swarmApiKey", null as any)).toThrowError();
     });
 
     it("throws when decrypting undefined value", () => {
       const encSvc = EncryptionService.getInstance();
-      expect(() =>
-        encSvc.decryptField("swarmApiKey", undefined as any),
-      ).toThrowError();
+      expect(() => encSvc.decryptField("swarmApiKey", undefined as any)).toThrowError();
     });
 
     it("returns empty string when input is empty string", () => {
@@ -192,44 +180,29 @@ describe("EncryptionService", () => {
 
   describe("invalid EncryptedData format - missing required fields", () => {
     const missingFieldScenarios = EncryptionTestFactory.createMissingFieldScenarios();
-    
-    test.each(missingFieldScenarios)(
-      "throws when $name",
-      ({ malformed }) => {
-        const encSvc = EncryptionTestFactory.getService();
-        expect(() =>
-          encSvc.decryptField("swarmApiKey", malformed),
-        ).toThrowError(/Invalid encrypted data format/);
-      }
-    );
+
+    test.each(missingFieldScenarios)("throws when $name", ({ malformed }) => {
+      const encSvc = EncryptionTestFactory.getService();
+      expect(() => encSvc.decryptField("swarmApiKey", malformed)).toThrowError(/Invalid encrypted data format/);
+    });
   });
 
   describe("invalid EncryptedData format - invalid field types", () => {
     const invalidTypeScenarios = EncryptionTestFactory.createInvalidTypeScenarios();
-    
-    test.each(invalidTypeScenarios)(
-      "throws when $name",
-      ({ malformed }) => {
-        const encSvc = EncryptionTestFactory.getService();
-        expect(() =>
-          encSvc.decryptField("swarmApiKey", malformed),
-        ).toThrowError();
-      }
-    );
+
+    test.each(invalidTypeScenarios)("throws when $name", ({ malformed }) => {
+      const encSvc = EncryptionTestFactory.getService();
+      expect(() => encSvc.decryptField("swarmApiKey", malformed)).toThrowError();
+    });
   });
 
   describe("invalid EncryptedData format - empty field values", () => {
     const emptyFieldScenarios = EncryptionTestFactory.createEmptyFieldScenarios();
-    
-    test.each(emptyFieldScenarios)(
-      "throws when $name",
-      ({ malformed }) => {
-        const encSvc = EncryptionTestFactory.getService();
-        expect(() =>
-          encSvc.decryptField("swarmApiKey", malformed),
-        ).toThrowError();
-      }
-    );
+
+    test.each(emptyFieldScenarios)("throws when $name", ({ malformed }) => {
+      const encSvc = EncryptionTestFactory.getService();
+      expect(() => encSvc.decryptField("swarmApiKey", malformed)).toThrowError();
+    });
   });
 
   describe("security - tampered data detection", () => {
@@ -240,9 +213,7 @@ describe("EncryptionService", () => {
         ...encrypted,
         tag: encrypted.tag.slice(0, -4) + "AAAA",
       };
-      expect(() =>
-        encSvc.decryptField("swarmApiKey", tampered),
-      ).toThrowError();
+      expect(() => encSvc.decryptField("swarmApiKey", tampered)).toThrowError();
     });
 
     it("throws when ciphertext data is modified", () => {
@@ -252,9 +223,7 @@ describe("EncryptionService", () => {
         ...encrypted,
         data: encrypted.data.slice(0, -4) + "BBBB",
       };
-      expect(() =>
-        encSvc.decryptField("swarmApiKey", tampered),
-      ).toThrowError();
+      expect(() => encSvc.decryptField("swarmApiKey", tampered)).toThrowError();
     });
 
     it("throws when initialization vector is modified", () => {
@@ -264,9 +233,7 @@ describe("EncryptionService", () => {
         ...encrypted,
         iv: encrypted.iv.slice(0, -4) + "CCCC",
       };
-      expect(() =>
-        encSvc.decryptField("swarmApiKey", tampered),
-      ).toThrowError();
+      expect(() => encSvc.decryptField("swarmApiKey", tampered)).toThrowError();
     });
   });
 
@@ -306,8 +273,7 @@ describe("EncryptionService", () => {
   describe("key management - key rotation scenarios", () => {
     it("decrypts data encrypted with old key after key rotation", () => {
       const encSvc = EncryptionService.getInstance();
-      const oldKey =
-        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+      const oldKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
       const newKey = process.env.TOKEN_ENCRYPTION_KEY!;
 
       encSvc.setKey("k-old", oldKey);
@@ -323,10 +289,8 @@ describe("EncryptionService", () => {
 
     it("handles multiple keys in registry simultaneously", () => {
       const encSvc = EncryptionService.getInstance();
-      const key1 =
-        "1111111111111111111111111111111111111111111111111111111111111111";
-      const key2 =
-        "2222222222222222222222222222222222222222222222222222222222222222";
+      const key1 = "1111111111111111111111111111111111111111111111111111111111111111";
+      const key2 = "2222222222222222222222222222222222222222222222222222222222222222";
 
       encSvc.setKey("k-1", key1);
       encSvc.setKey("k-2", key2);
@@ -343,8 +307,7 @@ describe("EncryptionService", () => {
     it("throws when decrypting with wrong key", () => {
       const encSvc = EncryptionTestFactory.getService();
       const correctKey = process.env.TOKEN_ENCRYPTION_KEY!;
-      const wrongKey =
-        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+      const wrongKey = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
       encSvc.setKey("k-correct", correctKey);
       encSvc.setActiveKeyId("k-correct");
@@ -352,9 +315,7 @@ describe("EncryptionService", () => {
 
       encSvc.setKey("k-correct", wrongKey);
 
-      expect(() =>
-        encSvc.decryptField("swarmApiKey", encrypted),
-      ).toThrowError();
+      expect(() => encSvc.decryptField("swarmApiKey", encrypted)).toThrowError();
     });
 
     it("throws descriptive error when keyId not found in registry", () => {
@@ -362,9 +323,9 @@ describe("EncryptionService", () => {
       const encrypted = EncryptionTestFactory.createValidEncryptedData("test");
       const withMissingKey = { ...encrypted, keyId: "k-nonexistent" };
 
-      expect(() =>
-        encSvc.decryptField("swarmApiKey", withMissingKey),
-      ).toThrowError(/Decryption key for keyId 'k-nonexistent' not found/);
+      expect(() => encSvc.decryptField("swarmApiKey", withMissingKey)).toThrowError(
+        /Decryption key for keyId 'k-nonexistent' not found/,
+      );
     });
   });
 

@@ -184,10 +184,7 @@ export async function validateUserStoryAccess(storyId: string, userId: string) {
  * const nextOrder = await calculateNextOrder(db.phase, { featureId });
  * const nextOrder = await calculateNextOrder(db.ticket, { featureId, phaseId });
  */
-export async function calculateNextOrder(
-  model: any,
-  where: Record<string, any>
-): Promise<number> {
+export async function calculateNextOrder(model: any, where: Record<string, any>): Promise<number> {
   const maxOrderItem = await model.findFirst({
     where,
     orderBy: { order: "desc" },

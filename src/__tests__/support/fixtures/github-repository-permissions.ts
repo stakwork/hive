@@ -48,10 +48,7 @@ export async function createTestUserWithGitHubTokens(options?: CreateTestUserWit
     });
 
     // Create encrypted access token
-    const encryptedToken = encryptionService.encryptField(
-      "source_control_token",
-      accessToken
-    );
+    const encryptedToken = encryptionService.encryptField("source_control_token", accessToken);
 
     const sourceControlToken = await tx.sourceControlToken.create({
       data: {
@@ -73,7 +70,7 @@ export async function createAdditionalOrgForUser(
   userId: string,
   githubOwner: string,
   accessToken: string,
-  githubInstallationId = 987654321
+  githubInstallationId = 987654321,
 ) {
   return await db.$transaction(async (tx) => {
     const org = await tx.sourceControlOrg.create({
@@ -85,10 +82,7 @@ export async function createAdditionalOrgForUser(
       },
     });
 
-    const encryptedToken = encryptionService.encryptField(
-      "source_control_token",
-      accessToken
-    );
+    const encryptedToken = encryptionService.encryptField("source_control_token", accessToken);
 
     const token = await tx.sourceControlToken.create({
       data: {
@@ -344,7 +338,7 @@ export const mockGitHubApiResponses = {
  */
 export function resetGitHubApiMocks() {
   // Clear any global fetch mocks
-  if (global.fetch && typeof (global.fetch as any).mockClear === 'function') {
+  if (global.fetch && typeof (global.fetch as any).mockClear === "function") {
     (global.fetch as any).mockClear();
   }
 }

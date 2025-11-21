@@ -22,10 +22,10 @@ vi.stubGlobal("console", mockConsole);
 
 // Mock process.exit
 const mockProcessExit = vi.fn();
-vi.stubGlobal("process", { 
-  ...process, 
+vi.stubGlobal("process", {
+  ...process,
   exit: mockProcessExit,
-  env: { ...process.env, TEST_DATABASE_URL: "postgresql://test@localhost:5432/test_db" }
+  env: { ...process.env, TEST_DATABASE_URL: "postgresql://test@localhost:5432/test_db" },
 });
 
 // Import the function to test - this would need to be extracted to a testable module
@@ -91,9 +91,7 @@ async function setupTestDatabase() {
     await prisma.$disconnect();
     console.log("✅ Test database setup complete!");
     console.log(`📊 Database URL: ${process.env.TEST_DATABASE_URL}`);
-    console.log(
-      "🧪 You can now run integration tests with: npm run test:integration",
-    );
+    console.log("🧪 You can now run integration tests with: npm run test:integration");
   } catch (error) {
     console.error("❌ Error setting up test database:", error);
     process.exit(1);
@@ -113,7 +111,7 @@ describe("setupTestDatabase", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Setup mock Prisma instance
     mockPrismaInstance = {
       $connect: vi.fn().mockResolvedValue(undefined),
@@ -122,9 +120,9 @@ describe("setupTestDatabase", () => {
       session: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       account: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       gitHubAuth: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
-      user: { 
+      user: {
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
-        upsert: vi.fn().mockResolvedValue({ id: "test-user-id", name: "Test User", email: "test@example.com" })
+        upsert: vi.fn().mockResolvedValue({ id: "test-user-id", name: "Test User", email: "test@example.com" }),
       },
     };
 
@@ -240,10 +238,10 @@ describe("setupTestDatabase", () => {
 
   test("should use correct database URL from environment", async () => {
     const customDbUrl = "postgresql://custom@localhost:5432/custom_test";
-    vi.stubGlobal("process", { 
-      ...process, 
+    vi.stubGlobal("process", {
+      ...process,
       exit: mockProcessExit,
-      env: { ...process.env, TEST_DATABASE_URL: customDbUrl }
+      env: { ...process.env, TEST_DATABASE_URL: customDbUrl },
     });
 
     await setupTestDatabase();
@@ -303,14 +301,12 @@ describe("setupTestDatabase", () => {
       mockPrismaInstance.user.deleteMany,
     ];
 
-    deleteManyCalls.forEach(deleteMany => {
+    deleteManyCalls.forEach((deleteMany) => {
       expect(deleteMany).toHaveBeenCalledOnce();
       expect(deleteMany).toHaveBeenCalledWith();
     });
 
     // Ensure all cleanup operations completed before user creation
-    expect(mockPrismaInstance.user.deleteMany).toHaveBeenCalledBefore(
-      mockPrismaInstance.user.upsert as Mock
-    );
+    expect(mockPrismaInstance.user.deleteMany).toHaveBeenCalledBefore(mockPrismaInstance.user.upsert as Mock);
   });
 });

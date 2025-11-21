@@ -279,10 +279,7 @@ describe("POST /api/swarm - Unit Tests", () => {
           swarmId: "swarm2bCar4",
         },
       });
-      expect(mockValidateWorkspaceAccessById).toHaveBeenCalledWith(
-        "workspace-123",
-        "user-123"
-      );
+      expect(mockValidateWorkspaceAccessById).toHaveBeenCalledWith("workspace-123", "user-123");
     });
   });
 
@@ -404,7 +401,7 @@ describe("POST /api/swarm - Unit Tests", () => {
           workspaceId: "workspace-123",
           swarmApiKey: sensitiveApiKey,
           swarmPassword: "secure-test-password-123",
-        })
+        }),
       );
     });
 
@@ -429,7 +426,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           swarmSecretAlias: "{{swarm2bCar4_API_KEY}}",
-        })
+        }),
       );
     });
   });
@@ -572,7 +569,7 @@ describe("POST /api/swarm - Unit Tests", () => {
           swarmUrl: "https://undefined/api", // undefined address becomes "undefined"
           swarmApiKey: undefined,
           swarmSecretAlias: undefined, // undefined swarm_id results in undefined
-        })
+        }),
       );
     });
   });
@@ -960,7 +957,7 @@ describe("POST /api/swarm - Unit Tests", () => {
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           status: SwarmStatus.ACTIVE,
-        })
+        }),
       );
     });
 

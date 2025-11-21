@@ -36,7 +36,10 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
       // Parse the structured output response
       try {
         // The response is a series of JSON objects, we want the last complete one
-        const lines = text.trim().split('\n').filter(line => line.trim());
+        const lines = text
+          .trim()
+          .split("\n")
+          .filter((line) => line.trim());
 
         if (lines.length === 0) {
           throw new Error("Empty response from AI");
@@ -55,7 +58,7 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
         } else if (Array.isArray(data)) {
           // Fallback for simple array format
           setSuggestions(data);
-        } else if (typeof data === 'object' && data !== null) {
+        } else if (typeof data === "object" && data !== null) {
           // Handle single object response (e.g., { content: "..." })
           // Wrap it in an array for consistent handling
           setSuggestions([data as T]);

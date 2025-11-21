@@ -5,12 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SwarmData, FormSectionProps } from "../types";
 import { Key } from "lucide-react";
 
-export default function SwarmForm({
-  data,
-  errors,
-  loading,
-  onChange,
-}: FormSectionProps<SwarmData>) {
+export default function SwarmForm({ data, errors, loading, onChange }: FormSectionProps<SwarmData>) {
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyTouched, setApiKeyTouched] = useState(false);
 
@@ -36,7 +31,11 @@ export default function SwarmForm({
 
   // Show visual dots if we're in API key mode, field hasn't been touched, and there's no actual value
   const showVisualDots = showApiKey && !apiKeyTouched && (!data.swarmApiKey || data.swarmApiKey === "");
-  const displayValue = showVisualDots ? "••••••••••••••••" : (showApiKey ? (data.swarmApiKey || "") : (data.swarmSecretAlias || ""));
+  const displayValue = showVisualDots
+    ? "••••••••••••••••"
+    : showApiKey
+      ? data.swarmApiKey || ""
+      : data.swarmSecretAlias || "";
 
   return (
     <div className="space-y-2">
@@ -53,12 +52,8 @@ export default function SwarmForm({
           className={errors.swarmUrl ? "border-destructive" : ""}
           disabled={loading}
         />
-        {errors.swarmUrl && (
-          <p className="text-sm text-destructive">{errors.swarmUrl}</p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          The base URL of your Swarm instance
-        </p>
+        {errors.swarmUrl && <p className="text-sm text-destructive">{errors.swarmUrl}</p>}
+        <p className="text-xs text-muted-foreground">The base URL of your Swarm instance</p>
       </div>
 
       <div className="space-y-2">
@@ -70,24 +65,11 @@ export default function SwarmForm({
             key={showApiKey ? "swarmApiKey" : "swarmSecretAlias"}
             id={showApiKey ? "swarmApiKey" : "swarmSecretAlias"}
             type={showApiKey ? "password" : "text"}
-            placeholder={
-              showApiKey
-                ? "Enter your actual API key to update"
-                : "e.g. {{SWARM_123456_API_KEY}}"
-            }
+            placeholder={showApiKey ? "Enter your actual API key to update" : "e.g. {{SWARM_123456_API_KEY}}"}
             value={displayValue}
-            onChange={(e) =>
-              handleInputChange(
-                showApiKey ? "swarmApiKey" : "swarmSecretAlias",
-                e.target.value
-              )
-            }
+            onChange={(e) => handleInputChange(showApiKey ? "swarmApiKey" : "swarmSecretAlias", e.target.value)}
             onFocus={showApiKey ? handleApiKeyFocus : undefined}
-            className={
-              errors.swarmSecretAlias || errors.swarmApiKey
-                ? "border-destructive pr-10"
-                : "pr-10"
-            }
+            className={errors.swarmSecretAlias || errors.swarmApiKey ? "border-destructive pr-10" : "pr-10"}
             disabled={loading}
           />
           <Button
@@ -101,9 +83,7 @@ export default function SwarmForm({
           </Button>
         </div>
         {(errors.swarmSecretAlias || errors.swarmApiKey) && (
-          <p className="text-sm text-destructive">
-            {showApiKey ? errors.swarmApiKey : errors.swarmSecretAlias}
-          </p>
+          <p className="text-sm text-destructive">{showApiKey ? errors.swarmApiKey : errors.swarmSecretAlias}</p>
         )}
         <p className="text-xs text-muted-foreground">
           {showApiKey

@@ -44,7 +44,7 @@ export function useTaskStats(workspaceId: string | null): UseTaskStatsResult {
       }
 
       const result = await response.json();
-      
+
       if (result.success && result.data) {
         setStats(result.data);
       } else {

@@ -34,38 +34,25 @@ export interface ToastProps
 export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
   ({ className, variant, title, description, action, open, onOpenChange, ...props }, ref) => {
     return (
-      <div
-        ref={ref}
-        className={cn(toastVariants({ variant }), className)}
-        {...props}
-      >
+      <div ref={ref} className={cn(toastVariants({ variant }), className)} {...props}>
         {/* Icon for success variant */}
         {variant === "success" && (
           <span className="flex items-start pt-1">
             <CheckCircle2 className="w-6 h-6 text-green-500" />
           </span>
         )}
-        <div
-          className={cn(
-            "flex flex-col gap-1",
-            variant === "success" ? "ml-1" : "",
-          )}
-        >
+        <div className={cn("flex flex-col gap-1", variant === "success" ? "ml-1" : "")}>
           {title && (
             <div
               className={cn(
                 "font-semibold text-base",
-                variant === "success"
-                  ? "text-green-600 dark:text-green-400"
-                  : "",
+                variant === "success" ? "text-green-600 dark:text-green-400" : "",
               )}
             >
               {title}
             </div>
           )}
-          {description && (
-            <div className="text-sm text-muted-foreground">{description}</div>
-          )}
+          {description && <div className="text-sm text-muted-foreground">{description}</div>}
         </div>
         {action && <div>{action}</div>}
       </div>

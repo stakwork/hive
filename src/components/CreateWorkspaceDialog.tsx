@@ -23,11 +23,7 @@ interface CreateWorkspaceDialogProps {
   onCreated?: (workspace: WorkspaceResponse) => void;
 }
 
-export function CreateWorkspaceDialog({
-  open,
-  onOpenChange,
-  onCreated,
-}: CreateWorkspaceDialogProps) {
+export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }: CreateWorkspaceDialogProps) {
   const { data: session } = useSession();
   const [formData, setFormData] = useState({
     name: "",
@@ -88,9 +84,7 @@ export function CreateWorkspaceDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Create New Workspace</DialogTitle>
-          <DialogDescription>
-            Set up a new workspace. You can add more details later.
-          </DialogDescription>
+          <DialogDescription>Set up a new workspace. You can add more details later.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -108,9 +102,7 @@ export function CreateWorkspaceDialog({
               className={errors.name ? "border-destructive" : ""}
               disabled={loading}
             />
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name}</p>
-            )}
+            {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="slug">Slug</Label>
@@ -127,9 +119,7 @@ export function CreateWorkspaceDialog({
               className={errors.slug ? "border-destructive" : ""}
               disabled={loading}
             />
-            {errors.slug && (
-              <p className="text-sm text-destructive">{errors.slug}</p>
-            )}
+            {errors.slug && <p className="text-sm text-destructive">{errors.slug}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
@@ -148,12 +138,7 @@ export function CreateWorkspaceDialog({
           </div>
           <ErrorDisplay error={apiError} />
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCancel}
-              disabled={loading}
-            >
+            <Button type="button" variant="outline" onClick={handleCancel} disabled={loading}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>

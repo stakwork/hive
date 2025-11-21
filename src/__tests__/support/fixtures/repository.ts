@@ -12,9 +12,7 @@ export interface CreateTestRepositoryOptions {
   playwrightSetup?: boolean;
 }
 
-export async function createTestRepository(
-  options: CreateTestRepositoryOptions,
-): Promise<Repository> {
+export async function createTestRepository(options: CreateTestRepositoryOptions): Promise<Repository> {
   const uniqueId = generateUniqueId("repo");
 
   return db.repository.create({

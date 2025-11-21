@@ -42,7 +42,7 @@ describe("GitHub App Install API Integration Tests", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockClear();
-    
+
     // Set required environment variables
     process.env.GITHUB_APP_SLUG = "test-hive-app";
     process.env.GITHUB_APP_CLIENT_ID = "test_client_id_123";
@@ -53,13 +53,10 @@ describe("GitHub App Install API Integration Tests", () => {
       test("should return 401 for unauthenticated user", async () => {
         getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: "test-workspace",
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: "test-workspace",
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
 
@@ -76,13 +73,10 @@ describe("GitHub App Install API Integration Tests", () => {
           expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: "test-workspace",
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: "test-workspace",
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -96,17 +90,12 @@ describe("GitHub App Install API Integration Tests", () => {
       test("should return 404 for non-existent workspace", async () => {
         const testUser = await createTestUser({ name: "Test User" });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: "non-existent-workspace",
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: "non-existent-workspace",
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -121,16 +110,11 @@ describe("GitHub App Install API Integration Tests", () => {
       test("should return 400 for missing workspaceSlug", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -147,16 +131,11 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "no-repo-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -173,17 +152,12 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "invalid-url-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.invalid,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.invalid,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -200,17 +174,12 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "malformed-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.malformed,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.malformed,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -229,20 +198,15 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "new-install-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Mock getUserAppTokens to return null (no tokens = not installed)
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: "https://github.com/test-owner/test-repo",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -268,20 +232,15 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "user-repo-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Mock getUserAppTokens to return null initially
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/someuser/personal-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: "https://github.com/someuser/personal-repo",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -300,19 +259,14 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "https-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -329,19 +283,14 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "ssh-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.ssh,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.ssh,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -358,19 +307,14 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "git-suffix-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.httpsWithGit,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.httpsWithGit,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -392,17 +336,12 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "existing-install-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: "https://github.com/test-owner/test-repo",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -425,9 +364,7 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "api-check-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Mock getUserAppTokens to return a token
         vi.mocked(getUserAppTokens).mockResolvedValue({
@@ -457,13 +394,10 @@ describe("GitHub App Install API Integration Tests", () => {
           }),
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: "https://github.com/test-owner/test-repo",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -482,7 +416,7 @@ describe("GitHub App Install API Integration Tests", () => {
               Authorization: "Bearer test_token_123",
               Accept: "application/vnd.github.v3+json",
             }),
-          })
+          }),
         );
       });
 
@@ -493,9 +427,7 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "org-repo-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken: "test_org_token",
@@ -524,13 +456,10 @@ describe("GitHub App Install API Integration Tests", () => {
           }),
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-org/org-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: "https://github.com/test-org/org-repo",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -547,7 +476,7 @@ describe("GitHub App Install API Integration Tests", () => {
             headers: expect.objectContaining({
               Authorization: "Bearer test_org_token",
             }),
-          })
+          }),
         );
       });
 
@@ -558,9 +487,7 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "no-install-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken: "test_token",
@@ -583,13 +510,10 @@ describe("GitHub App Install API Integration Tests", () => {
           statusText: "Not Found",
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: "https://github.com/test-owner/test-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: "https://github.com/test-owner/test-repo",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -613,17 +537,12 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "config-error-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -640,9 +559,7 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "network-error-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken: "test_token",
@@ -651,13 +568,10 @@ describe("GitHub App Install API Integration Tests", () => {
         // Mock network error
         mockFetch.mockRejectedValue(new Error("Network error"));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -670,9 +584,7 @@ describe("GitHub App Install API Integration Tests", () => {
       test("should handle database errors", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Create workspace then delete it to cause database inconsistency
         const workspace = await createTestWorkspace({
@@ -683,13 +595,10 @@ describe("GitHub App Install API Integration Tests", () => {
         const { db } = await import("@/lib/db");
         await db.workspace.delete({ where: { id: workspace.id } });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -706,19 +615,14 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "no-tokens-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -737,28 +641,20 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "state-test-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
         // Make two requests
-        const request1 = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request1 = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
-        const request2 = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request2 = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response1 = await POST(request1);
         const data1 = await expectSuccess(response1);
@@ -777,27 +673,20 @@ describe("GitHub App Install API Integration Tests", () => {
           slug: "state-content-workspace",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/app/install",
-          {
-            workspaceSlug: workspace.slug,
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/app/install", {
+          workspaceSlug: workspace.slug,
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
 
         // Decode state token
-        const stateData = JSON.parse(
-          Buffer.from(data.data.state, "base64").toString()
-        );
+        const stateData = JSON.parse(Buffer.from(data.data.state, "base64").toString());
 
         expect(stateData.workspaceSlug).toBe(workspace.slug);
         expect(stateData.repositoryUrl).toBe(testRepositoryUrls.https);

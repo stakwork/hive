@@ -55,7 +55,7 @@ const expectSuccessfulCustomerCreation = (res: Response) => {
 
 const expectMockCreateSecretCallArgs = (expectedAlias: string | any, expectedKey: string, expectedToken: string) => {
   const args = mockCreateSecret.mock.calls[0] as unknown as [string, string, string];
-  if (typeof expectedAlias === 'string') {
+  if (typeof expectedAlias === "string") {
     expect(args[0]).toBe(expectedAlias);
   } else {
     expect(args[0]).toEqual(expectedAlias);
@@ -71,10 +71,12 @@ const expectErrorResponse = async (res: Response, expectedStatus: number, expect
 };
 
 // Setup helper for creating test workspace with optional swarm
-const setupTestData = async (options: {
-  includeSwarm?: boolean;
-  swarmOverrides?: Partial<ReturnType<typeof createTestSwarmData>>;
-} = {}) => {
+const setupTestData = async (
+  options: {
+    includeSwarm?: boolean;
+    swarmOverrides?: Partial<ReturnType<typeof createTestSwarmData>>;
+  } = {},
+) => {
   const { includeSwarm = true, swarmOverrides = {} } = options;
   const enc = EncryptionService.getInstance();
   const PLAINTEXT_SWARM_API_KEY = "swarm_plain_key_123";
@@ -124,7 +126,7 @@ describe("POST /api/stakwork/create-customer", () => {
 
   it("double-encrypted rows are decrypted back to plaintext before sending", async () => {
     const enc = EncryptionService.getInstance();
-    
+
     // Make swarm row contain double-encrypted content to simulate legacy bug
     const first = enc.encryptField("swarmApiKey", PLAINTEXT_SWARM_API_KEY);
     const doubleCipher = enc.encryptField("swarmApiKey", JSON.stringify(first));
@@ -160,7 +162,7 @@ describe("POST /api/stakwork/create-customer", () => {
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", {});
 
       const res = await POST(req);
-      
+
       // The endpoint will try to create customer with undefined workspaceId
       // which should result in an error from stakworkService
       expect(mockCreateCustomer).toHaveBeenCalledWith(undefined);
@@ -179,12 +181,12 @@ describe("POST /api/stakwork/create-customer", () => {
       });
 
       const res = await POST(req);
-      
+
       // Should still succeed with 201 but not update any workspace
       expect(res?.status).toBe(201);
       const json = await res.json();
       expect(json).toEqual({ success: true });
-      
+
       // Verify no workspace was updated
       const workspace = await db.workspace.findFirst({
         where: { id: nonExistentWorkspaceId },
@@ -261,23 +263,19 @@ describe("POST /api/stakwork/create-customer", () => {
         data: { token: "stak-token-secret-fail" },
       });
 
-      mockCreateSecret.mockRejectedValueOnce(
-        new Error("Failed to create secret on Stakwork")
-      );
+      mockCreateSecret.mockRejectedValueOnce(new Error("Failed to create secret on Stakwork"));
 
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
       const res = await POST(req);
-      
+
       // The endpoint doesn't explicitly handle createSecret errors,
       // so it will bubble up as a generic 500 error
       await expectErrorResponse(res, 500, { error: "Failed to create customer" });
     });
 
     it("handles generic errors during customer creation", async () => {
-      mockCreateCustomer.mockRejectedValueOnce(
-        new Error("Network timeout")
-      );
+      mockCreateCustomer.mockRejectedValueOnce(new Error("Network timeout"));
 
       const req = createPostRequest("http://localhost:3000/api/stakwork/create-customer", { workspaceId });
 
@@ -338,11 +336,7 @@ describe("POST /api/stakwork/create-customer", () => {
       expect(res?.status).toBe(201);
 
       // Verify secret was created with sanitized alias (braces removed)
-      const args = mockCreateSecret.mock.calls[0] as unknown as [
-        string,
-        string,
-        string,
-      ];
+      const args = mockCreateSecret.mock.calls[0] as unknown as [string, string, string];
       expect(args[0]).toBe("SWARM_123456_API_KEY"); // {{...}} removed
     });
 
@@ -362,9 +356,9 @@ describe("POST /api/stakwork/create-customer", () => {
       const workspace = await db.workspace.findFirst({
         where: { id: workspaceId },
       });
-      
+
       expect(workspace?.stakworkApiKey).toBeDefined();
-      
+
       // Verify the stored value is encrypted (should be JSON with data, iv, tag fields)
       const storedValue = JSON.parse(workspace!.stakworkApiKey!);
       expect(storedValue).toHaveProperty("data");

@@ -182,12 +182,7 @@ export async function POST(request: NextRequest) {
 
         // Store PR data without failing the webhook if this fails
         try {
-          await storePullRequest(
-            payload as PullRequestPayload,
-            repository.id,
-            repository.workspaceId,
-            githubPat,
-          );
+          await storePullRequest(payload as PullRequestPayload, repository.id, repository.workspaceId, githubPat);
         } catch (error) {
           console.error("[GithubWebhook] Failed to store PR, continuing", {
             delivery,

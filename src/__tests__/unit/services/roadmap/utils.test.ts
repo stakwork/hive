@@ -237,7 +237,7 @@ describe("calculateNextOrder", () => {
       expect(db.phase.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           orderBy: { order: "desc" },
-        })
+        }),
       );
     });
 
@@ -249,7 +249,7 @@ describe("calculateNextOrder", () => {
       expect(db.task.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           select: { order: true },
-        })
+        }),
       );
     });
 
@@ -262,7 +262,7 @@ describe("calculateNextOrder", () => {
       expect(db.phase.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: whereClause,
-        })
+        }),
       );
     });
 
@@ -370,9 +370,9 @@ describe("calculateNextOrder", () => {
       const dbError = new Error("Database connection failed");
       vi.mocked(db.phase.findFirst).mockRejectedValue(dbError);
 
-      await expect(
-        calculateNextOrder(db.phase, { featureId: "feature-123" })
-      ).rejects.toThrow("Database connection failed");
+      await expect(calculateNextOrder(db.phase, { featureId: "feature-123" })).rejects.toThrow(
+        "Database connection failed",
+      );
 
       expect(db.phase.findFirst).toHaveBeenCalledWith({
         where: { featureId: "feature-123" },
@@ -385,42 +385,40 @@ describe("calculateNextOrder", () => {
       const queryError = new Error("Invalid query syntax");
       vi.mocked(db.task.findFirst).mockRejectedValue(queryError);
 
-      await expect(
-        calculateNextOrder(db.task, { featureId: "feature-123", phaseId: "phase-456" })
-      ).rejects.toThrow("Invalid query syntax");
+      await expect(calculateNextOrder(db.task, { featureId: "feature-123", phaseId: "phase-456" })).rejects.toThrow(
+        "Invalid query syntax",
+      );
     });
 
     test("propagates Prisma timeout errors", async () => {
       const timeoutError = new Error("Query timeout exceeded");
       vi.mocked(db.feature.findFirst).mockRejectedValue(timeoutError);
 
-      await expect(
-        calculateNextOrder(db.feature, { workspaceId: "ws-123" })
-      ).rejects.toThrow("Query timeout exceeded");
+      await expect(calculateNextOrder(db.feature, { workspaceId: "ws-123" })).rejects.toThrow("Query timeout exceeded");
     });
 
     test("propagates Prisma constraint violation errors", async () => {
       const constraintError = new Error("Foreign key constraint violation");
       vi.mocked(db.phase.findFirst).mockRejectedValue(constraintError);
 
-      await expect(
-        calculateNextOrder(db.phase, { featureId: "non-existent-feature" })
-      ).rejects.toThrow("Foreign key constraint violation");
+      await expect(calculateNextOrder(db.phase, { featureId: "non-existent-feature" })).rejects.toThrow(
+        "Foreign key constraint violation",
+      );
     });
   });
 
   /**
    * NOTE: Concurrent insert testing
-   * 
+   *
    * Concurrent insert safety cannot be properly tested in unit tests because:
    * 1. Unit tests mock the database (no real transactions or locking)
    * 2. Concurrent safety depends on database isolation levels and row locking
    * 3. The calculateNextOrder function itself doesn't implement concurrency control
-   * 
+   *
    * Concurrent insert scenarios are tested at the integration level in:
    * - src/__tests__/integration/api/tickets-reorder.test.ts
    * - src/__tests__/integration/api/repository-update.test.ts
-   * 
+   *
    * These integration tests use Promise.all patterns with real database connections
    * to verify that concurrent operations are handled correctly by Prisma and PostgreSQL.
    */

@@ -10,19 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { FeatureStatus } from "@prisma/client";
 import { cn } from "@/lib/utils";
@@ -38,13 +27,7 @@ interface SortableColumnHeaderProps {
   align?: "left" | "right";
 }
 
-export function SortableColumnHeader({
-  label,
-  field,
-  currentSort,
-  onSort,
-  align = "left",
-}: SortableColumnHeaderProps) {
+export function SortableColumnHeader({ label, field, currentSort, onSort, align = "left" }: SortableColumnHeaderProps) {
   const handleClick = () => {
     if (currentSort === null) {
       onSort("asc");
@@ -59,10 +42,7 @@ export function SortableColumnHeader({
     <Button
       variant="ghost"
       size="sm"
-      className={cn(
-        "-ml-3 h-8 data-[state=open]:bg-accent",
-        align === "right" && "ml-auto -mr-3"
-      )}
+      className={cn("-ml-3 h-8 data-[state=open]:bg-accent", align === "right" && "ml-auto -mr-3")}
       onClick={handleClick}
     >
       <span>{label}</span>
@@ -105,11 +85,9 @@ export function FilterDropdownHeader({
 
   // Handle both single and multi-select
   const selectedValues = Array.isArray(value) ? value : [value];
-  const isFiltered = multiSelect
-    ? selectedValues.length > 0 && !selectedValues.includes("ALL")
-    : value !== "ALL";
+  const isFiltered = multiSelect ? selectedValues.length > 0 && !selectedValues.includes("ALL") : value !== "ALL";
 
-  const filterCount = multiSelect && isFiltered ? selectedValues.filter(v => v !== "ALL").length : 0;
+  const filterCount = multiSelect && isFiltered ? selectedValues.filter((v) => v !== "ALL").length : 0;
 
   // Handler for multi-select
   const handleMultiSelectChange = (optionValue: string) => {
@@ -121,8 +99,8 @@ export function FilterDropdownHeader({
     }
 
     const newValues = value.includes(optionValue)
-      ? value.filter(v => v !== optionValue)
-      : [...value.filter(v => v !== "ALL"), optionValue];
+      ? value.filter((v) => v !== optionValue)
+      : [...value.filter((v) => v !== "ALL"), optionValue];
 
     onChange(newValues);
   };
@@ -139,18 +117,9 @@ export function FilterDropdownHeader({
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 h-8 data-[state=open]:bg-accent"
-          >
+          <Button variant="ghost" size="sm" className="-ml-3 h-8 data-[state=open]:bg-accent">
             <span>{label}</span>
-            <Filter
-              className={cn(
-                "ml-2 h-4 w-4",
-                isFiltered && "fill-primary text-primary"
-              )}
-            />
+            <Filter className={cn("ml-2 h-4 w-4", isFiltered && "fill-primary text-primary")} />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[200px] p-0" align="start">
@@ -171,7 +140,7 @@ export function FilterDropdownHeader({
                     <Check
                       className={cn(
                         "mr-2 h-4 w-4",
-                        !multiSelect && value === option.value ? "opacity-100" : "opacity-0"
+                        !multiSelect && value === option.value ? "opacity-100" : "opacity-0",
                       )}
                     />
                     {showAvatars && (
@@ -200,27 +169,19 @@ export function FilterDropdownHeader({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-3 h-8 data-[state=open]:bg-accent"
-        >
-          <span>{label}{filterCount > 0 && ` (${filterCount})`}</span>
-          <Filter
-            className={cn(
-              "ml-2 h-4 w-4",
-              isFiltered && "fill-primary text-primary"
-            )}
-          />
+        <Button variant="ghost" size="sm" className="-ml-3 h-8 data-[state=open]:bg-accent">
+          <span>
+            {label}
+            {filterCount > 0 && ` (${filterCount})`}
+          </span>
+          <Filter className={cn("ml-2 h-4 w-4", isFiltered && "fill-primary text-primary")} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[200px]">
         <DropdownMenuLabel>Filter by {label.toLowerCase()}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {options.map((option) => {
-          const isSelected = multiSelect
-            ? selectedValues.includes(option.value)
-            : value === option.value;
+          const isSelected = multiSelect ? selectedValues.includes(option.value) : value === option.value;
 
           const isAllOption = option.value === "ALL";
 
@@ -245,10 +206,7 @@ export function FilterDropdownHeader({
               }}
             >
               {showStatusBadges && !isAllOption ? (
-                <StatusBadge
-                  statusType="feature"
-                  status={option.value as FeatureStatus}
-                />
+                <StatusBadge statusType="feature" status={option.value as FeatureStatus} />
               ) : (
                 option.label
               )}

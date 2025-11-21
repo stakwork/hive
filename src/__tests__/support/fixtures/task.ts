@@ -22,9 +22,7 @@ export interface CreateTestChatMessageOptions {
   role?: "USER" | "ASSISTANT" | "SYSTEM";
 }
 
-export async function createTestTask(
-  options: CreateTestTaskOptions,
-): Promise<Task> {
+export async function createTestTask(options: CreateTestTaskOptions): Promise<Task> {
   const uniqueId = generateUniqueId("task");
 
   return db.task.create({
@@ -45,9 +43,7 @@ export async function createTestTask(
   });
 }
 
-export async function createTestChatMessage(
-  options: CreateTestChatMessageOptions,
-): Promise<ChatMessage> {
+export async function createTestChatMessage(options: CreateTestChatMessageOptions): Promise<ChatMessage> {
   return db.chatMessage.create({
     data: {
       taskId: options.taskId,
@@ -84,7 +80,7 @@ export async function findTestTask(taskId: string) {
 export async function updateTestTask(taskId: string, updates: any) {
   return db.task.update({
     where: { id: taskId },
-    data: updates
+    data: updates,
   });
 }
 
@@ -105,9 +101,7 @@ export interface CreateTestUserJourneyTaskOptions {
   stakworkProjectId?: number;
 }
 
-export async function createTestUserJourneyTask(
-  options: CreateTestUserJourneyTaskOptions,
-): Promise<Task> {
+export async function createTestUserJourneyTask(options: CreateTestUserJourneyTaskOptions): Promise<Task> {
   return db.task.create({
     data: {
       title: options.title,

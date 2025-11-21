@@ -1,10 +1,5 @@
 import { useState } from "react";
-import {
-  Artifact,
-  ArtifactType,
-  BrowserContent,
-  BugReportContent,
-} from "@/lib/chat";
+import { Artifact, ArtifactType, BrowserContent, BugReportContent } from "@/lib/chat";
 
 interface UseDebugSelectionOptions {
   onDebugMessage?: (message: string, artifact: Artifact) => Promise<void>;
@@ -15,7 +10,7 @@ interface UseDebugSelectionReturn {
   // State
   debugMode: boolean;
   isSubmittingDebug: boolean;
-  
+
   // Actions
   setDebugMode: (mode: boolean) => void;
   handleDebugElement: () => void;
@@ -32,9 +27,7 @@ interface UseDebugSelectionReturn {
 /**
  * Hook for handling debug element selection in browser artifacts
  */
-export function useDebugSelection(
-  options: UseDebugSelectionOptions
-): UseDebugSelectionReturn {
+export function useDebugSelection(options: UseDebugSelectionOptions): UseDebugSelectionReturn {
   const { onDebugMessage, iframeRef } = options;
   const [debugMode, setDebugMode] = useState(false);
   const [isSubmittingDebug, setIsSubmittingDebug] = useState(false);
@@ -64,9 +57,7 @@ export function useDebugSelection(
 
       const messageId = `debug-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
-      const responsePromise = new Promise<
-        Array<{ file: string; lines: number[]; context?: string }>
-      >((resolve) => {
+      const responsePromise = new Promise<Array<{ file: string; lines: number[]; context?: string }>>((resolve) => {
         const timeout = setTimeout(() => {
           resolve([]);
         }, 10000);
@@ -75,10 +66,7 @@ export function useDebugSelection(
           const iframeOrigin = new URL(content.url).origin;
           if (event.origin !== iframeOrigin) return;
 
-          if (
-            event.data?.type === "staktrak-debug-response" &&
-            event.data?.messageId === messageId
-          ) {
+          if (event.data?.type === "staktrak-debug-response" && event.data?.messageId === messageId) {
             clearTimeout(timeout);
             window.removeEventListener("message", handleMessage);
 
@@ -111,13 +99,16 @@ export function useDebugSelection(
             : `Debug selection area ${width}×${height} at coordinates (${x}, ${y})`,
         iframeUrl: content.url,
         method: width === 0 && height === 0 ? "click" : "selection",
-        sourceFiles: sourceFiles.length > 0 ? sourceFiles : [
-          {
-            file: "Source mapping will be available in future update",
-            lines: [],
-            context: "Debug UI preview - actual source mapping implementation coming soon"
-          }
-        ],
+        sourceFiles:
+          sourceFiles.length > 0
+            ? sourceFiles
+            : [
+                {
+                  file: "Source mapping will be available in future update",
+                  lines: [],
+                  context: "Debug UI preview - actual source mapping implementation coming soon",
+                },
+              ],
         coordinates: { x, y, width, height },
       };
 
@@ -133,7 +124,7 @@ export function useDebugSelection(
 
       if (onDebugMessage) {
         // Use the formatted component message from StakTrak
-        const componentMessage = bugReportContent.sourceFiles.find(f => f.message)?.message || "Element analyzed";
+        const componentMessage = bugReportContent.sourceFiles.find((f) => f.message)?.message || "Element analyzed";
         await onDebugMessage(componentMessage, debugArtifact);
       }
 
@@ -149,8 +140,8 @@ export function useDebugSelection(
           {
             file: "Error: Could not extract source information",
             lines: [],
-            context: error instanceof Error ? error.message : "Unknown error occurred"
-          }
+            context: error instanceof Error ? error.message : "Unknown error occurred",
+          },
         ],
         coordinates: { x, y, width, height },
       };
@@ -167,10 +158,7 @@ export function useDebugSelection(
 
       if (onDebugMessage) {
         try {
-          await onDebugMessage(
-            `🐛 Debug element analysis (with errors)`,
-            debugArtifact,
-          );
+          await onDebugMessage(`🐛 Debug element analysis (with errors)`, debugArtifact);
           setDebugMode(false);
         } catch (chatError) {
           console.error("Failed to send fallback debug message:", chatError);
@@ -185,7 +173,7 @@ export function useDebugSelection(
     // State
     debugMode,
     isSubmittingDebug,
-    
+
     // Actions
     setDebugMode,
     handleDebugElement,

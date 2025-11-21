@@ -32,20 +32,16 @@ import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
-
-
 export function scopedPath(pathname: string): string {
   const m = pathname.match(/^\/w\/[^/]+(\/.*)?$/);
-  return m ? (m[1] || "/") : pathname;
+  return m ? m[1] || "/" : pathname;
 }
 
 export function isActiveTab(pathname: string, href: string): boolean {
   const rel = scopedPath(pathname);
 
-  const cleanHref =
-    !href || href === "/" ? "/" : `/${href.replace(/^\/|\/$/g, "")}`;
-  const cleanRel =
-    rel === "/" ? "/" : `/${rel.replace(/^\/|\/$/g, "")}`;
+  const cleanHref = !href || href === "/" ? "/" : `/${href.replace(/^\/|\/$/g, "")}`;
+  const cleanRel = rel === "/" ? "/" : `/${rel.replace(/^\/|\/$/g, "")}`;
 
   if (cleanHref === "/") return cleanRel === "/";
 
@@ -81,7 +77,7 @@ interface SidebarContentProps {
   pathname: string;
   handleNavigate: (href: string) => void;
   tasksWaitingForInputCount: number;
-  user: SidebarProps['user'];
+  user: SidebarProps["user"];
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -165,7 +161,7 @@ function SidebarContent({
             return (
               <li key={item.href}>
                 <Button
-                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
                   variant={isActive ? "secondary" : "ghost"}
                   className={`w-full justify-start ${
                     isActive
@@ -189,17 +185,15 @@ function SidebarContent({
                   )}
                   {hasChildren && (
                     <span className="ml-auto">
-                      {isExpanded ? (
-                        <ChevronDown className="w-4 h-4" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4" />
-                      )}
+                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </span>
                   )}
                 </Button>
                 {/* Render children if expanded */}
                 {hasChildren && (
-                  <ul className={`relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[19px] pl-4 ${!isExpanded ? 'hidden' : ''}`}>
+                  <ul
+                    className={`relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[19px] pl-4 ${!isExpanded ? "hidden" : ""}`}
+                  >
                     {item.children!.map((child) => {
                       const isChildActive = isActiveTab(pathname, child.href);
                       const isChildTasksItem = child.label === "Tasks";
@@ -207,7 +201,7 @@ function SidebarContent({
                       return (
                         <li key={child.href} className="py-1">
                           <button
-                            data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, "-")}`}
                             className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors flex items-center ${
                               isChildActive
                                 ? "text-foreground font-medium bg-primary/10 dark:bg-primary/20"
@@ -268,16 +262,12 @@ export function Sidebar({ user }: SidebarProps) {
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
-  const canAccessDefense = useFeatureFlag(
-    FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
-  );
+  const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
 
   const excludeLabels: string[] = [];
   if (!canAccessDefense) excludeLabels.push("Protect");
 
-  const navigationItems = baseNavigationItems.filter(
-    (item) => !excludeLabels.includes(item.label),
-  );
+  const navigationItems = baseNavigationItems.filter((item) => !excludeLabels.includes(item.label));
 
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
@@ -290,8 +280,7 @@ export function Sidebar({ user }: SidebarProps) {
     }
 
     if (workspaceSlug) {
-      const fullPath =
-        href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
+      const fullPath = href === "" ? `/w/${workspaceSlug}` : `/w/${workspaceSlug}${href}`;
       router.push(fullPath);
     } else {
       // Fallback to workspaces page if no workspace detected
@@ -306,11 +295,7 @@ export function Sidebar({ user }: SidebarProps) {
       {!isTaskPage && (
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="md:hidden"
-            >
+            <Button variant="outline" size="icon" className="md:hidden">
               <Menu className="h-4 w-4" />
             </Button>
           </SheetTrigger>

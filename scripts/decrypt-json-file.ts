@@ -75,9 +75,7 @@ try {
       const result: Record<string, unknown> = {};
       for (const key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
-          result[key] = decryptRecursive(
-            (obj as Record<string, unknown>)[key],
-          );
+          result[key] = decryptRecursive((obj as Record<string, unknown>)[key]);
         }
       }
       return result;

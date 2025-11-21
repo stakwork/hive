@@ -1,11 +1,4 @@
-import { 
-  JanitorType,
-  JanitorStatus,
-  JanitorTrigger,
-  RecommendationStatus,
-  Priority
-} from "@prisma/client";
-
+import { JanitorType, JanitorStatus, JanitorTrigger, RecommendationStatus, Priority } from "@prisma/client";
 
 export interface JanitorConfigUpdate {
   unitTestsEnabled?: boolean;
@@ -41,8 +34,6 @@ export interface StakworkWebhookPayload {
   };
   error?: string;
 }
-
-
 
 export interface JanitorRunFilters {
   type?: JanitorType;

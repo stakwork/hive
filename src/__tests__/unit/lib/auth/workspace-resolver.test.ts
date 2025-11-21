@@ -1,11 +1,6 @@
 import { mockData } from "@/__tests__/utils/test-helpers";
-import {
-  resolveUserWorkspaceRedirect,
-} from "@/lib/auth/workspace-resolver";
-import {
-  getDefaultWorkspaceForUser,
-  getUserWorkspaces,
-} from "@/services/workspace";
+import { resolveUserWorkspaceRedirect } from "@/lib/auth/workspace-resolver";
+import { getDefaultWorkspaceForUser, getUserWorkspaces } from "@/services/workspace";
 import { Session } from "next-auth";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -23,7 +18,6 @@ describe("resolveUserWorkspaceRedirect", () => {
     vi.resetAllMocks();
     delete process.env.POD_URL;
   });
-
 
   describe("when POD_URL is set", () => {
     beforeEach(() => {
@@ -191,7 +185,7 @@ describe("resolveUserWorkspaceRedirect", () => {
   describe("error handling", () => {
     test("should redirect to onboarding on getUserWorkspaces error", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       mockedGetUserWorkspaces.mockRejectedValue(new Error("Database connection failed"));
 
@@ -202,17 +196,14 @@ describe("resolveUserWorkspaceRedirect", () => {
         redirectUrl: "/onboarding/workspace",
         workspaceCount: 0,
       });
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error resolving workspace redirect:",
-        expect.any(Error)
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Error resolving workspace redirect:", expect.any(Error));
 
       consoleErrorSpy.mockRestore();
     });
 
     test("should handle network timeout errors gracefully", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const timeoutError = new Error("Network timeout");
       timeoutError.name = "TimeoutError";
@@ -227,7 +218,7 @@ describe("resolveUserWorkspaceRedirect", () => {
       });
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "Error resolving workspace redirect:",
-        expect.objectContaining({ name: "TimeoutError" })
+        expect.objectContaining({ name: "TimeoutError" }),
       );
 
       consoleErrorSpy.mockRestore();
@@ -235,7 +226,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
     test("should redirect to onboarding on getDefaultWorkspaceForUser error", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
@@ -252,10 +243,7 @@ describe("resolveUserWorkspaceRedirect", () => {
         redirectUrl: "/onboarding/workspace",
         workspaceCount: 0,
       });
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error resolving workspace redirect:",
-        expect.any(Error)
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Error resolving workspace redirect:", expect.any(Error));
 
       consoleErrorSpy.mockRestore();
     });
@@ -318,7 +306,7 @@ describe("resolveUserWorkspaceRedirect", () => {
 
     test("should handle null/undefined workspace data gracefully", async () => {
       const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       // Mock service returning malformed data
       mockedGetUserWorkspaces.mockResolvedValue(null as never);

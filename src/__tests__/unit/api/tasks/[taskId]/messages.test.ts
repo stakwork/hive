@@ -93,10 +93,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     test("should return 401 if no session", async () => {
       (getServerSession as Mock).mockResolvedValue(null);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -111,10 +108,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     test("should return 401 if no user in session", async () => {
       (getServerSession as Mock).mockResolvedValue({ user: null });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -129,10 +123,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     test("should return 401 if no user id in session", async () => {
       (getServerSession as Mock).mockResolvedValue({ user: { name: "Test" } });
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -149,10 +140,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     test("should return 400 if taskId is missing", async () => {
       (getServerSession as Mock).mockResolvedValue(mockSession);
 
-      const request = new NextRequest(
-        "http://localhost:3000/api/tasks/undefined/messages",
-        { method: "GET" }
-      );
+      const request = new NextRequest("http://localhost:3000/api/tasks/undefined/messages", { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: "" }),
@@ -168,10 +156,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (getServerSession as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(null);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -188,10 +173,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -228,10 +210,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (getServerSession as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockResolvedValue(taskWithDifferentOwner);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -248,10 +227,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -275,10 +251,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(taskWithMember);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -293,10 +266,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -337,10 +307,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -374,10 +341,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -385,9 +349,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       const data = await response.json();
 
       expect(data.data.messages[0].contextTags).toEqual([]);
-      expect(data.data.messages[1].contextTags).toEqual([
-        { type: "FEATURE_BRIEF", id: "feature-1" },
-      ]);
+      expect(data.data.messages[1].contextTags).toEqual([{ type: "FEATURE_BRIEF", id: "feature-1" }]);
     });
 
     test("should include task metadata in response", async () => {
@@ -395,10 +357,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -419,10 +378,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -451,10 +407,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -479,10 +432,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(messagesWithoutArtifacts);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -499,10 +449,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (getServerSession as Mock).mockResolvedValue(mockSession);
       (db.task.findFirst as Mock).mockRejectedValue(new Error("Database connection failed"));
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -518,10 +465,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockRejectedValue(new Error("Query timeout"));
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -544,10 +488,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(messagesWithInvalidJSON);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -562,19 +503,16 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
     test("should return 405 Method Not Allowed for POST requests", async () => {
       (getServerSession as Mock).mockResolvedValue(mockSession);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({ message: "Test message" }),
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ message: "Test message" }),
+        headers: { "Content-Type": "application/json" },
+      });
 
       // Note: POST handler does not exist in route.ts
       // This test documents expected behavior when POST is implemented
       // Current implementation will return Next.js default 405 response
-      
+
       // When POST is implemented, it should follow this pattern:
       // - Authenticate with getServerSession
       // - Validate taskId and message content
@@ -591,10 +529,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue(mockChatMessages);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),
@@ -615,10 +550,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
       (db.task.findFirst as Mock).mockResolvedValue(mockTask);
       (db.chatMessage.findMany as Mock).mockResolvedValue([]);
 
-      const request = new NextRequest(
-        `http://localhost:3000/api/tasks/${mockTaskId}/messages`,
-        { method: "GET" }
-      );
+      const request = new NextRequest(`http://localhost:3000/api/tasks/${mockTaskId}/messages`, { method: "GET" });
 
       const response = await GET(request, {
         params: Promise.resolve({ taskId: mockTaskId }),

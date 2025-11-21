@@ -134,10 +134,15 @@ export const workspaceMockSetup = {
     vi.mocked(db.workspace.update).mockResolvedValue(updatedWorkspace);
   },
 
-  mockWorkspaceUpdateScenario(db: any, originalWorkspace: any, updatedWorkspace: any, options: {
-    memberRole?: WorkspaceRole;
-    slugExists?: boolean;
-  } = {}) {
+  mockWorkspaceUpdateScenario(
+    db: any,
+    originalWorkspace: any,
+    updatedWorkspace: any,
+    options: {
+      memberRole?: WorkspaceRole;
+      slugExists?: boolean;
+    } = {},
+  ) {
     // Mock getWorkspaceBySlug
     vi.mocked(db.workspace.findFirst).mockResolvedValue(originalWorkspace);
 
@@ -176,7 +181,7 @@ export const memberMockSetup = {
     isWorkspaceOwner: any,
     createWorkspaceMember: any,
     mockGitHubAuth: any,
-    mockCreatedMember: any
+    mockCreatedMember: any,
   ) {
     vi.mocked(findUserByGitHubUsername).mockResolvedValue({
       ...mockGitHubAuth,
@@ -201,7 +206,7 @@ export const memberMockSetup = {
     reactivateWorkspaceMember: any,
     mockGitHubAuth: any,
     previousMember: any,
-    reactivatedMember: any
+    reactivatedMember: any,
   ) {
     vi.mocked(findUserByGitHubUsername).mockResolvedValue({
       ...mockGitHubAuth,
@@ -213,21 +218,12 @@ export const memberMockSetup = {
     vi.mocked(reactivateWorkspaceMember).mockResolvedValue(reactivatedMember);
   },
 
-  mockUpdateMemberRole(
-    findActiveMember: any,
-    updateMemberRole: any,
-    mockMember: any,
-    updatedMember: any
-  ) {
+  mockUpdateMemberRole(findActiveMember: any, updateMemberRole: any, mockMember: any, updatedMember: any) {
     vi.mocked(findActiveMember).mockResolvedValue(mockMember);
     vi.mocked(updateMemberRole).mockResolvedValue(updatedMember);
   },
 
-  mockRemoveMember(
-    findActiveMember: any,
-    softDeleteMember: any,
-    mockMember: any
-  ) {
+  mockRemoveMember(findActiveMember: any, softDeleteMember: any, mockMember: any) {
     vi.mocked(findActiveMember).mockResolvedValue(mockMember);
     vi.mocked(softDeleteMember).mockResolvedValue(undefined);
   },

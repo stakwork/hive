@@ -1,10 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { PATCH } from "@/app/api/tickets/[ticketId]/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -20,10 +17,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
 
   describe("Authentication", () => {
     test("requires authentication", async () => {
-      const request = createPatchRequest(
-        "http://localhost:3000/api/tickets/test-id",
-        { title: "Updated Title" }
-      );
+      const request = createPatchRequest("http://localhost:3000/api/tickets/test-id", { title: "Updated Title" });
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: "test-id" }) });
 
@@ -64,7 +58,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { runBuild: false },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -112,7 +106,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { runBuild: true },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -159,7 +153,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { title: "Updated Title" },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -209,7 +203,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { runTestSuite: false },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -257,7 +251,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { runTestSuite: true },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -304,7 +298,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { title: "Updated Title" },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -354,7 +348,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { runBuild: false, runTestSuite: false },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -412,7 +406,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
           runBuild: false,
           runTestSuite: false,
         },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });
@@ -447,7 +441,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         "http://localhost:3000/api/tickets/non-existent-id",
         { runBuild: false },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: "non-existent-id" }) });
@@ -486,7 +480,7 @@ describe("PATCH /api/tickets/[ticketId] - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/tickets/${ticket.id}`,
         { runBuild: false },
-        nonMember
+        nonMember,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ ticketId: ticket.id }) });

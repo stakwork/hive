@@ -27,9 +27,7 @@ export interface MockAIServicesOptions {
 /**
  * Sets up authentication and workspace access mocks
  */
-export async function setupAuthMocks(
-  options: MockAuthSetupOptions
-) {
+export async function setupAuthMocks(options: MockAuthSetupOptions) {
   const { requireAuth } = await import("@/lib/middleware/utils");
   const { validateWorkspaceAccess } = await import("@/services/workspace");
 
@@ -47,9 +45,7 @@ export async function setupAuthMocks(
 /**
  * Sets up AI service mocks (encryption, GitHub, AI provider, tools, streaming)
  */
-export async function setupAIServiceMocks(
-  options: MockAIServicesOptions
-) {
+export async function setupAIServiceMocks(options: MockAIServicesOptions) {
   const { EncryptionService } = await import("@/lib/encryption");
   const { getPrimaryRepository } = await import("@/lib/helpers/repository");
   const { getGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
@@ -90,18 +86,14 @@ export async function setupAIServiceMocks(
   }
 
   // AI tools mock
-  askTools.mockReturnValue([
-    { name: "get_learnings" },
-    { name: "recent_commits" },
-    { name: "final_answer" },
-  ]);
+  askTools.mockReturnValue([{ name: "get_learnings" }, { name: "recent_commits" }, { name: "final_answer" }]);
 
   // StreamText mock - returns a successful streaming response
   streamText.mockReturnValue({
     toUIMessageStreamResponse: vi.fn().mockReturnValue(
       new Response("Mock AI response", {
         headers: { "content-type": "text/plain; charset=utf-8" },
-      })
+      }),
     ),
   });
 }
@@ -117,7 +109,7 @@ export async function setupSuccessfulAskFlow(
     canRead?: boolean;
     canWrite?: boolean;
     canAdmin?: boolean;
-  } = {}
+  } = {},
 ) {
   await setupAuthMocks({
     user,

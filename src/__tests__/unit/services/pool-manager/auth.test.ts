@@ -30,7 +30,7 @@ describe("getPoolManagerApiKey", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetAllMocks();
-    
+
     // Setup EncryptionService mock
     (EncryptionService.getInstance as Mock).mockReturnValue(mockEncryptionService);
   });
@@ -64,25 +64,19 @@ describe("getPoolManagerApiKey", () => {
       const result = await getPoolManagerApiKey();
 
       // Verify fetch was called with correct parameters
-      expect(global.fetch).toHaveBeenCalledWith(
-        "https://pool-manager.example.com/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: "test-username",
-            password: "test-password",
-          }),
-        }
-      );
+      expect(global.fetch).toHaveBeenCalledWith("https://pool-manager.example.com/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: "test-username",
+          password: "test-password",
+        }),
+      });
 
       // Verify encryption service was called
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "poolApiKey",
-        mockToken
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("poolApiKey", mockToken);
 
       // Verify result is JSON stringified encrypted data
       expect(result).toBe(JSON.stringify(mockEncryptedData));
@@ -113,10 +107,7 @@ describe("getPoolManagerApiKey", () => {
 
       const result = await getPoolManagerApiKey();
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "poolApiKey",
-        mockToken
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("poolApiKey", mockToken);
       expect(result).toBe(JSON.stringify(mockEncryptedData));
     });
   });
@@ -130,9 +121,7 @@ describe("getPoolManagerApiKey", () => {
       };
       (global.fetch as Mock).mockResolvedValue(mockResponse);
 
-      await expect(getPoolManagerApiKey()).rejects.toThrow(
-        "Unexpected status code: 401"
-      );
+      await expect(getPoolManagerApiKey()).rejects.toThrow("Unexpected status code: 401");
 
       // Verify encryption service was not called
       expect(mockEncryptionService.encryptField).not.toHaveBeenCalled();
@@ -146,9 +135,7 @@ describe("getPoolManagerApiKey", () => {
       };
       (global.fetch as Mock).mockResolvedValue(mockResponse);
 
-      await expect(getPoolManagerApiKey()).rejects.toThrow(
-        "Unexpected status code: 500"
-      );
+      await expect(getPoolManagerApiKey()).rejects.toThrow("Unexpected status code: 500");
 
       expect(mockEncryptionService.encryptField).not.toHaveBeenCalled();
     });
@@ -157,9 +144,7 @@ describe("getPoolManagerApiKey", () => {
       const networkError = new Error("Network request failed");
       (global.fetch as Mock).mockRejectedValue(networkError);
 
-      await expect(getPoolManagerApiKey()).rejects.toThrow(
-        "Network request failed"
-      );
+      await expect(getPoolManagerApiKey()).rejects.toThrow("Network request failed");
 
       expect(mockEncryptionService.encryptField).not.toHaveBeenCalled();
     });
@@ -186,9 +171,7 @@ describe("getPoolManagerApiKey", () => {
       };
       (global.fetch as Mock).mockResolvedValue(mockResponse);
 
-      await expect(getPoolManagerApiKey()).rejects.toThrow(
-        "Authentication failed"
-      );
+      await expect(getPoolManagerApiKey()).rejects.toThrow("Authentication failed");
 
       expect(mockEncryptionService.encryptField).not.toHaveBeenCalled();
     });
@@ -204,9 +187,7 @@ describe("getPoolManagerApiKey", () => {
       };
       (global.fetch as Mock).mockResolvedValue(mockResponse);
 
-      await expect(getPoolManagerApiKey()).rejects.toThrow(
-        "Authentication failed"
-      );
+      await expect(getPoolManagerApiKey()).rejects.toThrow("Authentication failed");
 
       expect(mockEncryptionService.encryptField).not.toHaveBeenCalled();
     });
@@ -237,7 +218,7 @@ describe("getPoolManagerApiKey", () => {
         }),
       };
       (global.fetch as Mock).mockResolvedValue(mockResponse);
-      
+
       const mockEncryptedData = {
         data: "encrypted",
         iv: "iv",
@@ -252,7 +233,7 @@ describe("getPoolManagerApiKey", () => {
 
       expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
         "poolApiKey", // Verify correct field name
-        mockToken
+        mockToken,
       );
     });
 
@@ -328,10 +309,7 @@ describe("getPoolManagerApiKey", () => {
 
       await getPoolManagerApiKey();
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        "https://pool-manager.example.com/auth/login",
-        expect.any(Object)
-      );
+      expect(global.fetch).toHaveBeenCalledWith("https://pool-manager.example.com/auth/login", expect.any(Object));
     });
 
     test("should use correct credentials from config", async () => {
@@ -376,7 +354,7 @@ describe("getPoolManagerApiKey", () => {
         }),
       };
       (global.fetch as Mock).mockResolvedValue(mockResponse);
-      
+
       const mockEncryptedData = {
         data: "encrypted-empty",
         iv: "iv",
@@ -389,10 +367,7 @@ describe("getPoolManagerApiKey", () => {
 
       const result = await getPoolManagerApiKey();
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "poolApiKey",
-        ""
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("poolApiKey", "");
       expect(result).toBe(JSON.stringify(mockEncryptedData));
     });
 
@@ -406,7 +381,7 @@ describe("getPoolManagerApiKey", () => {
         }),
       };
       (global.fetch as Mock).mockResolvedValue(mockResponse);
-      
+
       const mockEncryptedData = {
         data: "encrypted-null",
         iv: "iv",
@@ -419,10 +394,7 @@ describe("getPoolManagerApiKey", () => {
 
       const result = await getPoolManagerApiKey();
 
-      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith(
-        "poolApiKey",
-        null
-      );
+      expect(mockEncryptionService.encryptField).toHaveBeenCalledWith("poolApiKey", null);
       expect(result).toBe(JSON.stringify(mockEncryptedData));
     });
   });

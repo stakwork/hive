@@ -15,7 +15,6 @@ interface Recommendation {
   };
 }
 
-
 const initialState = {
   recommendations: [],
   janitorConfig: null,
@@ -90,7 +89,7 @@ export const useInsightsStore = create<InsightsStore>()(
           set({
             janitorConfig: data.config,
             recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
-            ticketSweepEnabled: data.config.ticketSweepEnabled || false
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false,
           });
         }
       } catch (error) {
@@ -110,7 +109,7 @@ export const useInsightsStore = create<InsightsStore>()(
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            [configKey]: !state.janitorConfig[configKey]
+            [configKey]: !state.janitorConfig[configKey],
           }),
         });
 
@@ -119,7 +118,7 @@ export const useInsightsStore = create<InsightsStore>()(
           set({
             janitorConfig: data.config,
             recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
-            ticketSweepEnabled: data.config.ticketSweepEnabled || false
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false,
           });
         }
       } catch (error) {
@@ -138,7 +137,7 @@ export const useInsightsStore = create<InsightsStore>()(
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            recommendationSweepEnabled: !state.recommendationSweepEnabled
+            recommendationSweepEnabled: !state.recommendationSweepEnabled,
           }),
         });
 
@@ -147,7 +146,7 @@ export const useInsightsStore = create<InsightsStore>()(
           set({
             janitorConfig: data.config,
             recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
-            ticketSweepEnabled: data.config.ticketSweepEnabled || false
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false,
           });
         }
       } catch (error) {
@@ -166,7 +165,7 @@ export const useInsightsStore = create<InsightsStore>()(
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ticketSweepEnabled: !state.ticketSweepEnabled
+            ticketSweepEnabled: !state.ticketSweepEnabled,
           }),
         });
 
@@ -175,7 +174,7 @@ export const useInsightsStore = create<InsightsStore>()(
           set({
             janitorConfig: data.config,
             recommendationSweepEnabled: data.config.recommendationSweepEnabled || false,
-            ticketSweepEnabled: data.config.ticketSweepEnabled || false
+            ticketSweepEnabled: data.config.ticketSweepEnabled || false,
           });
         }
       } catch (error) {
@@ -187,26 +186,26 @@ export const useInsightsStore = create<InsightsStore>()(
     // Run janitor manually
     runJanitor: async (slug: string, janitorId: string) => {
       if (!slug) return;
-      
+
       const state = get();
       try {
         // Add to running janitors
         set({
-          runningJanitors: new Set([...state.runningJanitors, janitorId])
+          runningJanitors: new Set([...state.runningJanitors, janitorId]),
         });
-        
+
         const response = await fetch(`/api/workspaces/${slug}/janitors/${janitorId}/run`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
-        
+
         if (response.ok) {
           // Refresh recommendations after janitor run
           await get().fetchRecommendations(slug);
         } else {
           const error = await response.json();
           console.error("Janitor run failed:", error);
-          throw new Error(error.error || 'Unknown error');
+          throw new Error(error.error || "Unknown error");
         }
       } catch (error) {
         console.error("Error running janitor:", error);
@@ -282,5 +281,5 @@ export const useInsightsStore = create<InsightsStore>()(
 
     // Reset store
     reset: () => set(initialState),
-  }))
+  })),
 );

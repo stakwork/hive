@@ -75,14 +75,11 @@ interface MigrationOptions {
   verbose: boolean;
 }
 
-async function fetchE2eTestsFromGraph(
-  swarmUrl: string,
-  swarmApiKey: string
-): Promise<E2eTestNode[]> {
+async function fetchE2eTestsFromGraph(swarmUrl: string, swarmApiKey: string): Promise<E2eTestNode[]> {
   try {
     // Extract hostname from swarm URL and construct graph endpoint
     // Port can be configured via GRAPH_SERVICE_PORT environment variable
-    const graphPort = process.env.GRAPH_SERVICE_PORT || '3355';
+    const graphPort = process.env.GRAPH_SERVICE_PORT || "3355";
     const swarmUrlObj = new URL(swarmUrl);
     const graphUrl = `https://${swarmUrlObj.hostname}:${graphPort}`;
 
@@ -108,7 +105,11 @@ async function fetchE2eTestsFromGraph(
   }
 }
 
-async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, options: MigrationOptions): Promise<void> {
+async function migrateWorkspace(
+  workspaceSlug: string,
+  stats: MigrationStats,
+  options: MigrationOptions,
+): Promise<void> {
   console.log(`\n📦 Processing workspace: ${workspaceSlug}`);
   if (options.dryRun) {
     console.log(`   🔍 DRY RUN MODE - No tasks will be created`);
@@ -148,17 +149,11 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
   }
 
   // Decrypt swarm API key
-  const decryptedApiKey = encryptionService.decryptField(
-    "swarmApiKey",
-    workspace.swarm.swarmApiKey
-  );
+  const decryptedApiKey = encryptionService.decryptField("swarmApiKey", workspace.swarm.swarmApiKey);
 
   // Fetch E2E tests from graph
   console.log(`   Fetching E2E tests from graph...`);
-  const tests = await fetchE2eTestsFromGraph(
-    workspace.swarm.swarmUrl,
-    decryptedApiKey
-  );
+  const tests = await fetchE2eTestsFromGraph(workspace.swarm.swarmUrl, decryptedApiKey);
 
   if (tests.length === 0) {
     console.log(`   ℹ️  No E2E tests found in graph`);
@@ -170,7 +165,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
   // Group tests by file path to create one task per file (matching pre-PR-1498 behavior)
   const testsByFile = new Map<string, E2eTestNode>();
-  tests.forEach(test => {
+  tests.forEach((test) => {
     const filePath = test.properties.file;
     // Only keep the first test case we encounter for each file
     if (!testsByFile.has(filePath)) {
@@ -183,8 +178,8 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
   // Group tests by test_kind for analysis
   const testsByKind: Record<string, E2eTestNode[]> = {};
-  uniqueTests.forEach(test => {
-    const kind = test.properties.test_kind || 'unknown';
+  uniqueTests.forEach((test) => {
+    const kind = test.properties.test_kind || "unknown";
     if (!testsByKind[kind]) {
       testsByKind[kind] = [];
       stats.testsByKind[kind] = 0;
@@ -203,7 +198,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
     console.log(`\n   📝 Detailed test file list:`);
     uniqueTests.forEach((test, index) => {
       console.log(`     ${index + 1}. ${test.properties.file}`);
-      console.log(`        Kind: ${test.properties.test_kind || 'unknown'}`);
+      console.log(`        Kind: ${test.properties.test_kind || "unknown"}`);
       console.log(`        Ref ID: ${test.ref_id}`);
     });
   }
@@ -224,14 +219,19 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
       const testFilePath = test.properties.file;
 
       // Generate title from file name (not individual test name)
-      const fileName = testFilePath.split('/').pop()?.replace(/\.spec\.ts$/, '').replace(/\.test\.ts$/, '') || 'E2E Test';
+      const fileName =
+        testFilePath
+          .split("/")
+          .pop()
+          ?.replace(/\.spec\.ts$/, "")
+          .replace(/\.test\.ts$/, "") || "E2E Test";
       const title = fileName;
 
       // Log test being processed (verbose mode)
       if (options.verbose) {
         console.log(`\n   📝 Processing file: ${testFilePath}`);
         console.log(`      Title: ${title}`);
-        console.log(`      Kind: ${test.properties.test_kind || 'unknown'}`);
+        console.log(`      Kind: ${test.properties.test_kind || "unknown"}`);
         console.log(`      Ref ID: ${test.ref_id}`);
       }
 
@@ -258,7 +258,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
       });
 
       if (existingTask) {
-        const status = options.verbose ? `exists with status=${existingTask.status}` : 'exists';
+        const status = options.verbose ? `exists with status=${existingTask.status}` : "exists";
         console.log(`   ⏭️  Skipped (${status}): ${title}`);
         if (options.verbose) {
           console.log(`      ✅ Found existing task:`);
@@ -266,7 +266,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
           console.log(`         Task title: ${existingTask.title}`);
           console.log(`         Task path: ${existingTask.testFilePath}`);
           console.log(`         Created at: ${existingTask.createdAt}`);
-          console.log(`         Status: ${existingTask.status} / ${existingTask.workflowStatus || 'N/A'}`);
+          console.log(`         Status: ${existingTask.status} / ${existingTask.workflowStatus || "N/A"}`);
         }
         stats.tasksSkipped++;
         continue;
@@ -288,7 +288,7 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
       if (repository?.repositoryUrl) {
         // Try to extract owner/repo from the path if present (format: owner/repo/path)
-        const fileParts = testFilePath.split('/');
+        const fileParts = testFilePath.split("/");
         if (fileParts.length >= 3) {
           // Check if this looks like a GitHub path (owner/repo/...)
           // by seeing if the repository URL contains the first two parts
@@ -298,13 +298,13 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
           if (repoUrlLower.includes(`/${potentialOwner}/${potentialRepo}`.toLowerCase())) {
             // This is a full GitHub path, extract the relative path
-            normalizedPath = fileParts.slice(2).join('/');
+            normalizedPath = fileParts.slice(2).join("/");
           }
         }
 
         // Construct URL using repository URL + relative path
         // Use dynamic branch from repository (fallback to 'main' if not set)
-        const branch = repository.branch || 'main';
+        const branch = repository.branch || "main";
         testFileUrl = `${repository.repositoryUrl}/blob/${branch}/${normalizedPath}`;
       }
 
@@ -314,11 +314,11 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         console.log(`         title: "${title}"`);
         console.log(`         testFilePath: "${testFilePath}"`);
         console.log(`         testFilePath length: ${testFilePath?.length || 0} chars`);
-        console.log(`         testFileUrl: ${testFileUrl || 'null'}`);
+        console.log(`         testFileUrl: ${testFileUrl || "null"}`);
         console.log(`         normalizedPath: "${normalizedPath}"`);
-        console.log(`         branch: ${repository?.branch || 'main (default)'}`);
-        console.log(`         repositoryId: ${repository?.id || 'null'}`);
-        console.log(`         ownerId: ${ownerId || 'null'}`);
+        console.log(`         branch: ${repository?.branch || "main (default)"}`);
+        console.log(`         repositoryId: ${repository?.id || "null"}`);
+        console.log(`         ownerId: ${ownerId || "null"}`);
         console.log(`         workspaceId: ${workspace.id}`);
       }
 
@@ -351,7 +351,6 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
         console.log(`   ✅ Created: ${title}`);
       }
       stats.tasksCreated++;
-
     } catch (error) {
       // Enhanced error logging
       console.error(`\n   ❌ ERROR creating task for file: ${test.properties.file}`);
@@ -360,15 +359,15 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
       // Log the problematic test data
       console.error(`\n      🔍 Test data that caused error:`);
-      console.error(`         testFilePath: ${test.properties.file || 'undefined'}`);
+      console.error(`         testFilePath: ${test.properties.file || "undefined"}`);
       console.error(`         testFilePath length: ${test.properties.file?.length || 0} chars`);
-      console.error(`         test_kind: ${test.properties.test_kind || 'undefined'}`);
-      console.error(`         ref_id: ${test.ref_id || 'undefined'}`);
+      console.error(`         test_kind: ${test.properties.test_kind || "undefined"}`);
+      console.error(`         ref_id: ${test.ref_id || "undefined"}`);
 
       console.error(`\n      🔍 Context data:`);
       console.error(`         workspaceId: ${workspace.id}`);
-      console.error(`         ownerId: ${ownerId || 'NULL/UNDEFINED'}`);
-      console.error(`         repositoryId: ${repository?.id || 'NULL/UNDEFINED'}`);
+      console.error(`         ownerId: ${ownerId || "NULL/UNDEFINED"}`);
+      console.error(`         repositoryId: ${repository?.id || "NULL/UNDEFINED"}`);
       console.error(`         repository exists: ${!!repository}`);
 
       if (options.verbose && error instanceof Error && error.stack) {
@@ -383,22 +382,22 @@ async function migrateWorkspace(workspaceSlug: string, stats: MigrationStats, op
 
 async function main() {
   const args = process.argv.slice(2);
-  const workspaceArg = args.find(arg => arg.startsWith('--workspace='));
-  const allFlag = args.includes('--all');
-  const dryRun = args.includes('--dry-run');
-  const verbose = args.includes('--verbose') || args.includes('-v');
+  const workspaceArg = args.find((arg) => arg.startsWith("--workspace="));
+  const allFlag = args.includes("--all");
+  const dryRun = args.includes("--dry-run");
+  const verbose = args.includes("--verbose") || args.includes("-v");
 
   const options: MigrationOptions = {
     dryRun,
     verbose,
   };
 
-  console.log('🚀 Starting E2E Test Migration\n');
+  console.log("🚀 Starting E2E Test Migration\n");
   if (dryRun) {
-    console.log('🔍 DRY RUN MODE - No changes will be made to the database\n');
+    console.log("🔍 DRY RUN MODE - No changes will be made to the database\n");
   }
   if (verbose) {
-    console.log('📝 VERBOSE MODE - Detailed logging enabled\n');
+    console.log("📝 VERBOSE MODE - Detailed logging enabled\n");
   }
 
   const stats: MigrationStats = {
@@ -413,15 +412,14 @@ async function main() {
   try {
     if (workspaceArg) {
       // Process single workspace
-      const workspaceSlug = workspaceArg.split('=')[1];
+      const workspaceSlug = workspaceArg.split("=")[1];
       if (!workspaceSlug) {
-        console.error('❌ Invalid workspace argument. Usage: --workspace=<workspace-slug>');
+        console.error("❌ Invalid workspace argument. Usage: --workspace=<workspace-slug>");
         process.exit(1);
       }
 
       await migrateWorkspace(workspaceSlug, stats, options);
       stats.workspacesProcessed = 1;
-
     } else if (allFlag) {
       // Process all workspaces
       const workspaces = await prisma.workspace.findMany({
@@ -435,28 +433,27 @@ async function main() {
         await migrateWorkspace(workspace.slug, stats, options);
         stats.workspacesProcessed++;
       }
-
     } else {
-      console.error('❌ Missing argument. Usage:');
-      console.error('   npm run migrate:e2e-tasks -- --workspace=<workspace-slug>');
-      console.error('   npm run migrate:e2e-tasks -- --all');
-      console.error('   npm run migrate:e2e-tasks -- --workspace=<workspace-slug> --dry-run');
-      console.error('   npm run migrate:e2e-tasks -- --workspace=<workspace-slug> --verbose');
+      console.error("❌ Missing argument. Usage:");
+      console.error("   npm run migrate:e2e-tasks -- --workspace=<workspace-slug>");
+      console.error("   npm run migrate:e2e-tasks -- --all");
+      console.error("   npm run migrate:e2e-tasks -- --workspace=<workspace-slug> --dry-run");
+      console.error("   npm run migrate:e2e-tasks -- --workspace=<workspace-slug> --verbose");
       process.exit(1);
     }
 
     // Print summary
-    console.log('\n' + '='.repeat(70));
-    console.log('📊 Migration Summary');
-    console.log('='.repeat(70));
+    console.log("\n" + "=".repeat(70));
+    console.log("📊 Migration Summary");
+    console.log("=".repeat(70));
     console.log(`Workspaces Processed: ${stats.workspacesProcessed}`);
     console.log(`E2E Tests Found:      ${stats.testsFound}`);
-    console.log(`Tasks ${dryRun ? 'Would Be ' : ''}Created:        ${stats.tasksCreated}`);
+    console.log(`Tasks ${dryRun ? "Would Be " : ""}Created:        ${stats.tasksCreated}`);
     console.log(`Tasks Skipped:        ${stats.tasksSkipped}`);
     console.log(`Errors:               ${stats.errors}`);
 
     if (Object.keys(stats.testsByKind).length > 0) {
-      console.log('\nTests by Kind:');
+      console.log("\nTests by Kind:");
       Object.entries(stats.testsByKind)
         .sort((a, b) => b[1] - a[1])
         .forEach(([kind, count]) => {
@@ -466,38 +463,37 @@ async function main() {
 
     // Accounting check
     const totalProcessed = stats.tasksCreated + stats.tasksSkipped + stats.errors;
-    console.log('\n' + '-'.repeat(70));
-    console.log('🧮 Accounting:');
+    console.log("\n" + "-".repeat(70));
+    console.log("🧮 Accounting:");
     console.log(`  Tests Found:  ${stats.testsFound}`);
     console.log(`  Created:      ${stats.tasksCreated}`);
     console.log(`  Skipped:      ${stats.tasksSkipped}`);
     console.log(`  Errors:       ${stats.errors}`);
-    console.log(`  ` + '-'.repeat(30));
+    console.log(`  ` + "-".repeat(30));
     console.log(`  Total:        ${totalProcessed}`);
 
     if (stats.testsFound === totalProcessed) {
       console.log(`  ✅ All tests accounted for!`);
     } else {
       const diff = stats.testsFound - totalProcessed;
-      console.log(`  ❌ MISMATCH: ${Math.abs(diff)} test(s) ${diff > 0 ? 'missing' : 'extra'}!`);
+      console.log(`  ❌ MISMATCH: ${Math.abs(diff)} test(s) ${diff > 0 ? "missing" : "extra"}!`);
     }
 
-    console.log('='.repeat(70));
+    console.log("=".repeat(70));
 
     if (dryRun) {
-      console.log('\n🔍 DRY RUN COMPLETE');
-      console.log('   Run without --dry-run to actually create tasks.');
+      console.log("\n🔍 DRY RUN COMPLETE");
+      console.log("   Run without --dry-run to actually create tasks.");
     } else if (stats.tasksCreated > 0) {
-      console.log('\n✅ Migration completed successfully!');
-      console.log('   Visit the User Journeys page to see the migrated tests.');
+      console.log("\n✅ Migration completed successfully!");
+      console.log("   Visit the User Journeys page to see the migrated tests.");
     } else if (stats.tasksSkipped > 0) {
-      console.log('\n✅ All tests already migrated (nothing to do).');
+      console.log("\n✅ All tests already migrated (nothing to do).");
     } else {
-      console.log('\nℹ️  No tests found to migrate.');
+      console.log("\nℹ️  No tests found to migrate.");
     }
-
   } catch (error) {
-    console.error('\n❌ Migration failed:', error);
+    console.error("\n❌ Migration failed:", error);
     process.exit(1);
   } finally {
     await prisma.$disconnect();

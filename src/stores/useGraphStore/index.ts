@@ -1,143 +1,143 @@
-import { GraphData, Link, NodeExtended } from '@Universe/types'
-import { create } from 'zustand'
-import { useDataStore } from '../useDataStore'
-import { useSimulationStore } from '../useSimulationStore'
+import { GraphData, Link, NodeExtended } from "@Universe/types";
+import { create } from "zustand";
+import { useDataStore } from "../useDataStore";
+import { useSimulationStore } from "../useSimulationStore";
 
 export type Position = {
-  x: number
-  y: number
-  z: number
-}
+  x: number;
+  y: number;
+  z: number;
+};
 
 export type Neighbourhood = {
-  name: string
-  ref_id: string
-}
+  name: string;
+  ref_id: string;
+};
 
-export type GraphStyle = 'sphere' | 'force' | 'split'
+export type GraphStyle = "sphere" | "force" | "split";
 
-export const graphStyles: GraphStyle[] = ['sphere', 'force', 'split']
+export const graphStyles: GraphStyle[] = ["sphere", "force", "split"];
 
 export type CameraPosition = {
-  x: number
-  y: number
-  z: number
-}
+  x: number;
+  y: number;
+  z: number;
+};
 
 export type CameraTarget = {
-  x: number
-  y: number
-  z: number
-}
+  x: number;
+  y: number;
+  z: number;
+};
 
-export type FilterTab = 'all' | 'code' | 'comms' | 'tasks' | 'concepts'
+export type FilterTab = "all" | "code" | "comms" | "tasks" | "concepts";
 
 export type GraphStore = {
-  graphRadius: number
-  neighbourhoods: Neighbourhood[]
-  selectionGraphRadius: number
-  data: { nodes: NodeExtended[]; links: Link[] } | null
-  selectionGraphData: GraphData
-  graphStyle: GraphStyle
-  hoveredNode: NodeExtended | null
-  selectedNodeTypes: string[]
-  selectedNodeType: string
-  selectedLinkTypes: string[]
-  selectedNode: NodeExtended | null
-  cameraFocusTrigger: boolean
-  showSelectionGraph: boolean
-  disableCameraRotation: boolean
-  scrollEventsDisabled: boolean
-  isHovering: boolean
-  activeEdge: Link | null
-  activeNode: NodeExtended | null
-  highlightNodes: string[]
-  selectionPath: string[]
-  hoveredNodeSiblings: string[]
-  selectedNodeSiblings: string[]
-  searchQuery: string
-  followersFilter: string
-  isolatedView: string
-  dateRangeFilter: string
-  cameraPosition: CameraPosition | null
-  cameraTarget: CameraTarget | null
-  webhookHighlightNodes: string[]
-  highlightTimestamp: number | null
-  activeFilterTab: FilterTab
-  webhookHighlightDepth: number
-  setDisableCameraRotation: (rotation: boolean) => void
-  setScrollEventsDisabled: (rotation: boolean) => void
-  setData: (data: GraphData) => void
-  setGraphStyle: (graphStyle: GraphStyle) => void
-  setGraphRadius: (graphRadius: number) => void
-  setSelectionGraphRadius: (graphRadius: number) => void
-  setHoveredNode: (hoveredNode: NodeExtended | null) => void
-  setSelectedNode: (selectedNode: NodeExtended | null) => void
-  setActiveEdge: (edge: Link | null) => void
-  setActiveNode: (activeNode: NodeExtended | null) => void
-  setHighlightNodes: (highlightNodes: string[]) => void
-  setCameraFocusTrigger: (_: boolean) => void
-  setShowSelectionGraph: (_: boolean) => void
-  setSelectionData: (data: GraphData) => void
-  setIsHovering: (isHovering: boolean) => void
-  addToSelectionPath: (id: string) => void
-  setSearchQuery: (id: string) => void
-  setSelectedNodeTypes: (type: string) => void
-  setSelectedNodeType: (type: string) => void
-  resetSelectedNodeTypes: () => void
-  resetSelectedNodeType: () => void
-  setSelectedLinkTypes: (type: string) => void
-  resetSelectedLinkTypes: () => void
-  setFollowersFilter: (filter: string) => void
-  setDateRangeFilter: (filter: string) => void
-  setIsolatedView: (isolatedView: string) => void
-  setNeighbourhoods: (neighbourhoods: Neighbourhood[]) => void
-  setCameraPosition: (position: CameraPosition | null) => void
-  setCameraTarget: (target: CameraTarget | null) => void
-  saveCameraState: (position: CameraPosition, target: CameraTarget) => void
-  setWebhookHighlightNodes: (nodeIds: string[], depth?: number) => void
-  clearWebhookHighlights: () => void
-  setActiveFilterTab: (tab: FilterTab) => void
-}
+  graphRadius: number;
+  neighbourhoods: Neighbourhood[];
+  selectionGraphRadius: number;
+  data: { nodes: NodeExtended[]; links: Link[] } | null;
+  selectionGraphData: GraphData;
+  graphStyle: GraphStyle;
+  hoveredNode: NodeExtended | null;
+  selectedNodeTypes: string[];
+  selectedNodeType: string;
+  selectedLinkTypes: string[];
+  selectedNode: NodeExtended | null;
+  cameraFocusTrigger: boolean;
+  showSelectionGraph: boolean;
+  disableCameraRotation: boolean;
+  scrollEventsDisabled: boolean;
+  isHovering: boolean;
+  activeEdge: Link | null;
+  activeNode: NodeExtended | null;
+  highlightNodes: string[];
+  selectionPath: string[];
+  hoveredNodeSiblings: string[];
+  selectedNodeSiblings: string[];
+  searchQuery: string;
+  followersFilter: string;
+  isolatedView: string;
+  dateRangeFilter: string;
+  cameraPosition: CameraPosition | null;
+  cameraTarget: CameraTarget | null;
+  webhookHighlightNodes: string[];
+  highlightTimestamp: number | null;
+  activeFilterTab: FilterTab;
+  webhookHighlightDepth: number;
+  setDisableCameraRotation: (rotation: boolean) => void;
+  setScrollEventsDisabled: (rotation: boolean) => void;
+  setData: (data: GraphData) => void;
+  setGraphStyle: (graphStyle: GraphStyle) => void;
+  setGraphRadius: (graphRadius: number) => void;
+  setSelectionGraphRadius: (graphRadius: number) => void;
+  setHoveredNode: (hoveredNode: NodeExtended | null) => void;
+  setSelectedNode: (selectedNode: NodeExtended | null) => void;
+  setActiveEdge: (edge: Link | null) => void;
+  setActiveNode: (activeNode: NodeExtended | null) => void;
+  setHighlightNodes: (highlightNodes: string[]) => void;
+  setCameraFocusTrigger: (_: boolean) => void;
+  setShowSelectionGraph: (_: boolean) => void;
+  setSelectionData: (data: GraphData) => void;
+  setIsHovering: (isHovering: boolean) => void;
+  addToSelectionPath: (id: string) => void;
+  setSearchQuery: (id: string) => void;
+  setSelectedNodeTypes: (type: string) => void;
+  setSelectedNodeType: (type: string) => void;
+  resetSelectedNodeTypes: () => void;
+  resetSelectedNodeType: () => void;
+  setSelectedLinkTypes: (type: string) => void;
+  resetSelectedLinkTypes: () => void;
+  setFollowersFilter: (filter: string) => void;
+  setDateRangeFilter: (filter: string) => void;
+  setIsolatedView: (isolatedView: string) => void;
+  setNeighbourhoods: (neighbourhoods: Neighbourhood[]) => void;
+  setCameraPosition: (position: CameraPosition | null) => void;
+  setCameraTarget: (target: CameraTarget | null) => void;
+  saveCameraState: (position: CameraPosition, target: CameraTarget) => void;
+  setWebhookHighlightNodes: (nodeIds: string[], depth?: number) => void;
+  clearWebhookHighlights: () => void;
+  setActiveFilterTab: (tab: FilterTab) => void;
+};
 
 const defaultData: Omit<
   GraphStore,
-  | 'setData'
-  | 'setCameraAnimation'
-  | 'setScrollEventsDisabled'
-  | 'setDisableCameraRotation'
-  | 'setHoveredNode'
-  | 'setSelectedNode'
-  | 'setActiveEdge'
-  | 'setActiveNode'
-  | 'setHighlightNodes'
-  | 'setCameraFocusTrigger'
-  | 'setGraphRadius'
-  | 'setSelectionGraphRadius'
-  | 'setGraphStyle'
-  | 'setShowSelectionGraph'
-  | 'setSelectionData'
-  | 'setHideNodeDetails'
-  | 'setIsHovering'
-  | 'addToSelectionPath'
-  | 'setSearchQuery'
-  | 'setSelectedNodeTypes'
-  | 'setSelectedNodeType'
-  | 'resetSelectedNodeTypes'
-  | 'resetSelectedNodeType'
-  | 'setSelectedLinkTypes'
-  | 'resetSelectedLinkTypes'
-  | 'setNodesToHide'
-  | 'setFollowersFilter'
-  | 'setDateRangeFilter'
-  | 'setIsolatedView'
-  | 'setNeighbourhoods'
-  | 'setCameraPosition'
-  | 'setCameraTarget'
-  | 'saveCameraState'
-  | 'setWebhookHighlightNodes'
-  | 'clearWebhookHighlights'
-  | 'setActiveFilterTab'
+  | "setData"
+  | "setCameraAnimation"
+  | "setScrollEventsDisabled"
+  | "setDisableCameraRotation"
+  | "setHoveredNode"
+  | "setSelectedNode"
+  | "setActiveEdge"
+  | "setActiveNode"
+  | "setHighlightNodes"
+  | "setCameraFocusTrigger"
+  | "setGraphRadius"
+  | "setSelectionGraphRadius"
+  | "setGraphStyle"
+  | "setShowSelectionGraph"
+  | "setSelectionData"
+  | "setHideNodeDetails"
+  | "setIsHovering"
+  | "addToSelectionPath"
+  | "setSearchQuery"
+  | "setSelectedNodeTypes"
+  | "setSelectedNodeType"
+  | "resetSelectedNodeTypes"
+  | "resetSelectedNodeType"
+  | "setSelectedLinkTypes"
+  | "resetSelectedLinkTypes"
+  | "setNodesToHide"
+  | "setFollowersFilter"
+  | "setDateRangeFilter"
+  | "setIsolatedView"
+  | "setNeighbourhoods"
+  | "setCameraPosition"
+  | "setCameraTarget"
+  | "saveCameraState"
+  | "setWebhookHighlightNodes"
+  | "clearWebhookHighlights"
+  | "setActiveFilterTab"
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -145,7 +145,7 @@ const defaultData: Omit<
   scrollEventsDisabled: false,
   graphRadius: 1500, // calculated from initial load
   selectionGraphRadius: 200, // calculated from initial load
-  graphStyle: 'split',
+  graphStyle: "split",
   hoveredNode: null,
   hoveredNodeSiblings: [],
   selectedNodeSiblings: [],
@@ -157,47 +157,47 @@ const defaultData: Omit<
   selectionPath: [],
   activeNode: null,
   highlightNodes: [],
-  searchQuery: '',
+  searchQuery: "",
   selectedNodeTypes: [],
   selectedLinkTypes: [],
-  followersFilter: '',
-  dateRangeFilter: '',
-  isolatedView: '',
+  followersFilter: "",
+  dateRangeFilter: "",
+  isolatedView: "",
   neighbourhoods: [],
-  selectedNodeType: '',
+  selectedNodeType: "",
   cameraPosition: null,
   cameraTarget: null,
   webhookHighlightNodes: [],
   highlightTimestamp: null,
-  activeFilterTab: 'all',
+  activeFilterTab: "all",
   webhookHighlightDepth: 0,
-}
+};
 
 export const useGraphStore = create<GraphStore>()((set, get) => ({
   ...defaultData,
   setData: (data) => {
-    set({ data })
+    set({ data });
   },
   setSelectedNodeTypes: (nodeType: string) => {
-    const { selectedNodeTypes } = get()
+    const { selectedNodeTypes } = get();
 
     const updatedTypes = selectedNodeTypes.includes(nodeType)
       ? selectedNodeTypes.filter((i) => i !== nodeType)
-      : [...selectedNodeTypes, nodeType]
+      : [...selectedNodeTypes, nodeType];
 
-    set({ selectedNodeTypes: updatedTypes })
+    set({ selectedNodeTypes: updatedTypes });
   },
   setSelectedLinkTypes: (linkType: string) => {
-    const { selectedLinkTypes } = get()
+    const { selectedLinkTypes } = get();
 
     const updatedTypes = selectedLinkTypes.includes(linkType)
       ? selectedLinkTypes.filter((i) => i !== linkType)
-      : [...selectedLinkTypes, linkType]
+      : [...selectedLinkTypes, linkType];
 
-    set({ selectedLinkTypes: updatedTypes })
+    set({ selectedLinkTypes: updatedTypes });
   },
   setSelectedNodeType: (selectedNodeType) => set({ selectedNodeType }),
-  resetSelectedNodeType: () => set({ selectedNodeType: '' }),
+  resetSelectedNodeType: () => set({ selectedNodeType: "" }),
   resetSelectedNodeTypes: () => set({ selectedNodeTypes: [] }),
   resetSelectedLinkTypes: () => set({ selectedLinkTypes: [] }),
   setSelectionData: (selectionGraphData) => set({ selectionGraphData }),
@@ -208,34 +208,34 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
   setSelectionGraphRadius: (selectionGraphRadius) => set({ selectionGraphRadius }),
   setGraphStyle: (graphStyle) => set({ graphStyle }),
   setHoveredNode: (hoveredNode) => {
-    const { nodesNormalized } = useDataStore.getState() || {}
+    const { nodesNormalized } = useDataStore.getState() || {};
 
     if (hoveredNode) {
-      const normalizedNode = nodesNormalized.get(hoveredNode.ref_id)
+      const normalizedNode = nodesNormalized.get(hoveredNode.ref_id);
 
-      const siblings = [...(normalizedNode?.targets || []), ...(normalizedNode?.sources || [])]
+      const siblings = [...(normalizedNode?.targets || []), ...(normalizedNode?.sources || [])];
 
-      set({ hoveredNode, hoveredNodeSiblings: siblings })
+      set({ hoveredNode, hoveredNodeSiblings: siblings });
     } else {
-      set({ hoveredNode, hoveredNodeSiblings: [] })
+      set({ hoveredNode, hoveredNodeSiblings: [] });
     }
   },
   setActiveEdge: (activeEdge) => {
-    set({ activeEdge })
+    set({ activeEdge });
   },
   setActiveNode: (activeNode) => {
-    set({ activeNode })
+    set({ activeNode });
   },
   setHighlightNodes: (highlightNodes) => {
-    set({ highlightNodes })
+    set({ highlightNodes });
   },
   addToSelectionPath: (id: string) => {
-    const { selectionPath } = get()
+    const { selectionPath } = get();
 
-    set({ selectionPath: [...selectionPath, id] })
+    set({ selectionPath: [...selectionPath, id] });
   },
   setSelectedNode: (selectedNode) => {
-    const { nodesNormalized } = useDataStore.getState() || {}
+    const { nodesNormalized } = useDataStore.getState() || {};
 
     if (!selectedNode) {
       set({
@@ -244,29 +244,35 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
         disableCameraRotation: false,
         showSelectionGraph: false,
         selectionPath: [],
-        selectedNodeType: '',
-      })
+        selectedNodeType: "",
+      });
     }
 
-    const { selectedNode: stateSelectedNode, selectionPath } = get()
+    const { selectedNode: stateSelectedNode, selectionPath } = get();
 
-    const { simulation } = useSimulationStore.getState()
+    const { simulation } = useSimulationStore.getState();
 
     if (stateSelectedNode?.ref_id !== selectedNode?.ref_id) {
       const selectedNodeWithCoordinates =
-        simulation?.nodes()?.find((i: NodeExtended) => i.ref_id === selectedNode?.ref_id) || null
+        simulation?.nodes()?.find((i: NodeExtended) => i.ref_id === selectedNode?.ref_id) || null;
 
       if (selectedNode?.ref_id && selectedNodeWithCoordinates) {
-        const normalizedNode: NodeExtended | undefined = nodesNormalized?.get(selectedNode?.ref_id)
+        const normalizedNode: NodeExtended | undefined = nodesNormalized?.get(selectedNode?.ref_id);
 
         set({
           hoveredNode: null,
-          selectedNode: { ...selectedNodeWithCoordinates, ...(normalizedNode || {}), x: selectedNodeWithCoordinates.x, y: selectedNodeWithCoordinates.y, z: selectedNodeWithCoordinates.z },
+          selectedNode: {
+            ...selectedNodeWithCoordinates,
+            ...(normalizedNode || {}),
+            x: selectedNodeWithCoordinates.x,
+            y: selectedNodeWithCoordinates.y,
+            z: selectedNodeWithCoordinates.z,
+          },
           disableCameraRotation: true,
           selectionPath: [...selectionPath, selectedNodeWithCoordinates.ref_id],
-          selectedNodeType: '',
+          selectedNodeType: "",
           selectedNodeSiblings: [...(normalizedNode?.sources || []), ...(normalizedNode?.targets || [])],
-        })
+        });
       }
     }
   },
@@ -279,47 +285,50 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
   setNeighbourhoods: (neighbourhoods) => set({ neighbourhoods }),
   setCameraPosition: (cameraPosition) => set({ cameraPosition }),
   setCameraTarget: (cameraTarget) => set({ cameraTarget }),
-  saveCameraState: (position, target) => set({
-    cameraPosition: position,
-    cameraTarget: target
-  }),
-  setWebhookHighlightNodes: (nodeIds: string[], depth = 1) => set({
-    webhookHighlightNodes: nodeIds,
-    highlightTimestamp: Date.now(),
-    webhookHighlightDepth: depth
-  }),
-  clearWebhookHighlights: () => set({
-    webhookHighlightNodes: [],
-    highlightTimestamp: null
-  }),
+  saveCameraState: (position, target) =>
+    set({
+      cameraPosition: position,
+      cameraTarget: target,
+    }),
+  setWebhookHighlightNodes: (nodeIds: string[], depth = 1) =>
+    set({
+      webhookHighlightNodes: nodeIds,
+      highlightTimestamp: Date.now(),
+      webhookHighlightDepth: depth,
+    }),
+  clearWebhookHighlights: () =>
+    set({
+      webhookHighlightNodes: [],
+      highlightTimestamp: null,
+    }),
   setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
-}))
+}));
 
-export const useSelectedNode = () => useGraphStore((s) => s.selectedNode)
-export const useHoveredNode = () => useGraphStore((s) => s.hoveredNode)
+export const useSelectedNode = () => useGraphStore((s) => s.selectedNode);
+export const useHoveredNode = () => useGraphStore((s) => s.hoveredNode);
 
 export const useSelectedNodeRelativeIds = () => {
-  const selectedNode = useGraphStore((s) => s.selectedNode)
+  const selectedNode = useGraphStore((s) => s.selectedNode);
 
   if (!selectedNode) {
-    return []
+    return [];
   }
 
-  const { dataInitial } = useDataStore.getState()
+  const { dataInitial } = useDataStore.getState();
 
-  const links = dataInitial?.links || []
+  const links = dataInitial?.links || [];
 
   const relativeIds = links.reduce<string[]>((acc, curr) => {
     if (curr.source === selectedNode?.ref_id) {
-      acc.push(curr.target)
+      acc.push(curr.target);
     }
 
     if (curr.target === selectedNode?.ref_id) {
-      acc.push(curr.source)
+      acc.push(curr.source);
     }
 
-    return acc
-  }, [])
+    return acc;
+  }, []);
 
-  return relativeIds
-}
+  return relativeIds;
+};

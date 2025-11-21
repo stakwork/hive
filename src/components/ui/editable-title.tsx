@@ -39,7 +39,7 @@ export function EditableTitle({
         "focus:!bg-transparent focus:!shadow-none focus:!ring-0 focus:!outline-none",
         "!tracking-tight !rounded-none flex-1",
         sizeClasses[size],
-        className
+        className,
       )}
       placeholder={placeholder}
     />

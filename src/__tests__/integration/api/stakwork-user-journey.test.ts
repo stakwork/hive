@@ -59,9 +59,7 @@ async function createUserJourneyTestSetup() {
         type: "oauth",
         provider: "github",
         providerAccountId: generateUniqueId(),
-        access_token: JSON.stringify(
-          enc.encryptField("access_token", testGithubToken)
-        ),
+        access_token: JSON.stringify(enc.encryptField("access_token", testGithubToken)),
         scope: "repo,user",
       },
     });
@@ -84,9 +82,7 @@ async function createUserJourneyTestSetup() {
         swarmId: generateUniqueId("swarm"),
         swarmUrl: testSwarmUrl,
         swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
-        swarmApiKey: JSON.stringify(
-          enc.encryptField("swarmApiKey", testSwarmApiKey)
-        ),
+        swarmApiKey: JSON.stringify(enc.encryptField("swarmApiKey", testSwarmApiKey)),
         poolName: "test-pool",
         services: [],
         agentRequestId: null,
@@ -140,13 +136,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
     test("should return 401 for unauthenticated requests", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test user journey",
-          workspaceId: "workspace-123",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test user journey",
+        workspaceId: "workspace-123",
+      });
 
       const response = await POST(request);
 
@@ -159,13 +152,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test user journey",
-          workspaceId: "workspace-123",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test user journey",
+        workspaceId: "workspace-123",
+      });
 
       const response = await POST(request);
 
@@ -176,21 +166,14 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test user journey",
-          workspaceId: "non-existent-workspace-id",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test user journey",
+        workspaceId: "non-existent-workspace-id",
+      });
 
       const response = await POST(request);
 
-      await expectError(
-        response,
-        "Workspace not found or access denied",
-        404
-      );
+      await expectError(response, "Workspace not found or access denied", 404);
     });
 
     test("should return 404 for unauthorized workspace access", async () => {
@@ -199,25 +182,16 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         email: `unauthorized-${generateUniqueId()}@example.com`,
       });
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(unauthorizedUser)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(unauthorizedUser));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test user journey",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test user journey",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
-      await expectError(
-        response,
-        "Workspace not found or access denied",
-        404
-      );
+      await expectError(response, "Workspace not found or access denied", 404);
     });
   });
 
@@ -226,12 +200,9 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -242,13 +213,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -259,12 +227,9 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test user journey",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test user journey",
+      });
 
       const response = await POST(request);
 
@@ -275,13 +240,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test user journey",
-          workspaceId: "",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test user journey",
+        workspaceId: "",
+      });
 
       const response = await POST(request);
 
@@ -299,13 +261,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test user journey",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test user journey",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -315,19 +274,15 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
   describe("Successful Requests", () => {
     test("should successfully track user journey event with complete workflow", async () => {
-      const { user, workspace, swarm, testGithubUsername, testGithubToken } =
-        await createUserJourneyTestSetup();
+      const { user, workspace, swarm, testGithubUsername, testGithubToken } = await createUserJourneyTestSetup();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const testMessage = "User navigated to dashboard and created a task";
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: testMessage,
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: testMessage,
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 201);
@@ -381,13 +336,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test webhook URL inclusion",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test webhook URL inclusion",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
@@ -419,17 +371,12 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
         data: { ownerId: userWithoutGithub.id },
       });
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(userWithoutGithub)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(userWithoutGithub));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test without GitHub",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test without GitHub",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 201);
@@ -453,22 +400,17 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test poolName fallback",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test poolName fallback",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
 
       // Verify poolName falls back to swarm.id
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-      expect(payload.workflow_params.set_var.attributes.vars.poolName).toBe(
-        swarm.id
-      );
+      expect(payload.workflow_params.set_var.attributes.vars.poolName).toBe(swarm.id);
     });
 
     test("should transform swarmUrl correctly to repo2graph format", async () => {
@@ -476,13 +418,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test URL transformation",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test URL transformation",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
@@ -490,14 +429,12 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
 
       // Verify swarmUrl transformation: /api -> :8444/api
-      expect(payload.workflow_params.set_var.attributes.vars.swarmUrl).toBe(
-        "https://test-swarm.sphinx.chat:8444/api"
-      );
+      expect(payload.workflow_params.set_var.attributes.vars.swarmUrl).toBe("https://test-swarm.sphinx.chat:8444/api");
 
       // Verify repo2GraphUrl transformation: /api -> :3355
-      expect(
-        payload.workflow_params.set_var.attributes.vars.repo2graph_url
-      ).toBe("https://test-swarm.sphinx.chat:3355");
+      expect(payload.workflow_params.set_var.attributes.vars.repo2graph_url).toBe(
+        "https://test-swarm.sphinx.chat:3355",
+      );
     });
 
     test("should handle empty swarmUrl gracefully", async () => {
@@ -511,46 +448,35 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test empty swarmUrl",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test empty swarmUrl",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
       expect(payload.workflow_params.set_var.attributes.vars.swarmUrl).toBe("");
-      expect(
-        payload.workflow_params.set_var.attributes.vars.repo2graph_url
-      ).toBe("");
+      expect(payload.workflow_params.set_var.attributes.vars.repo2graph_url).toBe("");
     });
 
     test("should support analytics data collection through workflow parameters", async () => {
       const { user, workspace } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const analyticsMessage =
-        "User viewed insights page, clicked on recommendation #42, and opened file explorer";
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: analyticsMessage,
-          workspaceId: workspace.id,
-        }
-      );
+      const analyticsMessage = "User viewed insights page, clicked on recommendation #42, and opened file explorer";
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: analyticsMessage,
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 201);
 
       // Verify analytics data is captured in message
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-      expect(payload.workflow_params.set_var.attributes.vars.message).toBe(
-        analyticsMessage
-      );
+      expect(payload.workflow_params.set_var.attributes.vars.message).toBe(analyticsMessage);
 
       // Verify workflow submission for analytics processing
       expect(data.workflow).toBeDefined();
@@ -571,13 +497,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test API error",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test API error",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -597,13 +520,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test network error",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test network error",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -620,13 +540,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test with valid API key",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test with valid API key",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -643,13 +560,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test with valid workflow ID",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test with valid workflow ID",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -666,13 +580,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test workspace query",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test workspace query",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
@@ -689,13 +600,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       const { user, workspace, swarm } = await createUserJourneyTestSetup();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test swarm retrieval",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test swarm retrieval",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
@@ -704,9 +612,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       if (fetchSpy.mock.calls[0] && fetchSpy.mock.calls[0][1]) {
         const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-        expect(
-          payload.workflow_params.set_var.attributes.vars.swarmSecretAlias
-        ).toBe("{{SWARM_TEST_API_KEY}}");
+        expect(payload.workflow_params.set_var.attributes.vars.swarmSecretAlias).toBe("{{SWARM_TEST_API_KEY}}");
       }
 
       // Verify swarm is still in database
@@ -718,18 +624,14 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
     });
 
     test("should decrypt GitHub credentials from database", async () => {
-      const { user, workspace, testGithubToken, testGithubUsername } =
-        await createUserJourneyTestSetup();
+      const { user, workspace, testGithubToken, testGithubUsername } = await createUserJourneyTestSetup();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "Test credential decryption",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "Test credential decryption",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
@@ -738,31 +640,23 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       if (fetchSpy.mock.calls[0] && fetchSpy.mock.calls[0][1]) {
         const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-        expect(payload.workflow_params.set_var.attributes.vars.accessToken).toBe(
-          testGithubToken
-        );
-        expect(payload.workflow_params.set_var.attributes.vars.username).toBe(
-          testGithubUsername
-        );
+        expect(payload.workflow_params.set_var.attributes.vars.accessToken).toBe(testGithubToken);
+        expect(payload.workflow_params.set_var.attributes.vars.username).toBe(testGithubUsername);
       }
     });
   });
 
   describe("Personalization Support", () => {
     test("should include user context for personalized experiences", async () => {
-      const { user, workspace, testGithubUsername } =
-        await createUserJourneyTestSetup();
+      const { user, workspace, testGithubUsername } = await createUserJourneyTestSetup();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const userSpecificMessage = `User ${testGithubUsername} completed onboarding tutorial`;
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: userSpecificMessage,
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: userSpecificMessage,
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
@@ -771,12 +665,8 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       if (fetchSpy.mock.calls[0] && fetchSpy.mock.calls[0][1]) {
         const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-        expect(payload.workflow_params.set_var.attributes.vars.username).toBe(
-          testGithubUsername
-        );
-        expect(payload.workflow_params.set_var.attributes.vars.message).toContain(
-          testGithubUsername
-        );
+        expect(payload.workflow_params.set_var.attributes.vars.username).toBe(testGithubUsername);
+        expect(payload.workflow_params.set_var.attributes.vars.message).toContain(testGithubUsername);
       }
     });
 
@@ -785,13 +675,10 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/stakwork/user-journey",
-        {
-          message: "User interacted with workspace-specific features",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/stakwork/user-journey", {
+        message: "User interacted with workspace-specific features",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       await expectSuccess(response, 201);
@@ -800,12 +687,8 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       if (fetchSpy.mock.calls[0] && fetchSpy.mock.calls[0][1]) {
         const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
-        expect(payload.workflow_params.set_var.attributes.vars.poolName).toBe(
-          "test-pool"
-        );
-        expect(
-          payload.workflow_params.set_var.attributes.vars.swarmSecretAlias
-        ).toBe("{{SWARM_TEST_API_KEY}}");
+        expect(payload.workflow_params.set_var.attributes.vars.poolName).toBe("test-pool");
+        expect(payload.workflow_params.set_var.attributes.vars.swarmSecretAlias).toBe("{{SWARM_TEST_API_KEY}}");
       }
     });
   });

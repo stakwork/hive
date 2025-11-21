@@ -56,22 +56,25 @@ const kanbanColumns: KanbanColumn[] = [
 
 export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
   // Group tasks by workflow status - PENDING goes to IN_PROGRESS, FAILED goes to ERROR
-  const tasksByStatus = tasks.reduce((acc, task) => {
-    let status = task.workflowStatus || WorkflowStatus.IN_PROGRESS;
-    // Merge PENDING tasks into IN_PROGRESS column
-    if (status === WorkflowStatus.PENDING) {
-      status = WorkflowStatus.IN_PROGRESS;
-    }
-    // Merge FAILED tasks into ERROR column
-    if (status === WorkflowStatus.FAILED) {
-      status = WorkflowStatus.ERROR;
-    }
-    if (!acc[status]) {
-      acc[status] = [];
-    }
-    acc[status].push(task);
-    return acc;
-  }, {} as Record<WorkflowStatus, TaskData[]>);
+  const tasksByStatus = tasks.reduce(
+    (acc, task) => {
+      let status = task.workflowStatus || WorkflowStatus.IN_PROGRESS;
+      // Merge PENDING tasks into IN_PROGRESS column
+      if (status === WorkflowStatus.PENDING) {
+        status = WorkflowStatus.IN_PROGRESS;
+      }
+      // Merge FAILED tasks into ERROR column
+      if (status === WorkflowStatus.FAILED) {
+        status = WorkflowStatus.ERROR;
+      }
+      if (!acc[status]) {
+        acc[status] = [];
+      }
+      acc[status].push(task);
+      return acc;
+    },
+    {} as Record<WorkflowStatus, TaskData[]>,
+  );
 
   // Sort tasks within each column - bubble "waiting for input" to the top
   Object.keys(tasksByStatus).forEach((status) => {
@@ -79,7 +82,7 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
       // First priority: waiting for input tasks
       if (a.hasActionArtifact && !b.hasActionArtifact) return -1;
       if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
-      
+
       // Second priority: most recent first
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
@@ -91,25 +94,18 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
       <div className="md:hidden space-y-4">
         {kanbanColumns.map((column) => {
           const columnTasks = tasksByStatus[column.status] || [];
-          
+
           return (
             <div key={column.status} className="w-full">
-              <div className={cn(
-                "rounded-t-lg px-4 py-3 border-x border-t",
-                column.bgColor,
-                "border-b-0"
-              )}>
+              <div className={cn("rounded-t-lg px-4 py-3 border-x border-t", column.bgColor, "border-b-0")}>
                 <div className="flex items-center justify-between">
                   <div className={cn("flex items-center gap-2 text-sm font-semibold", column.color)}>
                     {column.icon}
                     <span>{column.title}</span>
                   </div>
-                  <Badge 
-                    variant="secondary" 
-                    className={cn(
-                      "text-xs font-medium px-2 py-0.5",
-                      columnTasks.length > 0 && "bg-background"
-                    )}
+                  <Badge
+                    variant="secondary"
+                    className={cn("text-xs font-medium px-2 py-0.5", columnTasks.length > 0 && "bg-background")}
                   >
                     {columnTasks.length}
                   </Badge>
@@ -119,11 +115,7 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
                 {columnTasks.length > 0 ? (
                   columnTasks.map((task) => (
                     <div key={task.id} className="bg-background rounded-lg shadow-sm">
-                      <TaskCard
-                        task={task}
-                        workspaceSlug={workspaceSlug}
-                        hideWorkflowStatus={true}
-                      />
+                      <TaskCard task={task} workspaceSlug={workspaceSlug} hideWorkflowStatus={true} />
                     </div>
                   ))
                 ) : (
@@ -142,29 +134,19 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
         <div className="flex gap-4 pb-4 min-h-[500px]">
           {kanbanColumns.map((column) => {
             const columnTasks = tasksByStatus[column.status] || [];
-            
+
             return (
-              <div 
-                key={column.status} 
-                className="flex-shrink-0 w-[340px]"
-              >
+              <div key={column.status} className="flex-shrink-0 w-[340px]">
                 <div className="flex flex-col h-full">
-                  <div className={cn(
-                    "rounded-t-lg px-4 py-3 border-x border-t",
-                    column.bgColor,
-                    "border-b-0"
-                  )}>
+                  <div className={cn("rounded-t-lg px-4 py-3 border-x border-t", column.bgColor, "border-b-0")}>
                     <div className="flex items-center justify-between">
                       <div className={cn("flex items-center gap-2 text-sm font-semibold", column.color)}>
                         {column.icon}
                         <span>{column.title}</span>
                       </div>
-                      <Badge 
-                        variant="secondary" 
-                        className={cn(
-                          "text-xs font-medium px-2 py-0.5",
-                          columnTasks.length > 0 && "bg-background"
-                        )}
+                      <Badge
+                        variant="secondary"
+                        className={cn("text-xs font-medium px-2 py-0.5", columnTasks.length > 0 && "bg-background")}
                       >
                         {columnTasks.length}
                       </Badge>
@@ -174,11 +156,7 @@ export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
                     {columnTasks.length > 0 ? (
                       columnTasks.map((task) => (
                         <div key={task.id} className="bg-background rounded-lg shadow-sm">
-                          <TaskCard
-                            task={task}
-                            workspaceSlug={workspaceSlug}
-                            hideWorkflowStatus={true}
-                          />
+                          <TaskCard task={task} workspaceSlug={workspaceSlug} hideWorkflowStatus={true} />
                         </div>
                       ))
                     ) : (

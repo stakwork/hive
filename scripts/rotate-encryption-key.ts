@@ -36,9 +36,7 @@ function seedKeyRegistry(service: EncryptionService) {
       }
     } catch (error) {
       console.error("Error parsing ROTATION_OLD_KEYS:", error);
-      throw new Error(
-        "ROTATION_OLD_KEYS must be valid JSON mapping {keyId: hex}",
-      );
+      throw new Error("ROTATION_OLD_KEYS must be valid JSON mapping {keyId: hex}");
     }
   }
 }
@@ -60,17 +58,10 @@ function isEncryptedLike(value: string | null): boolean {
   }
 }
 
-async function rotateAccounts(
-  service: EncryptionService,
-  stats: RotationStats,
-) {
+async function rotateAccounts(service: EncryptionService, stats: RotationStats) {
   const rows = await prisma.account.findMany({
     where: {
-      OR: [
-        { access_token: { not: null } },
-        { refresh_token: { not: null } },
-        { id_token: { not: null } },
-      ],
+      OR: [{ access_token: { not: null } }, { refresh_token: { not: null } }, { id_token: { not: null } }],
     },
     select: {
       id: true,
@@ -88,16 +79,11 @@ async function rotateAccounts(
 
       if (isEncryptedLike(row.access_token as string | null)) {
         const parsed = JSON.parse(row.access_token as string);
-        const hasKeyId =
-          typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+        const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
         const keyId = hasKeyId ? parsed.keyId : undefined;
         if (!hasKeyId || keyId !== activeKeyId) {
           const plaintext = service.decryptField("access_token", parsed);
-          const reenc = service.encryptFieldWithKeyId(
-            "access_token",
-            plaintext,
-            activeKeyId || "default",
-          );
+          const reenc = service.encryptFieldWithKeyId("access_token", plaintext, activeKeyId || "default");
           await prisma.account.update({
             where: { id: row.id },
             data: { access_token: JSON.stringify(reenc) },
@@ -109,16 +95,11 @@ async function rotateAccounts(
 
       if (isEncryptedLike(row.refresh_token as string | null)) {
         const parsed = JSON.parse(row.refresh_token as string);
-        const hasKeyId =
-          typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+        const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
         const keyId = hasKeyId ? parsed.keyId : undefined;
         if (!hasKeyId || keyId !== activeKeyId) {
           const plaintext = service.decryptField("refresh_token", parsed);
-          const reenc = service.encryptFieldWithKeyId(
-            "refresh_token",
-            plaintext,
-            activeKeyId || "default",
-          );
+          const reenc = service.encryptFieldWithKeyId("refresh_token", plaintext, activeKeyId || "default");
           await prisma.account.update({
             where: { id: row.id },
             data: { refresh_token: JSON.stringify(reenc) },
@@ -130,16 +111,11 @@ async function rotateAccounts(
 
       if (isEncryptedLike(row.id_token as string | null)) {
         const parsed = JSON.parse(row.id_token as string);
-        const hasKeyId =
-          typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+        const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
         const keyId = hasKeyId ? parsed.keyId : undefined;
         if (!hasKeyId || keyId !== activeKeyId) {
           const plaintext = service.decryptField("id_token", parsed);
-          const reenc = service.encryptFieldWithKeyId(
-            "id_token",
-            plaintext,
-            activeKeyId || "default",
-          );
+          const reenc = service.encryptFieldWithKeyId("id_token", plaintext, activeKeyId || "default");
           await prisma.account.update({
             where: { id: row.id },
             data: { id_token: JSON.stringify(reenc) },
@@ -173,19 +149,11 @@ async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
       try {
         const parsed = JSON.parse(row.environmentVariables as string);
         const activeKeyId = service.getActiveKeyId();
-        const hasKeyId =
-          typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+        const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
         const keyId = hasKeyId ? parsed.keyId : undefined;
         if (!hasKeyId || keyId !== activeKeyId) {
-          const plaintext = service.decryptField(
-            "environmentVariables",
-            parsed,
-          );
-          const reenc = service.encryptFieldWithKeyId(
-            "environmentVariables",
-            plaintext,
-            activeKeyId || "default",
-          );
+          const plaintext = service.decryptField("environmentVariables", parsed);
+          const reenc = service.encryptFieldWithKeyId("environmentVariables", plaintext, activeKeyId || "default");
           data.environmentVariables = JSON.stringify(reenc);
           updated = true;
           stats.reencrypted++;
@@ -205,16 +173,11 @@ async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
       try {
         const parsed = JSON.parse(row.swarmApiKey as string);
         const activeKeyId = service.getActiveKeyId();
-        const hasKeyId =
-          typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+        const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
         const keyId = hasKeyId ? parsed.keyId : undefined;
         if (!hasKeyId || keyId !== activeKeyId) {
           const plaintext = service.decryptField("swarmApiKey", parsed);
-          const reenc = service.encryptFieldWithKeyId(
-            "swarmApiKey",
-            plaintext,
-            activeKeyId || "default",
-          );
+          const reenc = service.encryptFieldWithKeyId("swarmApiKey", plaintext, activeKeyId || "default");
           data.swarmApiKey = JSON.stringify(reenc);
           updated = true;
           stats.reencrypted++;
@@ -234,16 +197,11 @@ async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
       try {
         const parsed = JSON.parse(row.poolApiKey as string);
         const activeKeyId = service.getActiveKeyId();
-        const hasKeyId =
-          typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+        const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
         const keyId = hasKeyId ? parsed.keyId : undefined;
         if (!hasKeyId || keyId !== activeKeyId) {
           const plaintext = service.decryptField("poolApiKey", parsed);
-          const reenc = service.encryptFieldWithKeyId(
-            "poolApiKey",
-            plaintext,
-            activeKeyId || "default",
-          );
+          const reenc = service.encryptFieldWithKeyId("poolApiKey", plaintext, activeKeyId || "default");
           data.poolApiKey = JSON.stringify(reenc);
           updated = true;
           stats.reencrypted++;
@@ -272,10 +230,7 @@ async function rotateSwarms(service: EncryptionService, stats: RotationStats) {
   }
 }
 
-async function rotateRepositories(
-  service: EncryptionService,
-  stats: RotationStats,
-) {
+async function rotateRepositories(service: EncryptionService, stats: RotationStats) {
   const rows = await prisma.repository.findMany({
     where: { githubWebhookSecret: { not: null } },
     select: { id: true, githubWebhookSecret: true },
@@ -291,19 +246,14 @@ async function rotateRepositories(
     try {
       const parsed = JSON.parse(current!);
       const activeKeyId = service.getActiveKeyId();
-      const hasKeyId =
-        typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+      const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
       const keyId = hasKeyId ? parsed.keyId : undefined;
       if (hasKeyId && keyId === activeKeyId) {
         stats.skipped++;
         continue;
       }
       const plaintext = service.decryptField("githubWebhookSecret", parsed);
-      const reenc = service.encryptFieldWithKeyId(
-        "githubWebhookSecret",
-        plaintext,
-        activeKeyId || "default",
-      );
+      const reenc = service.encryptFieldWithKeyId("githubWebhookSecret", plaintext, activeKeyId || "default");
       await prisma.repository.update({
         where: { id: row.id },
         data: { githubWebhookSecret: JSON.stringify(reenc) },
@@ -316,10 +266,7 @@ async function rotateRepositories(
   }
 }
 
-async function rotateWorkspaces(
-  service: EncryptionService,
-  stats: RotationStats,
-) {
+async function rotateWorkspaces(service: EncryptionService, stats: RotationStats) {
   const rows = await prisma.workspace.findMany({
     where: { stakworkApiKey: { not: null } },
     select: { id: true, stakworkApiKey: true },
@@ -335,19 +282,14 @@ async function rotateWorkspaces(
     try {
       const parsed = JSON.parse(current!);
       const activeKeyId = service.getActiveKeyId();
-      const hasKeyId =
-        typeof parsed.keyId === "string" && parsed.keyId.length > 0;
+      const hasKeyId = typeof parsed.keyId === "string" && parsed.keyId.length > 0;
       const keyId = hasKeyId ? parsed.keyId : undefined;
       if (hasKeyId && keyId === activeKeyId) {
         stats.skipped++;
         continue;
       }
       const plaintext = service.decryptField("stakworkApiKey", parsed);
-      const reenc = service.encryptFieldWithKeyId(
-        "stakworkApiKey",
-        plaintext,
-        activeKeyId || "default",
-      );
+      const reenc = service.encryptFieldWithKeyId("stakworkApiKey", plaintext, activeKeyId || "default");
       await prisma.workspace.update({
         where: { id: row.id },
         data: { stakworkApiKey: JSON.stringify(reenc) },
@@ -359,7 +301,6 @@ async function rotateWorkspaces(
     }
   }
 }
-
 
 async function main() {
   const encryption = EncryptionService.getInstance();

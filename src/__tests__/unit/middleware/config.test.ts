@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  resolveRouteAccess,
-  ROUTE_POLICIES,
-  type RouteAccess,
-} from "@/config/middleware";
+import { resolveRouteAccess, ROUTE_POLICIES, type RouteAccess } from "@/config/middleware";
 
 describe("resolveRouteAccess", () => {
   describe("Exact Route Matching", () => {
@@ -151,7 +147,7 @@ describe("resolveRouteAccess", () => {
     it("matches first applicable policy", () => {
       // /api/auth should match public before protected
       expect(resolveRouteAccess("/api/auth/session")).toBe("public");
-      
+
       // /api/github/webhook should match webhook
       expect(resolveRouteAccess("/api/github/webhook")).toBe("webhook");
     });
@@ -159,7 +155,7 @@ describe("resolveRouteAccess", () => {
     it("applies more specific patterns over general ones", () => {
       // /api/tasks/*/title is webhook pattern
       expect(resolveRouteAccess("/api/tasks/123/title")).toBe("webhook");
-      
+
       // /api/tasks without pattern is protected
       expect(resolveRouteAccess("/api/tasks")).toBe("protected");
     });
@@ -197,7 +193,7 @@ describe("resolveRouteAccess", () => {
         expect(policy).toHaveProperty("path");
         expect(policy).toHaveProperty("strategy");
         expect(policy).toHaveProperty("access");
-        
+
         expect(typeof policy.path).toBe("string");
         expect(["exact", "prefix", "pattern"]).toContain(policy.strategy);
         expect(["public", "webhook", "system"]).toContain(policy.access);
@@ -206,7 +202,7 @@ describe("resolveRouteAccess", () => {
 
     it("has no duplicate paths with same strategy", () => {
       const seen = new Set<string>();
-      
+
       for (const policy of ROUTE_POLICIES) {
         const key = `${policy.path}:${policy.strategy}`;
         expect(seen.has(key)).toBe(false);

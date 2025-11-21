@@ -2,10 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/workspaces/[slug]/search/route";
 import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority, TaskStatus, Priority, TaskStatus, PhaseStatus } from "@prisma/client";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -79,7 +76,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=call`,
-        user
+        user,
       );
 
       // Execute
@@ -155,7 +152,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=call`,
-        user
+        user,
       );
 
       const response = await GET(request, {
@@ -186,7 +183,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=recording`,
-        user
+        user,
       );
 
       const response = await GET(request, {
@@ -218,7 +215,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=test`,
-        user
+        user,
       );
 
       const response = await GET(request, {
@@ -258,7 +255,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=test`,
-        user
+        user,
       );
 
       const response = await GET(request, {
@@ -300,7 +297,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=test`,
-        user
+        user,
       );
 
       const response = await GET(request, {
@@ -317,7 +314,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=a`,
-        user
+        user,
       );
 
       const response = await GET(request, {
@@ -330,10 +327,7 @@ describe("Workspace Search API - Integration Tests", () => {
     test("requires query parameter", async () => {
       const user = await createTestUser();
 
-      const request = createAuthenticatedGetRequest(
-        `http://localhost:3000/api/workspaces/test-workspace/search`,
-        user
-      );
+      const request = createAuthenticatedGetRequest(`http://localhost:3000/api/workspaces/test-workspace/search`, user);
 
       const response = await GET(request, {
         params: Promise.resolve({ slug: "test-workspace" }),
@@ -343,9 +337,7 @@ describe("Workspace Search API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createGetRequest(
-        "http://localhost:3000/api/workspaces/test-workspace/search?q=test"
-      );
+      const request = createGetRequest("http://localhost:3000/api/workspaces/test-workspace/search?q=test");
 
       const response = await GET(request, {
         params: Promise.resolve({ slug: "test-workspace" }),
@@ -364,7 +356,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=test`,
-        nonMember
+        nonMember,
       );
 
       const response = await GET(request, {
@@ -379,7 +371,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/non-existent/search?q=test`,
-        user
+        user,
       );
 
       const response = await GET(request, {
@@ -398,7 +390,7 @@ describe("Workspace Search API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/test-workspace/search?q=nonexistent`,
-        user
+        user,
       );
 
       const response = await GET(request, {

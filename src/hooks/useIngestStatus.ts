@@ -39,10 +39,8 @@ export function useIngestStatus() {
 
       isRequestPendingRef.current = true;
       try {
-        console.log('getting ingest status');
-        const res = await fetch(
-          `/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`,
-        );
+        console.log("getting ingest status");
+        const res = await fetch(`/api/swarm/stakgraph/ingest?id=${ingestRefId}&workspaceId=${workspaceId}`);
         const { apiResult } = await res.json();
         const { data } = apiResult;
 
@@ -72,7 +70,7 @@ export function useIngestStatus() {
           }
           return;
         } else if (data?.status === "Failed") {
-          console.log('Ingestion failed');
+          console.log("Ingestion failed");
           toast({
             title: "Code Ingestion Failed",
             description: "There was an error ingesting your codebase. Please try again.",

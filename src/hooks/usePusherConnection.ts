@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ChatMessage, WorkflowStatus } from "@/lib/chat";
-import {
-  getPusherClient,
-  getTaskChannelName,
-  getWorkspaceChannelName,
-  PUSHER_EVENTS,
-} from "@/lib/pusher";
+import { getPusherClient, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
 
 export interface WorkflowStatusUpdate {
@@ -45,7 +40,7 @@ interface UsePusherConnectionOptions {
 interface UsePusherConnectionReturn {
   isConnected: boolean;
   connectionId: string | null;
-  connect: (id: string, type: 'task' | 'workspace') => void;
+  connect: (id: string, type: "task" | "workspace") => void;
   disconnect: () => void;
   error: string | null;
 }
@@ -73,7 +68,7 @@ export function usePusherConnection({
   const onRecommendationsUpdatedRef = useRef(onRecommendationsUpdated);
   const onTaskTitleUpdateRef = useRef(onTaskTitleUpdate);
   const currentChannelIdRef = useRef<string | null>(null);
-  const currentChannelTypeRef = useRef<'task' | 'workspace' | null>(null);
+  const currentChannelTypeRef = useRef<"task" | "workspace" | null>(null);
 
   onMessageRef.current = onMessage;
   onWorkflowStatusUpdateRef.current = onWorkflowStatusUpdate;
@@ -83,9 +78,10 @@ export function usePusherConnection({
   // Stable disconnect function
   const disconnect = useCallback(() => {
     if (channelRef.current && currentChannelIdRef.current && currentChannelTypeRef.current) {
-      const channelName = currentChannelTypeRef.current === 'task' 
-        ? getTaskChannelName(currentChannelIdRef.current)
-        : getWorkspaceChannelName(currentChannelIdRef.current);
+      const channelName =
+        currentChannelTypeRef.current === "task"
+          ? getTaskChannelName(currentChannelIdRef.current)
+          : getWorkspaceChannelName(currentChannelIdRef.current);
 
       if (LOGS) {
         console.log("Unsubscribing from Pusher channel:", channelName);
@@ -108,7 +104,7 @@ export function usePusherConnection({
 
   // Stable connect function
   const connect = useCallback(
-    (targetId: string, type: 'task' | 'workspace') => {
+    (targetId: string, type: "task" | "workspace") => {
       // Disconnect from any existing channel
       disconnect();
 
@@ -117,9 +113,7 @@ export function usePusherConnection({
       }
 
       try {
-        const channelName = type === 'task' 
-          ? getTaskChannelName(targetId)
-          : getWorkspaceChannelName(targetId);
+        const channelName = type === "task" ? getTaskChannelName(targetId) : getWorkspaceChannelName(targetId);
         const channel = getPusherClient().subscribe(channelName);
 
         // Set up event handlers
@@ -143,7 +137,7 @@ export function usePusherConnection({
         });
 
         // Task-specific events
-        if (type === 'task') {
+        if (type === "task") {
           // Message events (payload is messageId)
           channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: string) => {
             try {
@@ -166,77 +160,65 @@ export function usePusherConnection({
           });
 
           // Workflow status update events
-          channel.bind(
-            PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-            (update: WorkflowStatusUpdate) => {
-              if (LOGS) {
-                console.log("Received workflow status update:", {
-                  taskId: update.taskId,
-                  workflowStatus: update.workflowStatus,
-                  channelName,
-                });
-              }
-              if (onWorkflowStatusUpdateRef.current) {
-                onWorkflowStatusUpdateRef.current(update);
-              }
-            },
-          );
+          channel.bind(PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, (update: WorkflowStatusUpdate) => {
+            if (LOGS) {
+              console.log("Received workflow status update:", {
+                taskId: update.taskId,
+                workflowStatus: update.workflowStatus,
+                channelName,
+              });
+            }
+            if (onWorkflowStatusUpdateRef.current) {
+              onWorkflowStatusUpdateRef.current(update);
+            }
+          });
 
           // Task title update events
-          channel.bind(
-            PUSHER_EVENTS.TASK_TITLE_UPDATE,
-            (update: TaskTitleUpdateEvent) => {
-              if (LOGS) {
-                console.log("Received task title update:", {
-                  taskId: update.taskId,
-                  newTitle: update.newTitle,
-                  previousTitle: update.previousTitle,
-                  channelName,
-                });
-              }
-              if (onTaskTitleUpdateRef.current) {
-                onTaskTitleUpdateRef.current(update);
-              }
-            },
-          );
+          channel.bind(PUSHER_EVENTS.TASK_TITLE_UPDATE, (update: TaskTitleUpdateEvent) => {
+            if (LOGS) {
+              console.log("Received task title update:", {
+                taskId: update.taskId,
+                newTitle: update.newTitle,
+                previousTitle: update.previousTitle,
+                channelName,
+              });
+            }
+            if (onTaskTitleUpdateRef.current) {
+              onTaskTitleUpdateRef.current(update);
+            }
+          });
         }
 
         // Workspace-specific events
-        if (type === 'workspace') {
-          channel.bind(
-            PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
-            (update: RecommendationsUpdatedEvent) => {
-              if (LOGS) {
-                console.log("Received recommendations update:", {
-                  workspaceSlug: update.workspaceSlug,
-                  newRecommendationCount: update.newRecommendationCount,
-                  totalRecommendationCount: update.totalRecommendationCount,
-                  channelName,
-                });
-              }
-              if (onRecommendationsUpdatedRef.current) {
-                onRecommendationsUpdatedRef.current(update);
-              }
-            },
-          );
+        if (type === "workspace") {
+          channel.bind(PUSHER_EVENTS.RECOMMENDATIONS_UPDATED, (update: RecommendationsUpdatedEvent) => {
+            if (LOGS) {
+              console.log("Received recommendations update:", {
+                workspaceSlug: update.workspaceSlug,
+                newRecommendationCount: update.newRecommendationCount,
+                totalRecommendationCount: update.totalRecommendationCount,
+                channelName,
+              });
+            }
+            if (onRecommendationsUpdatedRef.current) {
+              onRecommendationsUpdatedRef.current(update);
+            }
+          });
 
           // Workspace task title update events
-          channel.bind(
-            PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
-            (update: TaskTitleUpdateEvent) => {
-              if (LOGS) {
-                console.log("Received workspace task title update:", {
-                  taskId: update.taskId,
-                  newTitle: update.newTitle,
-                  previousTitle: update.previousTitle,
-                  channelName,
-                });
-              }
-              if (onTaskTitleUpdateRef.current) {
-                onTaskTitleUpdateRef.current(update);
-              }
-            },
-          );
+          channel.bind(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, (update: TaskTitleUpdateEvent) => {
+            if (LOGS) {
+              console.log("Received workspace task title update:", {
+                taskId: update.taskId,
+                newTitle: update.newTitle,
+                previousTitle: update.previousTitle,
+                channelName,
+              });
+            }
+            if (onTaskTitleUpdateRef.current) {
+              onTaskTitleUpdateRef.current(update);
+            }
+          });
         }
 
         channelRef.current = channel;
@@ -263,12 +245,12 @@ export function usePusherConnection({
       if (LOGS) {
         console.log("Connecting to Pusher channel for task:", taskId);
       }
-      connect(taskId, 'task');
+      connect(taskId, "task");
     } else if (workspaceSlug && workspaceSlug !== currentChannelIdRef.current) {
       if (LOGS) {
         console.log("Connecting to Pusher channel for workspace:", workspaceSlug);
       }
-      connect(workspaceSlug, 'workspace');
+      connect(workspaceSlug, "workspace");
     } else if (!taskId && !workspaceSlug) {
       disconnect();
     }

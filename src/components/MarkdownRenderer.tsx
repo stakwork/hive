@@ -93,55 +93,32 @@ const createComponents = (
   inlineIconPattern?: RegExp,
 ): Components => ({
   h1: ({ children, ...props }) => (
-    <h1
-      className={cn(
-        styleConfig.heading,
-        styleConfig.h1,
-        styles.text,
-        styles.border,
-      )}
-      {...props}
-    >
+    <h1 className={cn(styleConfig.heading, styleConfig.h1, styles.text, styles.border)} {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
-    <h2
-      className={cn(styleConfig.heading, styleConfig.h2, styles.text)}
-      {...props}
-    >
+    <h2 className={cn(styleConfig.heading, styleConfig.h2, styles.text)} {...props}>
       {children}
     </h2>
   ),
   h3: ({ children, ...props }) => (
-    <h3
-      className={cn(styleConfig.heading, styleConfig.h3, styles.text)}
-      {...props}
-    >
+    <h3 className={cn(styleConfig.heading, styleConfig.h3, styles.text)} {...props}>
       {children}
     </h3>
   ),
   h4: ({ children, ...props }) => (
-    <h4
-      className={cn(styleConfig.heading, styleConfig.h4, styles.text)}
-      {...props}
-    >
+    <h4 className={cn(styleConfig.heading, styleConfig.h4, styles.text)} {...props}>
       {children}
     </h4>
   ),
   h5: ({ children, ...props }) => (
-    <h5
-      className={cn(styleConfig.heading, styleConfig.h5, styles.text)}
-      {...props}
-    >
+    <h5 className={cn(styleConfig.heading, styleConfig.h5, styles.text)} {...props}>
       {children}
     </h5>
   ),
   h6: ({ children, ...props }) => (
-    <h6
-      className={cn(styleConfig.heading, styleConfig.h6, styles.muted)}
-      {...props}
-    >
+    <h6 className={cn(styleConfig.heading, styleConfig.h6, styles.muted)} {...props}>
       {children}
     </h6>
   ),
@@ -162,15 +139,7 @@ const createComponents = (
     </strong>
   ),
   blockquote: ({ children, ...props }) => (
-    <blockquote
-      className={cn(
-        styleConfig.blockquote,
-        styles.borderAccent,
-        styles.bg,
-        styles.muted,
-      )}
-      {...props}
-    >
+    <blockquote className={cn(styleConfig.blockquote, styles.borderAccent, styles.bg, styles.muted)} {...props}>
       {children}
     </blockquote>
   ),
@@ -214,18 +183,12 @@ const createComponents = (
     </tr>
   ),
   th: ({ children, ...props }) => (
-    <th
-      className={cn(styleConfig.tableHeaderCell, styles.text, styles.border)}
-      {...props}
-    >
+    <th className={cn(styleConfig.tableHeaderCell, styles.text, styles.border)} {...props}>
       {children}
     </th>
   ),
   td: ({ children, ...props }) => (
-    <td
-      className={cn(styleConfig.tableCell, styles.text, styles.border)}
-      {...props}
-    >
+    <td className={cn(styleConfig.tableCell, styles.text, styles.border)} {...props}>
       {children}
     </td>
   ),
@@ -269,27 +232,16 @@ const createComponents = (
       />
     );
   },
-  hr: ({ ...props }) => (
-    <hr className={cn(styleConfig.hr, styles.border)} {...props} />
-  ),
+  hr: ({ ...props }) => <hr className={cn(styleConfig.hr, styles.border)} {...props} />,
   code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
 
     if (!match) {
-      return (
-        <code className={cn(styleConfig.codeInline, codeInlineClass, className)}>
-          {children}
-        </code>
-      );
+      return <code className={cn(styleConfig.codeInline, codeInlineClass, className)}>{children}</code>;
     }
 
     return (
-      <SyntaxHighlighter
-        PreTag="pre"
-        wrapLines={true}
-        language={match[1]}
-        style={tomorrow}
-      >
+      <SyntaxHighlighter PreTag="pre" wrapLines={true} language={match[1]} style={tomorrow}>
         {String(children).replace(/\n$/, "")}
       </SyntaxHighlighter>
     );
@@ -313,23 +265,13 @@ export function MarkdownRenderer({
 
   const processedContent =
     typeof children === "string"
-      ? children
-          .replace(/\\n/g, "\n")
-          .replace(/\\t/g, "\t")
-          .replace(/\\"/g, '"')
-          .replace(/\\'/g, "'")
+      ? children.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\'/g, "'")
       : children;
 
   return (
     <div className={cn("prose dark:prose-invert max-w-full overflow-wrap-anywhere", className)}>
       <ReactMarkdown
-        remarkPlugins={[
-          remarkGfm,
-          remarkFrontmatter,
-          remarkDirective,
-          remarkMath,
-          remarkBreaks,
-        ]}
+        remarkPlugins={[remarkGfm, remarkFrontmatter, remarkDirective, remarkMath, remarkBreaks]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeFormat]}
         components={components}
       >

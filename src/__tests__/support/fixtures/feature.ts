@@ -43,10 +43,7 @@ export function createCompleteFeatureData(overrides: Partial<FeatureData> = {}):
     personas: ["Customer", "Admin", "Developer"],
     requirements: "Must support credit cards and ACH payments",
     architecture: "Use Stripe SDK with webhook handlers",
-    userStories: [
-      { title: "Customer can checkout with credit card" },
-      { title: "Admin can view payment history" },
-    ],
+    userStories: [{ title: "Customer can checkout with credit card" }, { title: "Admin can view payment history" }],
     workspace: {
       description: "E-commerce platform for online retail",
     },

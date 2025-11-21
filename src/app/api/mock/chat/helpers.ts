@@ -1,11 +1,4 @@
-import {
-  ChatRole,
-  ChatStatus,
-  ArtifactType,
-  createChatMessage,
-  createArtifact,
-  Artifact,
-} from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType, createChatMessage, createArtifact, Artifact } from "@/lib/chat";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {

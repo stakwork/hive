@@ -10,8 +10,7 @@ export { WorkspaceRole };
  * Type guard to check if a value is a valid WorkspaceRole
  */
 export const isWorkspaceRole = (value: unknown): value is WorkspaceRole => {
-  return typeof value === "string" && 
-    Object.values(WorkspaceRole).includes(value as WorkspaceRole);
+  return typeof value === "string" && Object.values(WorkspaceRole).includes(value as WorkspaceRole);
 };
 
 /**
@@ -28,14 +27,13 @@ export const AssignableMemberRoles: readonly WorkspaceRole[] = [
 /**
  * Type for roles that can be assigned via membership endpoints
  */
-export type AssignableMemberRole = typeof AssignableMemberRoles[number];
+export type AssignableMemberRole = (typeof AssignableMemberRoles)[number];
 
 /**
  * Type guard to check if a role is assignable via membership endpoints
  */
 export const isAssignableMemberRole = (value: unknown): value is AssignableMemberRole => {
-  return typeof value === "string" && 
-    AssignableMemberRoles.includes(value as AssignableMemberRole);
+  return typeof value === "string" && AssignableMemberRoles.includes(value as AssignableMemberRole);
 };
 
 /**
@@ -59,7 +57,7 @@ export const AssignableMemberRoleSchema = z.enum([
 export const RoleLabels: Record<WorkspaceRole, string> = {
   [WorkspaceRole.OWNER]: "Owner",
   [WorkspaceRole.ADMIN]: "Admin",
-  [WorkspaceRole.PM]: "Product Manager", 
+  [WorkspaceRole.PM]: "Product Manager",
   [WorkspaceRole.DEVELOPER]: "Developer",
   [WorkspaceRole.STAKEHOLDER]: "Stakeholder",
   [WorkspaceRole.VIEWER]: "Viewer",

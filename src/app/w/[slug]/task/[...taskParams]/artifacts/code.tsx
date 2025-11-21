@@ -16,13 +16,7 @@ import "prismjs/components/prism-ruby";
 import "prismjs/components/prism-json";
 import "./prism-dark-plus.css";
 
-function SyntaxHighlighter({
-  code,
-  language,
-}: {
-  code: string;
-  language: string;
-}) {
+function SyntaxHighlighter({ code, language }: { code: string; language: string }) {
   const codeRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -46,9 +40,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
 
   // Helper function to normalize content (handle both string and object types)
   const normalizeContent = (content: any): string => {
-    return typeof content === 'string' 
-      ? content 
-      : JSON.stringify(content, null, 2);
+    return typeof content === "string" ? content : JSON.stringify(content, null, 2);
   };
 
   const handleCopy = async (content: string, id: string) => {
@@ -76,9 +68,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {content.file
-                    ? content.file.split("/").pop()
-                    : `Code ${index + 1}`}
+                  {content.file ? content.file.split("/").pop() : `Code ${index + 1}`}
                 </button>
               );
             })}
@@ -90,19 +80,14 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
         {artifacts.map((artifact, index) => {
           const content = artifact.content as CodeContent;
           return (
-            <div
-              key={artifact.id}
-              className={`h-full flex flex-col ${activeTab === index ? "" : "hidden"}`}
-            >
+            <div key={artifact.id} className={`h-full flex flex-col ${activeTab === index ? "" : "hidden"}`}>
               <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
                 <div className="flex items-center gap-2 min-w-0">
                   <Code className="w-4 h-4 flex-shrink-0" />
                   {content.file ? (
                     <div className="flex items-center gap-2 min-w-0">
                       {content.action && getActionIcon(content.action)}
-                      <span className="text-sm font-medium truncate">
-                        {content.file}
-                      </span>
+                      <span className="text-sm font-medium truncate">{content.file}</span>
                     </div>
                   ) : (
                     <span className="text-sm font-medium">Code</span>
@@ -114,11 +99,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
                   onClick={() => handleCopy(normalizeContent(content.content), artifact.id)}
                   className="h-8 w-8 p-0 flex-shrink-0"
                 >
-                  {copied === artifact.id ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
+                  {copied === artifact.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </Button>
               </div>
 
@@ -134,11 +115,7 @@ export function CodeArtifactPanel({ artifacts }: { artifacts: Artifact[] }) {
               <div className="p-4 pt-1 flex-1 min-h-0 min-w-0 overflow-auto">
                 <SyntaxHighlighter
                   code={normalizeContent(content.content)}
-                  language={
-                    content.file
-                      ? getLanguageFromFile(content.file)
-                      : content.language || "text"
-                  }
+                  language={content.file ? getLanguageFromFile(content.file) : content.language || "text"}
                 />
               </div>
             </div>

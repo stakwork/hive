@@ -65,9 +65,7 @@ export async function listFeatures({
   }
 
   // Build orderBy clause
-  const orderByClause: any = sortBy
-    ? { [sortBy]: sortOrder || "asc" }
-    : { createdAt: "desc" };
+  const orderByClause: any = sortBy ? { [sortBy]: sortOrder || "asc" } : { createdAt: "desc" };
 
   const [features, totalCount, totalCountWithoutFilters] = await Promise.all([
     db.feature.findMany({
@@ -138,7 +136,7 @@ export async function createFeature(
     requirements?: string;
     architecture?: string;
     personas?: string[];
-  }
+  },
 ) {
   const workspaceAccess = await validateWorkspaceAccessById(data.workspaceId, userId);
   if (!workspaceAccess.hasAccess) {
@@ -227,7 +225,7 @@ export async function updateFeature(
     requirements?: string | null;
     architecture?: string | null;
     personas?: string[];
-  }
+  },
 ) {
   // Validates access and throws specific "Feature not found" or "Access denied" errors
   await validateFeatureAccess(featureId, userId);
@@ -348,10 +346,7 @@ export async function updateFeature(
 /**
  * Soft deletes a feature
  */
-export async function deleteFeature(
-  featureId: string,
-  userId: string
-): Promise<void> {
+export async function deleteFeature(featureId: string, userId: string): Promise<void> {
   await validateFeatureAccess(featureId, userId);
 
   await db.feature.update({

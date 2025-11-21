@@ -15,13 +15,12 @@ export function SwarmSetupOrchestrator({ repositoryUrl, onServicesStarted }: Swa
 
   const [hasAccessError, setHasAccessError] = useState(false);
 
-
   return (
     <>
-      <GitHubAccessManager
-        onAccessError={setHasAccessError}
-        repositoryUrl={repositoryUrl}
-      />
-      {(workspace?.containerFilesSetUp || hasAccessError) ? null : <WorkspaceSetup repositoryUrl={repositoryUrl} onServicesStarted={onServicesStarted} />}
-    </>)
+      <GitHubAccessManager onAccessError={setHasAccessError} repositoryUrl={repositoryUrl} />
+      {workspace?.containerFilesSetUp || hasAccessError ? null : (
+        <WorkspaceSetup repositoryUrl={repositoryUrl} onServicesStarted={onServicesStarted} />
+      )}
+    </>
+  );
 }

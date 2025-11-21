@@ -12,18 +12,8 @@ import { Building2, Users, Loader2 } from "lucide-react";
  * This shows workspace info and provides workspace switching functionality
  */
 export function WorkspaceInfo() {
-  const {
-    workspace,
-    slug,
-    id,
-    role,
-    workspaces,
-    loading,
-    error,
-    switchWorkspace,
-    refreshWorkspaces,
-    hasAccess,
-  } = useWorkspace();
+  const { workspace, slug, id, role, workspaces, loading, error, switchWorkspace, refreshWorkspaces, hasAccess } =
+    useWorkspace();
 
   const { canRead, canWrite, canAdmin } = useWorkspaceAccess();
 
@@ -90,9 +80,7 @@ export function WorkspaceInfo() {
               <h3 className="text-lg font-semibold">{workspace.name}</h3>
               <Badge variant={getRoleBadgeVariant(role || "")}>{role}</Badge>
             </div>
-            {workspace.description && (
-              <p className="text-muted-foreground">{workspace.description}</p>
-            )}
+            {workspace.description && <p className="text-muted-foreground">{workspace.description}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -102,22 +90,14 @@ export function WorkspaceInfo() {
             </div>
             <div>
               <div className="text-sm font-medium">ID</div>
-              <div className="text-sm text-muted-foreground font-mono">
-                {id}
-              </div>
+              <div className="text-sm text-muted-foreground font-mono">{id}</div>
             </div>
           </div>
 
           <div className="flex gap-2">
-            <Badge variant={canRead ? "default" : "outline"}>
-              Read: {canRead ? "✓" : "✗"}
-            </Badge>
-            <Badge variant={canWrite ? "default" : "outline"}>
-              Write: {canWrite ? "✓" : "✗"}
-            </Badge>
-            <Badge variant={canAdmin ? "default" : "outline"}>
-              Admin: {canAdmin ? "✓" : "✗"}
-            </Badge>
+            <Badge variant={canRead ? "default" : "outline"}>Read: {canRead ? "✓" : "✗"}</Badge>
+            <Badge variant={canWrite ? "default" : "outline"}>Write: {canWrite ? "✓" : "✗"}</Badge>
+            <Badge variant={canAdmin ? "default" : "outline"}>Admin: {canAdmin ? "✓" : "✗"}</Badge>
           </div>
         </CardContent>
       </Card>
@@ -142,21 +122,14 @@ export function WorkspaceInfo() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{ws.name}</span>
-                    <Badge variant={getRoleBadgeVariant(ws.userRole)}>
-                      {ws.userRole}
-                    </Badge>
+                    <Badge variant={getRoleBadgeVariant(ws.userRole)}>{ws.userRole}</Badge>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {ws.memberCount} member{ws.memberCount !== 1 ? "s" : ""} • /
-                    {ws.slug}
+                    {ws.memberCount} member{ws.memberCount !== 1 ? "s" : ""} • /{ws.slug}
                   </div>
                 </div>
                 {ws.id !== id && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => switchWorkspace(ws)}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => switchWorkspace(ws)}>
                     Switch
                   </Button>
                 )}

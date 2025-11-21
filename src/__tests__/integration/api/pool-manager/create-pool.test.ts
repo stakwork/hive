@@ -103,10 +103,10 @@ describe("POST /api/pool-manager/create-pool", () => {
     test("returns 401 when not authenticated", async () => {
       getMockedSession().mockResolvedValue(null);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+      });
       const response = await POST(request);
 
       await expectUnauthorized(response);
@@ -115,10 +115,10 @@ describe("POST /api/pool-manager/create-pool", () => {
     test("returns 401 when session has no user", async () => {
       getMockedSession().mockResolvedValue({ user: null } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+      });
       const response = await POST(request);
 
       await expectUnauthorized(response);
@@ -129,10 +129,10 @@ describe("POST /api/pool-manager/create-pool", () => {
       session.user.email = null as any;
       getMockedSession().mockResolvedValue(session);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+      });
       const response = await POST(request);
 
       await expectUnauthorized(response);
@@ -143,10 +143,10 @@ describe("POST /api/pool-manager/create-pool", () => {
       delete (session.user as any).id;
       getMockedSession().mockResolvedValue(session);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+      });
       const response = await POST(request);
 
       await expectError(response, "Invalid user session", 401);
@@ -157,10 +157,10 @@ describe("POST /api/pool-manager/create-pool", () => {
     test("returns 404 when swarm not found", async () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        { swarmId: "nonexistent-swarm-id", workspaceId: workspace.id }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: "nonexistent-swarm-id",
+        workspaceId: workspace.id,
+      });
       const response = await POST(request);
 
       await expectNotFound(response, "Swarm not found");
@@ -170,10 +170,10 @@ describe("POST /api/pool-manager/create-pool", () => {
       const nonMember = await createTestUser({ email: "nonmember@test.com" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        { swarmId: swarm.swarmId, workspaceId: workspace.id }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+      });
       const response = await POST(request);
 
       await expectForbidden(response, "Access denied");
@@ -196,14 +196,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: { ".devcontainer/devcontainer.json": "{}" },
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: { ".devcontainer/devcontainer.json": "{}" },
+      });
       const response = await POST(request);
 
       const data = await expectSuccess(response, 201);
@@ -236,14 +233,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: { ".devcontainer/devcontainer.json": "{}" },
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: { ".devcontainer/devcontainer.json": "{}" },
+      });
       const response = await POST(request);
 
       const data = await expectSuccess(response, 201);
@@ -274,14 +268,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: containerFiles,
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: containerFiles,
+      });
       const response = await POST(request);
 
       const data = await expectSuccess(response, 201);
@@ -295,12 +286,12 @@ describe("POST /api/pool-manager/create-pool", () => {
           github_pat: "test-github-token",
           github_username: "testuser",
           container_files: containerFiles,
-        })
+        }),
       );
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           containerFiles: containerFiles,
-        })
+        }),
       );
     });
 
@@ -337,14 +328,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: newContainerFiles,
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: newContainerFiles,
+      });
       const response = await POST(request);
 
       const data = await expectSuccess(response, 201);
@@ -352,7 +340,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       expect(mockCreatePool).toHaveBeenCalledWith(
         expect.objectContaining({
           container_files: existingContainerFiles,
-        })
+        }),
       );
     });
 
@@ -373,21 +361,18 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           poolState: "COMPLETE",
-        })
+        }),
       );
     });
 
@@ -421,14 +406,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
@@ -438,7 +420,7 @@ describe("POST /api/pool-manager/create-pool", () => {
             expect.objectContaining({ name: "TEST_VAR", value: "test-value" }),
             expect.objectContaining({ name: "ANOTHER_VAR", value: "another-value" }),
           ]),
-        })
+        }),
       );
     });
   });
@@ -459,21 +441,18 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectError(response, "Repository not found", 404);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           poolState: "FAILED",
-        })
+        }),
       );
     });
 
@@ -491,21 +470,18 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectError(response, "Insufficient permissions", 403);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           poolState: "FAILED",
-        })
+        }),
       );
     });
 
@@ -523,14 +499,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectError(response, "Internal server error", 500);
@@ -550,14 +523,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectError(response, "Invalid or expired API key", 401);
@@ -571,21 +541,18 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectError(response, "Failed to create pool", 500);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           poolState: "FAILED",
-        })
+        }),
       );
     });
   });
@@ -613,26 +580,20 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
-      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith(
-        owner.id,
-        workspace.slug
-      );
+      expect(mockGetGithubUsernameAndPAT).toHaveBeenCalledWith(owner.id, workspace.slug);
       expect(mockCreatePool).toHaveBeenCalledWith(
         expect.objectContaining({
           github_username: "custom-github-user",
           github_pat: "custom-github-token",
-        })
+        }),
       );
     });
 
@@ -657,14 +618,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
@@ -676,9 +634,7 @@ describe("POST /api/pool-manager/create-pool", () => {
 
       mockGetSwarmPoolApiKeyFor
         .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(
-          JSON.stringify(encryptionService.encryptField("poolApiKey", "new-api-key"))
-        );
+        .mockResolvedValueOnce(JSON.stringify(encryptionService.encryptField("poolApiKey", "new-api-key")));
 
       mockPoolManagerService.mockReturnValue({
         createPool: vi.fn().mockResolvedValue({
@@ -692,14 +648,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
@@ -724,14 +677,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
@@ -739,7 +689,7 @@ describe("POST /api/pool-manager/create-pool", () => {
         expect.objectContaining({
           repo_name: repository.repositoryUrl,
           branch_name: repository.branch,
-        })
+        }),
       );
     });
   });
@@ -766,14 +716,11 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
@@ -781,7 +728,7 @@ describe("POST /api/pool-manager/create-pool", () => {
         expect.objectContaining({
           repo_name: "",
           branch_name: "",
-        })
+        }),
       );
     });
 
@@ -802,21 +749,18 @@ describe("POST /api/pool-manager/create-pool", () => {
         updateApiKey: vi.fn(),
       } as any);
 
-      const request = createPostRequest(
-        "http://localhost/api/pool-manager/create-pool",
-        {
-          swarmId: swarm.swarmId,
-          workspaceId: workspace.id,
-          container_files: {},
-        }
-      );
+      const request = createPostRequest("http://localhost/api/pool-manager/create-pool", {
+        swarmId: swarm.swarmId,
+        workspaceId: workspace.id,
+        container_files: {},
+      });
       const response = await POST(request);
 
       await expectSuccess(response, 201);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
           containerFiles: {},
-        })
+        }),
       );
     });
   });

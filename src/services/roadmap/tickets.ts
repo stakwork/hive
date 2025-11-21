@@ -57,10 +57,7 @@ function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
  */
-export async function getTicket(
-  taskId: string,
-  userId: string
-): Promise<RoadmapTaskDetail> {
+export async function getTicket(taskId: string, userId: string): Promise<RoadmapTaskDetail> {
   const task = await validateRoadmapTaskAccess(taskId, userId);
   if (!task) {
     throw new Error("Task not found or access denied");
@@ -133,7 +130,7 @@ export async function getTicket(
 export async function createTicket(
   featureId: string,
   userId: string,
-  data: CreateRoadmapTaskRequest
+  data: CreateRoadmapTaskRequest,
 ): Promise<RoadmapTaskWithDetails> {
   const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
@@ -206,7 +203,7 @@ export async function createTicket(
       status: data.status || TaskStatus.TODO,
       priority: data.priority || Priority.MEDIUM,
       order: nextOrder,
-      assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
+      assigneeId: isSystemAssignee ? null : data.assigneeId || null,
       systemAssigneeType: systemAssigneeType,
       bountyCode: bountyCode,
       runBuild: data.runBuild ?? true,
@@ -261,7 +258,7 @@ export async function createTicket(
 export async function updateTicket(
   taskId: string,
   userId: string,
-  data: UpdateRoadmapTaskRequest
+  data: UpdateRoadmapTaskRequest,
 ): Promise<RoadmapTaskWithDetails> {
   const task = await validateRoadmapTaskAccess(taskId, userId);
   if (!task) {
@@ -338,9 +335,8 @@ export async function updateTicket(
     const isSystemAssignee = data.assigneeId?.startsWith("system:");
     if (isSystemAssignee) {
       updateData.assigneeId = null;
-      updateData.systemAssigneeType = data.assigneeId === "system:task-coordinator"
-        ? "TASK_COORDINATOR"
-        : "BOUNTY_HUNTER";
+      updateData.systemAssigneeType =
+        data.assigneeId === "system:task-coordinator" ? "TASK_COORDINATOR" : "BOUNTY_HUNTER";
     } else {
       updateData.assigneeId = data.assigneeId;
       updateData.systemAssigneeType = null;
@@ -382,9 +378,7 @@ export async function updateTicket(
       }
 
       // Check all dependency tasks belong to same feature
-      const invalidDependencies = dependencyTasks.filter(
-        (dep) => dep.featureId !== task.featureId
-      );
+      const invalidDependencies = dependencyTasks.filter((dep) => dep.featureId !== task.featureId);
       if (invalidDependencies.length > 0) {
         throw new Error("Dependencies must be tasks from the same feature");
       }
@@ -400,7 +394,7 @@ export async function updateTicket(
 
       if (existingDependents.length > 0) {
         throw new Error(
-          `Circular dependency detected with task(s): ${existingDependents.map((t) => t.title).join(", ")}`
+          `Circular dependency detected with task(s): ${existingDependents.map((t) => t.title).join(", ")}`,
         );
       }
     }
@@ -455,10 +449,7 @@ export async function updateTicket(
 /**
  * Soft deletes a roadmap task
  */
-export async function deleteTicket(
-  taskId: string,
-  userId: string
-): Promise<void> {
+export async function deleteTicket(taskId: string, userId: string): Promise<void> {
   const task = await validateRoadmapTaskAccess(taskId, userId);
   if (!task) {
     throw new Error("Task not found or access denied");
@@ -503,7 +494,7 @@ export async function deleteTicket(
  */
 export async function reorderTickets(
   userId: string,
-  tasks: { id: string; order: number; phaseId?: string | null }[]
+  tasks: { id: string; order: number; phaseId?: string | null }[],
 ): Promise<RoadmapTaskWithDetails[]> {
   if (!Array.isArray(tasks) || tasks.length === 0) {
     throw new Error("Tasks must be a non-empty array");
@@ -533,7 +524,7 @@ export async function reorderTickets(
         where: { id: task.id },
         data: updateData,
       });
-    })
+    }),
   );
 
   const updatedTasks = await db.task.findMany({
@@ -566,7 +557,7 @@ export async function reorderTickets(
   });
 
   // Convert system assignee types to virtual user objects
-  return updatedTasks.map(task => {
+  return updatedTasks.map((task) => {
     if (task.systemAssigneeType) {
       const systemAssignee = getSystemAssigneeUser(task.systemAssigneeType);
 

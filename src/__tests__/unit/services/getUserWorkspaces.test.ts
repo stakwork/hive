@@ -72,7 +72,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       const result = await getUserWorkspaces(testUserId);
 
       expect(result).toHaveLength(2);
-      
+
       // Verify query only targets the specific user
       expect(db.workspace.findMany).toHaveBeenCalledWith({
         where: {
@@ -92,12 +92,12 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       });
 
       // Verify owned workspace has OWNER role
-      const ownedWorkspace = result.find(w => w.id === "ws1");
+      const ownedWorkspace = result.find((w) => w.id === "ws1");
       expect(ownedWorkspace?.userRole).toBe("OWNER");
       expect(ownedWorkspace?.ownerId).toBe(testUserId);
 
       // Verify member workspace has correct role
-      const memberWorkspace = result.find(w => w.id === "ws2");
+      const memberWorkspace = result.find((w) => w.id === "ws2");
       expect(memberWorkspace?.userRole).toBe("DEVELOPER");
       expect(memberWorkspace?.ownerId).toBe(otherUserId);
     });
@@ -150,17 +150,15 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce(memberships).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
       // Should only return 2 workspaces (1 owned + 1 non-deleted member workspace)
       expect(result).toHaveLength(2);
-      expect(result.map(w => w.id)).not.toContain("ws-deleted");
-      expect(result.map(w => w.id)).toContain("ws-active");
-      expect(result.map(w => w.id)).toContain("ws-member");
+      expect(result.map((w) => w.id)).not.toContain("ws-deleted");
+      expect(result.map((w) => w.id)).toContain("ws-active");
+      expect(result.map((w) => w.id)).toContain("ws-member");
     });
 
     test("should not expose sensitive information from other users' workspaces", async () => {
@@ -183,9 +181,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce(memberships).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -196,7 +192,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       expect(workspace.userRole).toBe("VIEWER");
       expect(workspace.ownerId).toBe(otherUserId);
       expect(workspace.id).toBe("ws-restricted");
-      
+
       // Ensure the returned data structure doesn't leak sensitive internal details
       expect(workspace).toHaveProperty("name");
       expect(workspace).toHaveProperty("slug");
@@ -204,7 +200,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       expect(workspace).toHaveProperty("createdAt");
       expect(workspace).toHaveProperty("updatedAt");
       expect(workspace).toHaveProperty("memberCount");
-      
+
       // Verify no additional sensitive properties are exposed
       expect(workspace).not.toHaveProperty("stakworkApiKey");
       expect(workspace).not.toHaveProperty("internalNotes");
@@ -223,9 +219,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -253,16 +247,14 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       }));
 
       (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce(memberships).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
       expect(result).toHaveLength(5);
-      
-      roles.forEach(role => {
-        const workspace = result.find(w => w.userRole === role);
+
+      roles.forEach((role) => {
+        const workspace = result.find((w) => w.userRole === role);
         expect(workspace).toBeDefined();
         expect(workspace?.userRole).toBe(role);
       });
@@ -293,9 +285,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce(memberCounts);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce([]).mockResolvedValueOnce(memberCounts);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -319,9 +309,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // No members
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]); // No members
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -334,9 +322,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
   describe("Edge Cases and Error Scenarios", () => {
     test("should return empty array when user has no workspaces", async () => {
       (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -377,9 +363,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue([]);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce(malformedMemberships)
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce(malformedMemberships).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -439,9 +423,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -487,16 +469,14 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       ];
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
-      (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([]);
+      (db.workspaceMember.findMany as Mock).mockResolvedValueOnce(memberships).mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
       expect(result).toHaveLength(2);
 
       // Verify consistent structure
-      result.forEach(workspace => {
+      result.forEach((workspace) => {
         expect(workspace).toHaveProperty("id");
         expect(workspace).toHaveProperty("name");
         expect(workspace).toHaveProperty("description");

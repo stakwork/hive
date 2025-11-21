@@ -1,12 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -99,13 +94,20 @@ export function GitHubStatusWidget() {
         </TooltipTrigger>
         <TooltipContent side="bottom" className="max-w-xs">
           <div className="space-y-1.5 text-xs">
-            <div className={`font-medium ${status === "SYNCED" ? "text-green-600" : status === "PENDING" ? "text-yellow-600" : "text-red-600"}`}>
+            <div
+              className={`font-medium ${status === "SYNCED" ? "text-green-600" : status === "PENDING" ? "text-yellow-600" : "text-red-600"}`}
+            >
               {status}
             </div>
             {lastUpdated && (
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
                 <span>{formatRelativeTime(lastUpdated)}</span>
               </div>

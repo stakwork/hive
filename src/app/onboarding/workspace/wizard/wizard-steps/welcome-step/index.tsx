@@ -45,7 +45,6 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
       return;
     }
 
-
     onNext(trimmedUrl);
   };
 
@@ -81,85 +80,78 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
           <CardDescription className="text-lg">Paste your GitHub repository to get started</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-        {/* Repository URL Input */}
-        <div className="max-w-md mx-auto">
-          <Input
-            id="repository-url"
-            type="url"
-            placeholder="https://github.com/username/repository"
-            value={repositoryUrl}
-            onChange={(e) => handleRepositoryUrlChange(e.target.value)}
-            onKeyPress={handleKeyPress}
-            className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
-          />
-          {error && (
-            <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
-              <AlertCircle className="w-4 h-4" />
-              <span>{error}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col items-center gap-3">
-          <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim()}>
-            Get Started
-            <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        </div>
-
-        <Separator className="w-24 mx-auto" />
-
-        {/* Language Support - subtle at bottom */}
-        <TooltipProvider delayDuration={0}>
-          <div className="flex justify-center items-center gap-3">
-            {SupportedLanguages.map((language, index) => {
-              const IconComponent = language.icon;
-              return (
-                <Tooltip key={index}>
-                  <TooltipTrigger asChild>
-                    <div className="opacity-40 hover:opacity-70 transition-opacity">
-                      <IconComponent className={`w-4 h-4 ${language.color}`} />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{language.name}</p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
+          {/* Repository URL Input */}
+          <div className="max-w-md mx-auto">
+            <Input
+              id="repository-url"
+              type="url"
+              placeholder="https://github.com/username/repository"
+              value={repositoryUrl}
+              onChange={(e) => handleRepositoryUrlChange(e.target.value)}
+              onKeyPress={handleKeyPress}
+              className={`pr-10 ${error ? "border-red-500 focus:border-red-500" : ""}`}
+            />
+            {error && (
+              <div className="flex items-center gap-2 mt-2 text-red-600 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                <span>{error}</span>
+              </div>
+            )}
           </div>
-        </TooltipProvider>
 
-      </CardContent>
-    </Card>
+          <div className="flex flex-col items-center gap-3">
+            <Button onClick={handleNext} className="px-8 py-3" disabled={!repositoryUrl.trim()}>
+              Get Started
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
 
-    {/* Account options below the card */}
-    {!session?.user ? (
-      <div className="flex items-center justify-center gap-4 mt-6 text-sm text-muted-foreground">
-        <button
-          onClick={redirectToLogin}
-          className="hover:text-primary transition-colors"
-        >
-          Sign in
-        </button>
-        <span>·</span>
-        <button
-          onClick={createAccountOnly}
-          className="hover:text-primary transition-colors"
-        >
-          Create account
-        </button>
-      </div>
-    ) : (
-      <div className="text-center mt-6">
-        <button
-          onClick={logoutAndRedirectToLogin}
-          className="text-sm text-muted-foreground hover:text-primary transition-colors"
-        >
-          Switch account
-        </button>
-      </div>
-    )}
+          <Separator className="w-24 mx-auto" />
+
+          {/* Language Support - subtle at bottom */}
+          <TooltipProvider delayDuration={0}>
+            <div className="flex justify-center items-center gap-3">
+              {SupportedLanguages.map((language, index) => {
+                const IconComponent = language.icon;
+                return (
+                  <Tooltip key={index}>
+                    <TooltipTrigger asChild>
+                      <div className="opacity-40 hover:opacity-70 transition-opacity">
+                        <IconComponent className={`w-4 h-4 ${language.color}`} />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{language.name}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
+        </CardContent>
+      </Card>
+
+      {/* Account options below the card */}
+      {!session?.user ? (
+        <div className="flex items-center justify-center gap-4 mt-6 text-sm text-muted-foreground">
+          <button onClick={redirectToLogin} className="hover:text-primary transition-colors">
+            Sign in
+          </button>
+          <span>·</span>
+          <button onClick={createAccountOnly} className="hover:text-primary transition-colors">
+            Create account
+          </button>
+        </div>
+      ) : (
+        <div className="text-center mt-6">
+          <button
+            onClick={logoutAndRedirectToLogin}
+            className="text-sm text-muted-foreground hover:text-primary transition-colors"
+          >
+            Switch account
+          </button>
+        </div>
+      )}
     </div>
   );
 };

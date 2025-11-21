@@ -28,13 +28,7 @@ const getFileStats = (content: string) => {
   return { lines, chars, bytes };
 };
 
-export const FileEditor: React.FC<FileEditorProps> = ({
-  name,
-  type,
-  value,
-  originalValue,
-  onChange,
-}) => {
+export const FileEditor: React.FC<FileEditorProps> = ({ name, type, value, originalValue, onChange }) => {
   const isModified = value !== originalValue;
   const stats = getFileStats(value);
 

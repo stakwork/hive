@@ -11,7 +11,9 @@ interface GitHubAccessManagerProps {
 }
 
 // Check if user has access to repository
-const checkRepositoryAccess = async (repoUrl: string): Promise<{
+const checkRepositoryAccess = async (
+  repoUrl: string,
+): Promise<{
   hasAccess: boolean;
   error?: string;
   requiresReauth?: boolean;
@@ -31,7 +33,7 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{
         error: statusData.error,
         requiresReauth: statusData.requiresReauth,
         requiresInstallationUpdate: statusData.requiresInstallationUpdate,
-        installationId: statusData.installationId
+        installationId: statusData.installationId,
       };
     }
 
@@ -44,15 +46,15 @@ const checkRepositoryAccess = async (repoUrl: string): Promise<{
 
 export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAccessManagerProps) {
   const { workspace } = useWorkspace();
-  const [accessState, setAccessState] = useState<'checking' | 'no-access' | 'reconnecting'>('checking');
+  const [accessState, setAccessState] = useState<"checking" | "no-access" | "reconnecting">("checking");
   const [installationId, setInstallationId] = useState<number | undefined>();
-  const [errorType, setErrorType] = useState<'reauth' | 'installation-update' | 'other'>('other');
+  const [errorType, setErrorType] = useState<"reauth" | "installation-update" | "other">("other");
 
   const [error, setError] = useState<string | null>(null);
   // Check repository access when component mounts
   useEffect(() => {
     const checkAccess = async () => {
-      setAccessState('checking');
+      setAccessState("checking");
 
       try {
         const result = await checkRepositoryAccess(repositoryUrl);
@@ -62,23 +64,23 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
           onAccessError(false);
         } else {
           onAccessError(true);
-          setAccessState('no-access');
+          setAccessState("no-access");
           setInstallationId(result.installationId);
 
           // Determine the type of error
           if (result.requiresReauth) {
-            setErrorType('reauth');
+            setErrorType("reauth");
           } else if (result.requiresInstallationUpdate) {
-            setErrorType('installation-update');
+            setErrorType("installation-update");
           } else {
-            setErrorType('other');
+            setErrorType("other");
           }
 
           setError(result.error || null);
         }
       } catch (error) {
         console.error("Error checking repository access:", error);
-        setAccessState('no-access');
+        setAccessState("no-access");
         onAccessError(true);
         setError("Failed to check repository access");
       }
@@ -106,7 +108,7 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
           workspaceSlug: workspace.slug,
           repositoryUrl,
           installationId,
-          isExtend: errorType === 'installation-update',
+          isExtend: errorType === "installation-update",
         }),
       });
 
@@ -125,75 +127,63 @@ export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAcce
 
   // Get installation link when we determine access is needed
   useEffect(() => {
-    if (accessState === 'no-access' && !installationLink) {
+    if (accessState === "no-access" && !installationLink) {
       getInstallationLink();
     }
   }, [accessState, installationLink, getInstallationLink]);
 
-
   // Show nothing while checking access (silent check)
-  if (accessState === 'checking') {
+  if (accessState === "checking") {
     return null;
   }
 
   // Show access error if user doesn't have repository access
-  if (accessState === 'no-access') {
+  if (accessState === "no-access") {
     return (
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Repository Access Required</CardTitle>
           <CardDescription>
-            {errorType === 'installation-update' ? (
-              <>We don&apos;t have access to this repository. Please update your GitHub App installation to include this repository.</>
-            ) : errorType === 'reauth' || (error && error.includes('token is invalid or expired')) ? (
+            {errorType === "installation-update" ? (
+              <>
+                We don&apos;t have access to this repository. Please update your GitHub App installation to include this
+                repository.
+              </>
+            ) : errorType === "reauth" || (error && error.includes("token is invalid or expired")) ? (
               <>Your GitHub App authorization has expired. Please refresh your connection to continue.</>
             ) : (
-              <>We don&apos;t have push access to your repository. Please install the GitHub App to grant the necessary permissions.</>
+              <>
+                We don&apos;t have push access to your repository. Please install the GitHub App to grant the necessary
+                permissions.
+              </>
             )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Repository: {repositoryUrl}
-          </p>
-          {error && (
-            <p className="text-sm text-red-600">
-              Error: {error}
-            </p>
-          )}
+          <p className="text-sm text-muted-foreground">Repository: {repositoryUrl}</p>
+          {error && <p className="text-sm text-red-600">Error: {error}</p>}
 
           {installationLink ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                {errorType === 'installation-update'
-                  ? 'Click the button below to open your GitHub App installation settings and add this repository:'
-                  : errorType === 'reauth' || (error?.includes('token is invalid or expired'))
-                    ? 'Click the button below to refresh your GitHub App authorization:'
-                    : 'Click the button below to install the GitHub App and grant the necessary permissions:'
-                }
+                {errorType === "installation-update"
+                  ? "Click the button below to open your GitHub App installation settings and add this repository:"
+                  : errorType === "reauth" || error?.includes("token is invalid or expired")
+                    ? "Click the button below to refresh your GitHub App authorization:"
+                    : "Click the button below to install the GitHub App and grant the necessary permissions:"}
               </p>
-              <Button
-                asChild
-                className="w-full"
-              >
-                <a
-                  href={installationLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {errorType === 'installation-update'
-                    ? 'Open GitHub App Installation Settings'
-                    : errorType === 'reauth' || (error?.includes('token is invalid or expired'))
-                      ? 'Refresh GitHub App Authorization'
-                      : 'Install GitHub App'
-                  }
+              <Button asChild className="w-full">
+                <a href={installationLink} target="_blank" rel="noopener noreferrer">
+                  {errorType === "installation-update"
+                    ? "Open GitHub App Installation Settings"
+                    : errorType === "reauth" || error?.includes("token is invalid or expired")
+                      ? "Refresh GitHub App Authorization"
+                      : "Install GitHub App"}
                 </a>
               </Button>
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground">
-              Generating installation link...
-            </div>
+            <div className="text-sm text-muted-foreground">Generating installation link...</div>
           )}
 
           <p className="text-xs text-muted-foreground mt-2">

@@ -18,11 +18,7 @@ export class HttpClient {
     this.config = config;
   }
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {},
-    service: string = "unknown",
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}, service: string = "unknown"): Promise<T> {
     const url = `${this.config.baseURL}${endpoint}`;
     console.log("[HttpClient] Requesting:", url);
     const config: RequestInit = {
@@ -36,10 +32,7 @@ export class HttpClient {
 
     // Create AbortController for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      this.config.timeout || 10000,
-    );
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout || 10000);
     config.signal = controller.signal;
 
     try {
@@ -51,8 +44,7 @@ export class HttpClient {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw {
-          message:
-            errorData.message || `HTTP error! status: ${response.status}`,
+          message: errorData.message || `HTTP error! status: ${response.status}`,
           status: response.status,
           service,
           details: errorData,
@@ -94,10 +86,7 @@ export class HttpClient {
 
       // Handle unknown errors
       throw {
-        message:
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred",
+        message: error instanceof Error ? error.message : "An unexpected error occurred",
         status: 500,
         service,
         details: { originalError: error },
@@ -105,28 +94,15 @@ export class HttpClient {
     }
   }
 
-  async get<T>(
-    endpoint: string,
-    headers?: Record<string, string>,
-    service?: string,
-  ): Promise<T> {
+  async get<T>(endpoint: string, headers?: Record<string, string>, service?: string): Promise<T> {
     return this.request<T>(endpoint, { method: "GET", headers }, service);
   }
 
-  async post<T>(
-    endpoint: string,
-    body?: unknown,
-    headers?: Record<string, string>,
-    service?: string,
-  ): Promise<T> {
-    console.log(
-      "--------------------------------post--------------------------------",
-    );
+  async post<T>(endpoint: string, body?: unknown, headers?: Record<string, string>, service?: string): Promise<T> {
+    console.log("--------------------------------post--------------------------------");
     console.log(headers);
     console.log(body);
-    console.log(
-      "--------------------------------post--------------------------------",
-    );
+    console.log("--------------------------------post--------------------------------");
 
     return this.request<T>(
       endpoint,
@@ -139,12 +115,7 @@ export class HttpClient {
     );
   }
 
-  async put<T>(
-    endpoint: string,
-    body?: unknown,
-    headers?: Record<string, string>,
-    service?: string,
-  ): Promise<T> {
+  async put<T>(endpoint: string, body?: unknown, headers?: Record<string, string>, service?: string): Promise<T> {
     return this.request<T>(
       endpoint,
       {
@@ -156,12 +127,7 @@ export class HttpClient {
     );
   }
 
-  async patch<T>(
-    endpoint: string,
-    body?: unknown,
-    headers?: Record<string, string>,
-    service?: string,
-  ): Promise<T> {
+  async patch<T>(endpoint: string, body?: unknown, headers?: Record<string, string>, service?: string): Promise<T> {
     return this.request<T>(
       endpoint,
       {
@@ -173,11 +139,7 @@ export class HttpClient {
     );
   }
 
-  async delete<T>(
-    endpoint: string,
-    headers?: Record<string, string>,
-    service?: string,
-  ): Promise<T> {
+  async delete<T>(endpoint: string, headers?: Record<string, string>, service?: string): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE", headers }, service);
   }
 

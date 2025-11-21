@@ -1,11 +1,5 @@
-import React from 'react';
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  getBezierPath,
-  useReactFlow,
-  EdgeProps,
-} from '@xyflow/react';
+import React from "react";
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, EdgeProps } from "@xyflow/react";
 
 interface CustomEdgeData {
   id: string;
@@ -55,46 +49,59 @@ export default function EdgeButtons(props: EdgeProps) {
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} style={{ strokeWidth: 2, stroke: edge.edgeColor }}/>
+      <BaseEdge id={id} path={edgePath} style={{ strokeWidth: 2, stroke: edge.edgeColor }} />
       <div>
         <EdgeLabelRenderer>
-          {edge.custom_label &&
-            <div style={{
-              position: 'absolute',
-              padding: '20px',
-              background: edge.data?.condition_eval ? '#67C083' : 'white',
-              border: '1px solid #444851',
-              color: edge.data?.condition_eval ? 'white' : 'black',
-              transform: `translate(-50%, 50%) translate(${labelX+50}px,${labelY-100}px)`,
-              pointerEvents: 'all'
-            }}>
+          {edge.custom_label && (
+            <div
+              style={{
+                position: "absolute",
+                padding: "20px",
+                background: edge.data?.condition_eval ? "#67C083" : "white",
+                border: "1px solid #444851",
+                color: edge.data?.condition_eval ? "white" : "black",
+                transform: `translate(-50%, 50%) translate(${labelX + 50}px,${labelY - 100}px)`,
+                pointerEvents: "all",
+              }}
+            >
               {edge.custom_label}
             </div>
-          }
-          {(!project_view && !edge.disable_edge) &&
+          )}
+          {!project_view && !edge.disable_edge && (
             <div>
-              <div className="add-step add-step-node" data-target="workflow-buttons.addStep"
-                   data-point-position={edgeData.id}
-                   data-edge-source={edge.source} data-edge-target={edge.target}
-                   data-remote="true" style={{
-                position: 'absolute',
-                transform: `translate(-50%, -50%) translate(${labelX-20}px,${labelY}px)`,
-                pointerEvents: 'all'
-              }}>
-                <i className="material-icons" style={{margin: 'auto'}}>add</i>
+              <div
+                className="add-step add-step-node"
+                data-target="workflow-buttons.addStep"
+                data-point-position={edgeData.id}
+                data-edge-source={edge.source}
+                data-edge-target={edge.target}
+                data-remote="true"
+                style={{
+                  position: "absolute",
+                  transform: `translate(-50%, -50%) translate(${labelX - 20}px,${labelY}px)`,
+                  pointerEvents: "all",
+                }}
+              >
+                <i className="material-icons" style={{ margin: "auto" }}>
+                  add
+                </i>
               </div>
 
-              <div className="remove-step-edge"
-                   onClick={deleteEdge}
-                   style={{
-                position: 'absolute',
-                transform: `translate(-50%, -50%) translate(${labelX+30}px,${labelY}px)`,
-                pointerEvents: 'all'
-              }}>
-                <i className="material-icons" style={{margin: 'auto'}}>remove</i>
+              <div
+                className="remove-step-edge"
+                onClick={deleteEdge}
+                style={{
+                  position: "absolute",
+                  transform: `translate(-50%, -50%) translate(${labelX + 30}px,${labelY}px)`,
+                  pointerEvents: "all",
+                }}
+              >
+                <i className="material-icons" style={{ margin: "auto" }}>
+                  remove
+                </i>
               </div>
             </div>
-          }
+          )}
         </EdgeLabelRenderer>
       </div>
     </>

@@ -1,6 +1,6 @@
-import { Page, expect } from '@playwright/test';
-import { selectors } from '../fixtures/selectors';
-import { waitForElement } from '../helpers/waits';
+import { Page, expect } from "@playwright/test";
+import { selectors } from "../fixtures/selectors";
+import { waitForElement } from "../helpers/waits";
 
 /**
  * Page Object Model for Roadmap page
@@ -31,21 +31,21 @@ export class RoadmapPage {
    */
   async createFeature(title: string): Promise<string> {
     // Type the feature title - the component auto-creates when input is filled
-    const input = this.page.locator('input.border-input.flex.h-9').first();
-    await input.waitFor({ state: 'visible', timeout: 10000 });
+    const input = this.page.locator("input.border-input.flex.h-9").first();
+    await input.waitFor({ state: "visible", timeout: 10000 });
     await input.fill(title);
-    await input.press('Enter');
-    
+    await input.press("Enter");
+
     // Wait for navigation to feature detail page
     await this.page.waitForURL(/\/w\/.*\/roadmap\/.*/, { timeout: 10000 });
-    
+
     // Extract feature ID from URL
     const url = this.page.url();
     const match = url.match(/\/roadmap\/([^/]+)$/);
     if (!match) {
-      throw new Error('Failed to extract feature ID from URL');
+      throw new Error("Failed to extract feature ID from URL");
     }
-    
+
     return match[1];
   }
 

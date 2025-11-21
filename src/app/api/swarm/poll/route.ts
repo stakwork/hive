@@ -13,27 +13,18 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { success: false, message: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ success: false, message: "Invalid user session" }, { status: 401 });
     }
 
     const body = await request.json();
     const { workspaceId, swarmId } = body;
     if (!workspaceId && !swarmId) {
-      return NextResponse.json(
-        { success: false, message: "Missing workspaceId or swarmId" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Missing workspaceId or swarmId" }, { status: 400 });
     }
 
     // Find the swarm and verify user has access to the workspace
@@ -56,28 +47,19 @@ export async function POST(request: NextRequest) {
       },
     });
     if (!swarm) {
-      return NextResponse.json(
-        { success: false, message: "Swarm not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
     }
 
     // Check if user has access to the workspace
     if (!swarm.workspace) {
-      return NextResponse.json(
-        { success: false, message: "Workspace not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
     const isOwner = swarm.workspace.ownerId === userId;
     const isMember = swarm.workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
-      return NextResponse.json(
-        { success: false, message: "Access denied" },
-        { status: 403 },
-      );
+      return NextResponse.json({ success: false, message: "Access denied" }, { status: 403 });
     }
 
     if (swarm.status === SwarmStatus.ACTIVE) {
@@ -89,22 +71,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!swarm.swarmUrl) {
-      return NextResponse.json(
-        { success: false, message: "Swarm URL not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm URL not set" }, { status: 400 });
     }
     if (!swarm.swarmApiKey) {
-      return NextResponse.json(
-        { success: false, message: "Swarm API key not set" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, message: "Swarm API key not set" }, { status: 400 });
     }
 
     // Use the new fetchSwarmStats with exponential backoff and super admin key
-    const statsResult = await fetchSwarmDetails(
-      (swarm as { swarmId?: string; id: string }).swarmId || swarm.id,
-    );
+    const statsResult = await fetchSwarmDetails((swarm as { swarmId?: string; id: string }).swarmId || swarm.id);
     if (
       statsResult.ok &&
       typeof statsResult.data === "object" &&
@@ -116,8 +90,7 @@ export async function POST(request: NextRequest) {
         data?: { x_api_key?: string };
       };
       const xApiKey = details.data?.x_api_key;
-      const swarm_id =
-        (swarm as { swarmId?: string; id: string }).swarmId || swarm.id;
+      const swarm_id = (swarm as { swarmId?: string; id: string }).swarmId || swarm.id;
       // Use swarm_id directly for secret alias - works with any format
       const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 
@@ -142,10 +115,7 @@ export async function POST(request: NextRequest) {
       status: swarm.status,
     });
   } catch {
-    return NextResponse.json(
-      { success: false, message: "Failed to poll swarm status" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, message: "Failed to poll swarm status" }, { status: 500 });
   }
 }
 
@@ -158,26 +128,17 @@ export async function GET(request: NextRequest) {
 
   const id = searchParams.get("id");
   if (!id) {
-    return NextResponse.json(
-      { success: false, message: "Missing id parameter" },
-      { status: 400 },
-    );
+    return NextResponse.json({ success: false, message: "Missing id parameter" }, { status: 400 });
   }
 
   const session = await getServerSession(authOptions);
   if (!session?.user) {
-    return NextResponse.json(
-      { success: false, message: "Unauthorized" },
-      { status: 401 },
-    );
+    return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
   }
 
   const userId = (session.user as { id?: string })?.id;
   if (!userId) {
-    return NextResponse.json(
-      { success: false, message: "Invalid user session" },
-      { status: 401 },
-    );
+    return NextResponse.json({ success: false, message: "Invalid user session" }, { status: 401 });
   }
 
   const swarm = await db.swarm.findFirst({
@@ -197,37 +158,24 @@ export async function GET(request: NextRequest) {
   });
 
   if (!swarm) {
-    return NextResponse.json(
-      { success: false, message: "Swarm not found" },
-      { status: 404 },
-    );
+    return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
   }
 
   // Check if user has access to the workspace
   if (!swarm.workspace) {
-    return NextResponse.json(
-      { success: false, message: "Workspace not found" },
-      { status: 404 },
-    );
+    return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
   }
 
   const isOwner = swarm.workspace.ownerId === userId;
   const isMember = swarm.workspace.members.length > 0;
 
   if (!isOwner && !isMember) {
-    return NextResponse.json(
-      { success: false, message: "Access denied" },
-      { status: 403 },
-    );
+    return NextResponse.json({ success: false, message: "Access denied" }, { status: 403 });
   }
 
   // Call 3rd party for latest status
   let detailsResult = null;
-  if (
-    "swarmId" in swarm &&
-    typeof swarm.swarmId === "string" &&
-    swarm.swarmId
-  ) {
+  if ("swarmId" in swarm && typeof swarm.swarmId === "string" && swarm.swarmId) {
     detailsResult = await fetchSwarmDetails(swarm.swarmId);
 
     if (
@@ -241,8 +189,7 @@ export async function GET(request: NextRequest) {
         data?: { x_api_key?: string };
       };
       const xApiKey = details.data?.x_api_key;
-      const swarm_id =
-        (swarm as { swarmId?: string; id: string }).swarmId || swarm.id;
+      const swarm_id = (swarm as { swarmId?: string; id: string }).swarmId || swarm.id;
       // Use swarm_id directly for secret alias - works with any format
       const swarmSecretAlias = swarm_id ? `{{${swarm_id}_API_KEY}}` : undefined;
 

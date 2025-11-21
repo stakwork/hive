@@ -1,10 +1,10 @@
-import CameraCenterIcon from '@/components/Icons/CameraCenterIcon'
-import { useGraphStore } from '@/stores/useStores'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import CameraCenterIcon from "@/components/Icons/CameraCenterIcon";
+import { useGraphStore } from "@/stores/useStores";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const CameraRecenterControl = () => {
-  const cameraFocusTrigger = useGraphStore((s) => s.cameraFocusTrigger)
-  const setCameraFocusTrigger = useGraphStore((s) => s.setCameraFocusTrigger)
+  const cameraFocusTrigger = useGraphStore((s) => s.cameraFocusTrigger);
+  const setCameraFocusTrigger = useGraphStore((s) => s.setCameraFocusTrigger);
 
   return (
     <Tooltip>
@@ -22,5 +22,5 @@ export const CameraRecenterControl = () => {
         <p>Recenter</p>
       </TooltipContent>
     </Tooltip>
-  )
-}
+  );
+};

@@ -32,7 +32,7 @@ describe("POST /api/chat/message Integration Tests", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Setup default mocks
     mockGetServerSession.mockResolvedValue({
       user: { id: mockUserId },
@@ -259,7 +259,7 @@ describe("POST /api/chat/message Integration Tests", () => {
       mockDb.task.findFirst.mockResolvedValue(mockTask as any);
       mockDb.user.findUnique.mockResolvedValue(mockUser as any);
       mockDb.chatMessage.create.mockResolvedValue(mockCreatedMessage as any);
-      
+
       // Mock task update for workflow status
       mockDb.task.update.mockResolvedValue({} as any);
 

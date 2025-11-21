@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
@@ -40,7 +34,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     workspaceSlug,
     true,
     10,
-    activeTab === "archived"
+    activeTab === "archived",
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -93,28 +87,16 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
         <CardContent>
           <TabsContent value="active" className="mt-4 space-y-3">
             {tasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No active tasks
-              </div>
+              <div className="text-center py-8 text-muted-foreground">No active tasks</div>
             ) : (
               <>
                 {tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    workspaceSlug={workspaceSlug}
-                    isArchived={false}
-                  />
+                  <TaskCard key={task.id} task={task} workspaceSlug={workspaceSlug} isArchived={false} />
                 ))}
 
                 {pagination?.hasMore && (
                   <div className="pt-3 border-t flex justify-center">
-                    <Button
-                      variant="outline"
-                      onClick={loadMore}
-                      disabled={loading}
-                      size="sm"
-                    >
+                    <Button variant="outline" onClick={loadMore} disabled={loading} size="sm">
                       {loading ? "Loading..." : "Load More"}
                     </Button>
                   </div>
@@ -125,28 +107,16 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
           <TabsContent value="archived" className="mt-4 space-y-3">
             {tasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No archived tasks
-              </div>
+              <div className="text-center py-8 text-muted-foreground">No archived tasks</div>
             ) : (
               <>
                 {tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    workspaceSlug={workspaceSlug}
-                    isArchived={true}
-                  />
+                  <TaskCard key={task.id} task={task} workspaceSlug={workspaceSlug} isArchived={true} />
                 ))}
 
                 {pagination?.hasMore && (
                   <div className="pt-3 border-t flex justify-center">
-                    <Button
-                      variant="outline"
-                      onClick={loadMore}
-                      disabled={loading}
-                      size="sm"
-                    >
+                    <Button variant="outline" onClick={loadMore} disabled={loading} size="sm">
                       {loading ? "Loading..." : "Load More"}
                     </Button>
                   </div>

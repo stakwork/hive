@@ -2,12 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
 import { Clock, Loader2, Server } from "lucide-react";
@@ -83,9 +78,7 @@ export function PoolStatusWidget() {
                   <span className="text-muted-foreground">/</span>
                   <span className="text-muted-foreground">{totalVms}</span>
                 </div>
-                {hasIssues && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                )}
+                {hasIssues && <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />}
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-xs">
@@ -97,20 +90,19 @@ export function PoolStatusWidget() {
                   <span className="text-muted-foreground">{poolStatus.status.unusedVms} available</span>
                 </div>
                 {poolStatus.status.pendingVms > 0 && (
-                  <div className="text-yellow-600">
-                    {poolStatus.status.pendingVms} pending
-                  </div>
+                  <div className="text-yellow-600">{poolStatus.status.pendingVms} pending</div>
                 )}
                 {poolStatus.status.failedVms > 0 && (
-                  <div className="text-red-600">
-                    {poolStatus.status.failedVms} failed
-                  </div>
+                  <div className="text-red-600">{poolStatus.status.failedVms} failed</div>
                 )}
                 {poolStatus.status.lastCheck && (
                   <div className="text-muted-foreground">
-                    Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z')
-                      ? poolStatus.status.lastCheck
-                      : poolStatus.status.lastCheck + 'Z')}
+                    Updated{" "}
+                    {formatRelativeTime(
+                      poolStatus.status.lastCheck.endsWith("Z")
+                        ? poolStatus.status.lastCheck
+                        : poolStatus.status.lastCheck + "Z",
+                    )}
                   </div>
                 )}
               </div>

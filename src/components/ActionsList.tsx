@@ -258,11 +258,7 @@ export function ActionsList({
               </Button>
             )}
             {isRecording && !isReplaying && actions.length > 0 && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={onClearAll}
-              >
+              <Button variant="destructive" size="sm" onClick={onClearAll}>
                 Clear All
               </Button>
             )}

@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React from 'react'
+import React from "react";
 
 const PositiveFeedBackIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -9,6 +9,6 @@ const PositiveFeedBackIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) =>
     />
     <path d="M4.66602 6.125V14.4583" stroke="#909BAA" stroke-width="1.25" />
   </svg>
-)
+);
 
-export default PositiveFeedBackIcon
+export default PositiveFeedBackIcon;

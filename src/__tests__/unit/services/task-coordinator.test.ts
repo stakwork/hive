@@ -61,10 +61,7 @@ describe("buildFeatureContext", () => {
         feature: {
           title: "Payment Integration",
           brief: "Add Stripe payment processing",
-          userStories: [
-            "As a customer, I want to pay by credit card",
-            "As a customer, I want to pay by bank transfer",
-          ],
+          userStories: ["As a customer, I want to pay by credit card", "As a customer, I want to pay by bank transfer"],
           requirements: "Support credit cards and ACH payments",
           architecture: "Microservice-based payment gateway",
         },
@@ -177,7 +174,7 @@ describe("buildFeatureContext", () => {
       });
 
       await expect(buildFeatureContext("invalid-feature-id", "phase-1")).rejects.toThrow(
-        "Feature or Phase not found: invalid-feature-id, phase-1"
+        "Feature or Phase not found: invalid-feature-id, phase-1",
       );
 
       expect(mockDb.feature.findUnique).toHaveBeenCalledWith({
@@ -202,7 +199,7 @@ describe("buildFeatureContext", () => {
       mockDb.phase.findUnique.mockResolvedValue(null);
 
       await expect(buildFeatureContext("feature-1", "invalid-phase-id")).rejects.toThrow(
-        "Feature or Phase not found: feature-1, invalid-phase-id"
+        "Feature or Phase not found: feature-1, invalid-phase-id",
       );
 
       expect(mockDb.phase.findUnique).toHaveBeenCalledWith({
@@ -227,7 +224,7 @@ describe("buildFeatureContext", () => {
       mockDb.phase.findUnique.mockResolvedValue(null);
 
       await expect(buildFeatureContext("invalid-feature", "invalid-phase")).rejects.toThrow(
-        "Feature or Phase not found: invalid-feature, invalid-phase"
+        "Feature or Phase not found: invalid-feature, invalid-phase",
       );
     });
 
@@ -236,7 +233,7 @@ describe("buildFeatureContext", () => {
       mockDb.phase.findUnique.mockResolvedValue(null);
 
       await expect(buildFeatureContext("feature-abc", "phase-xyz")).rejects.toThrow(
-        "Feature or Phase not found: feature-abc, phase-xyz"
+        "Feature or Phase not found: feature-abc, phase-xyz",
       );
     });
   });
@@ -422,9 +419,7 @@ describe("buildFeatureContext", () => {
         id: "phase-1",
         name: "Test Phase",
         description: "Some description",
-        tasks: [
-          { id: "task-1", title: "Task 1", description: "Description", status: "TODO" },
-        ],
+        tasks: [{ id: "task-1", title: "Task 1", description: "Description", status: "TODO" }],
       };
 
       mockDb.feature.findUnique.mockResolvedValue(mockFeature);
@@ -443,9 +438,7 @@ describe("buildFeatureContext", () => {
         brief: "Some brief",
         requirements: "Some requirements",
         architecture: "Some architecture",
-        userStories: [
-          { id: "us-1", title: "User Story 1", order: 0 },
-        ],
+        userStories: [{ id: "us-1", title: "User Story 1", order: 0 }],
       };
 
       const mockPhase = {
@@ -518,11 +511,7 @@ describe("buildFeatureContext", () => {
 
       const result = await buildFeatureContext("feature-1", "phase-1");
 
-      expect(result.feature.userStories).toEqual([
-        "First user story",
-        "Second user story",
-        "Third user story",
-      ]);
+      expect(result.feature.userStories).toEqual(["First user story", "Second user story", "Third user story"]);
       expect(result.feature.userStories.length).toBe(3);
       expect(result.feature.userStories.every((story) => typeof story === "string")).toBe(true);
     });
@@ -554,11 +543,7 @@ describe("buildFeatureContext", () => {
       const result = await buildFeatureContext("feature-1", "phase-1");
 
       // Database query includes orderBy: { order: "asc" }, so the order should be preserved
-      expect(result.feature.userStories).toEqual([
-        "Third story",
-        "First story",
-        "Second story",
-      ]);
+      expect(result.feature.userStories).toEqual(["Third story", "First story", "Second story"]);
     });
 
     test("should preserve task objects without transformation", async () => {
@@ -679,9 +664,7 @@ describe("buildFeatureContext", () => {
         tasks: [],
       });
 
-      await expect(buildFeatureContext("feature-1", "phase-1")).rejects.toThrow(
-        "Database connection failed"
-      );
+      await expect(buildFeatureContext("feature-1", "phase-1")).rejects.toThrow("Database connection failed");
 
       expect(mockDb.feature.findUnique).toHaveBeenCalledTimes(1);
     });
@@ -723,9 +706,7 @@ describe("buildFeatureContext", () => {
         tasks: [],
       });
 
-      await expect(buildFeatureContext("feature-1", "phase-1")).rejects.toThrow(
-        "Internal database error"
-      );
+      await expect(buildFeatureContext("feature-1", "phase-1")).rejects.toThrow("Internal database error");
     });
   });
 

@@ -29,16 +29,8 @@ interface WorkspaceSwitcherProps {
   refreshTrigger?: number; // Still useful for external refresh triggers
 }
 
-export function WorkspaceSwitcher({
-  onWorkspaceChange,
-}: WorkspaceSwitcherProps) {
-  const {
-    workspace: activeWorkspace,
-    workspaces,
-    loading,
-    error,
-    switchWorkspace,
-  } = useWorkspace();
+export function WorkspaceSwitcher({ onWorkspaceChange }: WorkspaceSwitcherProps) {
+  const { workspace: activeWorkspace, workspaces, loading, error, switchWorkspace } = useWorkspace();
   const router = useRouter();
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
   const { logoUrls, refetchLogo } = useWorkspaceLogos(workspaces);
@@ -58,7 +50,6 @@ export function WorkspaceSwitcher({
 
   // Check if user is at workspace limit
   const isAtLimit = workspaces.length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
-
 
   const handleCreateWorkspace = () => {
     if (isAtLimit) {
@@ -134,21 +125,13 @@ export function WorkspaceSwitcher({
                 )}
               </div>
               <div className="text-left flex-1 min-w-0">
-                <div className="font-medium text-sm truncate">
-                  {activeWorkspace.name}
-                </div>
+                <div className="font-medium text-sm truncate">{activeWorkspace.name}</div>
               </div>
             </div>
             <ChevronsUpDown className="w-4 h-4 ml-2 opacity-50" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-56"
-          align="end"
-          side="bottom"
-          sideOffset={8}
-          forceMount
-        >
+        <DropdownMenuContent className="w-56" align="end" side="bottom" sideOffset={8} forceMount>
           <DropdownMenuLabel className="text-xs text-muted-foreground">
             Workspaces ({workspaces.length})
           </DropdownMenuLabel>
@@ -175,66 +158,57 @@ export function WorkspaceSwitcher({
           </DropdownMenuItem>
 
           {/* Other Workspaces */}
-          {workspaces.filter((ws) => ws.id !== activeWorkspace.id).length >
-            0 && (
-              <>
-                <DropdownMenuSeparator />
-                {workspaces
-                  .filter((ws) => ws.id !== activeWorkspace.id)
-                  .map((workspace, index) => (
-                    <DropdownMenuItem
-                      key={workspace.id}
-                      onClick={() => handleWorkspaceSelect(workspace)}
-                      className="flex items-center gap-2 p-2"
-                    >
-                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted overflow-hidden">
-                        {canAccessWorkspaceLogo && logoUrls[workspace.id] ? (
-                          <PresignedImage
-                            src={logoUrls[workspace.id]}
-                            alt={workspace.name}
-                            className="w-full h-full object-cover"
-                            onRefetchUrl={() => refetchLogo(workspace.id)}
-                            fallback={<Building2 className="w-3.5 h-3.5" />}
-                          />
-                        ) : (
-                          <Building2 className="w-3.5 h-3.5" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">
-                          {workspace.name}
-                        </div>
-                      </div>
-                      <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
-                    </DropdownMenuItem>
-                  ))}
-              </>
-            )}
+          {workspaces.filter((ws) => ws.id !== activeWorkspace.id).length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              {workspaces
+                .filter((ws) => ws.id !== activeWorkspace.id)
+                .map((workspace, index) => (
+                  <DropdownMenuItem
+                    key={workspace.id}
+                    onClick={() => handleWorkspaceSelect(workspace)}
+                    className="flex items-center gap-2 p-2"
+                  >
+                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted overflow-hidden">
+                      {canAccessWorkspaceLogo && logoUrls[workspace.id] ? (
+                        <PresignedImage
+                          src={logoUrls[workspace.id]}
+                          alt={workspace.name}
+                          className="w-full h-full object-cover"
+                          onRefetchUrl={() => refetchLogo(workspace.id)}
+                          fallback={<Building2 className="w-3.5 h-3.5" />}
+                        />
+                      ) : (
+                        <Building2 className="w-3.5 h-3.5" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{workspace.name}</div>
+                    </div>
+                    <DropdownMenuShortcut>⌘{index + 2}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                ))}
+            </>
+          )}
 
           {/* Create New Workspace */}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={handleCreateWorkspace}
             disabled={isAtLimit}
-            className={`flex items-center gap-2 p-2 ${
-              isAtLimit ? 'opacity-60 cursor-not-allowed' : ''
-            }`}
+            className={`flex items-center gap-2 p-2 ${isAtLimit ? "opacity-60 cursor-not-allowed" : ""}`}
           >
-            <div className={`flex items-center justify-center w-6 h-6 rounded-md ${
-              isAtLimit ? 'border border-muted bg-muted' : 'border border-dashed'
-            }`}>
-              {isAtLimit ? (
-                <Lock className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
+            <div
+              className={`flex items-center justify-center w-6 h-6 rounded-md ${
+                isAtLimit ? "border border-muted bg-muted" : "border border-dashed"
+              }`}
+            >
+              {isAtLimit ? <Lock className="w-4 h-4 text-muted-foreground" /> : <Plus className="w-4 h-4" />}
             </div>
 
             <div className="flex-1">
-              <div className={`font-medium text-sm ${
-                isAtLimit ? 'text-muted-foreground' : 'text-muted-foreground'
-              }`}>
-                {isAtLimit ? 'Workspace limit reached' : 'Create new workspace'}
+              <div className={`font-medium text-sm ${isAtLimit ? "text-muted-foreground" : "text-muted-foreground"}`}>
+                {isAtLimit ? "Workspace limit reached" : "Create new workspace"}
               </div>
               {isAtLimit && (
                 <div className="text-xs text-muted-foreground mt-0.5">

@@ -17,8 +17,7 @@ interface TestEnvDefaults {
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
-  TOKEN_ENCRYPTION_KEY:
-    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+  TOKEN_ENCRYPTION_KEY: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
   TOKEN_ENCRYPTION_KEY_ID: "k-test",
   STAKWORK_API_KEY: "test-stakwork",
   POOL_MANAGER_API_KEY: "test-pool",

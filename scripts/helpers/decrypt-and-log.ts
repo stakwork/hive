@@ -15,9 +15,7 @@ async function logAccounts() {
     try {
       console.log(a);
       const token = a.access_token ?? null;
-      const decrypted = token
-        ? encryption.decryptField("access_token", token)
-        : null;
+      const decrypted = token ? encryption.decryptField("access_token", token) : null;
       console.log(
         `[ACCOUNT] id=${a.id} userId=${a.userId} provider=${a.provider} providerAccountId=${a.providerAccountId}`,
       );
@@ -80,9 +78,7 @@ async function logWorkspaces() {
     try {
       console.log(w);
       const key = w.stakworkApiKey ?? null;
-      const decrypted = key
-        ? encryption.decryptField("stakworkApiKey", key)
-        : null;
+      const decrypted = key ? encryption.decryptField("stakworkApiKey", key) : null;
       console.log(
         `[WORKSPACE] id=${w.id} slug=${w.slug} owner=${w.owner?.email || w.owner?.id} repos=${w.repositories.length} swarm=${w.swarm ? "yes" : "no"}`,
       );

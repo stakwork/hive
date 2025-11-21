@@ -142,15 +142,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-   await db.repository.findMany({
-     where: { workspaceId: workspace.id },
-     select: {
-       id: true,
-       repositoryUrl: true,
-       branch: true,
-     },
-     orderBy: { createdAt: "asc" },
-   });
+    await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        branch: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
     const environmentVariables = swarm?.environmentVariables;
 

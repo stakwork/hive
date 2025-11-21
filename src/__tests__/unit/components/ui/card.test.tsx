@@ -81,7 +81,7 @@ describe("Card Components", () => {
       TestUtils.expectBasicRendering(card, "card");
       TestUtils.expectPropsForwarded(card);
       TestUtils.expectClassNameMerging(
-        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm"
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
       );
       TestUtils.expectElementStructure(card, "Test Content");
     });
@@ -116,10 +116,10 @@ describe("Card Components", () => {
 
     test("handles custom className merging", () => {
       render(<Card className="my-custom-class" data-testid="custom-card" />);
-      
+
       TestUtils.expectClassNameMerging(
         "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
-        "my-custom-class"
+        "my-custom-class",
       );
     });
   });
@@ -132,7 +132,7 @@ describe("Card Components", () => {
       TestUtils.expectBasicRendering(header, "card-header");
       TestUtils.expectPropsForwarded(header);
       TestUtils.expectClassNameMerging(
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6"
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
       );
     });
 
@@ -142,7 +142,7 @@ describe("Card Components", () => {
           <div data-slot="card-title">Title</div>
           <div data-slot="card-description">Description</div>
           <div data-slot="card-action">Action</div>
-        </CardHeader>
+        </CardHeader>,
       );
       const header = screen.getByTestId("header-with-children");
 
@@ -156,10 +156,10 @@ describe("Card Components", () => {
     test("forwards event handlers", () => {
       const handleClick = vi.fn();
       render(<CardHeader data-testid="clickable-header" onClick={handleClick} />);
-      
+
       const header = screen.getByTestId("clickable-header");
       header.click();
-      
+
       expect(handleClick).toHaveBeenCalledTimes(1);
     });
   });
@@ -175,37 +175,31 @@ describe("Card Components", () => {
     });
 
     test("renders with different content types", () => {
-      const { rerender } = render(
-        <CardTitle data-testid="title-test">String Title</CardTitle>
-      );
+      const { rerender } = render(<CardTitle data-testid="title-test">String Title</CardTitle>);
       expect(screen.getByTestId("title-test")).toHaveTextContent("String Title");
 
       rerender(
         <CardTitle data-testid="title-test">
           <span>Complex Title</span>
-        </CardTitle>
+        </CardTitle>,
       );
       expect(screen.getByTestId("title-test")).toHaveTextContent("Complex Title");
 
       rerender(
         <CardTitle data-testid="title-test">
           <h2>Heading Title</h2>
-        </CardTitle>
+        </CardTitle>,
       );
       expect(screen.getByTestId("title-test")).toHaveTextContent("Heading Title");
     });
 
     test("handles semantic HTML attributes", () => {
       render(
-        <CardTitle 
-          data-testid="semantic-title"
-          role="heading"
-          aria-level={2}
-        >
+        <CardTitle data-testid="semantic-title" role="heading" aria-level={2}>
           Semantic Title
-        </CardTitle>
+        </CardTitle>,
       );
-      
+
       const title = screen.getByTestId("semantic-title");
       expect(title).toHaveAttribute("role", "heading");
       expect(title).toHaveAttribute("aria-level", "2");
@@ -247,9 +241,7 @@ describe("Card Components", () => {
 
       TestUtils.expectBasicRendering(action, "card-action");
       TestUtils.expectPropsForwarded(action);
-      TestUtils.expectClassNameMerging(
-        "col-start-2 row-span-2 row-start-1 self-start justify-self-end"
-      );
+      TestUtils.expectClassNameMerging("col-start-2 row-span-2 row-start-1 self-start justify-self-end");
     });
 
     test("works with interactive elements", () => {
@@ -257,14 +249,14 @@ describe("Card Components", () => {
       render(
         <CardAction data-testid="interactive-action">
           <button onClick={handleClick}>Action Button</button>
-        </CardAction>
+        </CardAction>,
       );
       const action = screen.getByTestId("interactive-action");
       const button = screen.getByRole("button", { name: "Action Button" });
 
       expect(action).toContainElement(button);
       expect(action).toHaveAttribute("data-slot", "card-action");
-      
+
       button.click();
       expect(handleClick).toHaveBeenCalledTimes(1);
     });
@@ -275,7 +267,7 @@ describe("Card Components", () => {
           <button>Edit</button>
           <button>Delete</button>
           <span>|</span>
-        </CardAction>
+        </CardAction>,
       );
       const action = screen.getByTestId("multiple-actions");
 
@@ -308,7 +300,7 @@ describe("Card Components", () => {
               <li>List item 2</li>
             </ul>
           </div>
-        </CardContent>
+        </CardContent>,
       );
       const content = screen.getByTestId("complex-content");
 
@@ -329,7 +321,7 @@ describe("Card Components", () => {
               <option value="2">Option 2</option>
             </select>
           </form>
-        </CardContent>
+        </CardContent>,
       );
       const content = screen.getByTestId("form-content");
 
@@ -355,7 +347,7 @@ describe("Card Components", () => {
           <button>Cancel</button>
           <div style={{ flex: 1 }}></div>
           <button>Save</button>
-        </CardFooter>
+        </CardFooter>,
       );
       const footer = screen.getByTestId("multi-footer");
 
@@ -370,7 +362,7 @@ describe("Card Components", () => {
           <a href="/terms">Terms</a>
           <span>|</span>
           <a href="/privacy">Privacy</a>
-        </CardFooter>
+        </CardFooter>,
       );
       const footer = screen.getByTestId("link-footer");
 
@@ -386,9 +378,7 @@ describe("Card Components", () => {
         <Card data-testid="complete-card">
           <CardHeader data-testid="card-header">
             <CardTitle data-testid="card-title">Card Title</CardTitle>
-            <CardDescription data-testid="card-description">
-              Card Description
-            </CardDescription>
+            <CardDescription data-testid="card-description">Card Description</CardDescription>
             <CardAction data-testid="card-action">
               <button>Action</button>
             </CardAction>
@@ -399,21 +389,21 @@ describe("Card Components", () => {
           <CardFooter data-testid="card-footer">
             <button>Footer Button</button>
           </CardFooter>
-        </Card>
+        </Card>,
       );
 
       // Verify all components are rendered
       const componentTestIds = [
         "complete-card",
-        "card-header", 
+        "card-header",
         "card-title",
         "card-description",
         "card-action",
         "card-content",
-        "card-footer"
+        "card-footer",
       ];
-      
-      componentTestIds.forEach(testId => {
+
+      componentTestIds.forEach((testId) => {
         expect(screen.getByTestId(testId)).toBeInTheDocument();
       });
 
@@ -432,7 +422,7 @@ describe("Card Components", () => {
             <CardTitle data-testid="hierarchy-title">Title</CardTitle>
           </CardHeader>
           <CardContent data-testid="hierarchy-content">Content</CardContent>
-        </Card>
+        </Card>,
       );
 
       const card = screen.getByTestId("hierarchy-card");
@@ -454,7 +444,7 @@ describe("Card Components", () => {
             <CardTitle>Simple Title</CardTitle>
           </CardHeader>
           <CardContent>Simple Content</CardContent>
-        </Card>
+        </Card>,
       );
 
       expect(screen.getByTestId("simple-card")).toBeInTheDocument();
@@ -476,13 +466,7 @@ describe("Card Components", () => {
       ];
 
       components.forEach(({ Component, name }, index) => {
-        render(
-          React.createElement(
-            Component,
-            { "data-testid": `null-test-${index}`, className: null },
-            null
-          )
-        );
+        render(React.createElement(Component, { "data-testid": `null-test-${index}`, className: null }, null));
         const element = screen.getByTestId(`null-test-${index}`);
         expect(element).toBeInTheDocument();
         expect(element).toBeEmptyDOMElement();
@@ -522,12 +506,8 @@ describe("Card Components", () => {
     });
 
     test("handles array of elements as children", () => {
-      const arrayChildren = [
-        <span key="1">First</span>,
-        <span key="2">Second</span>,
-        <span key="3">Third</span>
-      ];
-      
+      const arrayChildren = [<span key="1">First</span>, <span key="2">Second</span>, <span key="3">Third</span>];
+
       render(<CardContent data-testid="array-children">{arrayChildren}</CardContent>);
       const content = screen.getByTestId("array-children");
 
@@ -540,7 +520,7 @@ describe("Card Components", () => {
       render(
         <CardContent data-testid="primitive-children">
           {true} {false} {0} {1} {null} {undefined}
-        </CardContent>
+        </CardContent>,
       );
       const content = screen.getByTestId("primitive-children");
 
@@ -582,7 +562,7 @@ describe("Card Components", () => {
           <CardFooter data-testid="semantic-footer" role="contentinfo">
             Footer
           </CardFooter>
-        </Card>
+        </Card>,
       );
 
       expect(screen.getByRole("article")).toBeInTheDocument();
@@ -594,15 +574,9 @@ describe("Card Components", () => {
 
     test("supports keyboard navigation attributes", () => {
       render(
-        <Card 
-          data-testid="keyboard-card"
-          tabIndex={0}
-          onKeyDown={vi.fn()}
-          role="button"
-          aria-pressed="false"
-        >
+        <Card data-testid="keyboard-card" tabIndex={0} onKeyDown={vi.fn()} role="button" aria-pressed="false">
           Keyboard accessible card
-        </Card>
+        </Card>,
       );
       const card = screen.getByTestId("keyboard-card");
 
@@ -613,13 +587,9 @@ describe("Card Components", () => {
 
     test("handles screen reader specific attributes", () => {
       render(
-        <CardDescription 
-          data-testid="screen-reader-desc"
-          aria-live="polite"
-          aria-atomic="true"
-        >
+        <CardDescription data-testid="screen-reader-desc" aria-live="polite" aria-atomic="true">
           Dynamic description
-        </CardDescription>
+        </CardDescription>,
       );
       const description = screen.getByTestId("screen-reader-desc");
 
@@ -634,42 +604,31 @@ describe("Card Components", () => {
 
       TestUtils.expectClassNameMerging(
         "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
-        "custom-card-class"
+        "custom-card-class",
       );
     });
 
     test("merges multiple custom classes", () => {
-      render(
-        <CardHeader
-          className="custom-1 custom-2 custom-3"
-          data-testid="multiple-classes"
-        />
-      );
+      render(<CardHeader className="custom-1 custom-2 custom-3" data-testid="multiple-classes" />);
 
       TestUtils.expectClassNameMerging(
         "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
-        "custom-1 custom-2 custom-3"
+        "custom-1 custom-2 custom-3",
       );
     });
 
     test("handles conditional classes", () => {
       const condition = true;
       render(
-        <CardTitle
-          className={condition ? "conditional-true" : "conditional-false"}
-          data-testid="conditional-class"
-        />
+        <CardTitle className={condition ? "conditional-true" : "conditional-false"} data-testid="conditional-class" />,
       );
 
-      TestUtils.expectClassNameMerging(
-        "leading-none font-semibold",
-        "conditional-true"
-      );
+      TestUtils.expectClassNameMerging("leading-none font-semibold", "conditional-true");
     });
 
     test("handles falsy className values", () => {
       render(<CardContent className={false as any} data-testid="falsy-class" />);
-      
+
       expect(cn).toHaveBeenCalledWith("px-6", false);
     });
 
@@ -677,10 +636,7 @@ describe("Card Components", () => {
       const classArray = ["class1", "class2", "class3"];
       render(<CardFooter className={classArray.join(" ")} data-testid="array-classes" />);
 
-      TestUtils.expectClassNameMerging(
-        "flex items-center px-6 [.border-t]:pt-6",
-        "class1 class2 class3"
-      );
+      TestUtils.expectClassNameMerging("flex items-center px-6 [.border-t]:pt-6", "class1 class2 class3");
     });
   });
 
@@ -704,12 +660,7 @@ describe("Card Components", () => {
     });
 
     test("data-slot attributes are not overridden by props", () => {
-      render(
-        <Card 
-          data-testid="slot-override-test"
-          data-slot="custom-slot"
-        />
-      );
+      render(<Card data-testid="slot-override-test" data-slot="custom-slot" />);
       const card = screen.getByTestId("slot-override-test");
 
       // The component's data-slot should take precedence

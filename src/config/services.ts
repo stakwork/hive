@@ -3,8 +3,7 @@ import { ServiceConfig } from "@/types";
 // Service endpoint configurations
 export const serviceConfigs: Record<string, ServiceConfig> = {
   stakwork: {
-    baseURL:
-      process.env.STAKWORK_BASE_URL || "https://jobs.stakwork.com/api/v1",
+    baseURL: process.env.STAKWORK_BASE_URL || "https://jobs.stakwork.com/api/v1",
     apiKey: process.env.STAKWORK_API_KEY || "",
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
     headers: {
@@ -14,8 +13,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     },
   },
   poolManager: {
-    baseURL:
-      process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
+    baseURL: process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
     apiKey: process.env.POOL_MANAGER_API_KEY || "",
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
     headers: {
@@ -79,9 +77,7 @@ export function validateServiceConfigs(): void {
 }
 
 // Get service config by name
-export function getServiceConfig(
-  serviceName: keyof typeof serviceConfigs,
-): ServiceConfig {
+export function getServiceConfig(serviceName: keyof typeof serviceConfigs): ServiceConfig {
   const config = serviceConfigs[serviceName];
   if (!config) {
     throw new Error(`Unknown service: ${serviceName}`);

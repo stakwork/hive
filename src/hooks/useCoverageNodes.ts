@@ -14,15 +14,69 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob, setSearch } = useCoverageStore();
+  const {
+    nodeType,
+    sort,
+    sortDirection,
+    limit,
+    offset,
+    coverage,
+    ignoreDirs,
+    repo,
+    unitGlob,
+    integrationGlob,
+    e2eGlob,
+    search,
+    setOffset,
+    setNodeType,
+    setSort,
+    setSortDirection,
+    toggleSort,
+    setCoverage,
+    setIgnoreDirs,
+    setRepo,
+    setUnitGlob,
+    setIntegrationGlob,
+    setE2eGlob,
+    setSearch,
+  } = useCoverageStore();
   const hasInitializedIgnoreDirs = useRef(false);
   const hasInitializedUnitGlob = useRef(false);
   const hasInitializedIntegrationGlob = useRef(false);
   const hasInitializedE2eGlob = useRef(false);
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
-    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
+    () => [
+      "coverage-nodes",
+      workspaceId,
+      nodeType,
+      sort,
+      sortDirection,
+      limit,
+      offset,
+      coverage,
+      ignoreDirs,
+      repo,
+      unitGlob,
+      integrationGlob,
+      e2eGlob,
+      search,
+    ],
+    [
+      workspaceId,
+      nodeType,
+      sort,
+      sortDirection,
+      limit,
+      offset,
+      coverage,
+      ignoreDirs,
+      repo,
+      unitGlob,
+      integrationGlob,
+      e2eGlob,
+      search,
+    ],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({

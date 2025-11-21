@@ -150,14 +150,14 @@ describe("Workspace Member Mappers - Unit Tests", () => {
 
     test("should handle different role types", () => {
       const roles = ["OWNER", "ADMIN", "PM", "DEVELOPER", "STAKEHOLDER", "VIEWER"];
-      
+
       roles.forEach((role) => {
         const member = {
           ...mockPrismaWorkspaceMember,
           id: `member-${role.toLowerCase()}`,
           role,
         };
-        
+
         const result = mapWorkspaceMember(member);
         expect(result.role).toBe(role);
       });
@@ -178,7 +178,7 @@ describe("Workspace Member Mappers - Unit Tests", () => {
   describe("mapWorkspaceMembers", () => {
     test("should map multiple workspace members correctly", () => {
       const members = [mockPrismaWorkspaceMember, mockPrismaWorkspaceMemberWithoutGitHub];
-      
+
       const result = mapWorkspaceMembers(members);
 
       expect(result).toHaveLength(2);
@@ -233,7 +233,7 @@ describe("Workspace Member Mappers - Unit Tests", () => {
       const member3 = { ...mockPrismaWorkspaceMember, id: "third" };
 
       const result = mapWorkspaceMembers([member1, member2, member3]);
-      
+
       expect(result).toHaveLength(3);
       expect(result[0].id).toBe("first");
       expect(result[1].id).toBe("second");

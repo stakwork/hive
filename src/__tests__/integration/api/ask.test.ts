@@ -20,7 +20,7 @@ global.fetch = mockFetch;
 
 describe("GET /api/ask Integration Tests", () => {
   const encryptionService = EncryptionService.getInstance();
-  
+
   // Track created resources for cleanup
   const createdUserIds: string[] = [];
   const createdWorkspaceIds: string[] = [];
@@ -115,10 +115,7 @@ describe("GET /api/ask Integration Tests", () => {
       let swarm = null;
       if (includeSwarm) {
         // Encrypt API key
-        const encryptedApiKey = encryptionService.encryptField(
-          "swarmApiKey",
-          swarmApiKey
-        );
+        const encryptedApiKey = encryptionService.encryptField("swarmApiKey", swarmApiKey);
 
         swarm = await tx.swarm.create({
           data: {
@@ -232,7 +229,7 @@ describe("GET /api/ask Integration Tests", () => {
       const request = createGetRequest("http://localhost/api/ask", {});
 
       const response = await GET(request);
-      
+
       // Should fail on first missing param check (question)
       const data = await response.json();
       expect(response.status).toBe(400);
@@ -444,7 +441,7 @@ describe("GET /api/ask Integration Tests", () => {
       // Verify swarm URL was used correctly
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining("production-swarm.example.com"),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -469,10 +466,7 @@ describe("GET /api/ask Integration Tests", () => {
       await expectSuccess(response, 200);
 
       // Verify localhost URL was constructed
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("http://localhost:3355"),
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining("http://localhost:3355"), expect.any(Object));
     });
   });
 
@@ -505,7 +499,7 @@ describe("GET /api/ask Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": originalApiKey,
           }),
-        })
+        }),
       );
     });
 
@@ -513,11 +507,7 @@ describe("GET /api/ask Integration Tests", () => {
       const activeKeyId = encryptionService.getActiveKeyId() || "default";
       const apiKey = "key-with-explicit-id";
 
-      const encryptedApiKey = encryptionService.encryptFieldWithKeyId(
-        "swarmApiKey",
-        apiKey,
-        activeKeyId
-      );
+      const encryptedApiKey = encryptionService.encryptFieldWithKeyId("swarmApiKey", apiKey, activeKeyId);
 
       const { user, workspace } = await createTestFixtures({ includeSwarm: false });
 
@@ -555,7 +545,7 @@ describe("GET /api/ask Integration Tests", () => {
           headers: expect.objectContaining({
             "x-api-token": apiKey,
           }),
-        })
+        }),
       );
     });
 
@@ -587,7 +577,7 @@ describe("GET /api/ask Integration Tests", () => {
       });
 
       const response = await GET(request);
-      
+
       // EncryptionService returns plaintext for malformed data
       await expectSuccess(response, 200);
     });
@@ -624,7 +614,7 @@ describe("GET /api/ask Integration Tests", () => {
             "Content-Type": "application/json",
             "x-api-token": expect.any(String),
           }),
-        })
+        }),
       );
     });
 
@@ -649,7 +639,7 @@ describe("GET /api/ask Integration Tests", () => {
       // Verify URL encoding
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining("What%20about%20spaces%20%26%20special%20chars%3F"),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -820,7 +810,7 @@ describe("GET /api/ask Integration Tests", () => {
             "Content-Type": "application/json",
             "x-api-token": apiKey,
           }),
-        })
+        }),
       );
     });
 
@@ -829,11 +819,7 @@ describe("GET /api/ask Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const questions = [
-        "First question",
-        "Second question",
-        "Third question",
-      ];
+      const questions = ["First question", "Second question", "Third question"];
 
       for (const question of questions) {
         mockFetch.mockResolvedValue({

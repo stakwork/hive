@@ -7,25 +7,16 @@ const updateRepositorySchema = z.object({
   playwrightSetup: z.boolean().optional(),
 });
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const apiKey = request.headers.get("x-api-key") || request.headers.get("authorization");
 
     if (!process.env.API_KEY) {
-      return NextResponse.json(
-        { error: "API_KEY not configured on server" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "API_KEY not configured on server" }, { status: 500 });
     }
 
     if (!apiKey || apiKey !== process.env.API_KEY) {
-      return NextResponse.json(
-        { error: "Unauthorized - Invalid or missing API key" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized - Invalid or missing API key" }, { status: 401 });
     }
 
     const { id } = await params;
@@ -35,10 +26,7 @@ export async function PUT(
     });
 
     if (!repository) {
-      return NextResponse.json(
-        { error: "Repository not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Repository not found" }, { status: 404 });
     }
 
     const body = await request.json();
@@ -54,15 +42,9 @@ export async function PUT(
     console.error("Error updating repository:", error);
 
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid request data", details: error.issues },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid request data", details: error.issues }, { status: 400 });
     }
 
-    return NextResponse.json(
-      { error: "Failed to update repository" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update repository" }, { status: 500 });
   }
 }

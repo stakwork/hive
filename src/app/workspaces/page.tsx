@@ -34,12 +34,8 @@ export default async function WorkspacesPage() {
               <Building2 className="w-6 h-6 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold mb-2">
-            {hasWorkspaces ? "Choose Your Workspace" : "Your Workspaces"}
-          </h1>
-          <p className="text-muted-foreground">
-            Welcome back{session?.user?.name ? `, ${session.user.name}` : ''}
-          </p>
+          <h1 className="text-3xl font-bold mb-2">{hasWorkspaces ? "Choose Your Workspace" : "Your Workspaces"}</h1>
+          <p className="text-muted-foreground">Welcome back{session?.user?.name ? `, ${session.user.name}` : ""}</p>
         </div>
 
         {/* Workspaces List */}
@@ -48,34 +44,30 @@ export default async function WorkspacesPage() {
             <>
               {/* Empty State Message */}
               <div className="text-center mb-6">
-                <p className="text-muted-foreground">
-                  No workspaces yet. Ask an admin to add you or create your own.
-                </p>
+                <p className="text-muted-foreground">No workspaces yet. Ask an admin to add you or create your own.</p>
               </div>
             </>
           )}
           <WorkspacesPageContent workspaces={userWorkspaces} />
 
           {/* Create New Workspace Card */}
-          <Card className={`group transition-all duration-200 border-dashed border-2 ${
-            isAtLimit 
-              ? 'border-muted-foreground/10 cursor-not-allowed opacity-60' 
-              : 'border-muted-foreground/25 hover:border-primary/50 hover:shadow-md cursor-pointer'
-          }`}>
+          <Card
+            className={`group transition-all duration-200 border-dashed border-2 ${
+              isAtLimit
+                ? "border-muted-foreground/10 cursor-not-allowed opacity-60"
+                : "border-muted-foreground/25 hover:border-primary/50 hover:shadow-md cursor-pointer"
+            }`}
+          >
             {isAtLimit ? (
               <CardContent className="flex flex-col items-center justify-center h-full py-12 text-center">
                 <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
                   <Lock className="w-6 h-6 text-muted-foreground" />
                 </div>
-                <h3 className="font-medium mb-2 text-muted-foreground">
-                  Workspace Limit Reached
-                </h3>
+                <h3 className="font-medium mb-2 text-muted-foreground">Workspace Limit Reached</h3>
                 <p className="text-sm text-muted-foreground mb-1">
                   You've used all {WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER} available workspaces
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Delete a workspace to create a new one
-                </p>
+                <p className="text-xs text-muted-foreground">Delete a workspace to create a new one</p>
               </CardContent>
             ) : (
               <Link href="/onboarding/workspace" className="block">
@@ -86,9 +78,7 @@ export default async function WorkspacesPage() {
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-lg mb-1">Create New Workspace</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Start a new project or organization
-                      </p>
+                      <p className="text-sm text-muted-foreground">Start a new project or organization</p>
                     </div>
                     <ArrowRight className="w-4 h-4 text-muted-foreground" />
                   </div>

@@ -6,10 +6,7 @@ import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
 
 export const fetchCache = "force-no-store";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ messageId: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ messageId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -18,19 +15,13 @@ export async function GET(
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const { messageId } = await params;
 
     if (!messageId) {
-      return NextResponse.json(
-        { error: "Message ID is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Message ID is required" }, { status: 400 });
     }
 
     const chatMessage = await db.chatMessage.findUnique({
@@ -70,24 +61,16 @@ export async function GET(
 
     const clientMessage: ChatMessage = {
       ...chatMessage,
-      contextTags: JSON.parse(
-        chatMessage.contextTags as string,
-      ) as ContextTag[],
+      contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
       artifacts: chatMessage.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,
       })) as Artifact[],
     };
 
-    return NextResponse.json(
-      { success: true, data: clientMessage },
-      { status: 200 },
-    );
+    return NextResponse.json({ success: true, data: clientMessage }, { status: 200 });
   } catch (error) {
     console.error("Error fetching message by id:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch message" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch message" }, { status: 500 });
   }
 }

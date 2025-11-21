@@ -175,12 +175,7 @@ export const callMockSetup = {
    * @example
    * callMockSetup.mockPaginatedCalls(0, 10, 25, (i) => mockData.call({ ref_id: `call-${i}` }));
    */
-  mockPaginatedCalls(
-    page: number,
-    limit: number,
-    totalItems: number,
-    callFactory: (index: number) => CallRecording,
-  ) {
+  mockPaginatedCalls(page: number, limit: number, totalItems: number, callFactory: (index: number) => CallRecording) {
     const skip = page * limit;
     const itemsToReturn = Math.min(limit, totalItems - skip);
     const hasMore = skip + itemsToReturn < totalItems;

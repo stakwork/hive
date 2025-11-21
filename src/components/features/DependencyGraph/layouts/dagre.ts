@@ -2,18 +2,8 @@ import dagre from "@dagrejs/dagre";
 import { Node, Edge, Position } from "@xyflow/react";
 import type { LayoutConfig, LayoutResult } from "../types";
 
-export function getLayoutedElements(
-  nodes: Node[],
-  edges: Edge[],
-  config: LayoutConfig
-): LayoutResult {
-  const {
-    nodeWidth,
-    nodeHeight,
-    direction = "TB",
-    ranksep = 100,
-    nodesep = 50,
-  } = config;
+export function getLayoutedElements(nodes: Node[], edges: Edge[], config: LayoutConfig): LayoutResult {
+  const { nodeWidth, nodeHeight, direction = "TB", ranksep = 100, nodesep = 50 } = config;
 
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));

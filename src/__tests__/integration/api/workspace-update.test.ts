@@ -146,7 +146,7 @@ describe("Workspace Update API Integration Tests", () => {
       expect(updatedWorkspaceInDb?.description).toBe("Admin updated description");
     });
 
-		//TODO: figure out why this test was failing
+    //TODO: figure out why this test was failing
     //test("should return 403 for insufficient permissions", async () => {
     //  const { memberUser, workspace } = await createTestWorkspace();
 

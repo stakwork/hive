@@ -5,8 +5,8 @@ type Size = string | number;
 interface IframeProps {
   src: string;
   title?: string;
-  width?: Size;   // "100%" | "600px" | 600
-  height?: Size;  // "100%" | "400px" | 400
+  width?: Size; // "100%" | "600px" | 600
+  height?: Size; // "100%" | "400px" | 400
   allowFullScreen?: boolean;
   className?: string;
   frameProps?: React.IframeHTMLAttributes<HTMLIFrameElement>;

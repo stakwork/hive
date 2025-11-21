@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
   if (!session?.user?.id) {
     console.log("[agent-stream] Unauthorized access attempt", {
       timestamp: new Date().toISOString(),
-      ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
-      userAgent: request.headers.get('user-agent'),
+      ip: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
+      userAgent: request.headers.get("user-agent"),
     });
     return new Response("Unauthorized", { status: 401 });
   }
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
   const headers = new Headers({
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
+    Connection: "keep-alive",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Cache-Control",
   });
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
         console.log("[agent-stream] Fetching swarm from database", logContext);
         const swarm = await db.swarm.findFirst({
           where: { id: swarmId },
-          include: { workspace: { select: { slug: true } } }
+          include: { workspace: { select: { slug: true } } },
         });
 
         if (!swarm) {
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
           ...logContext,
           workspaceSlug: swarm.workspace.slug,
           swarmStatus: swarm.agentStatus,
-          swarmUrl: swarm.swarmUrl?.replace(/\/api$/, ''), // Log without sensitive parts
+          swarmUrl: swarm.swarmUrl?.replace(/\/api$/, ""), // Log without sensitive parts
         });
 
         // Send initial status
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
             ...logContext,
             maxAttempts,
             timeoutMinutes: (maxAttempts * 5) / 60,
-            swarmUrl: swarmUrl.replace(/\/\/.*@/, '//***@'), // Mask credentials in URL
+            swarmUrl: swarmUrl.replace(/\/\/.*@/, "//***@"), // Mask credentials in URL
           });
 
           while (attempts < maxAttempts) {
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
                 status: "POLLING",
                 message: `Checking agent progress... (${attempts + 1}/${maxAttempts})`,
                 attempt: attempts + 1,
-                maxAttempts
+                maxAttempts,
               });
 
               console.log("[agent-stream] Polling agent progress", {
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
                 console.log("[agent-stream] Parsed PM2 services", {
                   ...logContext,
                   serviceCount: services?.length || 0,
-                  serviceNames: services?.map(s => s.name) || [],
+                  serviceNames: services?.map((s) => s.name) || [],
                 });
 
                 // Parse .env file
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
                 await db.swarm.update({
                   where: { id: swarm.id },
                   data: {
-                    agentStatus: 'COMPLETED',
+                    agentStatus: "COMPLETED",
                     agentRequestId: null, // Clear the request ID
                     containerFilesSetUp: true, // Mark setup complete since we have services and env vars
                   },
@@ -258,11 +258,14 @@ export async function GET(request: NextRequest) {
                 });
 
                 // Send success event
-                sendEvent({
-                  status: "COMPLETED",
-                  message: "Agent processing completed successfully!",
-                  data: { services }
-                }, "completed");
+                sendEvent(
+                  {
+                    status: "COMPLETED",
+                    message: "Agent processing completed successfully!",
+                    data: { services },
+                  },
+                  "completed",
+                );
 
                 controller.close();
                 return;
@@ -271,9 +274,8 @@ export async function GET(request: NextRequest) {
               // Agent still processing, continue polling
               attempts++;
               if (attempts < maxAttempts) {
-                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+                await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds
               }
-
             } catch (error) {
               console.error("[agent-stream] Error polling agent", {
                 ...logContext,
@@ -285,13 +287,13 @@ export async function GET(request: NextRequest) {
 
               sendEvent({
                 status: "ERROR",
-                message: `Error polling agent: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                attempt: attempts + 1
+                message: `Error polling agent: ${error instanceof Error ? error.message : "Unknown error"}`,
+                attempt: attempts + 1,
               });
 
               attempts++;
               if (attempts < maxAttempts) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                await new Promise((resolve) => setTimeout(resolve, 5000));
               }
             }
           }
@@ -308,15 +310,18 @@ export async function GET(request: NextRequest) {
           await db.swarm.update({
             where: { id: swarm.id },
             data: {
-              agentStatus: 'FAILED',
+              agentStatus: "FAILED",
               agentRequestId: null,
             },
           });
 
-          sendEvent({
-            status: "TIMEOUT",
-            message: "Agent processing timed out after 10 minutes"
-          }, "error");
+          sendEvent(
+            {
+              status: "TIMEOUT",
+              message: "Agent processing timed out after 10 minutes",
+            },
+            "error",
+          );
           controller.close();
         };
 
@@ -331,7 +336,6 @@ export async function GET(request: NextRequest) {
           sendEvent({ error: error.message }, "error");
           controller.close();
         });
-
       } catch (error) {
         console.error("[agent-stream] SSE setup error", {
           ...logContext,
@@ -349,7 +353,7 @@ export async function GET(request: NextRequest) {
         ...logContext,
         totalDuration: Date.now() - startTime,
       });
-    }
+    },
   });
 
   console.log("[agent-stream] SSE stream created successfully", {

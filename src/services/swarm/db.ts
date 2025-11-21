@@ -122,11 +122,11 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       instanceType: params.instanceType || "",
       environmentVariables: params.environmentVariables
         ? (encryptEnvVars(
-          params.environmentVariables as unknown as Array<{
-            name: string;
-            value: string;
-          }>,
-        ) as unknown)
+            params.environmentVariables as unknown as Array<{
+              name: string;
+              value: string;
+            }>,
+          ) as unknown)
         : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,

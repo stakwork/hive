@@ -34,13 +34,9 @@ export function DependenciesCombobox({
   }, [selectedDependencyIds]);
 
   // Filter out the current ticket and get tickets in the same phase
-  const availableTickets = allTickets.filter(
-    (ticket) => ticket.id !== currentTicketId && ticket.phaseId === phaseId
-  );
+  const availableTickets = allTickets.filter((ticket) => ticket.id !== currentTicketId && ticket.phaseId === phaseId);
 
-  const selectedTickets = availableTickets.filter((ticket) =>
-    localDependencies.includes(ticket.id)
-  );
+  const selectedTickets = availableTickets.filter((ticket) => localDependencies.includes(ticket.id));
 
   const handleToggle = (ticketId: string) => {
     const newDependencies = localDependencies.includes(ticketId)
@@ -83,11 +79,7 @@ export function DependenciesCombobox({
   };
 
   if (availableTickets.length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground px-2 py-1">
-        No other tasks
-      </div>
-    );
+    return <div className="text-sm text-muted-foreground px-2 py-1">No other tasks</div>;
   }
 
   return (
@@ -104,11 +96,7 @@ export function DependenciesCombobox({
           {selectedTickets.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1">
               {selectedTickets.map((ticket) => (
-                <Badge
-                  key={ticket.id}
-                  variant="secondary"
-                  className="text-xs px-1.5 py-0 h-5 hover:bg-secondary"
-                >
+                <Badge key={ticket.id} variant="secondary" className="text-xs px-1.5 py-0 h-5 hover:bg-secondary">
                   {ticket.title}
                   <X
                     className="h-3 w-3 ml-1 hover:text-destructive"
@@ -137,9 +125,7 @@ export function DependenciesCombobox({
                     onSelect={() => handleToggle(ticket.id)}
                     disabled={updating}
                   >
-                    <Check
-                      className={cn("mr-2 h-4 w-4", isSelected ? "opacity-100" : "opacity-0")}
-                    />
+                    <Check className={cn("mr-2 h-4 w-4", isSelected ? "opacity-100" : "opacity-0")} />
                     <div className="flex flex-col flex-1 overflow-hidden">
                       <span className="truncate">{ticket.title}</span>
                       <span className="text-xs text-muted-foreground">
@@ -153,20 +139,10 @@ export function DependenciesCombobox({
           </CommandList>
         </Command>
         <div className="flex items-center justify-end gap-2 p-2 border-t">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCancel}
-            disabled={updating}
-          >
+          <Button variant="ghost" size="sm" onClick={handleCancel} disabled={updating}>
             Cancel
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleApply}
-            disabled={updating}
-          >
+          <Button variant="default" size="sm" onClick={handleApply} disabled={updating}>
             {updating ? "Applying..." : "Apply"}
           </Button>
         </div>

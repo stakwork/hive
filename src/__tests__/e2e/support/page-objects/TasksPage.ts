@@ -1,5 +1,5 @@
-import { Page, expect } from '@playwright/test';
-import { selectors } from '../fixtures/selectors';
+import { Page, expect } from "@playwright/test";
+import { selectors } from "../fixtures/selectors";
 
 /**
  * Page Object Model for Tasks page
@@ -22,10 +22,10 @@ export class TasksPage {
     await expect(this.page.locator(selectors.pageTitle.tasks)).toBeVisible({ timeout: 10000 });
 
     // Wait for loading state to disappear (if it exists)
-    const loadingText = this.page.getByText('Loading tasks...');
+    const loadingText = this.page.getByText("Loading tasks...");
     const isLoading = await loadingText.isVisible().catch(() => false);
     if (isLoading) {
-      await loadingText.waitFor({ state: 'hidden', timeout: 10000 });
+      await loadingText.waitFor({ state: "hidden", timeout: 10000 });
     }
   }
 
@@ -41,7 +41,7 @@ export class TasksPage {
    */
   async hasNewTaskButton(): Promise<boolean> {
     const button = this.page.locator(selectors.tasks.newTaskButton);
-    return await button.count() > 0;
+    return (await button.count()) > 0;
   }
 
   /**
@@ -73,7 +73,7 @@ export class TasksPage {
    */
   async waitForTaskInput(): Promise<void> {
     const input = this.page.locator(selectors.tasks.taskStartInput);
-    await input.waitFor({ state: 'visible', timeout: 10000 });
+    await input.waitFor({ state: "visible", timeout: 10000 });
   }
 
   /**
@@ -89,14 +89,17 @@ export class TasksPage {
     await submitButton.click();
 
     // Wait for URL to change from /task/new to /task/[id]
-    await this.page.waitForURL((url) => {
-      return url.pathname.includes('/task/') && !url.pathname.includes('/task/new');
-    }, { timeout: 15000 });
+    await this.page.waitForURL(
+      (url) => {
+        return url.pathname.includes("/task/") && !url.pathname.includes("/task/new");
+      },
+      { timeout: 15000 },
+    );
 
     // Extract task ID from URL
     const url = this.page.url();
     const match = url.match(/\/task\/([^\/\?#]+)/);
-    return match ? match[1] : '';
+    return match ? match[1] : "";
   }
 
   /**

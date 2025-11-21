@@ -5,11 +5,7 @@ import { USER_SELECT } from "@/lib/db/selects";
 /**
  * Creates a new user story for a feature
  */
-export async function createUserStory(
-  featureId: string,
-  userId: string,
-  data: { title: string }
-) {
+export async function createUserStory(featureId: string, userId: string, data: { title: string }) {
   await validateFeatureAccess(featureId, userId);
 
   if (!data.title || typeof data.title !== "string" || !data.title.trim()) {
@@ -65,7 +61,7 @@ export async function updateUserStory(
     title?: string;
     order?: number;
     completed?: boolean;
-  }
+  },
 ) {
   await validateUserStoryAccess(storyId, userId);
 
@@ -120,10 +116,7 @@ export async function updateUserStory(
 /**
  * Deletes a user story
  */
-export async function deleteUserStory(
-  storyId: string,
-  userId: string
-): Promise<void> {
+export async function deleteUserStory(storyId: string, userId: string): Promise<void> {
   await validateUserStoryAccess(storyId, userId);
 
   await db.userStory.delete({
@@ -137,7 +130,7 @@ export async function deleteUserStory(
 export async function reorderUserStories(
   featureId: string,
   userId: string,
-  stories: { id: string; order: number }[]
+  stories: { id: string; order: number }[],
 ): Promise<any[]> {
   await validateFeatureAccess(featureId, userId);
 
@@ -153,8 +146,8 @@ export async function reorderUserStories(
           featureId: featureId,
         },
         data: { order: story.order },
-      })
-    )
+      }),
+    ),
   );
 
   const updatedStories = await db.userStory.findMany({

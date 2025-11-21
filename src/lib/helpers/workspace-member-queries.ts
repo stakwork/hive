@@ -56,7 +56,7 @@ export async function isWorkspaceOwner(workspaceId: string, userId: string): Pro
 export async function createWorkspaceMember(
   workspaceId: string,
   userId: string,
-  role: WorkspaceRole
+  role: WorkspaceRole,
 ): Promise<PrismaWorkspaceMemberWithUser> {
   return await db.workspaceMember.create({
     data: {
@@ -73,7 +73,7 @@ export async function createWorkspaceMember(
  */
 export async function reactivateWorkspaceMember(
   memberId: string,
-  role: WorkspaceRole
+  role: WorkspaceRole,
 ): Promise<PrismaWorkspaceMemberWithUser> {
   return await db.workspaceMember.update({
     where: { id: memberId },
@@ -103,10 +103,7 @@ export async function getActiveWorkspaceMembers(workspaceId: string): Promise<Pr
 /**
  * Updates a workspace member's role
  */
-export async function updateMemberRole(
-  memberId: string,
-  role: WorkspaceRole
-): Promise<PrismaWorkspaceMemberWithUser> {
+export async function updateMemberRole(memberId: string, role: WorkspaceRole): Promise<PrismaWorkspaceMemberWithUser> {
   return await db.workspaceMember.update({
     where: { id: memberId },
     data: { role },

@@ -1,11 +1,6 @@
 import { Brain, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import type { WorkflowStatus } from "@prisma/client";
 
@@ -30,10 +25,8 @@ export function GenerationControls({
   disabled = false,
   showDeepThink = true,
 }: GenerationControlsProps) {
-  const isErrorState =
-    status && ["FAILED", "ERROR", "HALTED"].includes(status);
-  const isLoadingState =
-    status && ["PENDING", "IN_PROGRESS"].includes(status);
+  const isErrorState = status && ["FAILED", "ERROR", "HALTED"].includes(status);
+  const isLoadingState = status && ["PENDING", "IN_PROGRESS"].includes(status);
   const showWorkflowBadge = !!(status && isErrorState);
 
   return (
@@ -47,13 +40,7 @@ export function GenerationControls({
                   size="sm"
                   variant="ghost"
                   onClick={onDeepThink}
-                  disabled={
-                    isLoading ||
-                    isLoadingState ||
-                    showWorkflowBadge ||
-                    isQuickGenerating ||
-                    disabled
-                  }
+                  disabled={isLoading || isLoadingState || showWorkflowBadge || isQuickGenerating || disabled}
                   className="h-6 w-6 p-0"
                 >
                   {isLoadingState ? (
@@ -72,13 +59,7 @@ export function GenerationControls({
             <div className="flex items-center gap-2">
               <WorkflowStatusBadge status={isErrorState ? "FAILED" : status} />
               {isErrorState && onRetry && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onRetry}
-                  disabled={isLoading}
-                  className="h-6 text-xs px-2"
-                >
+                <Button size="sm" variant="outline" onClick={onRetry} disabled={isLoading} className="h-6 text-xs px-2">
                   Retry
                 </Button>
               )}

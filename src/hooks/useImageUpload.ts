@@ -1,4 +1,4 @@
-import { useState, DragEvent, ClipboardEvent } from 'react';
+import { useState, DragEvent, ClipboardEvent } from "react";
 
 interface UseImageUploadOptions {
   featureId: string;
@@ -18,21 +18,17 @@ interface ImageUploadResult {
   insertImageAtCursor: (url: string, filename: string, textarea: HTMLTextAreaElement) => void;
 }
 
-export function useImageUpload({
-  featureId,
-  onImageInserted,
-  onError,
-}: UseImageUploadOptions): ImageUploadResult {
+export function useImageUpload({ featureId, onImageInserted, onError }: UseImageUploadOptions): ImageUploadResult {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const uploadImage = async (file: File): Promise<string> => {
     // Request presigned URL from backend
-    const response = await fetch('/api/upload/image', {
-      method: 'POST',
+    const response = await fetch("/api/upload/image", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         filename: file.name,
@@ -44,58 +40,51 @@ export function useImageUpload({
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to get upload URL');
+      throw new Error(errorData.error || "Failed to get upload URL");
     }
 
     const { presignedUrl, publicUrl } = await response.json();
 
     // Upload file directly to S3
     const uploadResponse = await fetch(presignedUrl, {
-      method: 'PUT',
+      method: "PUT",
       body: file,
       headers: {
-        'Content-Type': file.type,
+        "Content-Type": file.type,
       },
     });
 
     if (!uploadResponse.ok) {
-      throw new Error('Failed to upload image to S3');
+      throw new Error("Failed to upload image to S3");
     }
 
     return publicUrl;
   };
 
-  const insertImageAtCursor = (
-    url: string,
-    filename: string,
-    textarea: HTMLTextAreaElement
-  ) => {
+  const insertImageAtCursor = (url: string, filename: string, textarea: HTMLTextAreaElement) => {
     const cursorPos = textarea.selectionStart;
     const textBefore = textarea.value.substring(0, cursorPos);
     const textAfter = textarea.value.substring(cursorPos);
-    
+
     const markdownImage = `![${filename}](${url})`;
     const newValue = textBefore + markdownImage + textAfter;
-    
+
     // Trigger the change event
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      'value'
-    )?.set;
-    
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+
     if (nativeInputValueSetter) {
       nativeInputValueSetter.call(textarea, newValue);
-      
+
       // Dispatch input event
-      const event = new Event('input', { bubbles: true });
+      const event = new Event("input", { bubbles: true });
       textarea.dispatchEvent(event);
-      
+
       // Set cursor position after the inserted image
       const newCursorPos = cursorPos + markdownImage.length;
       textarea.setSelectionRange(newCursorPos, newCursorPos);
       textarea.focus();
     }
-    
+
     if (onImageInserted) {
       onImageInserted(markdownImage);
     }
@@ -103,10 +92,10 @@ export function useImageUpload({
 
   const processFiles = async (files: FileList | File[], textarea: HTMLTextAreaElement) => {
     const fileArray = Array.from(files);
-    const imageFiles = fileArray.filter(file => file.type.startsWith('image/'));
-    
+    const imageFiles = fileArray.filter((file) => file.type.startsWith("image/"));
+
     if (imageFiles.length === 0) {
-      const errorMsg = 'No valid image files found. Please drop image files only.';
+      const errorMsg = "No valid image files found. Please drop image files only.";
       setError(errorMsg);
       if (onError) onError(errorMsg);
       return;
@@ -120,10 +109,10 @@ export function useImageUpload({
         const imageUrl = await uploadImage(file);
         insertImageAtCursor(imageUrl, file.name, textarea);
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to upload image';
+        const errorMsg = err instanceof Error ? err.message : "Failed to upload image";
         setError(errorMsg);
         if (onError) onError(errorMsg);
-        console.error('Image upload error:', err);
+        console.error("Image upload error:", err);
       }
     }
 
@@ -139,7 +128,7 @@ export function useImageUpload({
   const handleDragLeave = (e: DragEvent<HTMLTextAreaElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Only set dragging to false if we're leaving the textarea element itself
     if (e.currentTarget === e.target) {
       setIsDragging(false);
@@ -167,7 +156,7 @@ export function useImageUpload({
     const files: File[] = [];
 
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith('image/')) {
+      if (items[i].type.startsWith("image/")) {
         const file = items[i].getAsFile();
         if (file) {
           files.push(file);

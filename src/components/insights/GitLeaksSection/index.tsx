@@ -189,9 +189,7 @@ export function GitLeaksSection() {
       </CardHeader>
       <CardContent>
         {error ? (
-          <div className="text-sm text-red-600 p-4 bg-red-50 rounded-md border border-red-200">
-            {error}
-          </div>
+          <div className="text-sm text-red-600 p-4 bg-red-50 rounded-md border border-red-200">{error}</div>
         ) : loading ? (
           <div className="space-y-3">
             <div className="rounded-md border overflow-hidden">
@@ -268,10 +266,7 @@ export function GitLeaksSection() {
                 </TableHeader>
                 <TableBody>
                   {paginatedLeaks.map((leak, i) => (
-                    <TableRow
-                      key={`${leak.Fingerprint}-${i}`}
-                      className="hover:bg-muted/50 transition-colors"
-                    >
+                    <TableRow key={`${leak.Fingerprint}-${i}`} className="hover:bg-muted/50 transition-colors">
                       <TableCell className="text-sm" title={leak.Date}>
                         {formatDate(leak.Date)}
                       </TableCell>

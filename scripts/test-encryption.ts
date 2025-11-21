@@ -1,10 +1,8 @@
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig({ path: ".env.local" });
 import { EncryptionService } from "@/lib/encryption";
-if (!process.env.TOKEN_ENCRYPTION_KEY)
-  throw new Error("TOKEN_ENCRYPTION_KEY is required");
-if (!process.env.TOKEN_ENCRYPTION_KEY_ID)
-  throw new Error("TOKEN_ENCRYPTION_KEY_ID is required");
+if (!process.env.TOKEN_ENCRYPTION_KEY) throw new Error("TOKEN_ENCRYPTION_KEY is required");
+if (!process.env.TOKEN_ENCRYPTION_KEY_ID) throw new Error("TOKEN_ENCRYPTION_KEY_ID is required");
 const svc = EncryptionService.getInstance();
 
 const plaintext = "hive-is-super-cool-and-loading-123";

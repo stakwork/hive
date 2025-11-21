@@ -1,24 +1,19 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "@/app/api/super/new_swarm/route";
-import {
-  createRequestWithHeaders,
-  expectSuccess,
-  expectUnauthorized,
-  expectError,
-} from "@/__tests__/support/helpers";
+import { createRequestWithHeaders, expectSuccess, expectUnauthorized, expectError } from "@/__tests__/support/helpers";
 
 /**
  * Integration tests for POST /api/super/new_swarm
- * 
+ *
  * ⚠️ IMPORTANT: These tests are disabled because the endpoint is a stub implementation.
  * The route at /api/super/new_swarm/route.ts needs to be fully implemented before these tests can pass.
- * 
+ *
  * The endpoint implementation should:
  * - Authenticate via x-super-token header (validated against SWARM_SUPERADMIN_API_KEY)
  * - Validate CreateSwarmRequest payload (instance_type required, password optional)
  * - Return CreateSwarmResponse with swarm details (swarm_id, address, x_api_key, ec2_id)
  * - Handle errors for missing/invalid tokens and malformed requests
- * 
+ *
  * TODO: Implement /api/super/new_swarm/route.ts endpoint, then uncomment these tests
  */
 describe.skip("POST /api/super/new_swarm Integration Tests", () => {
@@ -47,7 +42,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         {
           instance_type: "t2.medium",
           password: "securePass123",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -73,7 +68,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "t2.medium",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -94,7 +89,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "t2.medium",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -119,7 +114,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "t2.medium",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -144,7 +139,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "t2.medium",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -166,7 +161,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         {
           instance_type: "t2.large",
           password: "customPassword123",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -185,7 +180,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         {
           password: "securePass123",
           // Missing instance_type
-        }
+        },
       );
 
       const response = await POST(request);
@@ -203,7 +198,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: 123, // Should be string
-        }
+        },
       );
 
       const response = await POST(request);
@@ -223,7 +218,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -233,17 +228,14 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
 
     test("should handle malformed JSON gracefully", async () => {
       const { NextRequest } = await import("next/server");
-      const request = new NextRequest(
-        "http://localhost:3000/api/super/new_swarm",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-super-token": VALID_SUPER_TOKEN,
-          },
-          body: "invalid json{",
-        }
-      );
+      const request = new NextRequest("http://localhost:3000/api/super/new_swarm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-super-token": VALID_SUPER_TOKEN,
+        },
+        body: "invalid json{",
+      });
 
       const response = await POST(request);
 
@@ -260,7 +252,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
           "Content-Type": "application/json",
           "x-super-token": VALID_SUPER_TOKEN,
         },
-        {}
+        {},
       );
 
       const response = await POST(request);
@@ -281,7 +273,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         {
           instance_type: "t2.medium",
           password: "securePass123",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -320,7 +312,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "t2.micro",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -343,7 +335,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "t2.small",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -379,7 +371,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
           "Content-Type": "application/json",
           "x-super-token": VALID_SUPER_TOKEN,
         },
-        { instance_type }
+        { instance_type },
       );
 
       const response = await POST(request);
@@ -405,7 +397,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         },
         {
           instance_type: "t2.medium",
-        }
+        },
       );
 
       const response = await POST(request);
@@ -432,14 +424,12 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
           {
             instance_type: "t2.micro",
             password: `password${i}`,
-          }
-        )
+          },
+        ),
       );
 
       // Execute requests concurrently
-      const responses = await Promise.all(
-        requests.map((req) => POST(req))
-      );
+      const responses = await Promise.all(requests.map((req) => POST(req)));
 
       // All requests should succeed
       for (const response of responses) {
@@ -474,7 +464,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         {
           instance_type: "t2.medium",
           // No password provided
-        }
+        },
       );
 
       const response = await POST(request);
@@ -498,7 +488,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         {
           instance_type: "t2.medium",
           password: customPassword,
-        }
+        },
       );
 
       const response = await POST(request);
@@ -520,7 +510,7 @@ describe.skip("POST /api/super/new_swarm Integration Tests", () => {
         {
           instance_type: "t2.medium",
           password: "",
-        }
+        },
       );
 
       const response = await POST(request);

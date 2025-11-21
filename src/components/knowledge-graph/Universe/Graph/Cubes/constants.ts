@@ -1,14 +1,14 @@
-import { NodeExtended } from '@Universe/types'
-import * as THREE from 'three'
+import { NodeExtended } from "@Universe/types";
+import * as THREE from "three";
 
 const createRoundedBoxGeometry = (width: number, height: number, depth: number, radius: number, segments: number) => {
-  const shape = new THREE.Shape()
-  const eps = 0.00001
+  const shape = new THREE.Shape();
+  const eps = 0.00001;
 
-  shape.absarc(eps, eps, eps, -Math.PI / 2, -Math.PI, true)
-  shape.absarc(eps, height - radius * 2, eps, Math.PI, Math.PI / 2, true)
-  shape.absarc(width - radius * 2, height - radius * 2, eps, Math.PI / 2, 0, true)
-  shape.absarc(width - radius * 2, eps, eps, 0, -Math.PI / 2, true)
+  shape.absarc(eps, eps, eps, -Math.PI / 2, -Math.PI, true);
+  shape.absarc(eps, height - radius * 2, eps, Math.PI, Math.PI / 2, true);
+  shape.absarc(width - radius * 2, height - radius * 2, eps, Math.PI / 2, 0, true);
+  shape.absarc(width - radius * 2, eps, eps, 0, -Math.PI / 2, true);
 
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: depth - radius * 2,
@@ -18,77 +18,77 @@ const createRoundedBoxGeometry = (width: number, height: number, depth: number, 
     bevelSize: radius,
     bevelThickness: radius,
     curveSegments: segments,
-  })
+  });
 
-  geometry.center()
+  geometry.center();
 
   // Manually setting UVs
-  const uvs = []
-  const normals = geometry.getAttribute('normal')
-  const positions = geometry.getAttribute('position')
+  const uvs = [];
+  const normals = geometry.getAttribute("normal");
+  const positions = geometry.getAttribute("position");
 
   for (let i = 0; i < positions.count; i += 1) {
     const normal = new THREE.Vector3(
       (normals as THREE.BufferAttribute).getX(i),
       (normals as THREE.BufferAttribute).getY(i),
       (normals as THREE.BufferAttribute).getZ(i),
-    )
+    );
 
     const position = new THREE.Vector3(
       (positions as THREE.BufferAttribute).getX(i),
       (positions as THREE.BufferAttribute).getY(i),
       (positions as THREE.BufferAttribute).getZ(i),
-    )
+    );
 
-    let u = 0
-    let v = 0
+    let u = 0;
+    let v = 0;
 
     if (Math.abs(normal.y) > 0.9) {
-      u = position.x / width + 0.5
-      v = 1 - (position.z / depth + 0.5)
+      u = position.x / width + 0.5;
+      v = 1 - (position.z / depth + 0.5);
     } else if (Math.abs(normal.x) > 0.9) {
-      u = -position.z / depth + 0.5
-      v = 1 - (-position.y / height + 0.5)
+      u = -position.z / depth + 0.5;
+      v = 1 - (-position.y / height + 0.5);
     } else if (Math.abs(normal.z) > 0.9) {
-      u = position.x / width + 0.5
-      v = 1 - (-position.y / height + 0.5)
+      u = position.x / width + 0.5;
+      v = 1 - (-position.y / height + 0.5);
     }
 
-    uvs.push(u, v)
+    uvs.push(u, v);
   }
 
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
 
-  return geometry
-}
+  return geometry;
+};
 
-export const roundedBoxGeometry = createRoundedBoxGeometry(10, 10, 10, 2, 10)
+export const roundedBoxGeometry = createRoundedBoxGeometry(10, 10, 10, 2, 10);
 
-export const boxGeometry = new THREE.BoxGeometry(10, 10, 10)
+export const boxGeometry = new THREE.BoxGeometry(10, 10, 10);
 
-export const isMainTopic = (node: NodeExtended) => node.node_type === 'Topic' && (node.edge_count || 1) > 5
+export const isMainTopic = (node: NodeExtended) => node.node_type === "Topic" && (node.edge_count || 1) > 5;
 
-export const meshRenderLimit = 500
+export const meshRenderLimit = 500;
 
-export const nodeSize = 20
+export const nodeSize = 20;
 
-export const meshRenderRadius = 800
+export const meshRenderRadius = 800;
 
-export const nodeBackground = '#23252F'
+export const nodeBackground = "#23252F";
 
 const getPillShapeGeometry = (width: number, height: number) => {
-  const r = height / 2
-  const shape = new THREE.Shape()
+  const r = height / 2;
+  const shape = new THREE.Shape();
 
-  shape.moveTo(-width / 2 + r, -r)
-  shape.lineTo(width / 2 - r, -r)
-  shape.absarc(width / 2 - r, 0, r, -Math.PI / 2, Math.PI / 2, false)
-  shape.lineTo(-width / 2 + r, r)
-  shape.absarc(-width / 2 + r, 0, r, Math.PI / 2, -Math.PI / 2, false)
+  shape.moveTo(-width / 2 + r, -r);
+  shape.lineTo(width / 2 - r, -r);
+  shape.absarc(width / 2 - r, 0, r, -Math.PI / 2, Math.PI / 2, false);
+  shape.lineTo(-width / 2 + r, r);
+  shape.absarc(-width / 2 + r, 0, r, Math.PI / 2, -Math.PI / 2, false);
 
-  return new THREE.ShapeGeometry(shape, 64)
-}
+  return new THREE.ShapeGeometry(shape, 64);
+};
 
-export const NodePillGeometry = getPillShapeGeometry(nodeSize * 3, nodeSize + 1)
+export const NodePillGeometry = getPillShapeGeometry(nodeSize * 3, nodeSize + 1);
 
-export const NodeCircleGeometry = new THREE.CircleGeometry(nodeSize / 2 + 1, 64)
+export const NodeCircleGeometry = new THREE.CircleGeometry(nodeSize / 2 + 1, 64);

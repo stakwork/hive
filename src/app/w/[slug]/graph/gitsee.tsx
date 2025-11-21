@@ -14,9 +14,9 @@ export const Gitsee = () => {
     }
   }, [slug, loadSettings]);
 
-    const primaryRepoUrl = formData.repositories?.[0]?.repositoryUrl || "";
-    console.log("=====>", workspaceId, primaryRepoUrl, formData.swarmUrl);
-    useGitVisualizer({ workspaceId, repositoryUrl: primaryRepoUrl, swarmUrl: formData.swarmUrl });
+  const primaryRepoUrl = formData.repositories?.[0]?.repositoryUrl || "";
+  console.log("=====>", workspaceId, primaryRepoUrl, formData.swarmUrl);
+  useGitVisualizer({ workspaceId, repositoryUrl: primaryRepoUrl, swarmUrl: formData.swarmUrl });
 
   return (
     <Card className="max-w-2xl">

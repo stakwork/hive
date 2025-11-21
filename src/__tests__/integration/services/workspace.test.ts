@@ -6,13 +6,10 @@ import {
   getUserWorkspaces,
   validateWorkspaceAccess,
   getDefaultWorkspaceForUser,
-  deleteWorkspaceBySlug
+  deleteWorkspaceBySlug,
 } from "@/services/workspace";
 import { db } from "@/lib/db";
-import {
-  WORKSPACE_ERRORS,
-  WORKSPACE_LIMITS
-} from "@/lib/constants";
+import { WORKSPACE_ERRORS, WORKSPACE_LIMITS } from "@/lib/constants";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import { createTestSwarm } from "@/__tests__/support/fixtures/swarm";
 import { generateUniqueSlug } from "@/__tests__/support/helpers";
@@ -76,9 +73,7 @@ describe("Workspace Service - Integration Tests", () => {
         ownerId: testUser2.id,
       };
 
-      await expect(createWorkspace(duplicateData)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS
-      );
+      await expect(createWorkspace(duplicateData)).rejects.toThrow(WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS);
     });
 
     test("should handle workspace creation with minimal data", async () => {
@@ -117,9 +112,7 @@ describe("Workspace Service - Integration Tests", () => {
         ownerId: testUser1.id,
       };
 
-      await expect(createWorkspace(extraWorkspaceData)).rejects.toThrow(
-        WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
-      );
+      await expect(createWorkspace(extraWorkspaceData)).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
       // Verify user2 can still create workspaces
       const user2WorkspaceData = {
@@ -147,16 +140,18 @@ describe("Workspace Service - Integration Tests", () => {
       }
 
       // Try to create another - should fail
-      await expect(createWorkspace({
-        name: "Extra Workspace",
-        slug: generateUniqueSlug("extra-workspace"),
-        ownerId: testUser.id,
-      })).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
+      await expect(
+        createWorkspace({
+          name: "Extra Workspace",
+          slug: generateUniqueSlug("extra-workspace"),
+          ownerId: testUser.id,
+        }),
+      ).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
 
       // Delete one workspace
       await db.workspace.update({
         where: { id: workspaces[0].id },
-        data: { deleted: true, deletedAt: new Date() }
+        data: { deleted: true, deletedAt: new Date() },
       });
 
       // Now should be able to create new workspace
@@ -213,8 +208,8 @@ describe("Workspace Service - Integration Tests", () => {
       const workspaces = await getWorkspacesByUserId(testUser1.id);
 
       expect(workspaces).toHaveLength(2);
-      expect(workspaces.map(w => w.name).sort()).toEqual(["Workspace 1", "Workspace 2"]);
-      expect(workspaces.every(w => w.ownerId === testUser1.id)).toBe(true);
+      expect(workspaces.map((w) => w.name).sort()).toEqual(["Workspace 1", "Workspace 2"]);
+      expect(workspaces.every((w) => w.ownerId === testUser1.id)).toBe(true);
     });
 
     test("should exclude deleted workspaces", async () => {
@@ -354,7 +349,7 @@ describe("Workspace Service - Integration Tests", () => {
       const workspaces = await getUserWorkspaces(memberUser.id);
 
       expect(workspaces).toHaveLength(2);
-      const workspaceNames = workspaces.map(w => w.name).sort();
+      const workspaceNames = workspaces.map((w) => w.name).sort();
       expect(workspaceNames).toEqual(["Member Workspace", "Owned Workspace"]);
     });
   });
@@ -389,27 +384,18 @@ describe("Workspace Service - Integration Tests", () => {
       });
 
       // Test owner access
-      const ownerAccess = await validateWorkspaceAccess(
-        workspace.slug,
-        ownerUser.id
-      );
+      const ownerAccess = await validateWorkspaceAccess(workspace.slug, ownerUser.id);
       expect(ownerAccess.hasAccess).toBe(true);
       expect(ownerAccess.canAdmin).toBe(true);
 
       // Test member access
-      const memberAccess = await validateWorkspaceAccess(
-        workspace.slug,
-        memberUser.id
-      );
+      const memberAccess = await validateWorkspaceAccess(workspace.slug, memberUser.id);
       expect(memberAccess.hasAccess).toBe(true);
       expect(memberAccess.canWrite).toBe(true);
       expect(memberAccess.canAdmin).toBe(false);
 
       // Test non-member access
-      const nonMemberAccess = await validateWorkspaceAccess(
-        workspace.slug,
-        nonMemberUser.id
-      );
+      const nonMemberAccess = await validateWorkspaceAccess(workspace.slug, nonMemberUser.id);
       expect(nonMemberAccess.hasAccess).toBe(false);
     });
   });
@@ -428,7 +414,7 @@ describe("Workspace Service - Integration Tests", () => {
       });
 
       // Add a small delay to ensure different timestamps
-      await new Promise(resolve => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 5));
 
       const workspace2 = await db.workspace.create({
         data: {
@@ -480,9 +466,9 @@ describe("Workspace Service - Integration Tests", () => {
     test("should throw error for non-existent workspace", async () => {
       const testUser = await createTestUser({ name: "Test User" });
 
-      await expect(
-        deleteWorkspaceBySlug("non-existent-workspace", testUser.id)
-      ).rejects.toThrow("Workspace not found or access denied");
+      await expect(deleteWorkspaceBySlug("non-existent-workspace", testUser.id)).rejects.toThrow(
+        "Workspace not found or access denied",
+      );
     });
   });
 });

@@ -1,25 +1,13 @@
 import { describe, it, expect } from "vitest";
-import {
-  encrypt,
-  decrypt,
-  isEncrypted,
-  generateKey,
-  hexToBuffer,
-} from "@/lib/encryption";
+import { encrypt, decrypt, isEncrypted, generateKey, hexToBuffer } from "@/lib/encryption";
 
 describe("crypto primitives", () => {
   const keyBuf = hexToBuffer(
-    process.env.TOKEN_ENCRYPTION_KEY ||
-      "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+    process.env.TOKEN_ENCRYPTION_KEY || "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
   );
 
   it("roundtrips encryption/decryption", () => {
-    const plaintexts = [
-      "hello",
-      "",
-      "😀 unicode ✓",
-      "long-" + "x".repeat(1024),
-    ];
+    const plaintexts = ["hello", "", "😀 unicode ✓", "long-" + "x".repeat(1024)];
 
     for (const p of plaintexts) {
       const enc = encrypt(p, keyBuf, "k-test");

@@ -3,10 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -15,18 +12,12 @@ export async function GET(
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const { slug } = await params;
     if (!slug) {
-      return NextResponse.json(
-        { error: "Workspace slug is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Workspace slug is required" }, { status: 400 });
     }
 
     // Verify workspace exists and user has access
@@ -50,10 +41,7 @@ export async function GET(
     });
 
     if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     // Check if user is workspace owner or member
@@ -93,11 +81,11 @@ export async function GET(
     });
 
     // Count tasks where the latest message has FORM artifacts
-    const waitingForInputCount = tasksWithLatestMessage.filter(task => {
+    const waitingForInputCount = tasksWithLatestMessage.filter((task) => {
       if (!task.chatMessages || task.chatMessages.length === 0) return false;
-      
+
       const latestMessage = task.chatMessages[0];
-      return latestMessage.artifacts?.some(artifact => artifact.type === 'FORM') || false;
+      return latestMessage.artifacts?.some((artifact) => artifact.type === "FORM") || false;
     }).length;
 
     return NextResponse.json(
@@ -111,9 +99,6 @@ export async function GET(
     );
   } catch (error) {
     console.error("Error fetching task notification count:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch task notification count" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch task notification count" }, { status: 500 });
   }
 }

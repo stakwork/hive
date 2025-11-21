@@ -261,7 +261,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       await TestHelpers.expectValidationError(
         response,
-        "Missing required fields: workspaceId and repositoryUrl or repositoryId"
+        "Missing required fields: workspaceId and repositoryUrl or repositoryId",
       );
     });
 
@@ -274,7 +274,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       await TestHelpers.expectValidationError(
         response,
-        "Missing required fields: workspaceId and repositoryUrl or repositoryId"
+        "Missing required fields: workspaceId and repositoryUrl or repositoryId",
       );
     });
 
@@ -322,7 +322,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       await TestHelpers.expectValidationError(
         response,
-        "Missing required fields: workspaceId and repositoryUrl or repositoryId"
+        "Missing required fields: workspaceId and repositoryUrl or repositoryId",
       );
     });
 
@@ -336,7 +336,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       await TestHelpers.expectValidationError(
         response,
-        "Missing required fields: workspaceId and repositoryUrl or repositoryId"
+        "Missing required fields: workspaceId and repositoryUrl or repositoryId",
       );
     });
   });
@@ -356,10 +356,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await TestHelpers.expectNotFoundError(
-        response,
-        "Repository not found for workspace"
-      );
+      await TestHelpers.expectNotFoundError(response, "Repository not found for workspace");
       expect(mockWebhookService).not.toHaveBeenCalled();
     });
 
@@ -376,10 +373,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       const response = await POST(request);
 
-      await TestHelpers.expectNotFoundError(
-        response,
-        "Repository not found for workspace"
-      );
+      await TestHelpers.expectNotFoundError(response, "Repository not found for workspace");
       expect(mockWebhookService).not.toHaveBeenCalled();
     });
 
@@ -401,7 +395,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
           repositoryUrl: "https://github.com/test-org/found-repo",
-        })
+        }),
       );
     });
 
@@ -437,9 +431,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       await POST(request);
 
-      expect(mockWebhookService).toHaveBeenCalledWith(
-        TestDataFactory.createServiceConfig()
-      );
+      expect(mockWebhookService).toHaveBeenCalledWith(TestDataFactory.createServiceConfig());
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith({
         userId: "user-123",
         workspaceId: "workspace-123",
@@ -476,7 +468,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
           callbackUrl: "https://app.example.com/api/github/webhook",
-        })
+        }),
       );
     });
 
@@ -648,7 +640,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
           workspaceId: longWorkspaceId,
-        })
+        }),
       );
     });
 
@@ -667,7 +659,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
           repositoryUrl: specialRepoUrl,
-        })
+        }),
       );
     });
 
@@ -780,7 +772,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
           repositoryUrl: repository.repositoryUrl,
-        })
+        }),
       );
 
       // Verify response
@@ -809,7 +801,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: differentUserId,
-        })
+        }),
       );
     });
   });

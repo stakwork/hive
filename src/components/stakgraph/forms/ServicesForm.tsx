@@ -124,15 +124,10 @@ export default function ServicesForm({
     onChange(newServices);
   };
 
-  const handleServiceChange = (
-    idx: number,
-    field: keyof ServiceDataConfig,
-    value: string | number,
-  ) => {
+  const handleServiceChange = (idx: number, field: keyof ServiceDataConfig, value: string | number) => {
     const updatedServices = [...data];
     if (field === "port") {
-      updatedServices[idx].port =
-        typeof value === "number" ? value : Number(value);
+      updatedServices[idx].port = typeof value === "number" ? value : Number(value);
     } else if (field === "name") {
       updatedServices[idx].name = value as string;
     } else if (field === "interpreter") {
@@ -143,11 +138,7 @@ export default function ServicesForm({
     onChange(updatedServices);
   };
 
-  const handleServiceScriptChange = (
-    idx: number,
-    scriptKey: keyof ServiceDataConfig["scripts"],
-    value: string,
-  ) => {
+  const handleServiceScriptChange = (idx: number, scriptKey: keyof ServiceDataConfig["scripts"], value: string) => {
     const updatedServices = data.map((svc, i) =>
       i === idx
         ? {
@@ -162,10 +153,7 @@ export default function ServicesForm({
     onChange(updatedServices);
   };
 
-  const handleAddScript = (
-    idx: number,
-    scriptKey: keyof ServiceDataConfig["scripts"],
-  ) => {
+  const handleAddScript = (idx: number, scriptKey: keyof ServiceDataConfig["scripts"]) => {
     const updatedServices = data.map((svc, i) => {
       if (i === idx) {
         return {
@@ -181,16 +169,10 @@ export default function ServicesForm({
     onChange(updatedServices);
   };
 
-  const handleRemoveScript = (
-    idx: number,
-    scriptKey: keyof ServiceDataConfig["scripts"],
-  ) => {
+  const handleRemoveScript = (idx: number, scriptKey: keyof ServiceDataConfig["scripts"]) => {
     const updatedServices = data.map((svc, i) => {
       if (i === idx) {
-        const updatedScripts = { ...(svc.scripts || {}) } as Record<
-          string,
-          string
-        >;
+        const updatedScripts = { ...(svc.scripts || {}) } as Record<string, string>;
         delete updatedScripts[scriptKey as string];
         return {
           ...svc,
@@ -206,17 +188,11 @@ export default function ServicesForm({
     <div className="space-y-4">
       <h3 className="text-lg font-semibold mb-2">Services</h3>
       <p className="text-xs text-muted-foreground mb-2">
-        Define your services, their ports, and scripts. The <b>start</b> script
-        is required.
+        Define your services, their ports, and scripts. The <b>start</b> script is required.
       </p>
 
       {data.length === 0 ? (
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={handleAddService}
-          disabled={loading}
-        >
+        <Button type="button" variant="secondary" onClick={handleAddService} disabled={loading}>
           Add Service
         </Button>
       ) : (
@@ -246,9 +222,7 @@ export default function ServicesForm({
                       id={`service-name-${idx}`}
                       placeholder="e.g. api-server"
                       value={svc.name}
-                      onChange={(e) =>
-                        handleServiceChange(idx, "name", e.target.value)
-                      }
+                      onChange={(e) => handleServiceChange(idx, "name", e.target.value)}
                       disabled={loading}
                     />
                   </div>
@@ -278,10 +252,7 @@ export default function ServicesForm({
                   </div>
 
                   <div>
-                    <Label
-                      htmlFor={`service-interpreter-${idx}`}
-                      className="mb-1"
-                    >
+                    <Label htmlFor={`service-interpreter-${idx}`} className="mb-1">
                       Interpreter
                     </Label>
                     <Input
@@ -297,10 +268,7 @@ export default function ServicesForm({
                   </div>
 
                   <div>
-                    <Label
-                      htmlFor={`service-cwd-${idx}`}
-                      className="mb-1"
-                    >
+                    <Label htmlFor={`service-cwd-${idx}`} className="mb-1">
                       CWD
                     </Label>
                     <Input
@@ -317,27 +285,19 @@ export default function ServicesForm({
                 </div>
 
                 <div className="mb-2 mt-2">
-                  <span className="text-md font-bold">
-                    Scripts Configuration
-                  </span>
+                  <span className="text-md font-bold">Scripts Configuration</span>
                 </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     {scriptConfigs.start.icon}
-                    <Label
-                      htmlFor={`service-${scriptConfigs.start.key}-${idx}`}
-                    >
-                      {scriptConfigs.start.label}
-                    </Label>
+                    <Label htmlFor={`service-${scriptConfigs.start.key}-${idx}`}>{scriptConfigs.start.label}</Label>
                   </div>
                   <Input
                     id={`service-${scriptConfigs.start.key}-${idx}`}
                     placeholder={scriptConfigs.start.placeholder}
                     value={svc.scripts?.start ?? ""}
-                    onChange={(e) =>
-                      handleServiceScriptChange(idx, "start", e.target.value)
-                    }
+                    onChange={(e) => handleServiceScriptChange(idx, "start", e.target.value)}
                     className="font-mono"
                     disabled={loading}
                     required
@@ -348,9 +308,7 @@ export default function ServicesForm({
                       <div className="flex items-center gap-2 mt-3 justify-between">
                         <div className="flex items-center gap-2">
                           {scriptConfigs.install.icon}
-                          <Label
-                            htmlFor={`service-${scriptConfigs.install.key}-${idx}`}
-                          >
+                          <Label htmlFor={`service-${scriptConfigs.install.key}-${idx}`}>
                             {scriptConfigs.install.label}
                           </Label>
                         </div>
@@ -369,13 +327,7 @@ export default function ServicesForm({
                         id={`service-${scriptConfigs.install.key}-${idx}`}
                         placeholder={scriptConfigs.install.placeholder}
                         value={svc.scripts?.install || ""}
-                        onChange={(e) =>
-                          handleServiceScriptChange(
-                            idx,
-                            "install",
-                            e.target.value,
-                          )
-                        }
+                        onChange={(e) => handleServiceScriptChange(idx, "install", e.target.value)}
                         className="font-mono"
                         disabled={loading}
                       />
@@ -385,11 +337,7 @@ export default function ServicesForm({
                   {Object.entries(scriptConfigs)
                     .filter(([key]) => key !== "start" && key !== "install")
                     .map(([key, config]) => {
-                      if (
-                        (svc.scripts || {})[
-                          key as keyof ServiceDataConfig["scripts"]
-                        ] === undefined
-                      ) {
+                      if ((svc.scripts || {})[key as keyof ServiceDataConfig["scripts"]] === undefined) {
                         return null;
                       }
 
@@ -398,20 +346,13 @@ export default function ServicesForm({
                           <div className="flex items-center gap-2 mt-3 justify-between">
                             <div className="flex items-center gap-2">
                               {config.icon}
-                              <Label htmlFor={`service-${key}-${idx}`}>
-                                {config.label}
-                              </Label>
+                              <Label htmlFor={`service-${key}-${idx}`}>{config.label}</Label>
                             </div>
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
-                              onClick={() =>
-                                handleRemoveScript(
-                                  idx,
-                                  key as keyof ServiceDataConfig["scripts"],
-                                )
-                              }
+                              onClick={() => handleRemoveScript(idx, key as keyof ServiceDataConfig["scripts"])}
                               disabled={loading}
                               className="h-6 w-6"
                             >
@@ -421,17 +362,9 @@ export default function ServicesForm({
                           <Input
                             id={`service-${key}-${idx}`}
                             placeholder={config.placeholder}
-                            value={
-                              (svc.scripts || {})[
-                                key as keyof ServiceDataConfig["scripts"]
-                              ] || ""
-                            }
+                            value={(svc.scripts || {})[key as keyof ServiceDataConfig["scripts"]] || ""}
                             onChange={(e) =>
-                              handleServiceScriptChange(
-                                idx,
-                                key as keyof ServiceDataConfig["scripts"],
-                                e.target.value,
-                              )
+                              handleServiceScriptChange(idx, key as keyof ServiceDataConfig["scripts"], e.target.value)
                             }
                             className="font-mono"
                             disabled={loading}
@@ -442,10 +375,7 @@ export default function ServicesForm({
 
                   {Object.entries(scriptConfigs).some(
                     ([key]) =>
-                      key !== "start" &&
-                      (svc.scripts || {})[
-                        key as keyof ServiceDataConfig["scripts"]
-                      ] === undefined,
+                      key !== "start" && (svc.scripts || {})[key as keyof ServiceDataConfig["scripts"]] === undefined,
                   ) && (
                     <div className="mt-4">
                       <DropdownMenu>
@@ -465,28 +395,18 @@ export default function ServicesForm({
                           {Object.entries(scriptConfigs)
                             .filter(
                               ([key]) =>
-                                key !== "start" &&
-                                svc.scripts[
-                                  key as keyof ServiceDataConfig["scripts"]
-                                ] === undefined,
+                                key !== "start" && svc.scripts[key as keyof ServiceDataConfig["scripts"]] === undefined,
                             )
                             .map(([key, config]) => (
                               <DropdownMenuItem
                                 key={key}
-                                onClick={() =>
-                                  handleAddScript(
-                                    idx,
-                                    key as keyof ServiceDataConfig["scripts"],
-                                  )
-                                }
+                                onClick={() => handleAddScript(idx, key as keyof ServiceDataConfig["scripts"])}
                                 disabled={loading}
                                 className="flex items-center gap-2"
                               >
                                 {config.icon}
                                 {config.label}
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  ({config.description})
-                                </span>
+                                <span className="text-xs text-muted-foreground ml-1">({config.description})</span>
                               </DropdownMenuItem>
                             ))}
                         </DropdownMenuContent>
@@ -498,12 +418,7 @@ export default function ServicesForm({
             </Card>
           ))}
 
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleAddService}
-            disabled={loading}
-          >
+          <Button type="button" variant="secondary" onClick={handleAddService} disabled={loading}>
             Add Service
           </Button>
         </>

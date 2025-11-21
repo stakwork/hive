@@ -3,14 +3,8 @@ import { PATCH } from "@/app/api/tasks/[taskId]/route";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
-import {
-  createAuthenticatedPatchRequest,
-  createGetRequest,
-} from "@/__tests__/support/helpers/request-builders";
-import {
-  createAuthenticatedSession,
-  getMockedSession,
-} from "@/__tests__/support/helpers/auth";
+import { createAuthenticatedPatchRequest, createGetRequest } from "@/__tests__/support/helpers/request-builders";
+import { createAuthenticatedSession, getMockedSession } from "@/__tests__/support/helpers/auth";
 import { generateUniqueSlug, generateUniqueId } from "@/__tests__/support/helpers/ids";
 import type { User, Workspace, Task } from "@prisma/client";
 
@@ -44,11 +38,7 @@ async function createTestWorkspace(ownerId: string) {
   return workspace;
 }
 
-async function createTestTask(
-  workspaceId: string,
-  userId: string,
-  options?: { archived?: boolean }
-) {
+async function createTestTask(workspaceId: string, userId: string, options?: { archived?: boolean }) {
   const taskId = generateUniqueId("task");
 
   const task = await db.task.create({
@@ -92,9 +82,13 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
     const testTask = await createTestTask(testWorkspace.id, testUser.id);
 
     try {
-      const request = createAuthenticatedPatchRequest("http://localhost", {
-        archived: true,
-      }, testUser);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost",
+        {
+          archived: true,
+        },
+        testUser,
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -127,9 +121,13 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
     });
 
     try {
-      const request = createAuthenticatedPatchRequest("http://localhost", {
-        archived: false,
-      }, testUser);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost",
+        {
+          archived: false,
+        },
+        testUser,
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: archivedTask.id }),
@@ -160,9 +158,13 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
     const testTask = await createTestTask(testWorkspace.id, testUser.id);
 
     try {
-      const request = createAuthenticatedPatchRequest("http://localhost", {
-        archived: "invalid",
-      }, testUser);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost",
+        {
+          archived: "invalid",
+        },
+        testUser,
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: testTask.id }),
@@ -182,9 +184,13 @@ describe("PATCH /api/tasks/[taskId] - Archive Functionality", () => {
     const testWorkspace = await createTestWorkspace(testUser.id);
 
     try {
-      const request = createAuthenticatedPatchRequest("http://localhost", {
-        archived: true,
-      }, testUser);
+      const request = createAuthenticatedPatchRequest(
+        "http://localhost",
+        {
+          archived: true,
+        },
+        testUser,
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: "non-existent-task-id" }),
@@ -213,13 +219,9 @@ describe("GET /api/tasks - Archive Filtering", () => {
 
     try {
       // Mock NextAuth session for GET request
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}`
-      );
+      const request = createGetRequest(`/api/tasks?workspaceId=${testWorkspace.id}`);
 
       const response = await GET(request);
 
@@ -245,13 +247,9 @@ describe("GET /api/tasks - Archive Filtering", () => {
 
     try {
       // Mock NextAuth session for GET request
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=true`
-      );
+      const request = createGetRequest(`/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=true`);
 
       const response = await GET(request);
 
@@ -281,13 +279,9 @@ describe("GET /api/tasks - Archive Filtering", () => {
 
     try {
       // Mock NextAuth session for GET request
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createGetRequest(
-        `/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=false`
-      );
+      const request = createGetRequest(`/api/tasks?workspaceId=${testWorkspace.id}&includeArchived=false`);
 
       const response = await GET(request);
 

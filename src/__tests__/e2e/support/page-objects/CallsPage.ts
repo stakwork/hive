@@ -1,5 +1,5 @@
-import { Page, expect } from '@playwright/test';
-import { selectors } from '../fixtures/selectors';
+import { Page, expect } from "@playwright/test";
+import { selectors } from "../fixtures/selectors";
 
 /**
  * Page Object Model for Calls page
@@ -57,7 +57,7 @@ export class CallsPage {
     if (!isCallsVisible) {
       await contextButton.click();
       // Wait for calls link to become visible after expanding
-      await callsLink.waitFor({ state: 'visible', timeout: 5000 });
+      await callsLink.waitFor({ state: "visible", timeout: 5000 });
     }
 
     await callsLink.click();

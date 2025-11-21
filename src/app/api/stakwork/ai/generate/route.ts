@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
           error: "Invalid request data",
           details: validationResult.error.format(),
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -52,17 +52,13 @@ export async function POST(request: NextRequest) {
           createdAt: run.createdAt,
         },
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error creating AI generation run:", error);
 
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to create AI generation run";
+    const errorMessage = error instanceof Error ? error.message : "Failed to create AI generation run";
 
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

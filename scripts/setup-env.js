@@ -19,8 +19,6 @@ console.log("⚠️  Important Security Notes:");
 console.log("- Keep this secret secure and never commit it to version control");
 console.log("- Use different secrets for development, staging, and production");
 console.log("- Rotate the secret periodically in production");
-console.log(
-  "- Store production secrets in a secure environment variable service\n",
-);
+console.log("- Store production secrets in a secure environment variable service\n");
 
 console.log("🚀 You can now run: npm run dev");

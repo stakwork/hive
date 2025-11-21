@@ -21,10 +21,7 @@ import {
 } from "../../utils/devContainerUtils";
 import { ModalComponentProps } from "./ModlaProvider";
 
-const getFiles = (
-  repoName: string,
-  servicesData: ServiceDataConfig[],
-) => {
+const getFiles = (repoName: string, servicesData: ServiceDataConfig[]) => {
   const pm2Apps = generatePM2Apps(repoName, servicesData);
 
   return {
@@ -42,24 +39,14 @@ type ServicesModalProps = {
   /** optional: anything you might want to pass in future */
 };
 
-export default function ServicesModal({
-  onResolve,
-  onReject,
-}: ModalComponentProps<ServicesModalProps>) {
+export default function ServicesModal({ onResolve, onReject }: ModalComponentProps<ServicesModalProps>) {
   const { slug, id: workspaceId, updateWorkspace } = useWorkspace();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
   // Local state for services and environment variables
   const [services, setServices] = useState<ServiceDataConfig[]>([]);
-  const {
-    envVars,
-    handleEnvChange,
-    handleAddEnv,
-    handleRemoveEnv,
-    setEnvVars,
-    bulkAddEnvVars,
-  } = useEnvironmentVars();
+  const { envVars, handleEnvChange, handleAddEnv, handleRemoveEnv, setEnvVars, bulkAddEnvVars } = useEnvironmentVars();
   const [dataLoading, setDataLoading] = useState(true);
   const [repoName, setRepoName] = useState<string>("");
   const [showImportSection, setShowImportSection] = useState(false);
@@ -90,7 +77,7 @@ export default function ServicesModal({
                   name: env.name,
                   value: env.value,
                   show: false,
-                }))
+                })),
               );
             }
 
@@ -143,7 +130,7 @@ export default function ServicesModal({
       bulkAddEnvVars(parsed);
       toast({
         title: "Variables imported",
-        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
+        description: `Successfully imported ${count} environment variable${count > 1 ? "s" : ""}.`,
       });
     } catch (err) {
       console.error("Failed to paste environment variables:", err);
@@ -172,7 +159,7 @@ export default function ServicesModal({
       bulkAddEnvVars(parsed);
       toast({
         title: "Variables imported",
-        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''} from ${fileName}.`,
+        description: `Successfully imported ${count} environment variable${count > 1 ? "s" : ""} from ${fileName}.`,
       });
       setShowImportSection(false);
     } catch (err) {
@@ -248,7 +235,7 @@ export default function ServicesModal({
       });
 
       updateWorkspace({
-        poolState: 'COMPLETE',
+        poolState: "COMPLETE",
       });
 
       toast({
@@ -268,21 +255,12 @@ export default function ServicesModal({
     }
   }, [slug, workspaceId, services, envVars, repoName, toast, onResolve, updateWorkspace]);
 
-
   return (
     <>
       {/* Backdrop */}
-      <div
-        aria-hidden
-        className="fixed inset-0 bg-black/50"
-        onClick={() => onReject("backdrop")}
-      />
+      <div aria-hidden className="fixed inset-0 bg-black/50" onClick={() => onReject("backdrop")} />
       {/* Centered panel */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="fixed inset-0 grid place-items-center p-4"
-      >
+      <div role="dialog" aria-modal="true" className="fixed inset-0 grid place-items-center p-4">
         <Card className="max-w-4xl w-full max-h-[90vh] overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Services & Environment Configuration</CardTitle>
@@ -387,11 +365,7 @@ export default function ServicesModal({
                   disabled={loading || dataLoading}
                   className="flex items-center space-x-2 p-0 h-auto text-sm font-medium hover:bg-transparent mb-4"
                 >
-                  {showAdvancedSection ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
+                  {showAdvancedSection ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   <Settings className="w-4 h-4" />
                   <span>Advanced Services Configuration</span>
                 </Button>
@@ -402,11 +376,7 @@ export default function ServicesModal({
                       <p className="text-sm text-muted-foreground mb-4">
                         Configure services, ports, and scripts for your development environment.
                       </p>
-                      <ServicesForm
-                        data={services}
-                        loading={loading || dataLoading}
-                        onChange={handleServicesChange}
-                      />
+                      <ServicesForm data={services} loading={loading || dataLoading} onChange={handleServicesChange} />
                     </div>
                   </div>
                 )}

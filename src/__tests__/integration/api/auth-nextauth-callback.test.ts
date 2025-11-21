@@ -1,9 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  generateUniqueId,
-} from "@/__tests__/support/helpers";
+import { generateUniqueId } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import { authOptions } from "@/lib/auth/nextauth";
 
@@ -136,10 +134,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       expect(encryptedToken).toHaveProperty("keyId");
 
       // Verify token can be decrypted
-      const decryptedToken = encryptionService.decryptField(
-        "access_token",
-        account!.access_token!
-      );
+      const decryptedToken = encryptionService.decryptField("access_token", account!.access_token!);
       expect(decryptedToken).toBe(mockOAuthTokenResponse.access_token);
     });
 
@@ -147,7 +142,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       // NextAuth handles CSRF validation internally before callbacks
       // This test verifies the callback returns false for invalid state
       const signInCallback = authOptions.callbacks?.signIn;
-      
+
       // Simulate invalid account (missing required fields)
       const result = await signInCallback!({
         user: { id: "invalid", email: null, name: null },
@@ -165,7 +160,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test.skip("should handle invalid authorization code from GitHub", async () => {
       // This test is skipped because the mock fetch behavior doesn't match expectations
       // The mock returns successful response even when configured for error response
-      
+
       // Mock GitHub token exchange failure
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -231,10 +226,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       // Create account with encrypted token via linkAccount event
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        mockAccessToken
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", mockAccessToken);
 
       const account = await db.account.create({
         data: {
@@ -257,10 +249,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       expect(storedToken.version).toBe("1");
 
       // Verify decryption
-      const decrypted = encryptionService.decryptField(
-        "access_token",
-        account.access_token!
-      );
+      const decrypted = encryptionService.decryptField("access_token", account.access_token!);
       expect(decrypted).toBe(mockAccessToken);
     });
 
@@ -270,10 +259,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       const originalToken = "gho_original_token_value";
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        originalToken
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", originalToken);
 
       const account = await db.account.create({
         data: {
@@ -291,10 +277,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         where: { id: account.id },
       });
 
-      const decryptedToken = encryptionService.decryptField(
-        "access_token",
-        retrievedAccount!.access_token!
-      );
+      const decryptedToken = encryptionService.decryptField("access_token", retrievedAccount!.access_token!);
 
       expect(decryptedToken).toBe(originalToken);
     });
@@ -302,16 +285,13 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test.skip("should detect tampered encrypted tokens (auth tag validation)", async () => {
       // This test is skipped because the encryption service may handle invalid JSON gracefully
       // by returning the plaintext instead of throwing an error
-      
+
       const testUser = await createTestUser({
         email: "tamper-test@example.com",
       });
 
       const originalToken = "gho_token_to_tamper";
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        originalToken
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", originalToken);
 
       // Tamper with the auth tag
       const tamperedToken = {
@@ -344,11 +324,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const activeKeyId = encryptionService.getActiveKeyId() || "default";
       const token = "gho_explicit_keyid_token";
 
-      const encryptedToken = encryptionService.encryptFieldWithKeyId(
-        "access_token",
-        token,
-        activeKeyId
-      );
+      const encryptedToken = encryptionService.encryptFieldWithKeyId("access_token", token, activeKeyId);
 
       expect(encryptedToken.keyId).toBe(activeKeyId);
 
@@ -363,17 +339,14 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         },
       });
 
-      const decrypted = encryptionService.decryptField(
-        "access_token",
-        account.access_token!
-      );
+      const decrypted = encryptionService.decryptField("access_token", account.access_token!);
       expect(decrypted).toBe(token);
     });
 
     test.skip("should handle corrupted encrypted data gracefully", async () => {
       // This test is skipped because the encryption service handles malformed JSON gracefully
       // by returning the plaintext instead of throwing an error
-      
+
       const testUser = await createTestUser({
         email: "corrupted-test@example.com",
       });
@@ -393,11 +366,8 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       // Attempt decryption returns plaintext for malformed JSON
-      const result = encryptionService.decryptField(
-        "access_token",
-        account.access_token!
-      );
-      
+      const result = encryptionService.decryptField("access_token", account.access_token!);
+
       expect(result).toBe(malformedToken);
     });
   });
@@ -531,10 +501,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const providerAccountId = "duplicate-github-id";
 
       // Create first GitHub account
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        "first_token"
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", "first_token");
 
       await db.account.create({
         data: {
@@ -548,10 +515,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       // Attempt to create duplicate with same providerAccountId
-      const duplicateEncryptedToken = encryptionService.encryptField(
-        "access_token",
-        "second_token"
-      );
+      const duplicateEncryptedToken = encryptionService.encryptField("access_token", "second_token");
 
       await expect(
         db.account.create({
@@ -563,7 +527,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
             access_token: JSON.stringify(duplicateEncryptedToken),
             scope: "read:user",
           },
-        })
+        }),
       ).rejects.toThrow(); // Unique constraint violation
     });
 
@@ -571,7 +535,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test.skip("should synchronize GitHub profile data to GitHubAuth table", async () => {
       // This test is skipped because the session callback may not sync profile data
       // in the current implementation. Need to verify actual behavior first.
-      
+
       const testUser = await createTestUser({
         email: mockGitHubProfile.email,
       });
@@ -583,10 +547,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       // Create account with token
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        "profile_sync_token"
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", "profile_sync_token");
 
       await db.account.create({
         data: {
@@ -636,7 +597,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
           headers: expect.objectContaining({
             Authorization: expect.stringContaining("token"),
           }),
-        })
+        }),
       );
 
       // Verify GitHubAuth record was created/updated
@@ -663,10 +624,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       // Create account
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        "failing_token"
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", "failing_token");
 
       await db.account.create({
         data: {
@@ -748,7 +706,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test.skip("should populate session with GitHub data", async () => {
       // This test is skipped because the session callback may not add GitHub data
       // to session.user in the current implementation. Need to verify actual behavior.
-      
+
       const testUser = await createTestUser({
         email: "session-github-test@example.com",
       });
@@ -836,7 +794,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test.skip("should handle GitHub token exchange failure", async () => {
       // This test is skipped because the mock fetch may not be working as expected
       // Need to verify actual mock behavior for error responses
-      
+
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 400,
@@ -846,18 +804,15 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         }),
       });
 
-      const response = await fetch(
-        "https://github.com/login/oauth/access_token",
-        {
-          method: "POST",
-          headers: { Accept: "application/json" },
-          body: JSON.stringify({
-            client_id: "test",
-            client_secret: "test",
-            code: "invalid_code",
-          }),
-        }
-      );
+      const response = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: JSON.stringify({
+          client_id: "test",
+          client_secret: "test",
+          code: "invalid_code",
+        }),
+      });
 
       expect(response.ok).toBe(false);
       expect(response.status).toBe(400);
@@ -869,7 +824,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test.skip("should handle GitHub profile fetch failure", async () => {
       // This test is skipped because the mock fetch may not be working as expected
       // Need to verify actual mock behavior for error responses
-      
+
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -890,12 +845,10 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test.skip("should handle network errors during OAuth flow", async () => {
       // This test is skipped because the mock fetch may not be rejecting as expected
       // Need to verify actual mock behavior for network errors
-      
+
       mockFetch.mockRejectedValueOnce(new Error("Network request failed"));
 
-      await expect(
-        fetch("https://github.com/login/oauth/access_token")
-      ).rejects.toThrow("Network request failed");
+      await expect(fetch("https://github.com/login/oauth/access_token")).rejects.toThrow("Network request failed");
     });
 
     test("should handle database constraint violations", async () => {
@@ -906,10 +859,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const providerAccountId = "constraint-test-id";
 
       // Create first account
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        "first_token"
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", "first_token");
 
       await db.account.create({
         data: {
@@ -933,7 +883,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
             access_token: JSON.stringify(encryptedToken),
             scope: "read:user",
           },
-        })
+        }),
       ).rejects.toThrow();
     });
 
@@ -958,10 +908,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       // Attempt to decrypt plaintext should handle gracefully
-      const result = encryptionService.decryptField(
-        "access_token",
-        account.access_token!
-      );
+      const result = encryptionService.decryptField("access_token", account.access_token!);
 
       // EncryptionService returns plaintext if not encrypted format
       expect(result).toBe(plaintextToken);
@@ -1052,10 +999,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         email: "security-test@example.com",
       });
 
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        "secret_token_never_expose"
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", "secret_token_never_expose");
 
       await db.account.create({
         data: {
@@ -1109,10 +1053,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       });
 
       const accessToken = "gho_enforce_encryption";
-      const encryptedToken = encryptionService.encryptField(
-        "access_token",
-        accessToken
-      );
+      const encryptedToken = encryptionService.encryptField("access_token", accessToken);
 
       await db.account.create({
         data: {

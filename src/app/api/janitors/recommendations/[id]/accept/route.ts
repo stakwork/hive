@@ -10,10 +10,7 @@ const acceptRecommendationSchema = z.object({
   repositoryId: z.string().optional(),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     console.log("Accept route called");
     const session = await getServerSession(authOptions);
@@ -29,11 +26,7 @@ export async function POST(
     const body = await request.json();
     const validatedData = acceptRecommendationSchema.parse(body);
 
-    const { recommendation, task } = await acceptJanitorRecommendation(
-      id,
-      userId,
-      validatedData
-    );
+    const { recommendation, task } = await acceptJanitorRecommendation(id, userId, validatedData);
 
     return NextResponse.json({
       success: true,
@@ -42,54 +35,33 @@ export async function POST(
         id: recommendation.id,
         status: recommendation.status,
         acceptedAt: recommendation.acceptedAt,
-      }
+      },
     });
   } catch (error) {
     console.error("Error accepting recommendation:", error);
-    
+
     if (error && typeof error === "object" && "issues" in error) {
-      return NextResponse.json(
-        { error: "Validation failed", details: error.issues },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Validation failed", details: error.issues }, { status: 400 });
     }
 
     if (error instanceof Error) {
       if (error.message === JANITOR_ERRORS.RECOMMENDATION_NOT_FOUND) {
-        return NextResponse.json(
-          { error: "Recommendation not found" },
-          { status: 404 }
-        );
+        return NextResponse.json({ error: "Recommendation not found" }, { status: 404 });
       }
       if (error.message === JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS) {
-        return NextResponse.json(
-          { error: "Insufficient permissions to accept recommendations" },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: "Insufficient permissions to accept recommendations" }, { status: 403 });
       }
       if (error.message === JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED) {
-        return NextResponse.json(
-          { error: "Recommendation has already been processed" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Recommendation has already been processed" }, { status: 400 });
       }
       if (error.message === JANITOR_ERRORS.ASSIGNEE_NOT_MEMBER) {
-        return NextResponse.json(
-          { error: "Assignee is not a member of this workspace" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Assignee is not a member of this workspace" }, { status: 400 });
       }
       if (error.message === JANITOR_ERRORS.REPOSITORY_NOT_FOUND) {
-        return NextResponse.json(
-          { error: "Repository not found in this workspace" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Repository not found in this workspace" }, { status: 400 });
       }
     }
 
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

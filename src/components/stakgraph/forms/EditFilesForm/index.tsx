@@ -13,26 +13,17 @@ const fileTypeMapper = {
   "devcontainer.json": "json",
   "pm2.config.js": "javascript",
   "docker-compose.yml": "yaml",
-  "Dockerfile": "dockerfile",
+  Dockerfile: "dockerfile",
 };
 
-export const FileTabs: React.FC<FileTabsProps> = ({
-  fileContents,
-  originalContents,
-  onChange,
-}) => {
-
+export const FileTabs: React.FC<FileTabsProps> = ({ fileContents, originalContents, onChange }) => {
   const [activeTab, setActiveTab] = useState("devcontainer-json");
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
       <TabsList className="grid w-full grid-cols-4">
         {Object.keys(fileContents).map((name) => (
-          <TabsTrigger
-            key={name}
-            value={name.toLowerCase().replace(".", "-")}
-            className="flex items-center gap-2"
-          >
+          <TabsTrigger key={name} value={name.toLowerCase().replace(".", "-")} className="flex items-center gap-2">
             <FileIcon type={fileTypeMapper[name as keyof typeof fileTypeMapper]} />
             {name.split(".")[0]}
           </TabsTrigger>
@@ -40,10 +31,7 @@ export const FileTabs: React.FC<FileTabsProps> = ({
       </TabsList>
 
       {Object.keys(fileContents).map((name) => (
-        <TabsContent
-          key={name}
-          value={name.toLowerCase().replace(".", "-")}
-        >
+        <TabsContent key={name} value={name.toLowerCase().replace(".", "-")}>
           <FileEditor
             name={name}
             type={fileTypeMapper[name as keyof typeof fileTypeMapper]}

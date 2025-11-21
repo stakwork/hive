@@ -1,45 +1,43 @@
-import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Badge } from '@/components/ui/badge'
-import { Clock } from 'lucide-react'
+import React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Clock } from "lucide-react";
 
 export interface TranscriptSegment {
-  id: string
-  speaker?: string
-  text: string
-  startTime: number
-  endTime: number
-  confidence?: number
+  id: string;
+  speaker?: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  confidence?: number;
 }
 
 interface TranscriptPanelProps {
-  segments: TranscriptSegment[]
-  currentTime: number
-  onSegmentClick?: (startTime: number) => void
-  loading?: boolean
+  segments: TranscriptSegment[];
+  currentTime: number;
+  onSegmentClick?: (startTime: number) => void;
+  loading?: boolean;
 }
 
 export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   segments,
   currentTime,
   onSegmentClick,
-  loading = false
+  loading = false,
 }) => {
   // Find the current active segment
-  const currentSegment = segments.find(segment =>
-    currentTime >= segment.startTime && currentTime <= segment.endTime
-  )
+  const currentSegment = segments.find((segment) => currentTime >= segment.startTime && currentTime <= segment.endTime);
 
   const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60)
-    const seconds = Math.floor(time % 60)
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
 
   const getTimestamp = (startTime: number, endTime: number) => {
-    return `${formatTime(startTime)} - ${formatTime(endTime)}`
-  }
+    return `${formatTime(startTime)} - ${formatTime(endTime)}`;
+  };
 
   if (loading) {
     return (
@@ -59,7 +57,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (segments.length === 0) {
@@ -75,7 +73,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -118,15 +116,13 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onSegmentClick?.(currentSegment.startTime);
                     }
                   }}
                 >
-                  <p className="text-sm leading-relaxed text-foreground font-medium">
-                    {currentSegment.text}
-                  </p>
+                  <p className="text-sm leading-relaxed text-foreground font-medium">{currentSegment.text}</p>
                 </div>
               </div>
             ) : (
@@ -135,8 +131,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 <p className="text-xs">
                   {segments.length > 0
                     ? "Transcript segments available - seek to a different time to view"
-                    : "No transcript segments available"
-                  }
+                    : "No transcript segments available"}
                 </p>
               </div>
             )}
@@ -144,6 +139,5 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         </ScrollArea>
       </CardContent>
     </Card>
-  )
-}
-
+  );
+};

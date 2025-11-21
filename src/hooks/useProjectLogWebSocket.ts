@@ -33,9 +33,7 @@ export const useProjectLogWebSocket = (
     }
 
     const connectToLogWebSocket = () => {
-      const ws = new WebSocket(
-        "wss://jobs.stakwork.com/cable?channel=ProjectLogChannel",
-      );
+      const ws = new WebSocket("wss://jobs.stakwork.com/cable?channel=ProjectLogChannel");
 
       ws.onopen = () => {
         const command = {
@@ -58,11 +56,7 @@ export const useProjectLogWebSocket = (
 
         const messageData = data?.message;
 
-        if (
-          messageData &&
-          (messageData.type === "on_step_start" ||
-            messageData.type === "on_step_complete")
-        ) {
+        if (messageData && (messageData.type === "on_step_start" || messageData.type === "on_step_complete")) {
           // Skip empty messages to keep the current thinking log visible
           if (!messageData.message || messageData.message.trim() === "") {
             return;
@@ -80,8 +74,7 @@ export const useProjectLogWebSocket = (
         }
       };
 
-      ws.onerror = (error: Event) =>
-        console.error("WebSocket error123:", error);
+      ws.onerror = (error: Event) => console.error("WebSocket error123:", error);
 
       ws.onclose = () => {
         console.log("WebSocket connection closed");

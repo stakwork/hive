@@ -27,11 +27,7 @@ export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps
                 {/* Workspace Icon */}
                 <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground overflow-hidden">
                   {canAccessWorkspaceLogo && logoUrls[workspace.id] ? (
-                    <img
-                      src={logoUrls[workspace.id]}
-                      alt={workspace.name}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={logoUrls[workspace.id]} alt={workspace.name} className="w-full h-full object-cover" />
                   ) : (
                     <Building2 className="w-5 h-5" />
                   )}
@@ -52,9 +48,7 @@ export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps
                   </div>
 
                   {workspace.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-1 mb-2">
-                      {workspace.description}
-                    </p>
+                    <p className="text-sm text-muted-foreground line-clamp-1 mb-2">{workspace.description}</p>
                   )}
 
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -67,10 +61,11 @@ export function WorkspacesPageContent({ workspaces }: WorkspacesPageContentProps
                     <div className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
                       <span>
-                        Created {new Date(workspace.createdAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
+                        Created{" "}
+                        {new Date(workspace.createdAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
                         })}
                       </span>
                     </div>

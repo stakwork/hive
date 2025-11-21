@@ -31,10 +31,7 @@ export async function GET(request: NextRequest) {
     const offset = url.searchParams.get("offset");
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: "workspaceId is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
     }
 
     // Build query object
@@ -44,10 +41,7 @@ export async function GET(request: NextRequest) {
 
     if (type) {
       if (!Object.values(StakworkRunType).includes(type as StakworkRunType)) {
-        return NextResponse.json(
-          { error: `Invalid type: ${type}` },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: `Invalid type: ${type}` }, { status: 400 });
       }
       queryData.type = type;
     }
@@ -58,10 +52,7 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       if (!Object.values(WorkflowStatus).includes(status as WorkflowStatus)) {
-        return NextResponse.json(
-          { error: `Invalid status: ${status}` },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: `Invalid status: ${status}` }, { status: 400 });
       }
       queryData.status = status;
     }
@@ -69,10 +60,7 @@ export async function GET(request: NextRequest) {
     if (limit) {
       const limitNum = parseInt(limit);
       if (isNaN(limitNum) || limitNum <= 0 || limitNum > 100) {
-        return NextResponse.json(
-          { error: "limit must be between 1 and 100" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "limit must be between 1 and 100" }, { status: 400 });
       }
       queryData.limit = limitNum;
     }
@@ -80,10 +68,7 @@ export async function GET(request: NextRequest) {
     if (offset) {
       const offsetNum = parseInt(offset);
       if (isNaN(offsetNum) || offsetNum < 0) {
-        return NextResponse.json(
-          { error: "offset must be >= 0" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "offset must be >= 0" }, { status: 400 });
       }
       queryData.offset = offsetNum;
     }
@@ -97,7 +82,7 @@ export async function GET(request: NextRequest) {
           error: "Invalid query parameters",
           details: validationResult.error.format(),
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -128,17 +113,13 @@ export async function GET(request: NextRequest) {
         limit: result.limit,
         offset: result.offset,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error fetching AI generation runs:", error);
 
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to fetch AI generation runs";
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch AI generation runs";
 
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

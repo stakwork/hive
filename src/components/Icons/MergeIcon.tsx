@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React from 'react'
+import React from "react";
 
 const MergeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="1em" height="1em" viewBox="0 0 12 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -8,6 +8,6 @@ const MergeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
       fill="currentColor"
     />
   </svg>
-)
+);
 
-export default MergeIcon
+export default MergeIcon;

@@ -17,13 +17,11 @@
 export function validateEnum<T extends Record<string, string>>(
   value: string | undefined,
   enumObj: T,
-  fieldName: string
+  fieldName: string,
 ): void {
   if (!value) return;
 
   if (!Object.values(enumObj).includes(value)) {
-    throw new Error(
-      `Invalid ${fieldName}. Must be one of: ${Object.values(enumObj).join(", ")}`
-    );
+    throw new Error(`Invalid ${fieldName}. Must be one of: ${Object.values(enumObj).join(", ")}`);
   }
 }

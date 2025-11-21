@@ -1,21 +1,13 @@
 "use client";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggleDropdown } from "./theme-toggle-dropdown";
 
 export function ThemeSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Theme Settings
-        </CardTitle>
+        <CardTitle className="flex items-center gap-2">Theme Settings</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -24,8 +16,7 @@ export function ThemeSettings() {
               <ThemeToggleDropdown />
             </div>
             <p className="text-sm text-muted-foreground">
-              Select your preferred theme. System will automatically match your
-              operating system&apos;s appearance.
+              Select your preferred theme. System will automatically match your operating system&apos;s appearance.
             </p>
           </div>
         </div>

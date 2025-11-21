@@ -1,27 +1,27 @@
-import { useEffect, useState } from 'react'
-import { MeshStandardMaterial, Texture } from 'three'
-import { smoothness } from '../../constants'
-import { loader, noImageMaterial, noImageTexture, noImageTransparentMaterial, transparentValue } from './constants'
+import { useEffect, useState } from "react";
+import { MeshStandardMaterial, Texture } from "three";
+import { smoothness } from "../../constants";
+import { loader, noImageMaterial, noImageTexture, noImageTransparentMaterial, transparentValue } from "./constants";
 
 type materialRecord = {
-  texture: Texture
-  material: MeshStandardMaterial
-}
+  texture: Texture;
+  material: MeshStandardMaterial;
+};
 
-const cachedMaterials: Record<string, materialRecord> = {}
+const cachedMaterials: Record<string, materialRecord> = {};
 
 export const useMaterial = (url: string, transparent: boolean) => {
-  const [texture, setTexture] = useState(noImageTexture)
-  const [material, setMaterial] = useState(noImageMaterial)
+  const [texture, setTexture] = useState(noImageTexture);
+  const [material, setMaterial] = useState(noImageMaterial);
 
   useEffect(() => {
-    const cashPath = `${url}${transparent && '-transparent'}`
+    const cashPath = `${url}${transparent && "-transparent"}`;
 
     if (cachedMaterials[cashPath]) {
-      setTexture(cachedMaterials[cashPath].texture)
-      setMaterial(cachedMaterials[cashPath].material)
+      setTexture(cachedMaterials[cashPath].texture);
+      setMaterial(cachedMaterials[cashPath].material);
 
-      return
+      return;
     }
 
     loader.load(
@@ -33,38 +33,38 @@ export const useMaterial = (url: string, transparent: boolean) => {
           transparent,
           opacity: transparent ? transparentValue : 1,
           ...smoothness,
-        })
+        });
 
         cachedMaterials[cashPath] = {
           texture: loadedTexture,
           material: newMaterial,
-        }
+        };
 
-        setTexture(loadedTexture)
-        setMaterial(newMaterial)
+        setTexture(loadedTexture);
+        setMaterial(newMaterial);
       },
       undefined,
       () => {
         // on error, set blank meterial
-        setTexture(noImageTexture)
+        setTexture(noImageTexture);
 
         if (transparent) {
-          setMaterial(noImageTransparentMaterial)
+          setMaterial(noImageTransparentMaterial);
         } else {
-          setMaterial(noImageMaterial)
+          setMaterial(noImageMaterial);
         }
       },
-    )
-  }, [url, transparent])
+    );
+  }, [url, transparent]);
 
   useEffect(
     () =>
       function cleanup() {
-        texture.dispose()
-        material.dispose()
+        texture.dispose();
+        material.dispose();
       },
     [texture, material],
-  )
+  );
 
-  return { material, texture }
-}
+  return { material, texture };
+};

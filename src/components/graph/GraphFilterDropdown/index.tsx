@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FilterTab } from "@/stores/useGraphStore";
 import { BrainCog, CheckSquare, Code2, Layers, MessageSquare } from "lucide-react";
 

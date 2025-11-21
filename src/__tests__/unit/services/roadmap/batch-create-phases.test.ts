@@ -38,8 +38,8 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
 
     // Setup default mock implementations
     (validateFeatureAccess as any).mockResolvedValue(mockFeature);
-    (ensureUniqueBountyCode as any).mockImplementation(() => 
-      Promise.resolve(`BC-${Math.random().toString(36).substring(7)}`)
+    (ensureUniqueBountyCode as any).mockImplementation(() =>
+      Promise.resolve(`BC-${Math.random().toString(36).substring(7)}`),
     );
 
     // Mock user lookup
@@ -81,9 +81,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
 
       const phases = [{ name: "Phase 1", tasks: [] }];
 
-      await expect(
-        batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)
-      ).rejects.toThrow("Access denied");
+      await expect(batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)).rejects.toThrow("Access denied");
     });
 
     test("throws error when user is not found", async () => {
@@ -91,9 +89,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
 
       const phases = [{ name: "Phase 1", tasks: [] }];
 
-      await expect(
-        batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)
-      ).rejects.toThrow("User not found");
+      await expect(batchCreatePhasesWithTasks(mockFeatureId, mockUserId, phases)).rejects.toThrow("User not found");
     });
   });
 
@@ -153,7 +149,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
 
     test("creates multiple phases with correct ordering", async () => {
       let phaseIdCounter = 1;
-      
+
       dbMock.$transaction.mockImplementation((callback: any) => callback(dbMock));
       dbMock.phase.findMany.mockResolvedValue([]);
       dbMock.phase.create.mockImplementation((args: any) => {
@@ -187,9 +183,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
 
     test("appends to existing phases with correct order", async () => {
       // Mock returns only the highest ordered phase (due to take: 1 and orderBy: order: desc)
-      const existingPhases = [
-        { id: "existing-2", order: 1 },
-      ];
+      const existingPhases = [{ id: "existing-2", order: 1 }];
 
       dbMock.$transaction.mockImplementation((callback: any) => callback(dbMock));
       dbMock.phase.findMany.mockResolvedValue(existingPhases);
@@ -214,7 +208,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           data: expect.objectContaining({
             order: 2, // Should start at 2 (existing max order 1 + 1)
           }),
-        })
+        }),
       );
     });
 
@@ -247,7 +241,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           data: expect.objectContaining({
             name: "Trimmed Phase",
           }),
-        })
+        }),
       );
     });
   });
@@ -343,7 +337,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -386,7 +380,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -411,7 +405,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
             title: "Trimmed Task",
             description: "Trimmed Description",
           }),
-        })
+        }),
       );
     });
 
@@ -440,7 +434,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -457,7 +451,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           data: expect.objectContaining({
             status: "TODO",
           }),
-        })
+        }),
       );
     });
   });
@@ -638,7 +632,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -678,7 +672,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -750,7 +744,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -796,7 +790,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -840,7 +834,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -912,7 +906,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           systemAssigneeType: null,
           assignee: null,
           phase: { id: mockPhase.id, name: mockPhase.name },
-        })
+        }),
       );
 
       const phases = [
@@ -929,7 +923,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           data: expect.objectContaining({
             description: null,
           }),
-        })
+        }),
       );
 
       expect(dbMock.task.create).toHaveBeenCalledWith(
@@ -937,7 +931,7 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
           data: expect.objectContaining({
             description: null,
           }),
-        })
+        }),
       );
     });
 
@@ -984,15 +978,11 @@ describe("batchCreatePhasesWithTasks - Unit Tests", () => {
         },
         {
           name: "Phase 2",
-          tasks: [
-            { title: "Task 3", priority: "HIGH" as const, tempId: "T3", dependsOn: ["T1", "T2"] },
-          ],
+          tasks: [{ title: "Task 3", priority: "HIGH" as const, tempId: "T3", dependsOn: ["T1", "T2"] }],
         },
         {
           name: "Phase 3",
-          tasks: [
-            { title: "Task 4", priority: "LOW" as const, tempId: "T4", dependsOn: ["T3"] },
-          ],
+          tasks: [{ title: "Task 4", priority: "LOW" as const, tempId: "T4", dependsOn: ["T3"] }],
         },
       ];
 

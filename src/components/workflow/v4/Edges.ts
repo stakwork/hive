@@ -3,7 +3,7 @@ interface EdgeConfig {
   source: string;
   target: string;
   animated: boolean;
-  type: 'smoothstep' | 'straight';
+  type: "smoothstep" | "straight";
   edgeColor: string;
 }
 
@@ -13,10 +13,17 @@ class Edges implements EdgeConfig {
   target: string;
   animated: boolean;
   noHandle: boolean;
-  type: 'smoothstep' | 'straight';
+  type: "smoothstep" | "straight";
   edgeColor: string;
 
-  constructor(id: string, source: string, target: string, animated: boolean, type: 'smoothstep' | 'straight', edgeColor: string) {
+  constructor(
+    id: string,
+    source: string,
+    target: string,
+    animated: boolean,
+    type: "smoothstep" | "straight",
+    edgeColor: string,
+  ) {
     this.id = id;
     this.source = source;
     this.target = target;
@@ -27,31 +34,31 @@ class Edges implements EdgeConfig {
   }
 
   static defaultEdge(id: string, source: string, target: string): Edges {
-    return new Edges(id, source, target, false, 'smoothstep', '#000000');
+    return new Edges(id, source, target, false, "smoothstep", "#000000");
   }
 
   static straightEdge(id: string, source: string, target: string): Edges {
-    return new Edges(id, source, target, false, 'straight', '#000000');
+    return new Edges(id, source, target, false, "straight", "#000000");
   }
 
   static falseAnimatedEdge(id: string, source: string, target: string): Edges {
-    return new Edges(id, source, target, true, 'smoothstep', 'red');
+    return new Edges(id, source, target, true, "smoothstep", "red");
   }
 
   static trueAnimatedEdge(id: string, source: string, target: string): Edges {
-    return new Edges(id, source, target, true, 'smoothstep', '#67C083');
+    return new Edges(id, source, target, true, "smoothstep", "#67C083");
   }
 
   static trueEdge(id: string, source: string, target: string): Edges {
-    return new Edges(id, source, target, false, 'smoothstep', '#67C083');
+    return new Edges(id, source, target, false, "smoothstep", "#67C083");
   }
 
   static falseEdge(id: string, source: string, target: string): Edges {
-    return new Edges(id, source, target, false, 'smoothstep', 'red');
+    return new Edges(id, source, target, false, "smoothstep", "red");
   }
 
   static skippedEdge(id: string, source: string, target: string): Edges {
-    return new Edges(id, source, target, true, 'smoothstep', '#8F979D');
+    return new Edges(id, source, target, true, "smoothstep", "#8F979D");
   }
 }
 

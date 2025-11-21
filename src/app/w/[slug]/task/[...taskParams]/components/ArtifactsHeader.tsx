@@ -47,10 +47,7 @@ export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifact
               variant={isActive ? "secondary" : "ghost"}
               size="sm"
               onClick={() => onArtifactChange(type)}
-              className={cn(
-                "h-8 w-8 p-0",
-                isActive && "bg-secondary"
-              )}
+              className={cn("h-8 w-8 p-0", isActive && "bg-secondary")}
               aria-label={label}
             >
               <Icon className="w-4 h-4" />
@@ -71,14 +68,10 @@ export function ArtifactsHeader({ availableArtifacts, activeArtifact, onArtifact
     <div className="border-b bg-background/80 backdrop-blur px-3 py-2">
       <div className="flex items-center justify-between">
         {/* Left side: Visual artifacts */}
-        <div className="flex items-center gap-1">
-          {visualButtons}
-        </div>
+        <div className="flex items-center gap-1">{visualButtons}</div>
 
         {/* Right side: Code artifacts */}
-        <div className="flex items-center gap-1">
-          {codeButtons}
-        </div>
+        <div className="flex items-center gap-1">{codeButtons}</div>
       </div>
     </div>
   );

@@ -197,7 +197,11 @@ export async function POST(request: NextRequest) {
     // If a PR already exists, stay on current branch instead of creating a new one
     const stayOnBranch = existingPullRequest ? "&stayOnCurrentBranch=true" : "";
     const pushUrl = `${controlPortUrl}/push?pr=true&commit=true${stayOnBranch}`;
-    console.log(">>> Push URL:", pushUrl, existingPullRequest ? "(staying on current branch)" : "(creating new branch)");
+    console.log(
+      ">>> Push URL:",
+      pushUrl,
+      existingPullRequest ? "(staying on current branch)" : "(creating new branch)",
+    );
     const pushResponse = await fetch(pushUrl, {
       method: "POST",
       headers: {

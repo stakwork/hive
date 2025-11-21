@@ -14,7 +14,6 @@ export const runtime = "nodejs";
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function GET(request: NextRequest) {
-
   console.log("Getting services");
   try {
     const session = await getServerSession(authOptions);
@@ -65,7 +64,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          status: 'COMPLETED',
+          status: "COMPLETED",
           data: { services },
         },
         { status: 200 },
@@ -73,14 +72,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if there's already an ongoing agent process
-    if (swarm.agentRequestId && swarm.agentStatus === 'PROCESSING') {
+    if (swarm.agentRequestId && swarm.agentStatus === "PROCESSING") {
       console.log("[stakgraph/services] Reusing existing agent request:", swarm.agentRequestId);
       return NextResponse.json(
         {
           success: true,
-          status: 'PROCESSING',
+          status: "PROCESSING",
           data: {
-            request_id: swarm.agentRequestId
+            request_id: swarm.agentRequestId,
           },
         },
         { status: 202 },
@@ -161,19 +160,22 @@ export async function GET(request: NextRequest) {
           where: { id: swarm.id },
           data: {
             agentRequestId: initData.request_id,
-            agentStatus: 'PROCESSING',
+            agentStatus: "PROCESSING",
           },
         });
 
         // Return immediately with request_id for SSE streaming
-        console.log("[stakgraph/services] Agent initiated, returning request_id for SSE streaming:", initData.request_id);
+        console.log(
+          "[stakgraph/services] Agent initiated, returning request_id for SSE streaming:",
+          initData.request_id,
+        );
 
         return NextResponse.json(
           {
             success: true,
-            status: 'PROCESSING',
+            status: "PROCESSING",
             data: {
-              request_id: initData.request_id
+              request_id: initData.request_id,
             },
           },
           { status: 202 },
@@ -231,7 +233,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          status: 'COMPLETED',
+          status: "COMPLETED",
           data: responseData,
         },
         { status: 200 },
@@ -239,10 +241,7 @@ export async function GET(request: NextRequest) {
     }
 
     // This should not happen if agent mode returns early
-    return NextResponse.json(
-      { success: false, message: "No data to return" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: "No data to return" }, { status: 500 });
   } catch (error) {
     console.error("[stakgraph/services] Unhandled error:", error);
     console.error("[stakgraph/services] Error stack:", error instanceof Error ? error.stack : "No stack trace");

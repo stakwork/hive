@@ -112,13 +112,10 @@ describe("createFeature", () => {
         createFeature(mockUserId, {
           title: "Test Feature",
           workspaceId: mockWorkspaceId,
-        })
+        }),
       ).rejects.toThrow("Access denied");
 
-      expect(validateWorkspaceAccessById).toHaveBeenCalledWith(
-        mockWorkspaceId,
-        mockUserId
-      );
+      expect(validateWorkspaceAccessById).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
     });
 
     test("allows feature creation when user has workspace access", async () => {
@@ -127,10 +124,7 @@ describe("createFeature", () => {
         workspaceId: mockWorkspaceId,
       });
 
-      expect(validateWorkspaceAccessById).toHaveBeenCalledWith(
-        mockWorkspaceId,
-        mockUserId
-      );
+      expect(validateWorkspaceAccessById).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
     });
   });
 
@@ -140,7 +134,7 @@ describe("createFeature", () => {
         createFeature(mockUserId, {
           title: "",
           workspaceId: mockWorkspaceId,
-        })
+        }),
       ).rejects.toThrow("Title is required");
     });
 
@@ -149,7 +143,7 @@ describe("createFeature", () => {
         createFeature(mockUserId, {
           title: "   ",
           workspaceId: mockWorkspaceId,
-        })
+        }),
       ).rejects.toThrow("Title is required");
     });
 
@@ -164,7 +158,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             title: "Valid Title",
           }),
-        })
+        }),
       );
     });
   });
@@ -177,7 +171,7 @@ describe("createFeature", () => {
         createFeature(mockUserId, {
           title: "Test Feature",
           workspaceId: mockWorkspaceId,
-        })
+        }),
       ).rejects.toThrow("User not found");
 
       expect(db.user.findUnique).toHaveBeenCalledWith({
@@ -204,7 +198,7 @@ describe("createFeature", () => {
           title: "Test Feature",
           workspaceId: mockWorkspaceId,
           status: "INVALID_STATUS" as FeatureStatus,
-        })
+        }),
       ).rejects.toThrow("Invalid status");
     });
 
@@ -220,7 +214,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             status: FeatureStatus.BACKLOG,
           }),
-        })
+        }),
       );
     });
 
@@ -236,7 +230,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             status: FeatureStatus.PLANNED,
           }),
-        })
+        }),
       );
     });
 
@@ -252,7 +246,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             status: FeatureStatus.IN_PROGRESS,
           }),
-        })
+        }),
       );
     });
 
@@ -268,7 +262,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             status: FeatureStatus.COMPLETED,
           }),
-        })
+        }),
       );
     });
 
@@ -284,7 +278,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             status: FeatureStatus.CANCELLED,
           }),
-        })
+        }),
       );
     });
   });
@@ -296,7 +290,7 @@ describe("createFeature", () => {
           title: "Test Feature",
           workspaceId: mockWorkspaceId,
           priority: "INVALID_PRIORITY" as FeaturePriority,
-        })
+        }),
       ).rejects.toThrow("Invalid priority");
     });
 
@@ -312,7 +306,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             priority: FeaturePriority.NONE,
           }),
-        })
+        }),
       );
     });
 
@@ -328,7 +322,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             priority: FeaturePriority.LOW,
           }),
-        })
+        }),
       );
     });
 
@@ -344,7 +338,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             priority: FeaturePriority.MEDIUM,
           }),
-        })
+        }),
       );
     });
 
@@ -360,7 +354,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             priority: FeaturePriority.HIGH,
           }),
-        })
+        }),
       );
     });
 
@@ -376,7 +370,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             priority: FeaturePriority.URGENT,
           }),
-        })
+        }),
       );
     });
   });
@@ -390,7 +384,7 @@ describe("createFeature", () => {
           title: "Test Feature",
           workspaceId: mockWorkspaceId,
           assigneeId: mockAssigneeId,
-        })
+        }),
       ).rejects.toThrow("Assignee not found");
 
       expect(db.user.findFirst).toHaveBeenCalledWith({
@@ -409,7 +403,7 @@ describe("createFeature", () => {
           title: "Test Feature",
           workspaceId: mockWorkspaceId,
           assigneeId: mockAssigneeId,
-        })
+        }),
       ).rejects.toThrow("Assignee not found");
 
       expect(db.user.findFirst).toHaveBeenCalledWith({
@@ -441,7 +435,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             assigneeId: mockAssigneeId,
           }),
-        })
+        }),
       );
     });
 
@@ -477,7 +471,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             title: "Title with spaces",
           }),
-        })
+        }),
       );
     });
 
@@ -493,7 +487,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             brief: "Brief with spaces",
           }),
-        })
+        }),
       );
     });
 
@@ -509,7 +503,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             requirements: "Requirements with spaces",
           }),
-        })
+        }),
       );
     });
 
@@ -525,7 +519,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             architecture: "Architecture with spaces",
           }),
-        })
+        }),
       );
     });
 
@@ -541,7 +535,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             brief: null,
           }),
-        })
+        }),
       );
     });
 
@@ -557,7 +551,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             brief: null,
           }),
-        })
+        }),
       );
     });
   });
@@ -574,7 +568,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             status: FeatureStatus.BACKLOG,
           }),
-        })
+        }),
       );
     });
 
@@ -589,7 +583,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             priority: FeaturePriority.NONE,
           }),
-        })
+        }),
       );
     });
 
@@ -604,7 +598,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             assigneeId: null,
           }),
-        })
+        }),
       );
     });
 
@@ -619,7 +613,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             personas: [],
           }),
-        })
+        }),
       );
     });
   });
@@ -752,7 +746,7 @@ describe("createFeature", () => {
             createdById: mockUserId,
             updatedById: mockUserId,
           }),
-        })
+        }),
       );
     });
   });

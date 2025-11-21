@@ -7,23 +7,11 @@ import { CallsTable } from "@/components/calls/CallsTable";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-} from "@/components/ui/pagination";
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Loader2, Phone } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default function CallsPage() {
   const { workspace, slug } = useWorkspace();
@@ -41,19 +29,19 @@ export default function CallsPage() {
     setGeneratingLink(true);
     try {
       const response = await fetch(`/api/workspaces/${slug}/calls/generate-link`, {
-        method: 'POST',
+        method: "POST",
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate call link');
+        throw new Error(errorData.error || "Failed to generate call link");
       }
 
       const data = await response.json();
-      window.open(data.url, '_blank', 'noopener,noreferrer');
+      window.open(data.url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      console.error('Error generating call link:', err);
-      alert(err instanceof Error ? err.message : 'Failed to start call');
+      console.error("Error generating call link:", err);
+      alert(err instanceof Error ? err.message : "Failed to start call");
     } finally {
       setGeneratingLink(false);
     }
@@ -71,9 +59,7 @@ export default function CallsPage() {
 
       try {
         const skip = (page - 1) * limit;
-        const response = await fetch(
-          `/api/workspaces/${slug}/calls?limit=${limit}&skip=${skip}`,
-        );
+        const response = await fetch(`/api/workspaces/${slug}/calls?limit=${limit}&skip=${skip}`);
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -85,9 +71,7 @@ export default function CallsPage() {
         setHasMore(data.hasMore);
       } catch (err) {
         console.error("Error fetching calls:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load call recordings",
-        );
+        setError(err instanceof Error ? err.message : "Failed to load call recordings");
       } finally {
         setLoading(false);
       }
@@ -99,9 +83,7 @@ export default function CallsPage() {
   if (!workspace?.isCodeGraphSetup) {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Calls"
-        />
+        <PageHeader title="Calls" />
         <ConnectRepository
           workspaceSlug={slug}
           title="Connect repository to view call recordings"

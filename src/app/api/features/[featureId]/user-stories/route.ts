@@ -2,16 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { createUserStory } from "@/services/roadmap";
-import type {
-  CreateUserStoryRequest,
-  UserStoryListResponse,
-  UserStoryResponse,
-} from "@/types/roadmap";
+import type { CreateUserStoryRequest, UserStoryListResponse, UserStoryResponse } from "@/types/roadmap";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ featureId: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ featureId: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -46,17 +39,11 @@ export async function GET(
     });
 
     if (!feature) {
-      return NextResponse.json(
-        { error: "Feature not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
     if (feature.workspace.deleted) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     // Check if user is workspace owner or member
@@ -106,21 +93,15 @@ export async function GET(
         success: true,
         data: userStories,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error fetching user stories:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch user stories" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch user stories" }, { status: 500 });
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ featureId: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ featureId: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -136,14 +117,18 @@ export async function POST(
         success: true,
         data: userStory,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error creating user story:", error);
     const message = error instanceof Error ? error.message : "Failed to create user story";
-    const status = message.includes("not found") ? 404 :
-                   message.includes("denied") ? 403 :
-                   message.includes("required") ? 400 : 500;
+    const status = message.includes("not found")
+      ? 404
+      : message.includes("denied")
+        ? 403
+        : message.includes("required")
+          ? 400
+          : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

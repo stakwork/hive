@@ -132,38 +132,26 @@ describe("parseGithubOwnerRepo", () => {
 
   test("should throw error for non-GitHub URLs", () => {
     expect(() => parseGithubOwnerRepo("https://gitlab.com/owner/repo")).toThrow(
-      "Unable to parse GitHub repository URL"
+      "Unable to parse GitHub repository URL",
     );
     expect(() => parseGithubOwnerRepo("https://bitbucket.org/owner/repo")).toThrow(
-      "Unable to parse GitHub repository URL"
+      "Unable to parse GitHub repository URL",
     );
     expect(() => parseGithubOwnerRepo("https://example.com/owner/repo")).toThrow(
-      "Unable to parse GitHub repository URL"
+      "Unable to parse GitHub repository URL",
     );
   });
 
   test("should throw error for invalid GitHub URLs", () => {
-    expect(() => parseGithubOwnerRepo("https://github.com/")).toThrow(
-      "Unable to parse GitHub repository URL"
-    );
-    expect(() => parseGithubOwnerRepo("https://github.com/owner")).toThrow(
-      "Unable to parse GitHub repository URL"
-    );
-    expect(() => parseGithubOwnerRepo("github.com/")).toThrow(
-      "Unable to parse GitHub repository URL"
-    );
+    expect(() => parseGithubOwnerRepo("https://github.com/")).toThrow("Unable to parse GitHub repository URL");
+    expect(() => parseGithubOwnerRepo("https://github.com/owner")).toThrow("Unable to parse GitHub repository URL");
+    expect(() => parseGithubOwnerRepo("github.com/")).toThrow("Unable to parse GitHub repository URL");
   });
 
   test("should throw error for malformed URLs", () => {
-    expect(() => parseGithubOwnerRepo("not-a-url")).toThrow(
-      "Unable to parse GitHub repository URL"
-    );
-    expect(() => parseGithubOwnerRepo("")).toThrow(
-      "Unable to parse GitHub repository URL"
-    );
-    expect(() => parseGithubOwnerRepo("just-text")).toThrow(
-      "Unable to parse GitHub repository URL"
-    );
+    expect(() => parseGithubOwnerRepo("not-a-url")).toThrow("Unable to parse GitHub repository URL");
+    expect(() => parseGithubOwnerRepo("")).toThrow("Unable to parse GitHub repository URL");
+    expect(() => parseGithubOwnerRepo("just-text")).toThrow("Unable to parse GitHub repository URL");
   });
 
   test("should handle special characters in owner and repo names", () => {
@@ -219,7 +207,7 @@ describe("parseGithubOwnerRepo", () => {
 
   test("should throw error for URLs with wrong GitHub hostname", () => {
     expect(() => parseGithubOwnerRepo("https://github.net/owner/repo")).toThrow(
-      "Unable to parse GitHub repository URL"
+      "Unable to parse GitHub repository URL",
     );
-	});
+  });
 });

@@ -15,12 +15,14 @@ export default function TasksPage() {
     <div className="space-y-6">
       <PageHeader
         title="Tasks"
-        actions={workspace?.isCodeGraphSetup && (
-          <Button onClick={() => router.push(`/w/${slug}/task/new`)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Task
-          </Button>
-        )}
+        actions={
+          workspace?.isCodeGraphSetup && (
+            <Button onClick={() => router.push(`/w/${slug}/task/new`)}>
+              <Plus className="w-4 h-4 mr-2" />
+              New Task
+            </Button>
+          )
+        }
       />
 
       {/* Connect Repository Card - Only show if CodeGraph is not set up */}

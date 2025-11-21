@@ -33,7 +33,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     priority,
     sourceType = "USER",
     userId,
-    status = TaskStatus.IN_PROGRESS,  // Default to IN_PROGRESS since workflow starts immediately
+    status = TaskStatus.IN_PROGRESS, // Default to IN_PROGRESS since workflow starts immediately
     mode = "default",
     runBuild = true,
     runTestSuite = true,
@@ -210,11 +210,7 @@ export async function sendMessageToStakwork(params: {
  * Used by: Task Coordinator cron, "Start Task" button, PATCH /api/tasks/[taskId]
  * Automatically uses task description as message and builds feature context
  */
-export async function startTaskWorkflow(params: {
-  taskId: string;
-  userId: string;
-  mode?: string;
-}) {
+export async function startTaskWorkflow(params: { taskId: string; userId: string; mode?: string }) {
   const { taskId, userId, mode = "live" } = params;
 
   // Get task with workspace and swarm details
@@ -303,7 +299,17 @@ async function createChatMessageAndTriggerStakwork(params: {
   generateChatTitle?: boolean;
   featureContext?: object;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext } = params;
+  const {
+    taskId,
+    message,
+    userId,
+    task,
+    contextTags = [],
+    attachments = [],
+    mode = "default",
+    generateChatTitle,
+    featureContext,
+  } = params;
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({

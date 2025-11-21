@@ -13,14 +13,9 @@ export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  retries: number = 3,
-  delay: number = 1000
-): Promise<T> {
-
+async function withRetry<T>(fn: () => Promise<T>, retries: number = 3, delay: number = 1000): Promise<T> {
   for (let i = 0; i <= retries; i++) {
-    console.log('withRetry-start', delay)
+    console.log("withRetry-start", delay);
 
     try {
       return await fn();
@@ -28,7 +23,7 @@ async function withRetry<T>(
       if (i === retries) {
         throw error;
       }
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
   throw new Error("Retry function failed unexpectedly");
@@ -179,25 +174,26 @@ export async function POST(request: NextRequest) {
     }
 
     const pool = await withRetry(
-      () => poolManager.createPool({
-        pool_name: swarm.id,
-        minimum_vms: 2,
-        repo_name: repository?.repositoryUrl || "",
-        branch_name: repository?.branch || "",
-        github_pat: github_pat?.token || "",
-        github_username: github_pat?.username || "",
-        env_vars: envVars,
-        container_files: finalContainerFiles,
-      }),
+      () =>
+        poolManager.createPool({
+          pool_name: swarm.id,
+          minimum_vms: 2,
+          repo_name: repository?.repositoryUrl || "",
+          branch_name: repository?.branch || "",
+          github_pat: github_pat?.token || "",
+          github_username: github_pat?.username || "",
+          env_vars: envVars,
+          container_files: finalContainerFiles,
+        }),
       3,
-      1000
+      1000,
     );
 
     saveOrUpdateSwarm({
       swarmId,
       workspaceId,
       poolName: swarmId,
-      poolState: 'COMPLETE',
+      poolState: "COMPLETE",
     });
 
     return NextResponse.json({ pool }, { status: 201 });
@@ -207,7 +203,7 @@ export async function POST(request: NextRequest) {
 
     saveOrUpdateSwarm({
       workspaceId,
-      poolState: 'FAILED',
+      poolState: "FAILED",
     });
 
     // Handle ApiError specifically (two different formats)

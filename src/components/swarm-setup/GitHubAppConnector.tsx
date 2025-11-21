@@ -11,13 +11,7 @@ interface GitHubAppConnectorProps {
   onReconnecting?: () => void;
 }
 
-export function GitHubAppConnector({
-  repositoryUrl,
-  workspaceSlug,
-  error,
-  onReconnecting
-}: GitHubAppConnectorProps) {
-
+export function GitHubAppConnector({ repositoryUrl, workspaceSlug, error, onReconnecting }: GitHubAppConnectorProps) {
   // Handle GitHub App reconnection
   const handleReconnectGitHub = useCallback(async () => {
     if (repositoryUrl && workspaceSlug) {
@@ -56,20 +50,13 @@ export function GitHubAppConnector({
       <CardHeader>
         <CardTitle>Repository Access Required</CardTitle>
         <CardDescription>
-          We don&apos;t have push access to your repository. Please reinstall the GitHub App to grant the necessary permissions.
+          We don&apos;t have push access to your repository. Please reinstall the GitHub App to grant the necessary
+          permissions.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {repositoryUrl && (
-          <p className="text-sm text-muted-foreground">
-            Repository: {repositoryUrl}
-          </p>
-        )}
-        {error && (
-          <p className="text-sm text-red-600">
-            Error: {error}
-          </p>
-        )}
+        {repositoryUrl && <p className="text-sm text-muted-foreground">Repository: {repositoryUrl}</p>}
+        {error && <p className="text-sm text-red-600">Error: {error}</p>}
         <Button onClick={handleReconnectGitHub} className="w-full">
           Reconnect GitHub App
         </Button>

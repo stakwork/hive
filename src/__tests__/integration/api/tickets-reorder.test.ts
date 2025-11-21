@@ -2,12 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/tickets/reorder/route";
 import { db } from "@/lib/db";
 import { TaskStatus, Priority } from "@prisma/client";
-import {
-  createTestUser,
-  createTestWorkspace,
-  createTestTask,
-  findTestTask
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace, createTestTask, findTestTask } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -90,7 +85,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
             { id: task2.id, order: 2 },
           ],
         },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -185,7 +180,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
             { id: task1.id, order: 0, phaseId: phase2.id },
           ],
         },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -253,7 +248,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
         {
           tasks: [{ id: task.id, order: 0 }],
         },
-        nonMember
+        nonMember,
       );
 
       const response = await POST(request);
@@ -267,7 +262,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/tasks/reorder",
         { tasks: "not-an-array" },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -278,11 +273,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
     test("handles empty tasks array", async () => {
       const user = await createTestUser();
 
-      const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
-        { tasks: [] },
-        user
-      );
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/tasks/reorder", { tasks: [] }, user);
 
       const response = await POST(request);
 
@@ -297,7 +288,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
         {
           tasks: [{ id: "non-existent-task-id", order: 0 }],
         },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -374,7 +365,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
             { id: task2.id, order: 1 }, // Wrong feature!
           ],
         },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -449,7 +440,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
             { id: task2.id, order: 2 },
           ],
         },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -522,7 +513,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
             { id: task2.id, order: 0 }, // Duplicate order
           ],
         },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -581,7 +572,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
         {
           tasks: [{ id: task.id, order: 0 }],
         },
-        user
+        user,
       );
 
       const response = await POST(request);
@@ -625,7 +616,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
         {
           tasks: [{ id: task.id, order: 5 }],
         },
-        owner
+        owner,
       );
 
       const response = await POST(request);
@@ -685,7 +676,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
         {
           tasks: [{ id: task.id, order: 3 }],
         },
-        member
+        member,
       );
 
       const response = await POST(request);
@@ -754,7 +745,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
             { id: task1.id, order: 1 },
           ],
         },
-        user
+        user,
       );
 
       const response = await POST(request);

@@ -2,12 +2,7 @@
 
 import React, { useEffect } from "react";
 import { Screenshot } from "@/types/common";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -19,13 +14,7 @@ interface ScreenshotModalProps {
   onNavigate: (screenshot: Screenshot) => void;
 }
 
-export function ScreenshotModal({
-  screenshot,
-  allScreenshots,
-  isOpen,
-  onClose,
-  onNavigate,
-}: ScreenshotModalProps) {
+export function ScreenshotModal({ screenshot, allScreenshots, isOpen, onClose, onNavigate }: ScreenshotModalProps) {
   if (!screenshot) return null;
 
   const currentIndex = allScreenshots.findIndex((s) => s.id === screenshot.id);
@@ -64,13 +53,14 @@ export function ScreenshotModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-[80vw] max-h-[90vh] overflow-auto p-4 sm:p-6" data-testid="screenshot-modal">
+      <DialogContent
+        className="max-w-[calc(100%-2rem)] sm:max-w-[80vw] max-h-[90vh] overflow-auto p-4 sm:p-6"
+        data-testid="screenshot-modal"
+      >
         <DialogHeader>
           <DialogTitle className="flex flex-col gap-1">
             <span>Screenshot - Action {screenshot.actionIndex + 1}</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              {screenshot.url}
-            </span>
+            <span className="text-sm font-normal text-muted-foreground">{screenshot.url}</span>
           </DialogTitle>
         </DialogHeader>
 

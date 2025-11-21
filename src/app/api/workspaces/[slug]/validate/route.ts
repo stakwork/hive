@@ -6,10 +6,7 @@ import { validateUserWorkspaceAccess } from "@/lib/auth/workspace-resolver";
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user || !(session.user as { id?: string }).id) {
@@ -53,10 +50,7 @@ export async function GET(
       );
     }
   } catch (error: unknown) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to validate workspace access";
+    const message = error instanceof Error ? error.message : "Failed to validate workspace access";
     return NextResponse.json(
       {
         hasAccess: false,

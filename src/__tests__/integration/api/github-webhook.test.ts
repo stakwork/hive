@@ -52,19 +52,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       });
 
       // Create valid webhook request
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       // Execute webhook handler
       const response = await POST(request as any);
@@ -86,7 +78,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         expect.any(String), // Decrypted API key
         repository.repositoryUrl,
         { username: "testuser", pat: "github_pat_integration_test" },
-        expect.stringContaining("/api/swarm/stakgraph/webhook")
+        expect.stringContaining("/api/swarm/stakgraph/webhook"),
       );
 
       // Verify swarm ingestRefId was updated
@@ -99,19 +91,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     test("should reject webhook with invalid signature", async () => {
       const { repository } = await createTestRepository();
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const invalidSignature = "sha256=invalid_signature_hash";
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        invalidSignature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, invalidSignature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -143,19 +127,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         data: { request_id: "req-encrypted-test" },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(customWebhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
 
@@ -173,17 +149,12 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
 
       const payload = createGitHubPushPayload(
         testBranches.feature, // Feature branch not in allowed list
-        repository.repositoryUrl
+        repository.repositoryUrl,
       );
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -204,10 +175,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     test("should filter non-push events and not trigger sync", async () => {
       const { repository, webhookSecret } = await createTestRepository();
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
@@ -216,7 +184,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         payload,
         signature,
         repository.githubWebhookId!,
-        mockGitHubEvents.pullRequest
+        mockGitHubEvents.pullRequest,
       );
 
       const response = await POST(request as any);
@@ -241,19 +209,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         data: { request_id: "req-custom-branch" },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.develop,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.develop, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -277,19 +237,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -312,19 +264,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         data: { request_id: "req-lookup-test" },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        customWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, customWebhookId);
 
       const response = await POST(request as any);
 
@@ -345,12 +289,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature("any_secret", body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        nonExistentWebhookId
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, nonExistentWebhookId);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -367,19 +306,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         where: { workspaceId: repository.workspaceId },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
       const data = await response.json();
@@ -408,10 +339,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       expect(storedRepo?.githubWebhookSecret).not.toContain(plainSecret);
 
       // Verify we can decrypt it
-      const decrypted = encryptionService.decryptField(
-        "githubWebhookSecret",
-        storedRepo!.githubWebhookSecret!
-      );
+      const decrypted = encryptionService.decryptField("githubWebhookSecret", storedRepo!.githubWebhookSecret!);
       expect(decrypted).toBe(plainSecret);
 
       // Verify webhook processing uses decrypted secret correctly
@@ -422,19 +350,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         data: { request_id: "req-decrypt-test" },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(plainSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
 
@@ -453,19 +373,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       });
       vi.mocked(triggerAsyncSync).mockImplementation(mockAsyncSync);
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       await POST(request as any);
 
@@ -507,27 +419,16 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         data: { request_id: "req-creds-test" },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       await POST(request as any);
 
       // Verify getGithubUsernameAndPAT was called
-      expect(getGithubUsernameAndPAT).toHaveBeenCalledWith(
-        testUser.id,
-        workspace.slug
-      );
+      expect(getGithubUsernameAndPAT).toHaveBeenCalledWith(testUser.id, workspace.slug);
 
       // Verify credentials were passed to triggerAsyncSync
       expect(triggerAsyncSync).toHaveBeenCalledWith(
@@ -535,7 +436,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         expect.any(String),
         expect.any(String),
         { username: "webhook-test-user", pat: "github_pat_real_user" },
-        expect.any(String)
+        expect.any(String),
       );
     });
 
@@ -550,19 +451,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         data: { request_id: "req-no-creds" },
       });
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       const response = await POST(request as any);
 
@@ -574,7 +467,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         expect.any(String),
         expect.any(String),
         undefined, // No credentials
-        expect.any(String)
+        expect.any(String),
       );
     });
   });
@@ -592,19 +485,11 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       });
       vi.mocked(triggerAsyncSync).mockImplementation(mockAsyncSync);
 
-      const payload = createGitHubPushPayload(
-        testBranches.main,
-        repository.repositoryUrl
-      );
+      const payload = createGitHubPushPayload(testBranches.main, repository.repositoryUrl);
       const body = JSON.stringify(payload);
       const signature = computeValidWebhookSignature(webhookSecret, body);
 
-      const request = createWebhookRequest(
-        webhookUrl,
-        payload,
-        signature,
-        repository.githubWebhookId!
-      );
+      const request = createWebhookRequest(webhookUrl, payload, signature, repository.githubWebhookId!);
 
       await POST(request as any);
 

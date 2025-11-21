@@ -5,19 +5,10 @@ import { useState } from "react";
 interface DebugOverlayProps {
   isActive: boolean;
   isSubmitting: boolean;
-  onDebugSelection: (
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ) => void;
+  onDebugSelection: (x: number, y: number, width: number, height: number) => void;
 }
 
-export function DebugOverlay({
-  isActive,
-  isSubmitting,
-  onDebugSelection,
-}: DebugOverlayProps) {
+export function DebugOverlay({ isActive, isSubmitting, onDebugSelection }: DebugOverlayProps) {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{
     x: number;
@@ -97,19 +88,12 @@ export function DebugOverlay({
     >
       {/* Selection rectangle (only show if actively selecting and has some size) */}
       {isSelecting && selectionStart && selectionCurrent && (
-        <div
-          className="absolute border-2 border-blue-500 bg-blue-200/20"
-          style={getSelectionStyle()}
-        />
+        <div className="absolute border-2 border-blue-500 bg-blue-200/20" style={getSelectionStyle()} />
       )}
 
       {/* Debug mode indicator */}
       <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">
-        {isSubmitting ? (
-          <>⏳ Sending debug info...</>
-        ) : (
-          <>🐛 Debug Mode: Click or drag to identify elements</>
-        )}
+        {isSubmitting ? <>⏳ Sending debug info...</> : <>🐛 Debug Mode: Click or drag to identify elements</>}
       </div>
     </div>
   );

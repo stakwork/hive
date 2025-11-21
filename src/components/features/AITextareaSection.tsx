@@ -9,12 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
@@ -79,27 +74,20 @@ export function AITextareaSection({
 
   useEffect(() => {
     if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
-      aiGeneration.setContent(latestRun.result, "deep");
+      aiGeneration.setContent(latestRun.result, "deep", latestRun.id);
     }
   }, [latestRun, aiGeneration]);
 
-  const {
-    isDragging,
-    isUploading,
-    handleDragEnter,
-    handleDragLeave,
-    handleDragOver,
-    handleDrop,
-    handlePaste,
-  } = useImageUpload({
-    featureId,
-    onImageInserted: (markdownImage) => {
-      console.log('Image inserted:', markdownImage);
-    },
-    onError: (error) => {
-      console.error('Image upload error:', error);
-    },
-  });
+  const { isDragging, isUploading, handleDragEnter, handleDragLeave, handleDragOver, handleDrop, handlePaste } =
+    useImageUpload({
+      featureId,
+      onImageInserted: (markdownImage) => {
+        console.log("Image inserted:", markdownImage);
+      },
+      onError: (error) => {
+        console.error("Image upload error:", error);
+      },
+    });
 
   const handleAccept = async () => {
     if (!aiGeneration.content) return;
@@ -145,17 +133,11 @@ export function AITextareaSection({
     setMode(newMode);
   };
 
-  const isErrorState = latestRun?.status &&
-    ["FAILED", "ERROR", "HALTED"].includes(latestRun.status);
+  const isErrorState = latestRun?.status && ["FAILED", "ERROR", "HALTED"].includes(latestRun.status);
 
-  const isLoadingState = latestRun?.status &&
-    ["PENDING", "IN_PROGRESS"].includes(latestRun.status);
+  const isLoadingState = latestRun?.status && ["PENDING", "IN_PROGRESS"].includes(latestRun.status);
 
-  const showWorkflowBadge = !!(
-    latestRun &&
-    !latestRun.decision &&
-    isErrorState
-  );
+  const showWorkflowBadge = !!(latestRun && !latestRun.decision && isErrorState);
 
   return (
     <div className="space-y-2">
@@ -183,16 +165,9 @@ export function AITextareaSection({
             showDeepThink={true}
           />
         )}
-        <SaveIndicator
-          field={id}
-          savedField={savedField}
-          saving={saving}
-          saved={saved}
-        />
+        <SaveIndicator field={id} savedField={savedField} saving={saving} saved={saved} />
       </div>
-      <p className="text-sm text-muted-foreground">
-        {description}
-      </p>
+      <p className="text-sm text-muted-foreground">{description}</p>
 
       {aiGeneration.content ? (
         <GenerationPreview
@@ -225,11 +200,13 @@ export function AITextareaSection({
                 onPaste={handlePaste}
               />
             ) : (
-              <div className={cn(
-                "rounded-md border border-border bg-muted/30 p-4 min-h-[200px]",
-                !value && "flex items-center justify-center text-sm text-muted-foreground",
-                className
-              )}>
+              <div
+                className={cn(
+                  "rounded-md border border-border bg-muted/30 p-4 min-h-[200px]",
+                  !value && "flex items-center justify-center text-sm text-muted-foreground",
+                  className,
+                )}
+              >
                 {value ? (
                   <MarkdownRenderer size="compact">{value}</MarkdownRenderer>
                 ) : (

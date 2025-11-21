@@ -24,10 +24,7 @@ function extractS3KeyFromUrl(url: string): string {
 }
 
 // Helper function to process nodes and presign media_url fields
-async function processNodesMediaUrls(
-  nodes: any[],
-  s3Service: ReturnType<typeof getS3Service>,
-): Promise<any[]> {
+async function processNodesMediaUrls(nodes: any[], s3Service: ReturnType<typeof getS3Service>): Promise<any[]> {
   const processedNodes = [];
 
   for (const node of nodes) {
@@ -90,7 +87,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const limit = searchParams.get("limit") || "100";
     const limitMode = searchParams.get("limit_mode") || "per_type";
 
-
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
@@ -129,7 +125,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       try {
         const parsed = JSON.parse(nodeType);
         if (Array.isArray(parsed)) {
-          apiParams.node_types = parsed.join(',');
+          apiParams.node_types = parsed.join(",");
         } else {
           apiParams.node_types = nodeType;
         }
@@ -151,7 +147,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       apiParams.limit_mode = limitMode;
     }
 
-    apiParams.edges = 'true';
+    apiParams.edges = "true";
 
     const apiResult = await fetch(`${graphUrl}/graph?${new URLSearchParams(apiParams).toString()}`, {
       method: "GET",

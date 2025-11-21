@@ -7,10 +7,7 @@ import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
 // Disable caching for real-time messaging
 export const fetchCache = "force-no-store";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -19,19 +16,13 @@ export async function GET(
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
-      return NextResponse.json(
-        { error: "Invalid user session" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
     }
 
     const { taskId } = await params;
 
     if (!taskId) {
-      return NextResponse.json(
-        { error: "Task ID is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
     }
 
     // Verify task exists and user has access through workspace
@@ -101,11 +92,11 @@ export async function GET(
 
       // Handle contextTags - may be string, object, or null
       if (msg.contextTags) {
-        if (typeof msg.contextTags === 'string') {
+        if (typeof msg.contextTags === "string") {
           try {
             contextTags = JSON.parse(msg.contextTags) as ContextTag[];
           } catch (error) {
-            console.error('Error parsing contextTags for message', msg.id, ':', error, 'value:', msg.contextTags);
+            console.error("Error parsing contextTags for message", msg.id, ":", error, "value:", msg.contextTags);
           }
         } else if (Array.isArray(msg.contextTags)) {
           contextTags = msg.contextTags as unknown as ContextTag[];
@@ -142,9 +133,6 @@ export async function GET(
     );
   } catch (error) {
     console.error("Error fetching chat messages for task:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch chat messages" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch chat messages" }, { status: 500 });
   }
 }

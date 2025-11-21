@@ -1,21 +1,21 @@
-import { NodeExtended } from '@Universe/types'
-import { generatePalette } from '@Universe/utils/palleteGenerator'
-import { Billboard, Instance } from '@react-three/drei'
-import { memo, useRef } from 'react'
-import { Group, Mesh } from 'three'
-import { nodeSize } from '../../constants'
+import { NodeExtended } from "@Universe/types";
+import { generatePalette } from "@Universe/utils/palleteGenerator";
+import { Billboard, Instance } from "@react-three/drei";
+import { memo, useRef } from "react";
+import { Group, Mesh } from "three";
+import { nodeSize } from "../../constants";
 
 type Props = {
-  color: string
-  node: NodeExtended
-  scale: number
-}
+  color: string;
+  node: NodeExtended;
+  scale: number;
+};
 
 export const Point = memo(({ color, node, scale }: Props) => {
-  const nodeRef = useRef<Group | null>(null)
-  const helperRef = useRef<Mesh | null>(null)
+  const nodeRef = useRef<Group | null>(null);
+  const helperRef = useRef<Mesh | null>(null);
 
-  const newColor = generatePalette(color, 3, 10)
+  const newColor = generatePalette(color, 3, 10);
 
   return (
     <Billboard ref={nodeRef} follow lockX={false} lockY={false} lockZ={false} name="group-name">
@@ -25,7 +25,7 @@ export const Point = memo(({ color, node, scale }: Props) => {
       </mesh>
       <Instance color={newColor.at(3)} name="instance" scale={scale} />
     </Billboard>
-  )
-})
+  );
+});
 
-Point.displayName = 'Point'
+Point.displayName = "Point";

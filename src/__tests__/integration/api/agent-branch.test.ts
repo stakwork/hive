@@ -45,9 +45,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
       } as any);
 
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("Cannot process request with invalid user session")
-      );
+      vi.mocked(generateCommitMessage).mockRejectedValue(new Error("Cannot process request with invalid user session"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: "test-task-id",
@@ -93,9 +91,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("No conversation history found for this task")
-      );
+      vi.mocked(generateCommitMessage).mockRejectedValue(new Error("No conversation history found for this task"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: task.id,
@@ -113,9 +109,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("Task not found")
-      );
+      vi.mocked(generateCommitMessage).mockRejectedValue(new Error("Task not found"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: "non-existent-task-id",
@@ -465,9 +459,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("AI service temporarily unavailable")
-      );
+      vi.mocked(generateCommitMessage).mockRejectedValue(new Error("AI service temporarily unavailable"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: task.id,
@@ -499,9 +491,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("Request timeout: AI provider did not respond")
-      );
+      vi.mocked(generateCommitMessage).mockRejectedValue(new Error("Request timeout: AI provider did not respond"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: task.id,
@@ -533,9 +523,7 @@ describe("POST /api/agent/branch Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const { generateCommitMessage } = await import("@/lib/ai/commit-msg");
-      vi.mocked(generateCommitMessage).mockRejectedValue(
-        new Error("Invalid AI response format")
-      );
+      vi.mocked(generateCommitMessage).mockRejectedValue(new Error("Invalid AI response format"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/branch", {
         taskId: task.id,

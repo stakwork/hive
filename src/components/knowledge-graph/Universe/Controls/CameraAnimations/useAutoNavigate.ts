@@ -1,8 +1,7 @@
-
-import { useControlStore } from '@/stores/useControlStore';
-import { useSelectedNode } from '@/stores/useStores';
-import { useEffect } from 'react';
-import { Sphere, Vector3 } from 'three';
+import { useControlStore } from "@/stores/useControlStore";
+import { useSelectedNode } from "@/stores/useStores";
+import { useEffect } from "react";
+import { Sphere, Vector3 } from "three";
 
 export const useAutoNavigate = () => {
   const selectedNode = useSelectedNode();

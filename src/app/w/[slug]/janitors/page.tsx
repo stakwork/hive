@@ -7,7 +7,18 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { getAllJanitorItems } from "@/lib/constants/janitor";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useInsightsStore } from "@/stores/useInsightsStore";
-import { BookOpen, Bot, CheckCircle2, GitPullRequest, ListTodo, Package, Shield, TestTube, Type, Wrench } from "lucide-react";
+import {
+  BookOpen,
+  Bot,
+  CheckCircle2,
+  GitPullRequest,
+  ListTodo,
+  Package,
+  Shield,
+  TestTube,
+  Type,
+  Wrench,
+} from "lucide-react";
 import { redirect } from "next/navigation";
 import { useEffect } from "react";
 
@@ -65,10 +76,7 @@ const taskCoordinatorJanitors: JanitorItem[] = [
 export default function DefenseJanitorsPage() {
   const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const { workspace } = useWorkspace();
-  const {
-    fetchJanitorConfig,
-    reset
-  } = useInsightsStore();
+  const { fetchJanitorConfig, reset } = useInsightsStore();
 
   if (!canAccessDefense) {
     redirect("/");

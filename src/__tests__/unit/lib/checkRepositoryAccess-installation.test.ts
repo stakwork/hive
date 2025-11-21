@@ -11,7 +11,7 @@ import {
 
 /**
  * Unit tests for installation-scoped checkRepositoryAccess function
- * 
+ *
  * This function validates that a repository remains accessible via GitHub App installation.
  * It retrieves user tokens, fetches installation repositories, and performs case-insensitive
  * matching to verify access.
@@ -62,11 +62,11 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
 
       mockDb.sourceControlToken.findFirst.mockResolvedValue(mockTokenData);
 
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/test-repo" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "test-owner/test-repo" }]),
+        );
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
@@ -118,7 +118,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       const mockDecryptField = vi.fn().mockImplementation(() => {
         throw new Error("Decryption failed");
       });
-      
+
       vi.mocked(EncryptionService.getInstance).mockReturnValueOnce({
         decryptField: mockDecryptField,
       } as any);
@@ -137,11 +137,11 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/test-repo" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "test-owner/test-repo" }]),
+        );
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
@@ -158,11 +158,9 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "nodejs/node" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "nodejs/node" }]));
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.ssh);
 
@@ -215,11 +213,11 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should call installation repositories API with correct headers", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/test-repo" },
-        ]),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "test-owner/test-repo" }]),
+        );
       global.fetch = mockFetch;
 
       await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
@@ -237,12 +235,14 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should handle successful API response with matching repository", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/test-repo" },
-          { full_name: "test-owner/other-repo" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([
+            { full_name: "test-owner/test-repo" },
+            { full_name: "test-owner/other-repo" },
+          ]),
+        );
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
@@ -250,12 +250,14 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should return false when repository not in installation list", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/other-repo" },
-          { full_name: "different-owner/test-repo" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([
+            { full_name: "test-owner/other-repo" },
+            { full_name: "different-owner/test-repo" },
+          ]),
+        );
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
@@ -316,11 +318,11 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should match exact repository name", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/test-repo" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "test-owner/test-repo" }]),
+        );
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
@@ -340,11 +342,11 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should not match owner name only", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/different-repo" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "test-owner/different-repo" }]),
+        );
 
       const result = await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
@@ -352,11 +354,11 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
     });
 
     test("should handle repositories with special characters", async () => {
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/test-repo-123" },
-        ]),
-      );
+      global.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "test-owner/test-repo-123" }]),
+        );
 
       const result = await checkRepositoryAccess(
         testUserId,
@@ -407,11 +409,11 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
         refreshToken: null,
       });
 
-      const mockFetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess([
-          { full_name: "test-owner/test-repo" },
-        ]),
-      );
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(
+          mockGitHubApiResponses.installationRepositoriesSuccess([{ full_name: "test-owner/test-repo" }]),
+        );
       global.fetch = mockFetch;
 
       const customInstallationId = "87654321";
@@ -429,9 +431,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       }));
       largeReposList.push({ full_name: "test-owner/test-repo" });
 
-      global.fetch = vi.fn().mockResolvedValue(
-        mockGitHubApiResponses.installationRepositoriesSuccess(largeReposList),
-      );
+      global.fetch = vi.fn().mockResolvedValue(mockGitHubApiResponses.installationRepositoriesSuccess(largeReposList));
 
       mockDb.sourceControlToken.findFirst.mockResolvedValue({
         token: "encrypted-token",

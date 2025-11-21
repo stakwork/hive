@@ -11,14 +11,13 @@ import { ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-reac
 import { useState } from "react";
 
 export function RepositoryCard() {
-
   const { workspace, slug } = useWorkspace();
 
-  console.log('slug-is-here', slug);
-  console.log('workspace-slug-is-here', workspace?.slug);
+  console.log("slug-is-here", slug);
+  console.log("workspace-slug-is-here", workspace?.slug);
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
-  console.log('hasGithubAppTokens-is-here', hasGithubAppTokens);
-  console.log('isGithubAppLoading-is-here', isGithubAppLoading);
+  console.log("hasGithubAppTokens-is-here", hasGithubAppTokens);
+  console.log("isGithubAppLoading-is-here", isGithubAppLoading);
   const { toast } = useToast();
   const [isInstalling, setIsInstalling] = useState(false);
   // Handle GitHub App installation
@@ -63,7 +62,8 @@ export function RepositoryCard() {
 
   // Show loading animation if workspace exists but repositories are not ready yet
   // This happens during swarm setup and code ingestion
-  const isSwarmBeingSetup = workspace && (!workspace?.repositories || workspace.repositories.length === 0) && !isGithubAppLoading;
+  const isSwarmBeingSetup =
+    workspace && (!workspace?.repositories || workspace.repositories.length === 0) && !isGithubAppLoading;
 
   if (isSwarmBeingSetup) {
     return (
@@ -94,15 +94,7 @@ export function RepositoryCard() {
                   xmlns="http://www.w3.org/2000/svg"
                   className="mx-auto mb-3"
                 >
-                  <line
-                    x1="24"
-                    y1="8"
-                    x2="8"
-                    y2="24"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="text-blue-500"
-                  />
+                  <line x1="24" y1="8" x2="8" y2="24" stroke="currentColor" strokeWidth="2" className="text-blue-500" />
                   <line
                     x1="24"
                     y1="8"
@@ -131,39 +123,16 @@ export function RepositoryCard() {
                     className="text-blue-500"
                   />
                   <circle cx="24" cy="8" r="4" fill="currentColor" className="text-blue-600">
-                    <animate
-                      attributeName="r"
-                      values="4;6;4"
-                      dur="1.2s"
-                      repeatCount="indefinite"
-                    />
+                    <animate attributeName="r" values="4;6;4" dur="1.2s" repeatCount="indefinite" />
                   </circle>
                   <circle cx="8" cy="24" r="3" fill="currentColor" className="text-blue-500">
-                    <animate
-                      attributeName="r"
-                      values="3;5;3"
-                      dur="1.2s"
-                      begin="0.3s"
-                      repeatCount="indefinite"
-                    />
+                    <animate attributeName="r" values="3;5;3" dur="1.2s" begin="0.3s" repeatCount="indefinite" />
                   </circle>
                   <circle cx="40" cy="24" r="3" fill="currentColor" className="text-blue-500">
-                    <animate
-                      attributeName="r"
-                      values="3;5;3"
-                      dur="1.2s"
-                      begin="0.6s"
-                      repeatCount="indefinite"
-                    />
+                    <animate attributeName="r" values="3;5;3" dur="1.2s" begin="0.6s" repeatCount="indefinite" />
                   </circle>
                   <circle cx="24" cy="40" r="3" fill="currentColor" className="text-blue-400">
-                    <animate
-                      attributeName="r"
-                      values="3;5;3"
-                      dur="1.2s"
-                      begin="0.9s"
-                      repeatCount="indefinite"
-                    />
+                    <animate attributeName="r" values="3;5;3" dur="1.2s" begin="0.9s" repeatCount="indefinite" />
                   </circle>
                 </svg>
                 <p className="text-sm text-muted-foreground">Setting up code graph...</p>

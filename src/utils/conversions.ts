@@ -8,7 +8,6 @@ type StatusMapping = {
   [key: string]: string[];
 };
 
-
 const workflowStatusMapping: StatusMapping = {
   IN_PROGRESS: ["in_progress", "running", "processing"],
   COMPLETED: ["completed", "success", "finished"],
@@ -28,11 +27,9 @@ function mapStatus<T extends string>(status: string, mapping: StatusMapping, def
   return defaultValue || null;
 }
 
-
 export function mapStakworkStatus(status: string): WorkflowStatus | null {
   return mapStatus(status, workflowStatusMapping) as WorkflowStatus | null;
 }
-
 
 export function stakgraphToRepositoryStatus(status: string): RepositoryStatus {
   const normalized = normalizeStatus(status);

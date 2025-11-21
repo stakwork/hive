@@ -66,7 +66,7 @@ export function UserStoriesSection({
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   // Auto-focus after story creation (not on mount)
@@ -78,10 +78,7 @@ export function UserStoriesSection({
   }, [creatingStory, newStoryTitle]);
 
   // Memoize story IDs for sortable context
-  const storyIds = useMemo(
-    () => userStories.map((story) => story.id),
-    [userStories]
-  );
+  const storyIds = useMemo(() => userStories.map((story) => story.id), [userStories]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -94,12 +91,10 @@ export function UserStoriesSection({
     const newIndex = userStories.findIndex((s) => s.id === over.id);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      const reorderedStories = arrayMove(userStories, oldIndex, newIndex).map(
-        (story, index) => ({
-          ...story,
-          order: index,
-        })
-      );
+      const reorderedStories = arrayMove(userStories, oldIndex, newIndex).map((story, index) => ({
+        ...story,
+        order: index,
+      }));
 
       onReorderUserStories(reorderedStories);
     }
@@ -152,10 +147,7 @@ export function UserStoriesSection({
             endpoint={`/api/features/${featureId}/generate`}
             params={{
               type: "userStories",
-              existingStories: [
-                ...userStories.map((s) => s.title),
-                ...aiSuggestions.map((s) => s.title),
-              ],
+              existingStories: [...userStories.map((s) => s.title), ...aiSuggestions.map((s) => s.title)],
             }}
             onGenerated={handleAiGenerated}
             tooltip="Generate with AI"
@@ -182,25 +174,13 @@ export function UserStoriesSection({
             disabled={creatingStory}
             className="flex-1"
           />
-          <Button
-            size="sm"
-            onClick={onAddUserStory}
-            disabled={creatingStory || !newStoryTitle.trim()}
-          >
-            {creatingStory ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              "Add"
-            )}
+          <Button size="sm" onClick={onAddUserStory} disabled={creatingStory || !newStoryTitle.trim()}>
+            {creatingStory ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
           </Button>
         </div>
 
         {(userStories.length > 0 || aiSuggestions.length > 0) && (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={storyIds} strategy={verticalListSortingStrategy}>
               <div className="px-4 pb-4 flex flex-col gap-2">
                 {userStories

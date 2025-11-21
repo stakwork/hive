@@ -6,14 +6,7 @@ import { DndContext } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { StatusPopover } from "@/components/ui/status-popover";
@@ -58,14 +51,7 @@ function SortableTableRow({
   onDelete: () => void;
   onStartTask: () => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -76,9 +62,7 @@ function SortableTableRow({
     <TableRow
       ref={setNodeRef}
       style={style}
-      className={`cursor-pointer hover:bg-muted/50 group ${
-        isDragging ? "opacity-50 z-50" : ""
-      }`}
+      className={`cursor-pointer hover:bg-muted/50 group ${isDragging ? "opacity-50 z-50" : ""}`}
     >
       <TableCell className="w-[40px]">
         <div
@@ -94,17 +78,10 @@ function SortableTableRow({
         {task.title}
       </TableCell>
       <TableCell className="w-[120px]">
-        <StatusPopover
-          statusType="task"
-          currentStatus={task.status}
-          onUpdate={onStatusUpdate}
-        />
+        <StatusPopover statusType="task" currentStatus={task.status} onUpdate={onStatusUpdate} />
       </TableCell>
       <TableCell className="w-[120px]">
-        <PriorityPopover
-          currentPriority={task.priority}
-          onUpdate={onPriorityUpdate}
-        />
+        <PriorityPopover currentPriority={task.priority} onUpdate={onPriorityUpdate} />
       </TableCell>
       <TableCell className="w-[180px]">
         <AssigneeCombobox
@@ -173,7 +150,13 @@ function SortableTableRow({
   );
 }
 
-export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReordered, onTaskUpdate }: RoadmapTasksTableProps) {
+export function RoadmapTasksTable({
+  phaseId,
+  workspaceSlug,
+  tasks,
+  onTasksReordered,
+  onTaskUpdate,
+}: RoadmapTasksTableProps) {
   const router = useRouter();
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
 
@@ -217,7 +200,10 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
     }
   };
 
-  const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[] }) => {
+  const handleUpdateTask = async (
+    taskId: string,
+    updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[] },
+  ) => {
     const updatedTask = await updateTicket({ taskId, updates });
     if (updatedTask && onTaskUpdate) {
       onTaskUpdate(taskId, updatedTask);
@@ -255,11 +241,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
 
   return (
     <div className="rounded-md border overflow-hidden">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={collisionDetection}
-        onDragEnd={handleDragEnd}
-      >
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>

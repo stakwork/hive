@@ -1,18 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
+import { closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { TicketListItem } from "@/types/roadmap";
 
 interface UseReorderRoadmapTasksParams {
@@ -21,16 +11,12 @@ interface UseReorderRoadmapTasksParams {
   onOptimisticUpdate?: (reorderedTasks: TicketListItem[]) => void;
 }
 
-export function useReorderRoadmapTasks({
-  tasks,
-  phaseId,
-  onOptimisticUpdate,
-}: UseReorderRoadmapTasksParams) {
+export function useReorderRoadmapTasks({ tasks, phaseId, onOptimisticUpdate }: UseReorderRoadmapTasksParams) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
@@ -46,12 +32,10 @@ export function useReorderRoadmapTasks({
     const newIndex = tasks.findIndex((t) => t.id === over.id);
 
     if (oldIndex !== -1 && newIndex !== -1) {
-      const reorderedTasks = arrayMove(tasks, oldIndex, newIndex).map(
-        (task, index) => ({
-          ...task,
-          order: index,
-        })
-      );
+      const reorderedTasks = arrayMove(tasks, oldIndex, newIndex).map((task, index) => ({
+        ...task,
+        order: index,
+      }));
 
       // Optimistically update parent
       if (onOptimisticUpdate) {

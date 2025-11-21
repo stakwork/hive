@@ -55,20 +55,20 @@ export type FeatureContext = {
 };
 
 export function buildFeatureContext(feature: FeatureData): FeatureContext {
-  const workspaceDesc = feature.workspace.description
-    ? `\n\nWorkspace Context: ${feature.workspace.description}`
-    : '';
+  const workspaceDesc = feature.workspace.description ? `\n\nWorkspace Context: ${feature.workspace.description}` : "";
 
-  const personasText = feature.personas && feature.personas.length > 0
-    ? `\n\nTarget Personas:\n${feature.personas.map((p: string) => `- ${p}`).join('\n')}`
-    : '';
+  const personasText =
+    feature.personas && feature.personas.length > 0
+      ? `\n\nTarget Personas:\n${feature.personas.map((p: string) => `- ${p}`).join("\n")}`
+      : "";
 
-  const userStoriesText = feature.userStories && feature.userStories.length > 0
-    ? `\n\nUser Stories:\n${feature.userStories.map((s) => `- ${s.title}`).join('\n')}`
-    : '';
+  const userStoriesText =
+    feature.userStories && feature.userStories.length > 0
+      ? `\n\nUser Stories:\n${feature.userStories.map((s) => `- ${s.title}`).join("\n")}`
+      : "";
 
-  const requirementsText = feature.requirements || '';
-  const architectureText = feature.architecture || '';
+  const requirementsText = feature.requirements || "";
+  const architectureText = feature.architecture || "";
 
   return {
     title: feature.title,
@@ -82,13 +82,13 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
 }
 
 export async function generateWithStreaming<T extends z.ZodTypeAny>(
-  model: Parameters<typeof streamObject>[0]['model'],
+  model: Parameters<typeof streamObject>[0]["model"],
   schema: T,
   prompt: string,
   systemPrompt: string,
   featureId: string,
   featureTitle: string,
-  generationType: string
+  generationType: string,
 ) {
   console.log(`🤖 Generating ${generationType} with:`, {
     model: (model as { modelId?: string })?.modelId,

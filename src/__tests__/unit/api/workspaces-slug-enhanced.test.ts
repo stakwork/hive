@@ -38,14 +38,14 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
   };
 
   const mockAdminUser = {
-    id: "admin-123", 
+    id: "admin-123",
     email: "admin@example.com",
     name: "Admin User",
   };
 
   const mockMemberUser = {
     id: "member-123",
-    email: "member@example.com", 
+    email: "member@example.com",
     name: "Member User",
   };
 
@@ -444,9 +444,7 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
       ];
 
       for (const scenario of errorScenarios) {
-        mockGetServerSession.mockResolvedValue(
-          scenario.sessionUser ? { user: scenario.sessionUser } : null
-        );
+        mockGetServerSession.mockResolvedValue(scenario.sessionUser ? { user: scenario.sessionUser } : null);
 
         if (scenario.sessionUser) {
           mockGetWorkspaceBySlug.mockResolvedValue(null);
@@ -485,8 +483,8 @@ describe("Enhanced Workspace [slug] API Integration Tests", () => {
         ...updateData,
       });
 
-      const responseWithoutContentType = await PUT(requestWithoutContentType, { 
-        params: Promise.resolve({ slug: mockWorkspace.slug }) 
+      const responseWithoutContentType = await PUT(requestWithoutContentType, {
+        params: Promise.resolve({ slug: mockWorkspace.slug }),
       });
 
       // Should handle gracefully (Next.js may auto-detect JSON)

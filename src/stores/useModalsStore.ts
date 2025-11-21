@@ -21,19 +21,19 @@ export const useModalStore = create<ModalState>((set, get) => ({
   open: (name, props) =>
     new Promise((resolve, reject) => {
       const id = `${name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      set(s => ({ instances: [...s.instances, { id, name, props, resolve, reject }] }));
+      set((s) => ({ instances: [...s.instances, { id, name, props, resolve, reject }] }));
     }),
   resolve: (id, value) => {
     const { instances } = get();
-    const inst = instances.find(i => i.id === id);
+    const inst = instances.find((i) => i.id === id);
     inst?.resolve?.(value);
-    set({ instances: instances.filter(i => i.id !== id) });
+    set({ instances: instances.filter((i) => i.id !== id) });
   },
   reject: (id, reason) => {
     const { instances } = get();
-    const inst = instances.find(i => i.id === id);
+    const inst = instances.find((i) => i.id === id);
     inst?.reject?.(reason);
-    set({ instances: instances.filter(i => i.id !== id) });
+    set({ instances: instances.filter((i) => i.id !== id) });
   },
   dismissTop: () => {
     const { instances } = get();

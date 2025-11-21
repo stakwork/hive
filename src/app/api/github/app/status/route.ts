@@ -15,9 +15,9 @@ export async function GET(request: Request) {
   const logContext = {
     timestamp: new Date().toISOString(),
     sessionId: Math.random().toString(36).substring(7),
-    endpoint: '/api/github/app/status',
-    ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
-    userAgent: request.headers.get('user-agent'),
+    endpoint: "/api/github/app/status",
+    ip: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "unknown",
+    userAgent: request.headers.get("user-agent"),
   };
 
   console.log("[github-app-status] Request initiated", logContext);
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     if (workspaceSlug) {
       console.log("[github-app-status] Validating workspace access", {
         ...requestLogContext,
-        action: 'validate_workspace',
+        action: "validate_workspace",
       });
 
       const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, session.user.id);
@@ -78,7 +78,7 @@ export async function GET(request: Request) {
 
       console.log("[github-app-status] Fetching workspace data", {
         ...requestLogContext,
-        action: 'fetch_workspace',
+        action: "fetch_workspace",
       });
 
       // Get workspace
@@ -102,7 +102,7 @@ export async function GET(request: Request) {
         // Workspace is linked to a SourceControlOrg - check if user has tokens for it
         console.log("[github-app-status] Checking source control tokens", {
           ...requestLogContext,
-          action: 'check_tokens',
+          action: "check_tokens",
           sourceControlOrgId: workspace.sourceControlOrg.id,
         });
 
@@ -137,7 +137,7 @@ export async function GET(request: Request) {
         if (hasTokens && repoUrl && workspace?.sourceControlOrg?.githubInstallationId) {
           console.log("[github-app-status] Checking repository access", {
             ...requestLogContext,
-            action: 'check_repo_access',
+            action: "check_repo_access",
             installationId: workspace.sourceControlOrg.githubInstallationId,
             repoUrl,
           });
@@ -156,7 +156,7 @@ export async function GET(request: Request) {
         } else {
           console.log("[github-app-status] Skipping repository access check", {
             ...requestLogContext,
-            action: 'skip_repo_access',
+            action: "skip_repo_access",
             reasons: {
               hasTokens,
               hasRepoUrl: !!repoUrl,
@@ -181,7 +181,7 @@ export async function GET(request: Request) {
         if (!repoUrl) {
           console.warn("[github-app-status] No repository URL found", {
             ...requestLogContext,
-            action: 'no_repo_url',
+            action: "no_repo_url",
             workspaceSlug,
             responseTime: Date.now() - startTime,
           });
@@ -190,7 +190,7 @@ export async function GET(request: Request) {
 
         console.log("[github-app-status] Processing unlinked workspace", {
           ...requestLogContext,
-          action: 'process_unlinked_workspace',
+          action: "process_unlinked_workspace",
           repoUrl,
         });
         const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)/);
@@ -225,7 +225,7 @@ export async function GET(request: Request) {
             if (hasTokens && sourceControlOrg?.githubInstallationId) {
               console.log("[github-app-status] Checking repository access for auto-linked workspace", {
                 ...requestLogContext,
-                action: 'check_repo_access_auto_linked',
+                action: "check_repo_access_auto_linked",
                 installationId: sourceControlOrg.githubInstallationId,
                 repoUrl,
                 githubOwner,
@@ -253,7 +253,7 @@ export async function GET(request: Request) {
       // No workspace specified - check if user has ANY GitHub App tokens
       console.log("[github-app-status] Checking user app tokens (no workspace)", {
         ...requestLogContext,
-        action: 'check_user_app_tokens',
+        action: "check_user_app_tokens",
       });
 
       const apptokens = await getUserAppTokens(session.user.id);
@@ -279,7 +279,7 @@ export async function GET(request: Request) {
       hasTokens,
       hasRepoAccess,
       responseTime,
-      status: 'success',
+      status: "success",
     });
 
     return NextResponse.json({ hasTokens, hasRepoAccess }, { status: 200 });
@@ -291,7 +291,7 @@ export async function GET(request: Request) {
       error: error instanceof Error ? error.message : String(error),
       errorStack: error instanceof Error ? error.stack : undefined,
       responseTime,
-      status: 'error',
+      status: "error",
     });
 
     return NextResponse.json({ hasTokens: false, hasRepoAccess: false }, { status: 200 });

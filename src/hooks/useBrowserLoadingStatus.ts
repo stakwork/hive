@@ -22,7 +22,7 @@ export function useBrowserLoadingStatus(url: string | undefined) {
     if ((consecutiveSuccessesRef.current[url] || 0) >= REQUIRED_CONSECUTIVE_SUCCESSES) return;
 
     // Initialize as not ready when we start polling
-    setIsUrlReady(prev => ({ ...prev, [url]: false }));
+    setIsUrlReady((prev) => ({ ...prev, [url]: false }));
 
     const checkUrl = async () => {
       try {
@@ -34,7 +34,7 @@ export function useBrowserLoadingStatus(url: string | undefined) {
           // Success! Show the browser immediately and increment consecutive counter
           const newCount = (consecutiveSuccessesRef.current[url] || 0) + 1;
 
-          setIsUrlReady(prev => ({ ...prev, [url]: true }));
+          setIsUrlReady((prev) => ({ ...prev, [url]: true }));
           consecutiveSuccessesRef.current[url] = newCount;
 
           // Stop polling after 15 consecutive successes
@@ -46,12 +46,12 @@ export function useBrowserLoadingStatus(url: string | undefined) {
           }
         } else {
           // URL not ready, treat as failure
-          throw new Error(data.error || 'URL not ready');
+          throw new Error(data.error || "URL not ready");
         }
       } catch {
         // URL failed, reset consecutive successes and show spinner again
         consecutiveSuccessesRef.current[url] = 0;
-        setIsUrlReady(prev => ({ ...prev, [url]: false }));
+        setIsUrlReady((prev) => ({ ...prev, [url]: false }));
 
         // Increment total attempts
         urlCheckAttemptsRef.current[url] = (urlCheckAttemptsRef.current[url] || 0) + 1;
@@ -59,7 +59,7 @@ export function useBrowserLoadingStatus(url: string | undefined) {
 
         if (attempts >= maxAttempts) {
           // Give up after max attempts and show iframe anyway
-          setIsUrlReady(prev => ({ ...prev, [url]: true }));
+          setIsUrlReady((prev) => ({ ...prev, [url]: true }));
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;

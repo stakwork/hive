@@ -234,11 +234,11 @@ describe("callStakwork Function Unit Tests", () => {
     vi.mocked(mockConfig).STAKWORK_API_KEY = "test-api-key";
     vi.mocked(mockConfig).STAKWORK_BASE_URL = "https://test-stakwork.com";
     vi.mocked(mockConfig).STAKWORK_WORKFLOW_ID = "123,456,789";
-    
+
     MockSetup.reset();
     mockFetch = vi.fn();
     global.fetch = mockFetch as unknown as typeof fetch;
-    
+
     // Reset environment
     delete process.env.CUSTOM_WEBHOOK_URL;
   });
@@ -480,7 +480,7 @@ describe("callStakwork Function Unit Tests", () => {
       const fetchCall = mockFetch.mock.calls[0];
       const payload = JSON.parse(fetchCall[1]?.body as string);
       const vars = payload.workflow_params.set_var.attributes.vars;
-      
+
       expect(vars).toMatchObject({
         taskId: "test-task-id",
         message: "Test message",
@@ -495,7 +495,7 @@ describe("callStakwork Function Unit Tests", () => {
         repo2graph_url: "https://test-swarm.example.com:3355",
         workspaceId: "workspace-123",
       });
-      
+
       expect(vars.taskMode).toBeUndefined();
     });
 

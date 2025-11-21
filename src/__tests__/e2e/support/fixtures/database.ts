@@ -14,11 +14,7 @@ export {
   deleteUsers,
 } from "@/__tests__/support/fixtures/database";
 
-export {
-  createTestUser,
-  createTestUsers,
-  type CreateTestUserOptions,
-} from "@/__tests__/support/fixtures/user";
+export { createTestUser, createTestUsers, type CreateTestUserOptions } from "@/__tests__/support/fixtures/user";
 
 export {
   createTestWorkspace,

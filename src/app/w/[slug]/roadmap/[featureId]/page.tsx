@@ -33,16 +33,13 @@ export default function FeatureDetailPage() {
   const [creatingStory, setCreatingStory] = useState(false);
   const storyFocusRef = useRef(false);
 
-  const fetchFeature = useCallback(
-    async (id: string) => {
-      const response = await fetch(`/api/features/${id}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch feature");
-      }
-      return response.json();
-    },
-    []
-  );
+  const fetchFeature = useCallback(async (id: string) => {
+    const response = await fetch(`/api/features/${id}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch feature");
+    }
+    return response.json();
+  }, []);
 
   const {
     data: feature,
@@ -73,7 +70,7 @@ export default function FeatureDetailPage() {
         updateOriginalData(result.data);
       }
     },
-    [featureId, setFeature]
+    [featureId, setFeature],
   );
 
   const { saving, saved, savedField, handleFieldBlur, updateOriginalData, triggerSaved } = useAutoSave({
@@ -138,9 +135,7 @@ export default function FeatureDetailPage() {
       if (result.success && feature) {
         setFeature({
           ...feature,
-          userStories: feature.userStories.map((story) =>
-            story.id === storyId ? { ...story, title } : story
-          ),
+          userStories: feature.userStories.map((story) => (story.id === storyId ? { ...story, title } : story)),
         });
       }
     } catch (error) {
@@ -185,14 +180,11 @@ export default function FeatureDetailPage() {
         order: index,
       }));
 
-      const response = await fetch(
-        `/api/features/${featureId}/user-stories/reorder`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stories: reorderData }),
-        }
-      );
+      const response = await fetch(`/api/features/${featureId}/user-stories/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stories: reorderData }),
+      });
 
       if (!response.ok) {
         throw new Error("Failed to reorder user stories");
@@ -262,11 +254,7 @@ export default function FeatureDetailPage() {
       <div className="space-y-6">
         {/* Header with back button */}
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
@@ -312,9 +300,7 @@ export default function FeatureDetailPage() {
 
             {/* User Personas */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                User Personas
-              </Label>
+              <Label className="text-sm font-medium">User Personas</Label>
               <Skeleton className="h-20 w-full rounded-lg" />
             </div>
 
@@ -366,11 +352,7 @@ export default function FeatureDetailPage() {
   if (error || !feature) {
     return (
       <div className="space-y-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
-        >
+        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
@@ -390,11 +372,7 @@ export default function FeatureDetailPage() {
     <div className="space-y-6">
       {/* Header with back button */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}
-        >
+        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
@@ -425,11 +403,7 @@ export default function FeatureDetailPage() {
 
             {/* Status, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
-              <StatusPopover
-                statusType="feature"
-                currentStatus={feature.status}
-                onUpdate={handleUpdateStatus}
-              />
+              <StatusPopover statusType="feature" currentStatus={feature.status} onUpdate={handleUpdateStatus} />
               <AssigneeCombobox
                 workspaceSlug={workspaceSlug}
                 currentAssignee={feature.assignee}

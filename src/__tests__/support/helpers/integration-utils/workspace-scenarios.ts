@@ -10,10 +10,7 @@ export async function createWorkspaceWithMultipleRoles() {
     workspace: {
       description: "Test workspace",
     },
-    members: [
-      { role: "ADMIN" },
-      { role: "DEVELOPER" },
-    ],
+    members: [{ role: "ADMIN" }, { role: "DEVELOPER" }],
   });
 
   return {
@@ -30,9 +27,7 @@ export async function createWorkspaceWithMultipleRoles() {
  */
 export async function createWorkspaceWithGitHubMembers() {
   const scenario = await createTestWorkspaceScenario({
-    members: [
-      { role: "DEVELOPER", withGitHubAuth: true, githubUsername: "testuser" },
-    ],
+    members: [{ role: "DEVELOPER", withGitHubAuth: true, githubUsername: "testuser" }],
   });
 
   const targetUser = await createTestUser({

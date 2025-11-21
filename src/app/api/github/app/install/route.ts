@@ -53,10 +53,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      return NextResponse.json(
-        { success: false, message: "Workspace not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ success: false, message: "Workspace not found" }, { status: 404 });
     }
 
     // Get repository URL from parameter or primary repository
@@ -97,9 +94,9 @@ export async function POST(request: NextRequest) {
       where: { githubLogin: githubOwner },
     });
 
-    console.log('existingSourceControlOrg--existingSourceControlOrg')
-    console.log(existingSourceControlOrg)
-    console.log('existingSourceControlOrg--existingSourceControlOrg')
+    console.log("existingSourceControlOrg--existingSourceControlOrg");
+    console.log(existingSourceControlOrg);
+    console.log("existingSourceControlOrg--existingSourceControlOrg");
 
     if (existingSourceControlOrg?.githubInstallationId) {
       // App is already installed by some user

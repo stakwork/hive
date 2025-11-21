@@ -43,7 +43,16 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
   const bodyLength = searchParams.get("body_length") === "true";
   const lineCount = searchParams.get("line_count") === "true";
   const search = searchParams.get("search") || "";
-  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested", bodyLength, lineCount, search };
+  return {
+    nodeType,
+    limit,
+    offset,
+    sort,
+    coverage: coverage as "all" | "tested" | "untested",
+    bodyLength,
+    lineCount,
+    search,
+  };
 }
 
 function buildQueryString(params: ParsedParams): string {
@@ -64,7 +73,14 @@ function buildQueryString(params: ParsedParams): string {
   return q.toString();
 }
 
-function buildEndpointPath(params: ParsedParams, ignoreDirs?: string | null, repo?: string | null, unitGlob?: string | null, integrationGlob?: string | null, e2eGlob?: string | null): string {
+function buildEndpointPath(
+  params: ParsedParams,
+  ignoreDirs?: string | null,
+  repo?: string | null,
+  unitGlob?: string | null,
+  integrationGlob?: string | null,
+  e2eGlob?: string | null,
+): string {
   const queryString = buildQueryString(params);
   const q = new URLSearchParams(queryString);
   if (ignoreDirs) {
@@ -102,12 +118,13 @@ function isNodesResponse(payload: unknown): payload is NodesResponse {
   return Array.isArray(p.endpoints) || Array.isArray(p.functions);
 }
 
-type Payload = ItemsOrNodes & Partial<NodesResponse> & {
-  total_count?: number;
-  total_pages?: number;
-  current_page?: number;
-  total_returned?: number;
-};
+type Payload = ItemsOrNodes &
+  Partial<NodesResponse> & {
+    total_count?: number;
+    total_pages?: number;
+    current_page?: number;
+    total_returned?: number;
+  };
 
 function normalizeResponse(
   payload: Payload,
@@ -135,15 +152,15 @@ function normalizeResponse(
     return { name, file, ref_id, weight, test_count: testCount, covered, body_length, line_count, verb };
   };
 
-    if (isItemsOrNodes(payload)) {
-      const rawList = (payload.items || payload.nodes || []) as unknown[];
-      items = rawList.map(mapToConcise);
-    } else if (isNodesResponse(payload)) {
-      const nodesPayload = payload as NodesResponse;
-      const list = nodeType === "endpoint" ? nodesPayload.endpoints : nodesPayload.functions;
-      const raw = (list as unknown[]) || [];
-      items = raw.map(mapToConcise);
-    }
+  if (isItemsOrNodes(payload)) {
+    const rawList = (payload.items || payload.nodes || []) as unknown[];
+    items = rawList.map(mapToConcise);
+  } else if (isNodesResponse(payload)) {
+    const nodesPayload = payload as NodesResponse;
+    const list = nodeType === "endpoint" ? nodesPayload.endpoints : nodesPayload.functions;
+    const raw = (list as unknown[]) || [];
+    items = raw.map(mapToConcise);
+  }
   const total_count = typeof payload.total_count === "number" ? payload.total_count : items.length;
   const total_pages = typeof payload.total_pages === "number" ? payload.total_pages : undefined;
   const current_page = typeof payload.current_page === "number" ? payload.current_page : Math.floor(offset / limit) + 1;
@@ -234,7 +251,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const endpointPath = buildEndpointPath(parsed, finalIgnoreDirs, repoParam, finalUnitGlob, finalIntegrationGlob, finalE2eGlob);
+    const endpointPath = buildEndpointPath(
+      parsed,
+      finalIgnoreDirs,
+      repoParam,
+      finalUnitGlob,
+      finalIntegrationGlob,
+      finalE2eGlob,
+    );
 
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
@@ -248,7 +272,16 @@ export async function GET(request: NextRequest) {
           { status: resp.status },
         );
       }
-      const response = normalizeResponse(data as Payload, nodeType, limit, offset, finalIgnoreDirs, finalUnitGlob, finalIntegrationGlob, finalE2eGlob);
+      const response = normalizeResponse(
+        data as Payload,
+        nodeType,
+        limit,
+        offset,
+        finalIgnoreDirs,
+        finalUnitGlob,
+        finalIntegrationGlob,
+        finalE2eGlob,
+      );
       return NextResponse.json(response, { status: 200 });
     }
 
@@ -295,7 +328,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = normalizeResponse(apiResult.data as Payload, nodeType, limit, offset, finalIgnoreDirs, finalUnitGlob, finalIntegrationGlob, finalE2eGlob);
+    const response = normalizeResponse(
+      apiResult.data as Payload,
+      nodeType,
+      limit,
+      offset,
+      finalIgnoreDirs,
+      finalUnitGlob,
+      finalIntegrationGlob,
+      finalE2eGlob,
+    );
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching coverage nodes:", error);

@@ -67,10 +67,8 @@ export function useWorkspace() {
     isViewer: role === "VIEWER",
 
     // Workspace utilities
-    getWorkspaceById: (workspaceId: string) =>
-      workspaces.find((ws) => ws.id === workspaceId),
-    getWorkspaceBySlug: (workspaceSlug: string) =>
-      workspaces.find((ws) => ws.slug === workspaceSlug),
+    getWorkspaceById: (workspaceId: string) => workspaces.find((ws) => ws.id === workspaceId),
+    getWorkspaceBySlug: (workspaceSlug: string) => workspaces.find((ws) => ws.slug === workspaceSlug),
     isCurrentWorkspace: (workspaceId: string) => id === workspaceId,
   };
 }

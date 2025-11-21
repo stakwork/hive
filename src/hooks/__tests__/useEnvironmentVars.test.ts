@@ -7,9 +7,7 @@ describe("useEnvironmentVars", () => {
     it("should initialize with default empty variable", () => {
       const { result } = renderHook(() => useEnvironmentVars());
 
-      expect(result.current.envVars).toEqual([
-        { name: "", value: "", show: false },
-      ]);
+      expect(result.current.envVars).toEqual([{ name: "", value: "", show: false }]);
     });
 
     it("should initialize with provided variables", () => {
@@ -88,9 +86,7 @@ describe("useEnvironmentVars", () => {
     });
 
     it("should preserve existing variables when adding new one", () => {
-      const initialVars = [
-        { name: "EXISTING", value: "value", show: false },
-      ];
+      const initialVars = [{ name: "EXISTING", value: "value", show: false }];
       const { result } = renderHook(() => useEnvironmentVars(initialVars));
 
       act(() => {
@@ -185,9 +181,7 @@ describe("useEnvironmentVars", () => {
     });
 
     it("should preserve show state when updating existing variables", () => {
-      const initialVars = [
-        { name: "API_KEY", value: "old_secret", show: true },
-      ];
+      const initialVars = [{ name: "API_KEY", value: "old_secret", show: true }];
       const { result } = renderHook(() => useEnvironmentVars(initialVars));
 
       act(() => {
@@ -201,9 +195,7 @@ describe("useEnvironmentVars", () => {
     });
 
     it("should add new variables and update existing ones in same operation", () => {
-      const initialVars = [
-        { name: "EXISTING_KEY", value: "old_value", show: false },
-      ];
+      const initialVars = [{ name: "EXISTING_KEY", value: "old_value", show: false }];
       const { result } = renderHook(() => useEnvironmentVars(initialVars));
 
       act(() => {
@@ -252,15 +244,11 @@ describe("useEnvironmentVars", () => {
         result.current.bulkAddEnvVars({});
       });
 
-      expect(result.current.envVars).toEqual([
-        { name: "", value: "", show: false },
-      ]);
+      expect(result.current.envVars).toEqual([{ name: "", value: "", show: false }]);
     });
 
     it("should not create duplicates", () => {
-      const initialVars = [
-        { name: "API_KEY", value: "old_value", show: false },
-      ];
+      const initialVars = [{ name: "API_KEY", value: "old_value", show: false }];
       const { result } = renderHook(() => useEnvironmentVars(initialVars));
 
       act(() => {
@@ -269,16 +257,12 @@ describe("useEnvironmentVars", () => {
         });
       });
 
-      const apiKeyCount = result.current.envVars.filter(
-        (v) => v.name === "API_KEY"
-      ).length;
+      const apiKeyCount = result.current.envVars.filter((v) => v.name === "API_KEY").length;
       expect(apiKeyCount).toBe(1);
     });
 
     it("should handle multiple updates to the same key", () => {
-      const initialVars = [
-        { name: "API_KEY", value: "value1", show: false },
-      ];
+      const initialVars = [{ name: "API_KEY", value: "value1", show: false }];
       const { result } = renderHook(() => useEnvironmentVars(initialVars));
 
       act(() => {

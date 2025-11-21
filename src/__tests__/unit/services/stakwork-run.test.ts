@@ -127,7 +127,7 @@ describe("Stakwork Run Service", () => {
           workspaceId: "ws-1",
           featureId: "feature-1",
         },
-        "user-1"
+        "user-1",
       );
 
       expect(db.workspace.findUnique).toHaveBeenCalledWith({
@@ -175,7 +175,7 @@ describe("Stakwork Run Service", () => {
               }),
             }),
           }),
-        })
+        }),
       );
       expect(db.stakworkRun.update).toHaveBeenCalledWith({
         where: { id: "run-1" },
@@ -198,8 +198,8 @@ describe("Stakwork Run Service", () => {
             workspaceId: "non-existent",
             featureId: "feature-1",
           },
-          "user-1"
-        )
+          "user-1",
+        ),
       ).rejects.toThrow("Workspace not found");
     });
 
@@ -225,8 +225,8 @@ describe("Stakwork Run Service", () => {
             workspaceId: "ws-1",
             featureId: "non-existent",
           },
-          "user-1"
-        )
+          "user-1",
+        ),
       ).rejects.toThrow("Feature not found");
     });
 
@@ -265,8 +265,8 @@ describe("Stakwork Run Service", () => {
             workspaceId: "ws-1",
             featureId: null,
           },
-          "user-1"
-        )
+          "user-1",
+        ),
       ).rejects.toThrow("Stakwork API error");
 
       // Should be called twice: once for webhookUrl, once for FAILED status
@@ -322,7 +322,7 @@ describe("Stakwork Run Service", () => {
           workspaceId: "ws-1",
           featureId: null,
         },
-        "user-1"
+        "user-1",
       );
 
       expect(result.projectId).toBe(12345);
@@ -354,7 +354,7 @@ describe("Stakwork Run Service", () => {
           type: "ARCHITECTURE",
           workspace_id: "ws-1",
           feature_id: "feature-1",
-        }
+        },
       );
 
       expect(db.stakworkRun.updateMany).toHaveBeenCalledWith({
@@ -378,7 +378,7 @@ describe("Stakwork Run Service", () => {
           type: StakworkRunType.ARCHITECTURE,
           status: WorkflowStatus.COMPLETED,
           featureId: "feature-1",
-        })
+        }),
       );
 
       expect(result.runId).toBe("run-1");
@@ -404,7 +404,7 @@ describe("Stakwork Run Service", () => {
         {
           type: "ARCHITECTURE",
           workspace_id: "ws-1",
-        }
+        },
       );
 
       expect(result.runId).toBe("run-1");
@@ -424,8 +424,8 @@ describe("Stakwork Run Service", () => {
           {
             type: "ARCHITECTURE",
             workspace_id: "ws-1",
-          }
-        )
+          },
+        ),
       ).rejects.toThrow("StakworkRun not found");
     });
 
@@ -441,45 +441,36 @@ describe("Stakwork Run Service", () => {
       mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
 
       // Test string result
-      await processStakworkRunWebhook(
-        { result: "string result" },
-        { type: "ARCHITECTURE", workspace_id: "ws-1" }
-      );
+      await processStakworkRunWebhook({ result: "string result" }, { type: "ARCHITECTURE", workspace_id: "ws-1" });
       expect(db.stakworkRun.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             dataType: "string",
             result: "string result",
           }),
-        })
+        }),
       );
 
       // Test array result
-      await processStakworkRunWebhook(
-        { result: ["item1", "item2"] },
-        { type: "ARCHITECTURE", workspace_id: "ws-1" }
-      );
+      await processStakworkRunWebhook({ result: ["item1", "item2"] }, { type: "ARCHITECTURE", workspace_id: "ws-1" });
       expect(db.stakworkRun.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             dataType: "array",
             result: JSON.stringify(["item1", "item2"]),
           }),
-        })
+        }),
       );
 
       // Test null result
-      await processStakworkRunWebhook(
-        { result: null },
-        { type: "ARCHITECTURE", workspace_id: "ws-1" }
-      );
+      await processStakworkRunWebhook({ result: null }, { type: "ARCHITECTURE", workspace_id: "ws-1" });
       expect(db.stakworkRun.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             dataType: "null",
             result: null,
           }),
-        })
+        }),
       );
     });
 
@@ -496,7 +487,7 @@ describe("Stakwork Run Service", () => {
 
       const result = await processStakworkRunWebhook(
         { result: "test" },
-        { type: "ARCHITECTURE", workspace_id: "ws-1" }
+        { type: "ARCHITECTURE", workspace_id: "ws-1" },
       );
 
       expect(result.runId).toBe("run-1");
@@ -535,7 +526,7 @@ describe("Stakwork Run Service", () => {
           limit: 10,
           offset: 0,
         },
-        "user-1"
+        "user-1",
       );
 
       expect(result.runs).toHaveLength(2);
@@ -562,7 +553,7 @@ describe("Stakwork Run Service", () => {
           limit: 10,
           offset: 0,
         },
-        "user-1"
+        "user-1",
       );
 
       expect(db.stakworkRun.findMany).toHaveBeenCalledWith({
@@ -581,9 +572,9 @@ describe("Stakwork Run Service", () => {
     test("should throw error when workspace not found", async () => {
       mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(null);
 
-      await expect(
-        getStakworkRuns({ workspaceId: "non-existent", limit: 10, offset: 0 }, "user-1")
-      ).rejects.toThrow("Workspace not found");
+      await expect(getStakworkRuns({ workspaceId: "non-existent", limit: 10, offset: 0 }, "user-1")).rejects.toThrow(
+        "Workspace not found",
+      );
     });
 
     test("should throw error when user not a member", async () => {
@@ -595,9 +586,9 @@ describe("Stakwork Run Service", () => {
 
       mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
 
-      await expect(
-        getStakworkRuns({ workspaceId: "ws-1", limit: 10, offset: 0 }, "user-1")
-      ).rejects.toThrow("Access denied");
+      await expect(getStakworkRuns({ workspaceId: "ws-1", limit: 10, offset: 0 }, "user-1")).rejects.toThrow(
+        "Access denied",
+      );
     });
   });
 
@@ -650,7 +641,7 @@ describe("Stakwork Run Service", () => {
         expect.objectContaining({
           runId: "run-1",
           decision: StakworkRunDecision.ACCEPTED,
-        })
+        }),
       );
 
       expect(result.decision).toBe(StakworkRunDecision.ACCEPTED);
@@ -717,7 +708,7 @@ describe("Stakwork Run Service", () => {
       await expect(
         updateStakworkRunDecision("non-existent", "user-1", {
           decision: StakworkRunDecision.ACCEPTED,
-        })
+        }),
       ).rejects.toThrow("StakworkRun not found");
     });
 
@@ -736,7 +727,7 @@ describe("Stakwork Run Service", () => {
       await expect(
         updateStakworkRunDecision("run-1", "user-1", {
           decision: StakworkRunDecision.ACCEPTED,
-        })
+        }),
       ).rejects.toThrow("Access denied");
     });
 

@@ -47,17 +47,12 @@ export function RoadmapTaskNode({ data }: RoadmapTaskNodeProps) {
         className={`px-4 py-3 rounded-lg border-2 ${colors.border} ${colors.bg} ${colors.hover} shadow-lg hover:shadow-xl transition-all cursor-pointer min-w-[250px]`}
       >
         <div className="flex flex-col gap-2">
-          <div className="font-semibold text-sm line-clamp-2 text-gray-900 dark:text-gray-100">
-            {data.title}
-          </div>
+          <div className="font-semibold text-sm line-clamp-2 text-gray-900 dark:text-gray-100">{data.title}</div>
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className="text-xs font-medium">
               {data.status.replace("_", " ")}
             </Badge>
-            <Badge
-              variant="outline"
-              className="text-xs font-medium bg-slate-100 dark:bg-slate-800"
-            >
+            <Badge variant="outline" className="text-xs font-medium bg-slate-100 dark:bg-slate-800">
               {PRIORITY_LABELS[data.priority]}
             </Badge>
           </div>
@@ -69,9 +64,7 @@ export function RoadmapTaskNode({ data }: RoadmapTaskNodeProps) {
                   {data.assignee.icon === "bot" ? (
                     <Bot className="h-3 w-3" />
                   ) : (
-                    data.assignee.name?.charAt(0).toUpperCase() || (
-                      <UserIcon className="h-3 w-3" />
-                    )
+                    data.assignee.name?.charAt(0).toUpperCase() || <UserIcon className="h-3 w-3" />
                   )}
                 </AvatarFallback>
               </Avatar>

@@ -35,7 +35,6 @@ export default function StakgraphPage() {
 
   const { toast } = useToast();
 
-
   // Load existing settings on component mount
   useEffect(() => {
     if (slug) {
@@ -62,7 +61,7 @@ export default function StakgraphPage() {
         });
         return;
       }
-      
+
       const primaryRepo = formData.repositories?.[0];
       if (!primaryRepo?.repositoryUrl) {
         toast({

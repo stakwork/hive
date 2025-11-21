@@ -330,7 +330,7 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
   describe("SSE Streaming Lifecycle", () => {
     it("should establish SSE connection with correct headers", async () => {
       mockPollAgentProgress.mockImplementation(
-        () => new Promise(() => {}) // Never resolves to keep stream open
+        () => new Promise(() => {}), // Never resolves to keep stream open
       );
 
       const request = createGetRequest({
@@ -597,7 +597,7 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
 
       expect(mockPollAgentProgress).toHaveBeenCalled();
       const callArgs = mockPollAgentProgress.mock.calls[0];
-      
+
       // Verify swarm URL (should be cleaned and have port 3355)
       expect(callArgs[0]).toContain("3355");
       // Verify request ID
@@ -991,7 +991,7 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
     // NOTE: These tests are commented out because the implementation continues polling
     // with 5-second delays even on errors, which would require very long test timeouts.
     // The error handling behavior is documented here for reference.
-    
+
     it.skip("should emit ERROR event on polling failure", async () => {
       // This test documents that polling failures result in ERROR events but continue polling
       mockPollAgentProgress.mockRejectedValue(new Error("Network timeout"));

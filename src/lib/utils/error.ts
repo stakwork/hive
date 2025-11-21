@@ -8,10 +8,10 @@ export function getErrorMessage(error: unknown, defaultMessage = "An error occur
   if (typeof error === "string") {
     return error;
   }
-  
+
   if (error instanceof Error) {
     return error.message;
   }
-  
+
   return defaultMessage;
 }

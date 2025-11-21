@@ -1,11 +1,5 @@
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TWizardStep } from "../..";
 
 interface WelcomeStepProps {
@@ -19,8 +13,7 @@ export const DefaultStep = ({ handleBackToStep, step }: WelcomeStepProps) => {
       <CardHeader className="text-center">
         <CardTitle className="text-2xl text-red-600">Invalid Step</CardTitle>
         <CardDescription>
-          The wizard step {step} is not recognized. Please start over or contact
-          support.
+          The wizard step {step} is not recognized. Please start over or contact support.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex justify-center pt-4">

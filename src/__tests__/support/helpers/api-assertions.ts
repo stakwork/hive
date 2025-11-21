@@ -9,7 +9,7 @@ import type { NextResponse } from "next/server";
  */
 export async function expectSuccess<T = any>(
   response: Response | NextResponse,
-  expectedStatus: number = 200
+  expectedStatus: number = 200,
 ): Promise<T> {
   expect(response.status).toBe(expectedStatus);
   const data = await response.json();
@@ -25,7 +25,7 @@ export async function expectSuccess<T = any>(
 export async function expectError(
   response: Response | NextResponse,
   expectedError: string | RegExp,
-  expectedStatus: number = 400
+  expectedStatus: number = 400,
 ): Promise<void> {
   expect(response.status).toBe(expectedStatus);
   const data = await response.json();
@@ -42,10 +42,7 @@ export async function expectError(
  * @param response - NextResponse or Response object
  * @param fields - Array of field names that should have validation errors
  */
-export async function expectValidationError(
-  response: Response | NextResponse,
-  fields?: string[]
-): Promise<void> {
+export async function expectValidationError(response: Response | NextResponse, fields?: string[]): Promise<void> {
   expect(response.status).toBe(400);
   const data = await response.json();
 
@@ -63,9 +60,7 @@ export async function expectValidationError(
  * Assert that a Response is 401 Unauthorized
  * @param response - NextResponse or Response object
  */
-export async function expectUnauthorized(
-  response: Response | NextResponse
-): Promise<void> {
+export async function expectUnauthorized(response: Response | NextResponse): Promise<void> {
   expect(response.status).toBe(401);
   const data = await response.json();
   expect(data.error).toBe("Unauthorized");
@@ -76,10 +71,7 @@ export async function expectUnauthorized(
  * @param response - NextResponse or Response object
  * @param expectedMessage - Optional expected error message
  */
-export async function expectForbidden(
-  response: Response | NextResponse,
-  expectedMessage?: string
-): Promise<void> {
+export async function expectForbidden(response: Response | NextResponse, expectedMessage?: string): Promise<void> {
   expect(response.status).toBe(403);
   const data = await response.json();
 
@@ -95,10 +87,7 @@ export async function expectForbidden(
  * @param response - NextResponse or Response object
  * @param expectedMessage - Optional expected error message
  */
-export async function expectNotFound(
-  response: Response | NextResponse,
-  expectedMessage?: string
-): Promise<void> {
+export async function expectNotFound(response: Response | NextResponse, expectedMessage?: string): Promise<void> {
   expect(response.status).toBe(404);
   const data = await response.json();
 
@@ -114,10 +103,7 @@ export async function expectNotFound(
  * @param response - NextResponse or Response object
  * @param expectedMessage - Optional expected error message
  */
-export async function expectConflict(
-  response: Response | NextResponse,
-  expectedMessage?: string
-): Promise<void> {
+export async function expectConflict(response: Response | NextResponse, expectedMessage?: string): Promise<void> {
   expect(response.status).toBe(409);
   const data = await response.json();
 

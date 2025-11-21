@@ -6,7 +6,7 @@ export const getIcon = (iconType: string, className = "h-4 w-4") => {
     code: <Code className={className} />,
     agent: <Bot className={className} />,
     call: <Phone className={className} />,
-    message: <MessageSquare className={className} />
+    message: <MessageSquare className={className} />,
   };
   return icons[iconType?.toLowerCase() as keyof typeof icons] || null;
 };

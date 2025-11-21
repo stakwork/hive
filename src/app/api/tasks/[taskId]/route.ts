@@ -6,10 +6,7 @@ import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -45,10 +42,7 @@ export async function PATCH(
     });
 
     if (!task) {
-      return NextResponse.json(
-        { error: "Task not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
     // Check if user is workspace owner or member
@@ -88,7 +82,7 @@ export async function PATCH(
           task: updatedTask,
           workflow: workflowResult.stakworkData,
         },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
@@ -98,9 +92,9 @@ export async function PATCH(
       if (status && !Object.values(TaskStatus).includes(status as TaskStatus)) {
         return NextResponse.json(
           {
-            error: `Invalid status. Must be one of: ${Object.values(TaskStatus).join(", ")}`
+            error: `Invalid status. Must be one of: ${Object.values(TaskStatus).join(", ")}`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -108,19 +102,19 @@ export async function PATCH(
       if (workflowStatus && !Object.values(WorkflowStatus).includes(workflowStatus as WorkflowStatus)) {
         return NextResponse.json(
           {
-            error: `Invalid workflowStatus. Must be one of: ${Object.values(WorkflowStatus).join(", ")}`
+            error: `Invalid workflowStatus. Must be one of: ${Object.values(WorkflowStatus).join(", ")}`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       // Validate archived if provided
-      if (archived !== undefined && typeof archived !== 'boolean') {
+      if (archived !== undefined && typeof archived !== "boolean") {
         return NextResponse.json(
           {
-            error: 'Invalid archived value. Must be a boolean.'
+            error: "Invalid archived value. Must be a boolean.",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -132,7 +126,7 @@ export async function PATCH(
           ...(workflowStatus && { workflowStatus: workflowStatus as WorkflowStatus }),
           ...(archived !== undefined && {
             archived,
-            archivedAt: archived ? new Date() : null
+            archivedAt: archived ? new Date() : null,
           }),
           ...(runBuild !== undefined && { runBuild }),
           ...(runTestSuite !== undefined && { runTestSuite }),
@@ -184,7 +178,7 @@ export async function PATCH(
           success: true,
           task: updatedTask,
         },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
@@ -194,13 +188,10 @@ export async function PATCH(
         success: true,
         task: sanitizeTask(task),
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error updating task:", error);
-    return NextResponse.json(
-      { error: "Failed to update task" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update task" }, { status: 500 });
   }
 }

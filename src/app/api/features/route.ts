@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { listFeatures, createFeature } from "@/services/roadmap";
 import { FeatureStatus } from "@prisma/client";
-import type {
-  CreateFeatureRequest,
-  FeatureListResponse,
-  FeatureResponse,
-} from "@/types/roadmap";
+import type { CreateFeatureRequest, FeatureListResponse, FeatureResponse } from "@/types/roadmap";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,16 +20,13 @@ export async function GET(request: NextRequest) {
     let statuses: FeatureStatus[] | undefined;
 
     if (statusParam) {
-      const statusValues = statusParam.split(',').filter(Boolean);
+      const statusValues = statusParam.split(",").filter(Boolean);
       const validStatuses = Object.values(FeatureStatus);
 
       // Validate all status values
-      const invalidStatuses = statusValues.filter(s => !validStatuses.includes(s as FeatureStatus));
+      const invalidStatuses = statusValues.filter((s) => !validStatuses.includes(s as FeatureStatus));
       if (invalidStatuses.length > 0) {
-        return NextResponse.json(
-          { error: `Invalid status values: ${invalidStatuses.join(', ')}` },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: `Invalid status values: ${invalidStatuses.join(", ")}` }, { status: 400 });
       }
 
       statuses = statusValues as FeatureStatus[];
@@ -50,17 +43,13 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get("sortOrder") as "asc" | "desc" | undefined;
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: "workspaceId query parameter is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
     }
 
     if (page < 1 || limit < 1 || limit > 100) {
       return NextResponse.json(
         {
-          error:
-            "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
+          error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
         },
         { status: 400 },
       );
@@ -68,18 +57,12 @@ export async function GET(request: NextRequest) {
 
     // Validate sortBy if provided
     if (sortBy && !["title", "createdAt"].includes(sortBy)) {
-      return NextResponse.json(
-        { error: "Invalid sortBy parameter. Must be 'title' or 'createdAt'" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Invalid sortBy parameter. Must be 'title' or 'createdAt'" }, { status: 400 });
     }
 
     // Validate sortOrder if provided
     if (sortOrder && !["asc", "desc"].includes(sortOrder)) {
-      return NextResponse.json(
-        { error: "Invalid sortOrder parameter. Must be 'asc' or 'desc'" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Invalid sortOrder parameter. Must be 'asc' or 'desc'" }, { status: 400 });
     }
 
     const result = await listFeatures({
@@ -105,8 +88,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching features:", error);
     const message = error instanceof Error ? error.message : "Failed to fetch features";
-    const status = message.includes("not found") ? 404 :
-                   message.includes("denied") ? 403 : 500;
+    const status = message.includes("not found") ? 404 : message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
@@ -121,10 +103,7 @@ export async function POST(request: NextRequest) {
     const body: CreateFeatureRequest = await request.json();
 
     if (!body.title || !body.workspaceId) {
-      return NextResponse.json(
-        { error: "Missing required fields: title, workspaceId" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing required fields: title, workspaceId" }, { status: 400 });
     }
 
     const feature = await createFeature(userOrResponse.id, body);
@@ -139,8 +118,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error creating feature:", error);
     const message = error instanceof Error ? error.message : "Failed to create feature";
-    const status = message.includes("denied") ? 403 :
-                   message.includes("not found") || message.includes("required") || message.includes("Invalid") ? 400 : 500;
+    const status = message.includes("denied")
+      ? 403
+      : message.includes("not found") || message.includes("required") || message.includes("Invalid")
+        ? 400
+        : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

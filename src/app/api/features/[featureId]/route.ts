@@ -3,10 +3,7 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ featureId: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ featureId: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -131,10 +128,7 @@ export async function GET(
     });
 
     if (!feature) {
-      return NextResponse.json(
-        { error: "Feature not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
     // Check if user is workspace owner or member
@@ -150,21 +144,15 @@ export async function GET(
         success: true,
         data: feature,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error fetching feature:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch feature" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch feature" }, { status: 500 });
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ featureId: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ featureId: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -180,23 +168,24 @@ export async function PATCH(
         success: true,
         data: updatedFeature,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error updating feature:", error);
     const message = error instanceof Error ? error.message : "Failed to update feature";
-    const status = message.includes("Feature not found") ? 404 :
-                   message.includes("denied") ? 403 :
-                   message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found") ? 400 : 500;
+    const status = message.includes("Feature not found")
+      ? 404
+      : message.includes("denied")
+        ? 403
+        : message.includes("Invalid") || message.includes("required") || message.includes("Assignee not found")
+          ? 400
+          : 500;
 
     return NextResponse.json({ error: message }, { status });
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ featureId: string }> }
-) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ featureId: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -211,13 +200,12 @@ export async function DELETE(
         success: true,
         message: "Feature deleted successfully",
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error deleting feature:", error);
     const message = error instanceof Error ? error.message : "Failed to delete feature";
-    const status = message.includes("not found") ? 404 :
-                   message.includes("denied") ? 403 : 500;
+    const status = message.includes("not found") ? 404 : message.includes("denied") ? 403 : 500;
 
     return NextResponse.json({ error: message }, { status });
   }

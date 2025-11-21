@@ -51,17 +51,17 @@ global.fetch = vi.fn();
 describe("usePusherConnection Hook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Set up getPusherClient to return our mockPusherClient
     vi.mocked(getPusherClient).mockReturnValue(mockPusherClient as any);
-    
+
     // Reset mock implementations
     mockChannel.bind.mockImplementation(() => {});
     mockChannel.unbind.mockImplementation(() => {});
     mockChannel.unbind_all.mockImplementation(() => {});
     mockPusherClient.subscribe.mockReturnValue(mockChannel as unknown as Channel);
     mockPusherClient.unsubscribe.mockImplementation(() => {});
-    
+
     // Reset fetch mock
     (global.fetch as any).mockResolvedValue({
       ok: true,
@@ -85,10 +85,12 @@ describe("usePusherConnection Hook", () => {
     });
 
     test("should not attempt connection when enabled is false", () => {
-      renderHook(() => usePusherConnection({ 
-        taskId: "task-123", 
-        enabled: false 
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId: "task-123",
+          enabled: false,
+        }),
+      );
 
       expect(getPusherClient).not.toHaveBeenCalled();
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
@@ -105,11 +107,13 @@ describe("usePusherConnection Hook", () => {
   describe("Task Channel Connection", () => {
     test("should connect to task channel when taskId is provided", () => {
       const taskId = "task-123";
-      
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true 
-      }));
+
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+        }),
+      );
 
       expect(getTaskChannelName).toHaveBeenCalledWith(taskId);
       expect(getPusherClient).toHaveBeenCalled();
@@ -118,51 +122,40 @@ describe("usePusherConnection Hook", () => {
 
     test("should bind to task-specific events", () => {
       const taskId = "task-123";
-      
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true 
-      }));
+
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+        }),
+      );
 
       // Verify Pusher internal events are bound
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        "pusher:subscription_succeeded",
-        expect.any(Function)
-      );
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        "pusher:subscription_error",
-        expect.any(Function)
-      );
+      expect(mockChannel.bind).toHaveBeenCalledWith("pusher:subscription_succeeded", expect.any(Function));
+      expect(mockChannel.bind).toHaveBeenCalledWith("pusher:subscription_error", expect.any(Function));
 
       // Verify task-specific events are bound
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        MOCK_PUSHER_EVENTS.NEW_MESSAGE,
-        expect.any(Function)
-      );
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        MOCK_PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-        expect.any(Function)
-      );
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        MOCK_PUSHER_EVENTS.TASK_TITLE_UPDATE,
-        expect.any(Function)
-      );
+      expect(mockChannel.bind).toHaveBeenCalledWith(MOCK_PUSHER_EVENTS.NEW_MESSAGE, expect.any(Function));
+      expect(mockChannel.bind).toHaveBeenCalledWith(MOCK_PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, expect.any(Function));
+      expect(mockChannel.bind).toHaveBeenCalledWith(MOCK_PUSHER_EVENTS.TASK_TITLE_UPDATE, expect.any(Function));
     });
 
     test("should update connection state on successful subscription", async () => {
       const taskId = "task-123";
-      
-      const { result } = renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        connectionReadyDelay: 0, // No delay for testing
-      }));
+
+      const { result } = renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          connectionReadyDelay: 0, // No delay for testing
+        }),
+      );
 
       // Simulate successful subscription
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_succeeded"
+        (call) => call[0] === "pusher:subscription_succeeded",
       )?.[1];
-      
+
       expect(subscriptionSuccessCallback).toBeDefined();
       subscriptionSuccessCallback?.();
 
@@ -176,17 +169,19 @@ describe("usePusherConnection Hook", () => {
     test("should handle subscription error", async () => {
       const taskId = "task-123";
       const error = { message: "Connection failed" };
-      
-      const { result } = renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true 
-      }));
+
+      const { result } = renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+        }),
+      );
 
       // Simulate subscription error
       const subscriptionErrorCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_error"
+        (call) => call[0] === "pusher:subscription_error",
       )?.[1];
-      
+
       expect(subscriptionErrorCallback).toBeDefined();
       subscriptionErrorCallback?.(error);
 
@@ -197,10 +192,9 @@ describe("usePusherConnection Hook", () => {
     });
 
     test("should switch to new task channel when taskId changes", () => {
-      const { rerender } = renderHook(
-        ({ taskId }) => usePusherConnection({ taskId, enabled: true }),
-        { initialProps: { taskId: "task-123" } }
-      );
+      const { rerender } = renderHook(({ taskId }) => usePusherConnection({ taskId, enabled: true }), {
+        initialProps: { taskId: "task-123" },
+      });
 
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith("task-task-123");
 
@@ -219,11 +213,13 @@ describe("usePusherConnection Hook", () => {
   describe("Workspace Channel Connection", () => {
     test("should connect to workspace channel when workspaceSlug is provided", () => {
       const workspaceSlug = "test-workspace";
-      
-      renderHook(() => usePusherConnection({ 
-        workspaceSlug, 
-        enabled: true 
-      }));
+
+      renderHook(() =>
+        usePusherConnection({
+          workspaceSlug,
+          enabled: true,
+        }),
+      );
 
       expect(getWorkspaceChannelName).toHaveBeenCalledWith(workspaceSlug);
       expect(getPusherClient).toHaveBeenCalled();
@@ -232,37 +228,38 @@ describe("usePusherConnection Hook", () => {
 
     test("should bind to workspace-specific events", () => {
       const workspaceSlug = "test-workspace";
-      
-      renderHook(() => usePusherConnection({ 
-        workspaceSlug, 
-        enabled: true 
-      }));
+
+      renderHook(() =>
+        usePusherConnection({
+          workspaceSlug,
+          enabled: true,
+        }),
+      );
 
       // Verify workspace-specific events are bound
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        MOCK_PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
-        expect.any(Function)
-      );
+      expect(mockChannel.bind).toHaveBeenCalledWith(MOCK_PUSHER_EVENTS.RECOMMENDATIONS_UPDATED, expect.any(Function));
       expect(mockChannel.bind).toHaveBeenCalledWith(
         MOCK_PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
-        expect.any(Function)
+        expect.any(Function),
       );
     });
 
     test("should update connection state with workspace connection ID", async () => {
       const workspaceSlug = "test-workspace";
-      
-      const { result } = renderHook(() => usePusherConnection({ 
-        workspaceSlug, 
-        enabled: true,
-        connectionReadyDelay: 0,
-      }));
+
+      const { result } = renderHook(() =>
+        usePusherConnection({
+          workspaceSlug,
+          enabled: true,
+          connectionReadyDelay: 0,
+        }),
+      );
 
       // Simulate successful subscription
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_succeeded"
+        (call) => call[0] === "pusher:subscription_succeeded",
       )?.[1];
-      
+
       subscriptionSuccessCallback?.();
 
       await waitFor(() => {
@@ -274,12 +271,14 @@ describe("usePusherConnection Hook", () => {
     test("should prioritize taskId over workspaceSlug when both provided", () => {
       const taskId = "task-123";
       const workspaceSlug = "test-workspace";
-      
-      renderHook(() => usePusherConnection({ 
-        taskId,
-        workspaceSlug, 
-        enabled: true 
-      }));
+
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          workspaceSlug,
+          enabled: true,
+        }),
+      );
 
       // Should connect to task channel, not workspace
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith(`task-${taskId}`);
@@ -292,23 +291,25 @@ describe("usePusherConnection Hook", () => {
       const taskId = "task-123";
       const onMessage = vi.fn();
       const mockMessage = { id: "msg-1", content: "Test message", role: "user", createdAt: new Date().toISOString() };
-      
+
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: mockMessage }),
       });
 
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        onMessage,
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onMessage,
+        }),
+      );
 
       // Get the NEW_MESSAGE callback
       const newMessageCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE
+        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE,
       )?.[1];
-      
+
       expect(newMessageCallback).toBeDefined();
 
       // Simulate receiving message ID
@@ -329,17 +330,19 @@ describe("usePusherConnection Hook", () => {
         timestamp: new Date(),
       };
 
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        onWorkflowStatusUpdate,
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onWorkflowStatusUpdate,
+        }),
+      );
 
       // Get the WORKFLOW_STATUS_UPDATE callback
       const workflowStatusCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE
+        (call) => call[0] === MOCK_PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
       )?.[1];
-      
+
       expect(workflowStatusCallback).toBeDefined();
 
       // Simulate workflow status update
@@ -358,17 +361,19 @@ describe("usePusherConnection Hook", () => {
         timestamp: new Date(),
       };
 
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        onTaskTitleUpdate,
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onTaskTitleUpdate,
+        }),
+      );
 
       // Get the TASK_TITLE_UPDATE callback
       const taskTitleCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.TASK_TITLE_UPDATE
+        (call) => call[0] === MOCK_PUSHER_EVENTS.TASK_TITLE_UPDATE,
       )?.[1];
-      
+
       expect(taskTitleCallback).toBeDefined();
 
       // Simulate task title update
@@ -387,17 +392,19 @@ describe("usePusherConnection Hook", () => {
         timestamp: new Date(),
       };
 
-      renderHook(() => usePusherConnection({ 
-        workspaceSlug, 
-        enabled: true,
-        onRecommendationsUpdated,
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          workspaceSlug,
+          enabled: true,
+          onRecommendationsUpdated,
+        }),
+      );
 
       // Get the RECOMMENDATIONS_UPDATED callback
       const recommendationsCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.RECOMMENDATIONS_UPDATED
+        (call) => call[0] === MOCK_PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
       )?.[1];
-      
+
       expect(recommendationsCallback).toBeDefined();
 
       // Simulate recommendations update
@@ -409,23 +416,25 @@ describe("usePusherConnection Hook", () => {
     test("should handle NEW_MESSAGE event with fetch error gracefully", async () => {
       const taskId = "task-123";
       const onMessage = vi.fn();
-      
+
       (global.fetch as any).mockResolvedValueOnce({
         ok: false,
         status: 404,
       });
 
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        onMessage,
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onMessage,
+        }),
+      );
 
       // Get the NEW_MESSAGE callback
       const newMessageCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE
+        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE,
       )?.[1];
-      
+
       // Simulate receiving message ID with failed fetch
       await newMessageCallback?.("msg-1");
 
@@ -439,17 +448,19 @@ describe("usePusherConnection Hook", () => {
       const taskId = "task-123";
       const onMessage = vi.fn();
 
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        onMessage,
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onMessage,
+        }),
+      );
 
       // Get the NEW_MESSAGE callback
       const newMessageCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE
+        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE,
       )?.[1];
-      
+
       // Simulate receiving non-string payload
       await newMessageCallback?.({ invalid: "payload" });
 
@@ -462,10 +473,9 @@ describe("usePusherConnection Hook", () => {
       const onMessage1 = vi.fn();
       const onMessage2 = vi.fn();
 
-      const { rerender } = renderHook(
-        ({ onMessage }) => usePusherConnection({ taskId, enabled: true, onMessage }),
-        { initialProps: { onMessage: onMessage1 } }
-      );
+      const { rerender } = renderHook(({ onMessage }) => usePusherConnection({ taskId, enabled: true, onMessage }), {
+        initialProps: { onMessage: onMessage1 },
+      });
 
       const initialSubscribeCount = mockPusherClient.subscribe.mock.calls.length;
 
@@ -481,16 +491,18 @@ describe("usePusherConnection Hook", () => {
   describe("Disconnect Functionality", () => {
     test("should disconnect from channel using disconnect method", async () => {
       const taskId = "task-123";
-      
-      const { result } = renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        connectionReadyDelay: 0,
-      }));
+
+      const { result } = renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          connectionReadyDelay: 0,
+        }),
+      );
 
       // Connect first
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_succeeded"
+        (call) => call[0] === "pusher:subscription_succeeded",
       )?.[1];
       subscriptionSuccessCallback?.();
 
@@ -503,7 +515,7 @@ describe("usePusherConnection Hook", () => {
 
       expect(mockChannel.unbind_all).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`task-${taskId}`);
-      
+
       await waitFor(() => {
         expect(result.current.isConnected).toBe(false);
         expect(result.current.connectionId).toBeNull();
@@ -514,10 +526,9 @@ describe("usePusherConnection Hook", () => {
     test("should disconnect when enabled is set to false", () => {
       const taskId = "task-123";
 
-      const { rerender } = renderHook(
-        ({ enabled }) => usePusherConnection({ taskId, enabled }),
-        { initialProps: { enabled: true } }
-      );
+      const { rerender } = renderHook(({ enabled }) => usePusherConnection({ taskId, enabled }), {
+        initialProps: { enabled: true },
+      });
 
       expect(mockPusherClient.subscribe).toHaveBeenCalled();
 
@@ -529,10 +540,9 @@ describe("usePusherConnection Hook", () => {
     });
 
     test("should disconnect when both taskId and workspaceSlug are removed", () => {
-      const { rerender } = renderHook(
-        ({ taskId }) => usePusherConnection({ taskId, enabled: true }),
-        { initialProps: { taskId: "task-123" as string | null } }
-      );
+      const { rerender } = renderHook(({ taskId }) => usePusherConnection({ taskId, enabled: true }), {
+        initialProps: { taskId: "task-123" as string | null },
+      });
 
       expect(mockPusherClient.subscribe).toHaveBeenCalled();
 
@@ -557,10 +567,12 @@ describe("usePusherConnection Hook", () => {
     test("should cleanup connection on unmount", () => {
       const taskId = "task-123";
 
-      const { unmount } = renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true 
-      }));
+      const { unmount } = renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+        }),
+      );
 
       expect(mockPusherClient.subscribe).toHaveBeenCalled();
 
@@ -574,10 +586,12 @@ describe("usePusherConnection Hook", () => {
     test("should cleanup workspace connection on unmount", () => {
       const workspaceSlug = "test-workspace";
 
-      const { unmount } = renderHook(() => usePusherConnection({ 
-        workspaceSlug, 
-        enabled: true 
-      }));
+      const { unmount } = renderHook(() =>
+        usePusherConnection({
+          workspaceSlug,
+          enabled: true,
+        }),
+      );
 
       expect(mockPusherClient.subscribe).toHaveBeenCalled();
 
@@ -649,18 +663,20 @@ describe("usePusherConnection Hook", () => {
       try {
         const taskId = "task-123";
         const delay = 200;
-        
-        const { result } = renderHook(() => usePusherConnection({ 
-          taskId, 
-          enabled: true,
-          connectionReadyDelay: delay,
-        }));
+
+        const { result } = renderHook(() =>
+          usePusherConnection({
+            taskId,
+            enabled: true,
+            connectionReadyDelay: delay,
+          }),
+        );
 
         // Simulate successful subscription
         const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-          (call) => call[0] === "pusher:subscription_succeeded"
+          (call) => call[0] === "pusher:subscription_succeeded",
         )?.[1];
-        
+
         act(() => {
           subscriptionSuccessCallback?.();
         });
@@ -699,74 +715,77 @@ describe("usePusherConnection Hook", () => {
         onTaskTitleUpdate: vi.fn(),
       };
 
-      renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        ...callbacks,
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          ...callbacks,
+        }),
+      );
 
       // All event handlers should be bound
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        MOCK_PUSHER_EVENTS.NEW_MESSAGE,
-        expect.any(Function)
-      );
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        MOCK_PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-        expect.any(Function)
-      );
-      expect(mockChannel.bind).toHaveBeenCalledWith(
-        MOCK_PUSHER_EVENTS.TASK_TITLE_UPDATE,
-        expect.any(Function)
-      );
+      expect(mockChannel.bind).toHaveBeenCalledWith(MOCK_PUSHER_EVENTS.NEW_MESSAGE, expect.any(Function));
+      expect(mockChannel.bind).toHaveBeenCalledWith(MOCK_PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, expect.any(Function));
+      expect(mockChannel.bind).toHaveBeenCalledWith(MOCK_PUSHER_EVENTS.TASK_TITLE_UPDATE, expect.any(Function));
     });
   });
 
   describe("Edge Cases and Error Scenarios", () => {
     test("should handle empty string taskId", () => {
-      renderHook(() => usePusherConnection({ 
-        taskId: "", 
-        enabled: true 
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId: "",
+          enabled: true,
+        }),
+      );
 
       // Empty strings are treated as falsy, should not attempt connection
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
     });
 
     test("should handle empty string workspaceSlug", () => {
-      renderHook(() => usePusherConnection({ 
-        workspaceSlug: "", 
-        enabled: true 
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          workspaceSlug: "",
+          enabled: true,
+        }),
+      );
 
       // Empty strings are treated as falsy, should not attempt connection
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
     });
 
     test("should handle null taskId", () => {
-      renderHook(() => usePusherConnection({ 
-        taskId: null, 
-        enabled: true 
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId: null,
+          enabled: true,
+        }),
+      );
 
       // Should not attempt connection
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
     });
 
     test("should handle null workspaceSlug", () => {
-      renderHook(() => usePusherConnection({ 
-        workspaceSlug: null, 
-        enabled: true 
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          workspaceSlug: null,
+          enabled: true,
+        }),
+      );
 
       // Should not attempt connection
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
     });
 
     test("should handle undefined taskId", () => {
-      renderHook(() => usePusherConnection({ 
-        taskId: undefined, 
-        enabled: true 
-      }));
+      renderHook(() =>
+        usePusherConnection({
+          taskId: undefined,
+          enabled: true,
+        }),
+      );
 
       // Should not attempt connection
       expect(mockPusherClient.subscribe).not.toHaveBeenCalled();
@@ -778,10 +797,12 @@ describe("usePusherConnection Hook", () => {
         throw new Error("Connection failed");
       });
 
-      const { result } = renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true 
-      }));
+      const { result } = renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+        }),
+      );
 
       expect(result.current.isConnected).toBe(false);
       expect(result.current.error).toBe("Failed to setup task real-time connection");
@@ -790,10 +811,9 @@ describe("usePusherConnection Hook", () => {
     test("should handle rapid enable/disable toggling", () => {
       const taskId = "task-123";
 
-      const { rerender } = renderHook(
-        ({ enabled }) => usePusherConnection({ taskId, enabled }),
-        { initialProps: { enabled: true } }
-      );
+      const { rerender } = renderHook(({ enabled }) => usePusherConnection({ taskId, enabled }), {
+        initialProps: { enabled: true },
+      });
 
       // Toggle multiple times
       rerender({ enabled: false });
@@ -807,9 +827,7 @@ describe("usePusherConnection Hook", () => {
     });
 
     test("should maintain stable disconnect function reference", () => {
-      const { result, rerender } = renderHook(() => 
-        usePusherConnection({ taskId: "task-123", enabled: true })
-      );
+      const { result, rerender } = renderHook(() => usePusherConnection({ taskId: "task-123", enabled: true }));
 
       const disconnectRef1 = result.current.disconnect;
 
@@ -822,9 +840,7 @@ describe("usePusherConnection Hook", () => {
     });
 
     test("should maintain stable connect function reference", () => {
-      const { result, rerender } = renderHook(() => 
-        usePusherConnection({ taskId: "task-123", enabled: true })
-      );
+      const { result, rerender } = renderHook(() => usePusherConnection({ taskId: "task-123", enabled: true }));
 
       const connectRef1 = result.current.connect;
 
@@ -841,13 +857,15 @@ describe("usePusherConnection Hook", () => {
     test("should handle complete connection lifecycle for task channel", async () => {
       const taskId = "task-123";
       const onMessage = vi.fn();
-      
-      const { result, unmount } = renderHook(() => usePusherConnection({ 
-        taskId, 
-        enabled: true,
-        onMessage,
-        connectionReadyDelay: 0,
-      }));
+
+      const { result, unmount } = renderHook(() =>
+        usePusherConnection({
+          taskId,
+          enabled: true,
+          onMessage,
+          connectionReadyDelay: 0,
+        }),
+      );
 
       // 1. Initial state
       expect(result.current.isConnected).toBe(false);
@@ -855,7 +873,7 @@ describe("usePusherConnection Hook", () => {
 
       // 2. Simulate successful connection
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_succeeded"
+        (call) => call[0] === "pusher:subscription_succeeded",
       )?.[1];
       subscriptionSuccessCallback?.();
 
@@ -866,9 +884,9 @@ describe("usePusherConnection Hook", () => {
 
       // 3. Receive message
       const newMessageCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE
+        (call) => call[0] === MOCK_PUSHER_EVENTS.NEW_MESSAGE,
       )?.[1];
-      
+
       await newMessageCallback?.("msg-123");
 
       await waitFor(() => {
@@ -885,20 +903,22 @@ describe("usePusherConnection Hook", () => {
     test("should handle complete connection lifecycle for workspace channel", async () => {
       const workspaceSlug = "test-workspace";
       const onRecommendationsUpdated = vi.fn();
-      
-      const { result, unmount } = renderHook(() => usePusherConnection({ 
-        workspaceSlug, 
-        enabled: true,
-        onRecommendationsUpdated,
-        connectionReadyDelay: 0,
-      }));
+
+      const { result, unmount } = renderHook(() =>
+        usePusherConnection({
+          workspaceSlug,
+          enabled: true,
+          onRecommendationsUpdated,
+          connectionReadyDelay: 0,
+        }),
+      );
 
       // 1. Initial state
       expect(result.current.isConnected).toBe(false);
 
       // 2. Simulate successful connection
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_succeeded"
+        (call) => call[0] === "pusher:subscription_succeeded",
       )?.[1];
       subscriptionSuccessCallback?.();
 
@@ -908,9 +928,9 @@ describe("usePusherConnection Hook", () => {
 
       // 3. Receive recommendations update
       const recommendationsCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === MOCK_PUSHER_EVENTS.RECOMMENDATIONS_UPDATED
+        (call) => call[0] === MOCK_PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
       )?.[1];
-      
+
       const mockUpdate = {
         workspaceSlug,
         newRecommendationCount: 5,
@@ -930,25 +950,26 @@ describe("usePusherConnection Hook", () => {
 
     test("should handle channel switching from task to workspace", async () => {
       const { result, rerender } = renderHook(
-        ({ taskId, workspaceSlug }) => usePusherConnection({ 
-          taskId, 
-          workspaceSlug,
-          enabled: true,
-          connectionReadyDelay: 0,
-        }),
-        { 
-          initialProps: { 
-            taskId: "task-123" as string | null, 
-            workspaceSlug: null as string | null 
-          } 
-        }
+        ({ taskId, workspaceSlug }) =>
+          usePusherConnection({
+            taskId,
+            workspaceSlug,
+            enabled: true,
+            connectionReadyDelay: 0,
+          }),
+        {
+          initialProps: {
+            taskId: "task-123" as string | null,
+            workspaceSlug: null as string | null,
+          },
+        },
       );
 
       // Connected to task
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith("task-task-123");
 
       const subscriptionSuccessCallback = mockChannel.bind.mock.calls.find(
-        (call) => call[0] === "pusher:subscription_succeeded"
+        (call) => call[0] === "pusher:subscription_succeeded",
       )?.[1];
       subscriptionSuccessCallback?.();
 

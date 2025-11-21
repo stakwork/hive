@@ -46,9 +46,7 @@ async function seedUsersWithAccounts() {
   return results;
 }
 
-async function seedWorkspacesAndSwarms(
-  users: Array<{ id: string; email: string }>,
-) {
+async function seedWorkspacesAndSwarms(users: Array<{ id: string; email: string }>) {
   const items = [
     {
       owner: users[0],

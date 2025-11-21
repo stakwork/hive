@@ -16,13 +16,19 @@ vi.mock("next/navigation", () => ({
 vi.mock("framer-motion", () => ({
   motion: {
     div: ({ children, className, ...props }: any) => (
-      <div className={className} {...props}>{children}</div>
+      <div className={className} {...props}>
+        {children}
+      </div>
     ),
     h2: ({ children, className, ...props }: any) => (
-      <h2 className={className} {...props}>{children}</h2>
+      <h2 className={className} {...props}>
+        {children}
+      </h2>
     ),
     p: ({ children, className, ...props }: any) => (
-      <p className={className} {...props}>{children}</p>
+      <p className={className} {...props}>
+        {children}
+      </p>
     ),
   },
   AnimatePresence: ({ children }: any) => <>{children}</>,
@@ -36,28 +42,32 @@ vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatMessage", () => ({
       <div>{message.role}</div>
       {replyMessage && <div data-testid="reply-message">{replyMessage.message}</div>}
       {message.artifacts?.map((artifact: any, index: number) => (
-        <div key={index} data-testid={`artifact-${index}`}>{artifact.type}</div>
+        <div key={index} data-testid={`artifact-${index}`}>
+          {artifact.type}
+        </div>
       ))}
-      <button onClick={() => onArtifactAction(message.id, { id: 'test-action' }, 'webhook')}>
-        Artifact Action
-      </button>
+      <button onClick={() => onArtifactAction(message.id, { id: "test-action" }, "webhook")}>Artifact Action</button>
     </div>
   ),
 }));
 
 vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatInput", () => ({
-  ChatInput: ({ onSend, disabled, isLoading, logs, pendingDebugAttachment, onRemoveDebugAttachment, workflowStatus }: any) => (
+  ChatInput: ({
+    onSend,
+    disabled,
+    isLoading,
+    logs,
+    pendingDebugAttachment,
+    onRemoveDebugAttachment,
+    workflowStatus,
+  }: any) => (
     <div data-testid="chat-input">
       <input
         data-testid="message-input"
         disabled={disabled}
         placeholder={isLoading ? "Loading..." : "Type a message..."}
       />
-      <button
-        data-testid="send-button"
-        onClick={() => onSend("test message")}
-        disabled={disabled || isLoading}
-      >
+      <button data-testid="send-button" onClick={() => onSend("test message")} disabled={disabled || isLoading}>
         Send
       </button>
       {pendingDebugAttachment && (
@@ -66,12 +76,8 @@ vi.mock("@/app/w/[slug]/task/[...taskParams]/components/ChatInput", () => ({
           <button onClick={onRemoveDebugAttachment}>Remove</button>
         </div>
       )}
-      {workflowStatus && (
-        <div data-testid="workflow-status">{workflowStatus}</div>
-      )}
-      {logs && logs.length > 0 && (
-        <div data-testid="logs-count">{logs.length}</div>
-      )}
+      {workflowStatus && <div data-testid="workflow-status">{workflowStatus}</div>}
+      {logs && logs.length > 0 && <div data-testid="logs-count">{logs.length}</div>}
     </div>
   ),
 }));
@@ -81,7 +87,7 @@ vi.mock("@/components/ui/button", () => ({
   Button: ({ children, onClick, variant, size, className, disabled, ...props }: any) => (
     <button
       onClick={onClick}
-      className={`btn ${variant || 'default'} ${size || 'default'} ${className || ''}`}
+      className={`btn ${variant || "default"} ${size || "default"} ${className || ""}`}
       disabled={disabled}
       {...props}
     >
@@ -92,7 +98,9 @@ vi.mock("@/components/ui/button", () => ({
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: any) => (
-    <a href={href} {...props}>{children}</a>
+    <a href={href} {...props}>
+      {children}
+    </a>
   ),
 }));
 
@@ -163,7 +171,7 @@ const TestDataFactories = {
     refresh: vi.fn(),
     replace: vi.fn(),
     prefetch: vi.fn(),
-  })
+  }),
 };
 
 // Test utilities
@@ -182,14 +190,14 @@ const TestUtils = {
   },
 
   findBackButton: () => screen.getByTestId("arrow-left-icon").closest("button"),
-  
+
   findMessageById: (id: string) => screen.getByTestId(`chat-message-${id}`),
 
   expectElementsToBePresent: (testIds: string[]) => {
-    testIds.forEach(testId => {
+    testIds.forEach((testId) => {
       expect(screen.getByTestId(testId)).toBeInTheDocument();
     });
-  }
+  },
 };
 
 // Helper functions for creating test data (kept for backward compatibility)
@@ -238,7 +246,8 @@ describe("ChatArea", () => {
     });
 
     test("truncates long task titles", () => {
-      const longTitle = "This is a very long task title that should be truncated because it exceeds the 60 character limit";
+      const longTitle =
+        "This is a very long task title that should be truncated because it exceeds the 60 character limit";
       const { props } = setupChatAreaTest({
         taskTitle: longTitle,
       });
@@ -430,16 +439,13 @@ describe("ChatArea", () => {
       const { props } = setupChatAreaTest();
       const { rerender } = render(<ChatArea {...props} />);
 
-      const newMessages = [
-        ...props.messages,
-        createTestMessage({ id: "new-msg", message: "New message" }),
-      ];
+      const newMessages = [...props.messages, createTestMessage({ id: "new-msg", message: "New message" })];
 
       rerender(<ChatArea {...props} messages={newMessages} />);
 
       // Wait for useEffect to trigger
       await waitFor(() => {
-        expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth' });
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
       });
     });
 
@@ -448,7 +454,7 @@ describe("ChatArea", () => {
       delete (Element.prototype as any).scrollIntoView;
 
       const { props } = setupChatAreaTest();
-      
+
       // Should not throw an error
       expect(() => render(<ChatArea {...props} />)).not.toThrow();
 
@@ -467,11 +473,7 @@ describe("ChatArea", () => {
       const artifactButton = screen.getByText("Artifact Action");
       await user.click(artifactButton);
 
-      expect(onArtifactAction).toHaveBeenCalledWith(
-        "message-1",
-        { id: 'test-action' },
-        'webhook'
-      );
+      expect(onArtifactAction).toHaveBeenCalledWith("message-1", { id: "test-action" }, "webhook");
     });
 
     test("disables input when inputDisabled is true", () => {

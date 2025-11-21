@@ -16,7 +16,7 @@ export async function GET() {
         message: "Janitor cron is disabled",
         workspacesProcessed: 0,
         runsCreated: 0,
-        errors: []
+        errors: [],
       });
     }
 
@@ -27,9 +27,13 @@ export async function GET() {
 
     // Log execution results
     if (result.success) {
-      console.log(`[CronAPI] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs`);
+      console.log(
+        `[CronAPI] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs`,
+      );
     } else {
-      console.error(`[CronAPI] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs, ${result.errors.length} errors`);
+      console.error(
+        `[CronAPI] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.runsCreated} runs, ${result.errors.length} errors`,
+      );
 
       // Log individual errors
       result.errors.forEach((error, index) => {
@@ -43,9 +47,8 @@ export async function GET() {
       runsCreated: result.runsCreated,
       errorCount: result.errors.length,
       errors: result.errors,
-      timestamp: result.timestamp.toISOString()
+      timestamp: result.timestamp.toISOString(),
     });
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[CronAPI] Unhandled error:", errorMessage);
@@ -54,9 +57,9 @@ export async function GET() {
       {
         success: false,
         error: "Internal server error",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

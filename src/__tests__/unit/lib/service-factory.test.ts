@@ -15,7 +15,7 @@ describe("ServiceFactory", () => {
   const mockConfig = {
     apiKey: "test-api-key",
     baseUrl: "https://test.example.com",
-    headers: { "Content-Type": "application/json" }
+    headers: { "Content-Type": "application/json" },
   };
 
   const mockStakworkService = {
@@ -24,7 +24,7 @@ describe("ServiceFactory", () => {
     createProject: vi.fn(),
     createCustomer: vi.fn(),
     createSecret: vi.fn(),
-    stakworkRequest: vi.fn()
+    stakworkRequest: vi.fn(),
   };
 
   const mockPoolManagerService = {
@@ -34,7 +34,7 @@ describe("ServiceFactory", () => {
     createUser: vi.fn(),
     deletePool: vi.fn(),
     getPoolEnvVars: vi.fn(),
-    updatePoolData: vi.fn()
+    updatePoolData: vi.fn(),
   };
 
   const mockWizardService = {
@@ -44,16 +44,16 @@ describe("ServiceFactory", () => {
     updateWizardProgress: vi.fn(),
     resetWizard: vi.fn(),
     createSwarm: vi.fn(),
-    pollSwarm: vi.fn()
+    pollSwarm: vi.fn(),
   };
 
   beforeEach(() => {
     // Clear all instances before each test
     ServiceFactory.clearInstances();
-    
+
     // Reset all mocks
     vi.clearAllMocks();
-    
+
     // Setup default mock implementations
     vi.mocked(getServiceConfig).mockReturnValue(mockConfig);
     vi.mocked(StakworkService).mockImplementation(() => mockStakworkService as any);
@@ -235,7 +235,7 @@ describe("ServiceFactory", () => {
       expect(services).toEqual({
         stakwork: mockStakworkService,
         poolManager: mockPoolManagerService,
-        wizard: mockWizardService
+        wizard: mockWizardService,
       });
     });
 
@@ -250,7 +250,7 @@ describe("ServiceFactory", () => {
     it("should return existing instances if already created", () => {
       // Pre-create one service
       ServiceFactory.getStakworkService();
-      
+
       const services = ServiceFactory.getAllServices();
 
       expect(services.stakwork).toBe(mockStakworkService);

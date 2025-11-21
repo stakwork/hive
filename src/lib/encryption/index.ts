@@ -45,11 +45,7 @@ export class EncryptionService {
     return cryptoModule.encrypt(value, keyBuffer, keyId);
   }
 
-  encryptFieldWithKeyId(
-    fieldName: EncryptableField,
-    value: string,
-    keyId: string,
-  ): EncryptedData {
+  encryptFieldWithKeyId(fieldName: EncryptableField, value: string, keyId: string): EncryptedData {
     // Ensure registry initialized
     this.getFieldEncryption();
     const keyBuffer = this.keyRegistry.get(keyId);
@@ -59,10 +55,7 @@ export class EncryptionService {
     return cryptoModule.encrypt(value, keyBuffer, keyId);
   }
 
-  decryptField(
-    fieldName: EncryptableField,
-    encryptedData: EncryptedData | string,
-  ): string {
+  decryptField(fieldName: EncryptableField, encryptedData: EncryptedData | string): string {
     this.getFieldEncryption();
 
     if (typeof encryptedData === "string") {
@@ -130,16 +123,11 @@ export function encryptEnvVars(vars: EnvVar[]): EncryptedEnvVar[] {
   }));
 }
 
-export function decryptEnvVars(
-  vars: Array<{ name: string; value: unknown }>,
-): EnvVar[] {
+export function decryptEnvVars(vars: Array<{ name: string; value: unknown }>): EnvVar[] {
   const enc = EncryptionService.getInstance();
   return vars.map((v) => ({
     name: v.name,
-    value: enc.decryptField(
-      "environmentVariables",
-      v.value as EncryptedData | string,
-    ),
+    value: enc.decryptField("environmentVariables", v.value as EncryptedData | string),
   }));
 }
 

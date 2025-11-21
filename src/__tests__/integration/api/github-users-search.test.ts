@@ -113,19 +113,16 @@ describe("GitHub Users Search API Integration Tests", () => {
       expect(data.total_count).toBe(2);
 
       // Verify GitHub API was called with decrypted token
-      expect(mockAxios.get).toHaveBeenCalledWith(
-        "https://api.github.com/search/users",
-        {
-          headers: {
-            Authorization: "token github_pat_test_token",
-            Accept: "application/vnd.github.v3+json",
-          },
-          params: {
-            q: "john",
-            per_page: 10,
-          },
-        }
-      );
+      expect(mockAxios.get).toHaveBeenCalledWith("https://api.github.com/search/users", {
+        headers: {
+          Authorization: "token github_pat_test_token",
+          Accept: "application/vnd.github.v3+json",
+        },
+        params: {
+          q: "john",
+          per_page: 10,
+        },
+      });
 
       // Verify real database lookup occurred
       const accountInDb = await db.account.findFirst({
@@ -255,7 +252,7 @@ describe("GitHub Users Search API Integration Tests", () => {
           headers: expect.objectContaining({
             Authorization: "token github_pat_test_token",
           }),
-        })
+        }),
       );
     });
   });

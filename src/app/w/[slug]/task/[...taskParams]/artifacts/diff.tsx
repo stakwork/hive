@@ -49,7 +49,7 @@ import {
   ChevronRight,
   Maximize2,
   Minimize2,
-  AlertCircle
+  AlertCircle,
 } from "lucide-react";
 import "./DiffArtifact.css";
 
@@ -101,8 +101,11 @@ const createTokens = (hunks: HunkData[], language: string) => {
   }
 };
 
-
-export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unified", className = "" }: DiffArtifactPanelProps) {
+export function DiffArtifactPanel({
+  artifacts,
+  viewType: initialViewType = "unified",
+  className = "",
+}: DiffArtifactPanelProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
@@ -157,9 +160,9 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
           // Calculate stats
           let additions = 0;
           let deletions = 0;
-          file.hunks?.forEach(hunk => {
-            additions += hunk.changes.filter(c => c.type === 'insert').length;
-            deletions += hunk.changes.filter(c => c.type === 'delete').length;
+          file.hunks?.forEach((hunk) => {
+            additions += hunk.changes.filter((c) => c.type === "insert").length;
+            deletions += hunk.changes.filter((c) => c.type === "delete").length;
           });
 
           // Detect language and create tokens for syntax highlighting
@@ -207,15 +210,15 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
 
   React.useEffect(() => {
     const prevFiles = prevFilesRef.current;
-    const currentFiles = new Set(parsedFiles.map(f => f.fileName));
+    const currentFiles = new Set(parsedFiles.map((f) => f.fileName));
 
     // Find files that are new in this render
-    const newFiles = parsedFiles.filter(f => !prevFiles.has(f.fileName));
+    const newFiles = parsedFiles.filter((f) => !prevFiles.has(f.fileName));
 
     if (newFiles.length > 0) {
-      setExpandedFiles(prev => {
+      setExpandedFiles((prev) => {
         const next = new Set(prev);
-        newFiles.forEach(f => next.add(f.fileName));
+        newFiles.forEach((f) => next.add(f.fileName));
         return next;
       });
     }
@@ -240,7 +243,7 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
     if (allExpanded) {
       setExpandedFiles(new Set());
     } else {
-      setExpandedFiles(new Set(parsedFiles.map(f => f.fileName)));
+      setExpandedFiles(new Set(parsedFiles.map((f) => f.fileName)));
     }
   };
 
@@ -262,11 +265,14 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
 
   // Calculate total stats
   const totalStats = useMemo(() => {
-    return parsedFiles.reduce((acc, file) => ({
-      files: acc.files + 1,
-      additions: acc.additions + file.additions,
-      deletions: acc.deletions + file.deletions,
-    }), { files: 0, additions: 0, deletions: 0 });
+    return parsedFiles.reduce(
+      (acc, file) => ({
+        files: acc.files + 1,
+        additions: acc.additions + file.additions,
+        deletions: acc.deletions + file.deletions,
+      }),
+      { files: 0, additions: 0, deletions: 0 },
+    );
   }, [parsedFiles]);
 
   // Render empty state
@@ -295,12 +301,8 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
               <FileCode className="w-4 h-4" />
               {totalStats.files} files
             </span>
-            <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-              +{totalStats.additions}
-            </span>
-            <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
-              -{totalStats.deletions}
-            </span>
+            <span className="flex items-center gap-1 text-green-600 dark:text-green-400">+{totalStats.additions}</span>
+            <span className="flex items-center gap-1 text-red-600 dark:text-red-400">-{totalStats.deletions}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -340,7 +342,10 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
           const isExpanded = expandedFiles.has(file.fileName);
 
           return (
-            <div key={`${file.fileName}-${index}`} className="diff-artifact-file border border-border rounded-lg overflow-hidden bg-card">
+            <div
+              key={`${file.fileName}-${index}`}
+              className="diff-artifact-file border border-border rounded-lg overflow-hidden bg-card"
+            >
               {/* File header */}
               <div
                 className="diff-artifact-file-header flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -377,12 +382,7 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
                   {/* Diff content */}
                   {!file.hasError && file.hunks.length > 0 && (
                     <div className="overflow-x-auto">
-                      <Diff
-                        viewType={viewType}
-                        diffType={file.type}
-                        hunks={file.hunks}
-                        tokens={file.tokens}
-                      >
+                      <Diff viewType={viewType} diffType={file.type} hunks={file.hunks} tokens={file.tokens}>
                         {(hunks) => (
                           <>
                             {hunks.map((hunk, i) => {
@@ -397,9 +397,7 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
                                   <Hunk hunk={hunk} />
                                   {showGap && (
                                     <div className="diff-gap-indicator">
-                                      <span className="diff-gap-text">
-                                        ⋯ {gap} unchanged lines ⋯
-                                      </span>
+                                      <span className="diff-gap-text">⋯ {gap} unchanged lines ⋯</span>
                                     </div>
                                   )}
                                 </React.Fragment>
@@ -413,9 +411,7 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
 
                   {/* Empty hunks */}
                   {!file.hasError && file.hunks.length === 0 && (
-                    <div className="p-8 text-center text-muted-foreground text-sm">
-                      No changes in this file
-                    </div>
+                    <div className="p-8 text-center text-muted-foreground text-sm">No changes in this file</div>
                   )}
                 </div>
               )}

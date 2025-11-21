@@ -1,31 +1,27 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/graph/webhook/route";
 import { db } from "@/lib/db";
-import {
-  createPostRequest,
-  generateUniqueId,
-  generateUniqueSlug,
-} from "@/__tests__/support/helpers";
+import { createPostRequest, generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
 
 /**
  * Integration Tests for POST /api/graph/webhook
- * 
+ *
  * BUGS FOUND - TO BE FIXED IN SEPARATE PR:
  * 1. Route throws Prisma error when workspace_id is undefined (line 42-46 in route.ts)
  *    - Should guard the database query: `const workspace = workspace_id ? await db.workspace.findUnique(...) : null;`
  * 2. Route returns incorrect `broadcasted` flag (line 80 in route.ts)
  *    - Currently: `broadcasted: !!workspace_id` (returns true if ID provided, even if workspace doesn't exist)
  *    - Should be: `broadcasted: !!workspace` (returns true only if workspace exists and broadcast succeeded)
- * 
+ *
  * SECURITY NOTE: This endpoint has several security gaps:
  * 1. No HMAC signature verification (unlike GitHub webhook)
  * 2. API key comparison uses direct === (timing attack vulnerable, should use crypto.timingSafeEqual())
  * 3. No rate limiting
  * 4. No request size limits
  * 5. Soft-deleted workspaces not filtered in lookup
- * 
+ *
  * These gaps should be addressed in future security hardening.
- * 
+ *
  * NOTE: Several tests are commented out below due to the bugs above.
  * Uncomment these tests after the production code bugs are fixed.
  */
@@ -334,7 +330,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       expect(data.data.received.workspaceId).toBe(workspace.id);
     });
 
-    // BUG: Route returns incorrect `broadcasted` flag (uses !!workspace_id instead of !!workspace) - uncomment after fixing route.ts  
+    // BUG: Route returns incorrect `broadcasted` flag (uses !!workspace_id instead of !!workspace) - uncomment after fixing route.ts
     test.skip("should handle non-existent workspace_id gracefully (no broadcast, but 200 OK)", async () => {
       const nonExistentId = "clxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
@@ -450,7 +446,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           nodeIds,
           workspaceId: workspace.slug,
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -485,9 +481,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const { workspace } = await createTestWorkspace();
 
       // Mock Pusher failure
-      mockedPusherServer.trigger.mockRejectedValueOnce(
-        new Error("Pusher connection failed")
-      );
+      mockedPusherServer.trigger.mockRejectedValueOnce(new Error("Pusher connection failed"));
 
       const request = new Request(webhookUrl, {
         method: "POST",
@@ -531,7 +525,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       expect(pusherServer.trigger).toHaveBeenCalledWith(
         expect.stringContaining(workspace.slug),
         expect.any(String),
-        expect.any(Object)
+        expect.any(Object),
       );
 
       // Verify channel name does NOT use id
@@ -658,9 +652,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
 
       // Mock database failure by disconnecting (will cause findUnique to fail)
       const originalFindUnique = db.workspace.findUnique;
-      db.workspace.findUnique = vi.fn().mockRejectedValue(
-        new Error("Database connection lost")
-      );
+      db.workspace.findUnique = vi.fn().mockRejectedValue(new Error("Database connection lost"));
 
       const request = new Request(webhookUrl, {
         method: "POST",
@@ -770,18 +762,20 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
     test("should handle concurrent webhook requests to same workspace", async () => {
       const { workspace } = await createTestWorkspace();
 
-      const requests = Array.from({ length: 3 }, (_, i) =>
-        new Request(webhookUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": validApiKey,
-          },
-          body: JSON.stringify({
-            node_ids: [`node-${i}`],
-            workspace_id: workspace.id,
+      const requests = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new Request(webhookUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": validApiKey,
+            },
+            body: JSON.stringify({
+              node_ids: [`node-${i}`],
+              workspace_id: workspace.id,
+            }),
           }),
-        })
       );
 
       const responses = await Promise.all(requests.map((req) => POST(req)));

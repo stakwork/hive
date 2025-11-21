@@ -1,11 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { PUT } from "@/app/api/repositories/[id]/route";
 import { db } from "@/lib/db";
-import {
-  expectSuccess,
-  expectError,
-  createRequestWithHeaders,
-} from "@/__tests__/support/helpers";
+import { expectSuccess, expectError, createRequestWithHeaders } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
 import { createTestRepository } from "@/__tests__/support/fixtures/repository";
@@ -49,7 +45,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        updateData
+        updateData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -83,7 +79,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        updateData
+        updateData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -112,9 +108,9 @@ describe("Repository Update API Integration Tests", () => {
         "PUT",
         {
           "Content-Type": "application/json",
-          "authorization": TEST_API_KEY,
+          authorization: TEST_API_KEY,
         },
-        updateData
+        updateData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -137,7 +133,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           // No API key provided
         },
-        updateData
+        updateData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -165,7 +161,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           "x-api-key": "wrong-api-key",
         },
-        updateData
+        updateData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -193,7 +189,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        updateData
+        updateData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: nonExistentId }) });
@@ -215,7 +211,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        invalidData
+        invalidData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -249,7 +245,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           "x-api-key": "any-key",
         },
-        updateData
+        updateData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -275,7 +271,7 @@ describe("Repository Update API Integration Tests", () => {
           "Content-Type": "application/json",
           "x-api-key": TEST_API_KEY,
         },
-        emptyData
+        emptyData,
       );
 
       const response = await PUT(request, { params: Promise.resolve({ id: repository.id }) });
@@ -312,11 +308,11 @@ describe("Repository Update API Integration Tests", () => {
                 "Content-Type": "application/json",
                 "x-api-key": TEST_API_KEY,
               },
-              data
+              data,
             ),
-            { params: Promise.resolve({ id: repository.id }) }
-          )
-        )
+            { params: Promise.resolve({ id: repository.id }) },
+          ),
+        ),
       );
 
       // All requests should succeed

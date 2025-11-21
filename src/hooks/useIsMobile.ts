@@ -1,5 +1,5 @@
-import { useMediaQuery } from './useMediaQuery';
-import { MEDIA_QUERIES } from '@/constants/breakpoints';
+import { useMediaQuery } from "./useMediaQuery";
+import { MEDIA_QUERIES } from "@/constants/breakpoints";
 
 /**
  * Convenience hook for detecting mobile devices

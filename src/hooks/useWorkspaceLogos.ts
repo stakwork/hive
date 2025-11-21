@@ -28,19 +28,22 @@ export function useWorkspaceLogos(workspaces: WorkspaceWithRole[]) {
   }, []);
 
   // Function to refetch a single logo and update state
-  const refetchLogo = useCallback(async (workspaceId: string): Promise<string | null> => {
-    const workspace = workspaces.find(ws => ws.id === workspaceId);
-    if (!workspace) return null;
+  const refetchLogo = useCallback(
+    async (workspaceId: string): Promise<string | null> => {
+      const workspace = workspaces.find((ws) => ws.id === workspaceId);
+      if (!workspace) return null;
 
-    const newUrl = await fetchWorkspaceLogo(workspaceId, workspace.slug);
-    if (newUrl) {
-      setLogoUrls(prev => ({
-        ...prev,
-        [workspaceId]: newUrl,
-      }));
-    }
-    return newUrl;
-  }, [workspaces, fetchWorkspaceLogo]);
+      const newUrl = await fetchWorkspaceLogo(workspaceId, workspace.slug);
+      if (newUrl) {
+        setLogoUrls((prev) => ({
+          ...prev,
+          [workspaceId]: newUrl,
+        }));
+      }
+      return newUrl;
+    },
+    [workspaces, fetchWorkspaceLogo],
+  );
 
   useEffect(() => {
     if (!canAccessWorkspaceLogo || workspaces.length === 0) {
@@ -60,7 +63,7 @@ export function useWorkspaceLogos(workspaces: WorkspaceWithRole[]) {
             if (url) {
               urls[workspace.id] = url;
             }
-          })
+          }),
       );
 
       setLogoUrls(urls);

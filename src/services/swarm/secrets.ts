@@ -22,19 +22,16 @@ export async function getSwarmPoolApiKeyFor(id: string): Promise<string> {
 }
 
 export async function updateSwarmPoolApiKeyFor(id: string) {
-  const loginResponse = await fetch(
-    "https://workspaces.sphinx.chat/api/auth/login",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username: "admin",
-        password: env.POOL_MANAGER_API_PASSWORD,
-      }),
+  const loginResponse = await fetch("https://workspaces.sphinx.chat/api/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      username: "admin",
+      password: env.POOL_MANAGER_API_PASSWORD,
+    }),
+  });
 
   const swarm = await db.swarm.findFirst({
     where: { id },
@@ -46,9 +43,7 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
 
   const poolManager = new PoolManagerService({
     baseURL: "https://workspaces.sphinx.chat/api",
-    apiKey: JSON.stringify(
-      encryptionService.encryptField("poolApiKey", loginData.token),
-    ),
+    apiKey: JSON.stringify(encryptionService.encryptField("poolApiKey", loginData.token)),
     headers: {
       Authorization: `Bearer ${loginData.token}`,
     },
@@ -68,12 +63,7 @@ export async function updateSwarmPoolApiKeyFor(id: string) {
       username: `${swarm.swarmId.toLowerCase()}`,
     });
 
-    const poolApiKey = JSON.stringify(
-      encryptionService.encryptField(
-        "poolApiKey",
-        poolUser.authentication_token,
-      ),
-    );
+    const poolApiKey = JSON.stringify(encryptionService.encryptField("poolApiKey", poolUser.authentication_token));
 
     await db.swarm.update({
       where: { id },

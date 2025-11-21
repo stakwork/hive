@@ -11,26 +11,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { useEffect, useState } from "react";
 
 interface EnvironmentFormProps extends FormSectionProps<EnvironmentData> {
-  onEnvVarsChange: (
-    envVars: Array<{ name: string; value: string; show?: boolean }>,
-  ) => void;
+  onEnvVarsChange: (envVars: Array<{ name: string; value: string; show?: boolean }>) => void;
 }
 
-export default function EnvironmentForm({
-  data,
-  errors,
-  loading,
-  onChange,
-  onEnvVarsChange,
-}: EnvironmentFormProps) {
-  const {
-    envVars,
-    handleEnvChange,
-    handleAddEnv,
-    handleRemoveEnv,
-    setEnvVars,
-    bulkAddEnvVars,
-  } = useEnvironmentVars();
+export default function EnvironmentForm({ data, errors, loading, onChange, onEnvVarsChange }: EnvironmentFormProps) {
+  const { envVars, handleEnvChange, handleAddEnv, handleRemoveEnv, setEnvVars, bulkAddEnvVars } = useEnvironmentVars();
   const { toast } = useToast();
   const [showImportSection, setShowImportSection] = useState(false);
 
@@ -82,7 +67,7 @@ export default function EnvironmentForm({
       bulkAddEnvVars(parsed);
       toast({
         title: "Variables imported",
-        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
+        description: `Successfully imported ${count} environment variable${count > 1 ? "s" : ""}.`,
       });
     } catch (err) {
       toast({
@@ -110,7 +95,7 @@ export default function EnvironmentForm({
       bulkAddEnvVars(parsed);
       toast({
         title: "Variables imported",
-        description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''} from ${fileName}.`,
+        description: `Successfully imported ${count} environment variable${count > 1 ? "s" : ""} from ${fileName}.`,
       });
       setShowImportSection(false);
     } catch (err) {
@@ -136,22 +121,14 @@ export default function EnvironmentForm({
           className={errors.poolName ? "border-destructive" : ""}
           disabled={loading}
         />
-        {errors.poolName && (
-          <p className="text-sm text-destructive">{errors.poolName}</p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          The name of the pool to use for your Stakgraph configuration
-        </p>
+        {errors.poolName && <p className="text-sm text-destructive">{errors.poolName}</p>}
+        <p className="text-xs text-muted-foreground">The name of the pool to use for your Stakgraph configuration</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="poolCpu">CPU</Label>
-          <Select
-            value={data.poolCpu}
-            onValueChange={handlePoolCpuChange}
-            disabled={loading}
-          >
+          <Select value={data.poolCpu} onValueChange={handlePoolCpuChange} disabled={loading}>
             <SelectTrigger className={errors.poolCpu ? "border-destructive" : ""}>
               <SelectValue placeholder="Select CPU" />
             </SelectTrigger>
@@ -163,21 +140,13 @@ export default function EnvironmentForm({
               <SelectItem value="8">8 CPU</SelectItem>
             </SelectContent>
           </Select>
-          {errors.poolCpu && (
-            <p className="text-sm text-destructive">{errors.poolCpu}</p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            CPU allocation for tasks in this pool
-          </p>
+          {errors.poolCpu && <p className="text-sm text-destructive">{errors.poolCpu}</p>}
+          <p className="text-xs text-muted-foreground">CPU allocation for tasks in this pool</p>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="poolMemory">Memory</Label>
-          <Select
-            value={data.poolMemory}
-            onValueChange={handlePoolMemoryChange}
-            disabled={loading}
-          >
+          <Select value={data.poolMemory} onValueChange={handlePoolMemoryChange} disabled={loading}>
             <SelectTrigger className={errors.poolMemory ? "border-destructive" : ""}>
               <SelectValue placeholder="Select Memory" />
             </SelectTrigger>
@@ -189,12 +158,8 @@ export default function EnvironmentForm({
               <SelectItem value="16Gi">16 Gi</SelectItem>
             </SelectContent>
           </Select>
-          {errors.poolMemory && (
-            <p className="text-sm text-destructive">{errors.poolMemory}</p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            Memory allocation for tasks in this pool
-          </p>
+          {errors.poolMemory && <p className="text-sm text-destructive">{errors.poolMemory}</p>}
+          <p className="text-xs text-muted-foreground">Memory allocation for tasks in this pool</p>
         </div>
       </div>
 
@@ -202,8 +167,7 @@ export default function EnvironmentForm({
         <div>
           <h4 className="text-md font-medium">Environment Variables</h4>
           <p className="text-xs text-muted-foreground mt-1">
-            Add any ENV variables your Stakgraph integration needs. These will be
-            included in your configuration.
+            Add any ENV variables your Stakgraph integration needs. These will be included in your configuration.
           </p>
         </div>
 
@@ -237,11 +201,7 @@ export default function EnvironmentForm({
 
           {showImportSection && (
             <div className="mt-3 animate-in fade-in-0 slide-in-from-top-2 duration-200">
-              <FileDropZone
-                onFileContent={handleFileContent}
-                disabled={loading}
-                className="max-w-full"
-              />
+              <FileDropZone onFileContent={handleFileContent} disabled={loading} className="max-w-full" />
             </div>
           )}
         </div>
@@ -261,9 +221,7 @@ export default function EnvironmentForm({
                   placeholder="VALUE"
                   type={pair.show ? "text" : "password"}
                   value={pair.value}
-                  onChange={(e) =>
-                    handleEnvChange(idx, "value", e.target.value)
-                  }
+                  onChange={(e) => handleEnvChange(idx, "value", e.target.value)}
                   className="pr-10"
                   disabled={loading}
                 />
@@ -274,11 +232,7 @@ export default function EnvironmentForm({
                   tabIndex={-1}
                   disabled={loading}
                 >
-                  {pair.show ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                  {pair.show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               <Button
@@ -292,13 +246,7 @@ export default function EnvironmentForm({
               </Button>
             </div>
           ))}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleAddEnv}
-            className="mt-2"
-            disabled={loading}
-          >
+          <Button type="button" variant="secondary" onClick={handleAddEnv} className="mt-2" disabled={loading}>
             Add Variable
           </Button>
         </div>

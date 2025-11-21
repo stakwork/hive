@@ -1,13 +1,6 @@
 import { WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
-import {
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Loader2,
-  Pause,
-  XCircle,
-} from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, Loader2, Pause, XCircle } from "lucide-react";
 
 interface WorkflowStatusBadgeProps {
   status: WorkflowStatus | null | undefined;
@@ -53,10 +46,7 @@ const statusConfig = {
   },
 };
 
-export function WorkflowStatusBadge({
-  status,
-  className,
-}: WorkflowStatusBadgeProps) {
+export function WorkflowStatusBadge({ status, className }: WorkflowStatusBadgeProps) {
   // Default to PENDING if no status provided
   const effectiveStatus = status || WorkflowStatus.PENDING;
   const config = statusConfig[effectiveStatus as keyof typeof statusConfig];
@@ -68,13 +58,7 @@ export function WorkflowStatusBadge({
   const Icon = config.icon;
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 text-sm",
-        config.className,
-        className,
-      )}
-    >
+    <div className={cn("flex items-center gap-1.5 text-sm", config.className, className)}>
       <Icon className={cn("h-3 w-3", config.iconClassName)} />
       <span>{config.label}</span>
     </div>

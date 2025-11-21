@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React from 'react'
+import React from "react";
 
 const CameraCenterIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="1em" height="1em" viewBox="0 0 18 17" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -11,6 +11,6 @@ const CameraCenterIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
       <circle id="Ellipse 2" cx="9.00001" cy="9.00001" r="5.02857" stroke="white" />
     </g>
   </svg>
-)
+);
 
-export default CameraCenterIcon
+export default CameraCenterIcon;

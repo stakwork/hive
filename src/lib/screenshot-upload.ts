@@ -1,5 +1,5 @@
-import crypto from 'crypto'
-import { getS3Service } from '@/services/s3'
+import crypto from "crypto";
+import { getS3Service } from "@/services/s3";
 
 /**
  * Converts a base64 data URL to a Buffer
@@ -8,14 +8,14 @@ import { getS3Service } from '@/services/s3'
  */
 export function dataUrlToBuffer(dataUrl: string): Buffer {
   // Extract the base64 data from the data URL
-  const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/)
+  const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
 
   if (!matches || matches.length !== 3) {
-    throw new Error('Invalid data URL format')
+    throw new Error("Invalid data URL format");
   }
 
-  const base64Data = matches[2]
-  return Buffer.from(base64Data, 'base64')
+  const base64Data = matches[2];
+  return Buffer.from(base64Data, "base64");
 }
 
 /**
@@ -25,10 +25,10 @@ export function dataUrlToBuffer(dataUrl: string): Buffer {
  * @returns 12-character hash string
  */
 export function generateContentHash(buffer: Buffer): string {
-  const hash = crypto.createHash('sha256')
-  hash.update(buffer)
-  const fullHash = hash.digest('hex')
-  return fullHash.substring(0, 12)
+  const hash = crypto.createHash("sha256");
+  hash.update(buffer);
+  const fullHash = hash.digest("hex");
+  return fullHash.substring(0, 12);
 }
 
 /**
@@ -39,7 +39,7 @@ export function generateContentHash(buffer: Buffer): string {
  * @returns S3 key string
  */
 export function generateScreenshotS3Key(workspaceId: string, hash: string): string {
-  return `screenshots/${workspaceId}/${hash}.jpg`
+  return `screenshots/${workspaceId}/${hash}.jpg`;
 }
 
 /**
@@ -53,9 +53,9 @@ export function extractImageDimensions(dataUrl: string): { width: number; height
     // For server-side, we'll need to parse the image buffer
     // For now, we'll return null and extract dimensions on the client side
     // or use a library like 'sharp' or 'image-size' if needed
-    return null
+    return null;
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -69,19 +69,19 @@ export function extractImageDimensions(dataUrl: string): { width: number; height
 export async function uploadScreenshotToS3(
   buffer: Buffer,
   workspaceId: string,
-  hash: string
+  hash: string,
 ): Promise<{ s3Key: string; s3Url: string }> {
-  const s3Service = getS3Service()
-  const s3Key = generateScreenshotS3Key(workspaceId, hash)
+  const s3Service = getS3Service();
+  const s3Key = generateScreenshotS3Key(workspaceId, hash);
 
   // Upload to S3
-  await s3Service.putObject(s3Key, buffer, 'image/jpeg')
+  await s3Service.putObject(s3Key, buffer, "image/jpeg");
 
   // Generate a presigned download URL (valid for 7 days)
-  const expiresIn = 7 * 24 * 60 * 60 // 7 days in seconds
-  const s3Url = await s3Service.generatePresignedDownloadUrl(s3Key, expiresIn)
+  const expiresIn = 7 * 24 * 60 * 60; // 7 days in seconds
+  const s3Url = await s3Service.generatePresignedDownloadUrl(s3Key, expiresIn);
 
-  return { s3Key, s3Url }
+  return { s3Key, s3Url };
 }
 
 /**
@@ -95,21 +95,21 @@ export async function uploadScreenshotToS3(
  */
 export async function processScreenshotUpload(
   dataUrl: string,
-  workspaceId: string
+  workspaceId: string,
 ): Promise<{
-  buffer: Buffer
-  hash: string
-  s3Key: string
-  s3Url: string
+  buffer: Buffer;
+  hash: string;
+  s3Key: string;
+  s3Url: string;
 }> {
   // Convert data URL to buffer
-  const buffer = dataUrlToBuffer(dataUrl)
+  const buffer = dataUrlToBuffer(dataUrl);
 
   // Generate content hash
-  const hash = generateContentHash(buffer)
+  const hash = generateContentHash(buffer);
 
   // Upload to S3
-  const { s3Key, s3Url } = await uploadScreenshotToS3(buffer, workspaceId, hash)
+  const { s3Key, s3Url } = await uploadScreenshotToS3(buffer, workspaceId, hash);
 
-  return { buffer, hash, s3Key, s3Url }
+  return { buffer, hash, s3Key, s3Url };
 }

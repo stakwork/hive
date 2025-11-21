@@ -5,7 +5,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-async function checkRepositoryPermissions(accessToken: string, repoUrl: string): Promise<{
+async function checkRepositoryPermissions(
+  accessToken: string,
+  repoUrl: string,
+): Promise<{
   hasAccess: boolean;
   canPush: boolean;
   canAdmin: boolean;
@@ -26,7 +29,7 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
         hasAccess: false,
         canPush: false,
         canAdmin: false,
-        error: 'invalid_repository_url'
+        error: "invalid_repository_url",
       };
     }
 
@@ -35,8 +38,8 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
     // Check repository access and permissions
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/vnd.github.v3+json',
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github.v3+json",
       },
     });
 
@@ -58,37 +61,37 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
           full_name: repositoryData.full_name,
           private: repositoryData.private,
           default_branch: repositoryData.default_branch,
-        }
+        },
       };
     } else if (response.status === 404) {
       return {
         hasAccess: false,
         canPush: false,
         canAdmin: false,
-        error: 'repository_not_found_or_no_access'
+        error: "repository_not_found_or_no_access",
       };
     } else if (response.status === 403) {
       return {
         hasAccess: false,
         canPush: false,
         canAdmin: false,
-        error: 'access_forbidden'
+        error: "access_forbidden",
       };
     } else {
       return {
         hasAccess: false,
         canPush: false,
         canAdmin: false,
-        error: `http_error_${response.status}`
+        error: `http_error_${response.status}`,
       };
     }
   } catch (error) {
-    console.error('Error checking repository permissions:', error);
+    console.error("Error checking repository permissions:", error);
     return {
       hasAccess: false,
       canPush: false,
       canAdmin: false,
-      error: 'network_error'
+      error: "network_error",
     };
   }
 }
@@ -99,26 +102,35 @@ export async function POST(request: NextRequest) {
 
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({
-        success: false,
-        error: "Unauthorized"
-      }, { status: 401 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized",
+        },
+        { status: 401 },
+      );
     }
 
     if (!repositoryUrl) {
-      return NextResponse.json({
-        success: false,
-        error: "Repository URL is required"
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Repository URL is required",
+        },
+        { status: 400 },
+      );
     }
 
     // Extract GitHub owner from repository URL
     const githubMatch = repositoryUrl.match(/github\.com[\/:]([^\/]+)/);
     if (!githubMatch) {
-      return NextResponse.json({
-        success: false,
-        error: "Invalid repository URL"
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid repository URL",
+        },
+        { status: 400 },
+      );
     }
 
     const githubOwner = githubMatch[1];
@@ -127,11 +139,14 @@ export async function POST(request: NextRequest) {
     const tokens = await getUserAppTokens(session.user.id, githubOwner);
 
     if (!tokens?.accessToken) {
-      return NextResponse.json({
-        success: false,
-        error: "no_github_tokens",
-        message: "No GitHub App tokens found for this repository's organization"
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "no_github_tokens",
+          message: "No GitHub App tokens found for this repository's organization",
+        },
+        { status: 403 },
+      );
     }
 
     // Check repository permissions
@@ -144,37 +159,42 @@ export async function POST(request: NextRequest) {
         canPush: permissionCheck.canPush,
         canAdmin: permissionCheck.canAdmin,
         permissions: permissionCheck.permissions,
-        repository: permissionCheck.repositoryData
+        repository: permissionCheck.repositoryData,
       },
-      error: permissionCheck.error
+      error: permissionCheck.error,
     });
-
   } catch (error) {
-    console.error('Error checking repository permissions:', error);
-    return NextResponse.json({
-      success: false,
-      error: "internal_server_error"
-    }, { status: 500 });
+    console.error("Error checking repository permissions:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "internal_server_error",
+      },
+      { status: 500 },
+    );
   }
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const repositoryUrl = searchParams.get('repositoryUrl');
-  const workspaceSlug = searchParams.get('workspaceSlug');
+  const repositoryUrl = searchParams.get("repositoryUrl");
+  const workspaceSlug = searchParams.get("workspaceSlug");
 
   if (!repositoryUrl) {
-    return NextResponse.json({
-      success: false,
-      error: "Repository URL is required"
-    }, { status: 400 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Repository URL is required",
+      },
+      { status: 400 },
+    );
   }
 
   // Forward to POST handler
   const postRequest = new NextRequest(request.url, {
-    method: 'POST',
+    method: "POST",
     headers: request.headers,
-    body: JSON.stringify({ repositoryUrl, workspaceSlug })
+    body: JSON.stringify({ repositoryUrl, workspaceSlug }),
   });
 
   return POST(postRequest);

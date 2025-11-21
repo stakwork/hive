@@ -88,7 +88,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${decryptedApiKey}`,
+          Authorization: `Bearer ${decryptedApiKey}`,
         },
       });
 
@@ -124,7 +124,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${decryptedApiKey}`,
+          Authorization: `Bearer ${decryptedApiKey}`,
         },
       });
 

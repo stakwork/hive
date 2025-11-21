@@ -3,7 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
@@ -60,8 +65,6 @@ export function VMConfigSection() {
     open("ServicesWizard");
   };
 
-
-
   return (
     <Card className="relative" data-testid="vm-config-section">
       {isPoolActive && (
@@ -92,8 +95,8 @@ export function VMConfigSection() {
           {isPoolActive
             ? "Manage environment variables and services any time."
             : servicesReady
-            ? "Complete your pool setup to get started."
-            : "Services are being set up."}
+              ? "Complete your pool setup to get started."
+              : "Services are being set up."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -106,45 +109,38 @@ export function VMConfigSection() {
           ) : poolStatus ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="text-green-600">
-                  {poolStatus.status.usedVms} in use
-                </span>
+                <span className="text-green-600">{poolStatus.status.usedVms} in use</span>
                 <span className="text-muted-foreground">•</span>
-                <span className="text-muted-foreground">
-                  {poolStatus.status.unusedVms} available
-                </span>
+                <span className="text-muted-foreground">{poolStatus.status.unusedVms} available</span>
               </div>
 
               {(poolStatus.status.pendingVms > 0 || poolStatus.status.failedVms > 0) && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {poolStatus.status.pendingVms > 0 && (
                     <>
-                      <span className="text-yellow-600">
-                        {poolStatus.status.pendingVms} pending
-                      </span>
+                      <span className="text-yellow-600">{poolStatus.status.pendingVms} pending</span>
                       {poolStatus.status.failedVms > 0 && <span>•</span>}
                     </>
                   )}
                   {poolStatus.status.failedVms > 0 && (
-                    <span className="text-red-600">
-                      {poolStatus.status.failedVms} failed
-                    </span>
+                    <span className="text-red-600">{poolStatus.status.failedVms} failed</span>
                   )}
                 </div>
               )}
 
               {poolStatus.status.lastCheck && (
                 <div className="text-xs text-muted-foreground">
-                  Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z')
-                    ? poolStatus.status.lastCheck
-                    : poolStatus.status.lastCheck + 'Z')}
+                  Updated{" "}
+                  {formatRelativeTime(
+                    poolStatus.status.lastCheck.endsWith("Z")
+                      ? poolStatus.status.lastCheck
+                      : poolStatus.status.lastCheck + "Z",
+                  )}
                 </div>
               )}
             </div>
           ) : errorMessage ? (
-            <div className="text-sm text-muted-foreground">
-              {errorMessage}
-            </div>
+            <div className="text-sm text-muted-foreground">{errorMessage}</div>
           ) : null
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">

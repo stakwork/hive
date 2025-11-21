@@ -6,11 +6,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Item,
-  ItemContent,
-  ItemActions,
-} from "@/components/ui/item";
+import { Item, ItemContent, ItemActions } from "@/components/ui/item";
 import type { FeatureDetail } from "@/types/roadmap";
 
 interface SortableUserStoryProps {
@@ -21,13 +17,7 @@ interface SortableUserStoryProps {
   saved: boolean;
 }
 
-export function SortableUserStory({
-  story,
-  onDelete,
-  onUpdate,
-  saving,
-  saved,
-}: SortableUserStoryProps) {
+export function SortableUserStory({ story, onDelete, onUpdate, saving, saved }: SortableUserStoryProps) {
   const [title, setTitle] = useState(story.title);
   const [isFocused, setIsFocused] = useState(false);
 
@@ -36,14 +26,7 @@ export function SortableUserStory({
     setTitle(story.title);
   }, [story.title]);
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: story.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: story.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -62,11 +45,7 @@ export function SortableUserStory({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={isDragging ? "opacity-50 z-50" : ""}
-    >
+    <div ref={setNodeRef} style={style} className={isDragging ? "opacity-50 z-50" : ""}>
       <Item variant="outline" size="sm">
         <Button
           {...attributes}
@@ -86,9 +65,7 @@ export function SortableUserStory({
               onFocus={handleFocus}
               onBlur={handleBlur}
               className={`border-none bg-transparent dark:bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 min-h-0 py-0 px-0 text-sm resize-none ${
-                isFocused
-                  ? "max-h-40 overflow-y-auto"
-                  : "line-clamp-2 overflow-hidden"
+                isFocused ? "max-h-40 overflow-y-auto" : "line-clamp-2 overflow-hidden"
               }`}
               placeholder="Enter user story..."
             />

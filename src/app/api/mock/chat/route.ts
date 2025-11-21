@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       }, 0);
       console.log(`📜 Chat history: ${history.length} messages, ${totalArtifacts} total artifacts`);
     } else {
-      console.log('📜 Chat history: 0 messages');
+      console.log("📜 Chat history: 0 messages");
     }
 
     try {
@@ -52,9 +52,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error(" Mock error processing message:", error);
-    return NextResponse.json(
-      { error: "Failed to process message" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to process message" }, { status: 500 });
   }
 }

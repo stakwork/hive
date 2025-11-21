@@ -43,7 +43,7 @@ export function mockSessionAs(session: Session | null) {
 export function createWorkspaceSession(
   user: Pick<User, "id" | "email">,
   workspace?: Pick<Workspace, "id" | "slug">,
-  role?: WorkspaceRole
+  role?: WorkspaceRole,
 ): Session {
   const session = createAuthenticatedSession(user);
 

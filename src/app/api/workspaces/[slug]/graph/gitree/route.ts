@@ -42,7 +42,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const concise = searchParams.get("concise") === "true";
     const typeLimits = searchParams.get("per_type_limits") || "Feature:10,File:100,Function:50,Endpoint:25";
 
-
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
@@ -94,18 +93,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     //   apiParams.per_type_limits = typeLimits;
     // }
 
-    const queryString = Object.keys(apiParams).length > 0 ? `?${new URLSearchParams(apiParams).toString()}` : '';
+    const queryString = Object.keys(apiParams).length > 0 ? `?${new URLSearchParams(apiParams).toString()}` : "";
 
     console.log(queryString);
     console.log(`${graphUrl}/gitree/all-features-graph${queryString}`);
 
-    const apiResult = await fetch(`${graphUrl}/gitree/all-features-graph?per_type_limits=Function:100,Class:5,Library:1,Import:1,Datamodel:100,File:10,IntegrationTest:5,UnitTest:5,Var:5`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-token": apiKey,
+    const apiResult = await fetch(
+      `${graphUrl}/gitree/all-features-graph?per_type_limits=Function:100,Class:5,Library:1,Import:1,Datamodel:100,File:10,IntegrationTest:5,UnitTest:5,Var:5`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-token": apiKey,
+        },
       },
-    });
+    );
 
     if (!apiResult.ok) {
       const data = await apiResult.json();
@@ -121,12 +123,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const data = await apiResult.json();
 
-    console.log(data)
+    console.log(data);
 
     const finalData = {
       nodes: data.nodes,
       edges: data.edges.map((edge: GitreeEdge) => ({ ...edge, ref_id: `${edge.source}-${edge.target}` })),
-    }
+    };
 
     return NextResponse.json(
       {

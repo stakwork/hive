@@ -63,7 +63,7 @@ const TestHelpers = {
 
   setupAcceptRecommendationSuccess: () => {
     vi.mocked(mockAcceptJanitorRecommendation).mockResolvedValue(
-      JanitorTestDataFactory.createAcceptRecommendationResult() as any
+      JanitorTestDataFactory.createAcceptRecommendationResult() as any,
     );
   },
 
@@ -75,10 +75,7 @@ const TestHelpers = {
     expect(mockDb.workspace.findMany).toHaveBeenCalledWith({
       where: {
         janitorConfig: {
-          OR: [
-            { recommendationSweepEnabled: true },
-            { ticketSweepEnabled: true },
-          ],
+          OR: [{ recommendationSweepEnabled: true }, { ticketSweepEnabled: true }],
         },
       },
       include: {
@@ -136,14 +133,9 @@ const TestHelpers = {
   expectAcceptRecommendationCalled: (
     recommendationId: string,
     ownerId: string,
-    sourceType: "TASK_COORDINATOR" = "TASK_COORDINATOR"
+    sourceType: "TASK_COORDINATOR" = "TASK_COORDINATOR",
   ) => {
-    expect(mockAcceptJanitorRecommendation).toHaveBeenCalledWith(
-      recommendationId,
-      ownerId,
-      {},
-      sourceType
-    );
+    expect(mockAcceptJanitorRecommendation).toHaveBeenCalledWith(recommendationId, ownerId, {}, sourceType);
   },
 
   expectConsoleLog: (message: string) => {
@@ -240,7 +232,7 @@ describe("executeTaskCoordinatorRuns", () => {
               }),
             }),
           }),
-        })
+        }),
       );
     });
 
@@ -296,7 +288,7 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`Skipping workspace ${workspace.slug}: No pool configured`)
+        expect.stringContaining(`Skipping workspace ${workspace.slug}: No pool configured`),
       );
 
       consoleLogSpy.mockRestore();
@@ -353,8 +345,8 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining(
-          `Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`
-        )
+          `Insufficient available pods for workspace ${workspace.slug} (need 2+ to reserve 1), skipping`,
+        ),
       );
 
       consoleLogSpy.mockRestore();
@@ -389,11 +381,8 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(mockDb.janitorRecommendation.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          orderBy: [
-            { priority: "desc" },
-            { createdAt: "asc" },
-          ],
-        })
+          orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
+        }),
       );
     });
 
@@ -405,7 +394,7 @@ describe("executeTaskCoordinatorRuns", () => {
       expect(mockDb.janitorRecommendation.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           take: 1,
-        })
+        }),
       );
     });
 
@@ -419,11 +408,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       await executeTaskCoordinatorRuns();
 
-      TestHelpers.expectAcceptRecommendationCalled(
-        criticalRec.id,
-        workspace.owner.id,
-        "TASK_COORDINATOR"
-      );
+      TestHelpers.expectAcceptRecommendationCalled(criticalRec.id, workspace.owner.id, "TASK_COORDINATOR");
     });
 
     test("should skip workspace with no pending recommendations", async () => {
@@ -442,7 +427,7 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`Found 0 pending recommendations for workspace ${workspace.slug}`)
+        expect.stringContaining(`Found 0 pending recommendations for workspace ${workspace.slug}`),
       );
 
       consoleLogSpy.mockRestore();
@@ -455,11 +440,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       await executeTaskCoordinatorRuns();
 
-      TestHelpers.expectAcceptRecommendationCalled(
-        recommendation.id,
-        workspace.owner.id,
-        "TASK_COORDINATOR"
-      );
+      TestHelpers.expectAcceptRecommendationCalled(recommendation.id, workspace.owner.id, "TASK_COORDINATOR");
     });
 
     test("should pass TASK_COORDINATOR as sourceType", async () => {
@@ -471,7 +452,7 @@ describe("executeTaskCoordinatorRuns", () => {
         recommendation.id,
         workspace.owner.id,
         {},
-        "TASK_COORDINATOR"
+        "TASK_COORDINATOR",
       );
     });
 
@@ -484,7 +465,7 @@ describe("executeTaskCoordinatorRuns", () => {
         recommendation.id,
         workspace.owner.id,
         {},
-        expect.any(String)
+        expect.any(String),
       );
     });
 
@@ -503,7 +484,7 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`Successfully created task from recommendation ${recommendation.id}`)
+        expect.stringContaining(`Successfully created task from recommendation ${recommendation.id}`),
       );
 
       consoleLogSpy.mockRestore();
@@ -534,7 +515,7 @@ describe("executeTaskCoordinatorRuns", () => {
         criticalRec.id,
         expect.any(String),
         expect.any(Object),
-        expect.any(String)
+        expect.any(String),
       );
     });
 
@@ -552,7 +533,7 @@ describe("executeTaskCoordinatorRuns", () => {
         highRec.id,
         expect.any(String),
         expect.any(Object),
-        expect.any(String)
+        expect.any(String),
       );
     });
 
@@ -570,7 +551,7 @@ describe("executeTaskCoordinatorRuns", () => {
         mediumRec.id,
         expect.any(String),
         expect.any(Object),
-        expect.any(String)
+        expect.any(String),
       );
     });
 
@@ -587,8 +568,8 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining(
-          `Auto-accepting recommendation ${criticalRec.id} (CRITICAL) for workspace ${workspace.slug}`
-        )
+          `Auto-accepting recommendation ${criticalRec.id} (CRITICAL) for workspace ${workspace.slug}`,
+        ),
       );
 
       consoleLogSpy.mockRestore();
@@ -648,7 +629,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining(`Error processing workspace ${workspace.slug}:`),
-        expect.stringContaining("Pool connection timeout")
+        expect.stringContaining("Pool connection timeout"),
       );
 
       consoleErrorSpy.mockRestore();
@@ -704,7 +685,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining(`Failed to accept recommendation ${recommendation.id}:`),
-        expect.stringContaining("Database connection error")
+        expect.stringContaining("Database connection error"),
       );
 
       consoleErrorSpy.mockRestore();
@@ -763,7 +744,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Critical error during execution:"),
-        expect.stringContaining("Fatal database error")
+        expect.stringContaining("Fatal database error"),
       );
 
       consoleErrorSpy.mockRestore();
@@ -912,7 +893,7 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringContaining("[TaskCoordinator] Starting execution at"),
-        expect.any(String)
+        expect.any(String),
       );
 
       consoleLogSpy.mockRestore();
@@ -927,7 +908,7 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining("[TaskCoordinator] Found 2 workspaces with Task Coordinator Sweeps enabled")
+        expect.stringContaining("[TaskCoordinator] Found 2 workspaces with Task Coordinator Sweeps enabled"),
       );
 
       consoleLogSpy.mockRestore();
@@ -940,7 +921,7 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`[TaskCoordinator] Processing workspace: ${workspace.slug}`)
+        expect.stringContaining(`[TaskCoordinator] Processing workspace: ${workspace.slug}`),
       );
 
       consoleLogSpy.mockRestore();
@@ -953,7 +934,7 @@ describe("executeTaskCoordinatorRuns", () => {
       await executeTaskCoordinatorRuns();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`[TaskCoordinator] Workspace ${workspace.slug} has 3 available pods`)
+        expect.stringContaining(`[TaskCoordinator] Workspace ${workspace.slug} has 3 available pods`),
       );
 
       consoleLogSpy.mockRestore();
@@ -967,8 +948,8 @@ describe("executeTaskCoordinatorRuns", () => {
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
         expect.stringMatching(
-          /\[TaskCoordinator\] Execution completed in \d+ms\. Processed 1 workspaces, created 1 tasks, 0 errors/
-        )
+          /\[TaskCoordinator\] Execution completed in \d+ms\. Processed 1 workspaces, created 1 tasks, 0 errors/,
+        ),
       );
 
       consoleLogSpy.mockRestore();

@@ -23,7 +23,7 @@ export function deepEqual(a: any, b: any): boolean {
   if (typeof a !== typeof b) return false;
 
   // For primitive types that aren't equal
-  if (typeof a !== 'object') return false;
+  if (typeof a !== "object") return false;
 
   // Handle arrays
   if (Array.isArray(a) && Array.isArray(b)) {

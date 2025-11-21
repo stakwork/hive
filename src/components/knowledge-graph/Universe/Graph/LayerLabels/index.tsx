@@ -1,9 +1,9 @@
-import { useDataStore } from '@/stores/useStores'
-import { Billboard, Text } from '@react-three/drei'
-import { useMemo } from 'react'
+import { useDataStore } from "@/stores/useStores";
+import { Billboard, Text } from "@react-three/drei";
+import { useMemo } from "react";
 
 export const LayerLabels = () => {
-  const nodeTypes = useDataStore((s) => s.nodeTypes)
+  const nodeTypes = useDataStore((s) => s.nodeTypes);
 
   // Calculate Y positions for each node type using the same logic as grid calculation
   const nodeTypeLabels = useMemo(() => {
@@ -14,12 +14,12 @@ export const LayerLabels = () => {
       const isEvenLayer = typeIndex % 2 === 0;
       const yOffset = isEvenLayer ? yLayer : -yLayer;
 
-      const name = nodeType.replace(/_/g, ' ');
+      const name = nodeType.replace(/_/g, " ");
 
       return {
         nodeType,
         name,
-        yPosition: yOffset
+        yPosition: yOffset,
       };
     });
   }, [nodeTypes]);
@@ -33,27 +33,32 @@ export const LayerLabels = () => {
             <bufferGeometry>
               <bufferAttribute
                 attach="attributes-position"
-                args={[new Float32Array([
-                  -(name.length * 12.5 + 10), -35, 0,  // bottom-left
-                  (name.length * 12.5 + 10), -35, 0,   // bottom-right
-                  (name.length * 12.5 + 10), 35, 0,    // top-right
-                  -(name.length * 12.5 + 10), 35, 0,   // top-left
-                ]), 3]}
+                args={[
+                  new Float32Array([
+                    -(name.length * 12.5 + 10),
+                    -35,
+                    0, // bottom-left
+                    name.length * 12.5 + 10,
+                    -35,
+                    0, // bottom-right
+                    name.length * 12.5 + 10,
+                    35,
+                    0, // top-right
+                    -(name.length * 12.5 + 10),
+                    35,
+                    0, // top-left
+                  ]),
+                  3,
+                ]}
               />
             </bufferGeometry>
             <lineBasicMaterial color="grey" opacity={0.5} transparent />
           </lineLoop>
-          <Text
-            fontSize={35}
-            color="grey"
-            anchorX="center"
-            anchorY="middle"
-            position={[0, 0, 0]}
-          >
+          <Text fontSize={35} color="grey" anchorX="center" anchorY="middle" position={[0, 0, 0]}>
             {name}
           </Text>
         </Billboard>
       ))}
     </group>
-  )
-}
+  );
+};

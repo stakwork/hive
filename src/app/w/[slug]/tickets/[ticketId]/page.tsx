@@ -24,16 +24,13 @@ export default function TicketDetailPage() {
   const { slug: workspaceSlug } = useWorkspace();
   const ticketId = params.ticketId as string;
 
-  const fetchTicket = useCallback(
-    async (id: string) => {
-      const response = await fetch(`/api/tickets/${id}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch ticket");
-      }
-      return response.json();
-    },
-    []
-  );
+  const fetchTicket = useCallback(async (id: string) => {
+    const response = await fetch(`/api/tickets/${id}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch ticket");
+    }
+    return response.json();
+  }, []);
 
   const {
     data: ticket,
@@ -66,7 +63,7 @@ export default function TicketDetailPage() {
         updateOriginalData(updatedTicket);
       }
     },
-    [ticketId, ticket, setTicket]
+    [ticketId, ticket, setTicket],
   );
 
   const { saving, saved, savedField, handleFieldBlur, updateOriginalData, triggerSaved } = useAutoSave({
@@ -219,16 +216,9 @@ export default function TicketDetailPage() {
 
             {/* Status, Priority, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
-              <StatusPopover
-                statusType="task"
-                currentStatus={ticket.status}
-                onUpdate={handleUpdateStatus}
-              />
+              <StatusPopover statusType="task" currentStatus={ticket.status} onUpdate={handleUpdateStatus} />
 
-              <PriorityPopover
-                currentPriority={ticket.priority}
-                onUpdate={handleUpdatePriority}
-              />
+              <PriorityPopover currentPriority={ticket.priority} onUpdate={handleUpdatePriority} />
 
               <AssigneeCombobox
                 workspaceSlug={workspaceSlug}

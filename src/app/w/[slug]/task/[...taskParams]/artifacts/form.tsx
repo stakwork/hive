@@ -22,9 +22,7 @@ export function FormArtifact({
   const content = artifact.content as FormContent;
 
   // Only show buttons for actionType="button" options
-  const buttonOptions = content.options.filter(
-    (option) => option.actionType === "button",
-  );
+  const buttonOptions = content.options.filter((option) => option.actionType === "button");
 
   const handleSubmit = (action: Option) => {
     if (isDisabled) return;
@@ -42,9 +40,7 @@ export function FormArtifact({
         {buttonOptions.length > 0 && (
           <div className="space-y-2">
             {buttonOptions.map((option, index) => {
-              const isSelected =
-                selectedOption &&
-                option.optionResponse === selectedOption.optionResponse;
+              const isSelected = selectedOption && option.optionResponse === selectedOption.optionResponse;
 
               return (
                 <Button
@@ -52,9 +48,7 @@ export function FormArtifact({
                   variant={isSelected ? "default" : "outline"}
                   size="sm"
                   onClick={() => handleSubmit(option)}
-                  className={`w-full justify-start ${
-                    isSelected ? "bg-primary text-primary-foreground" : ""
-                  }`}
+                  className={`w-full justify-start ${isSelected ? "bg-primary text-primary-foreground" : ""}`}
                   disabled={isDisabled}
                 >
                   {option.optionLabel}

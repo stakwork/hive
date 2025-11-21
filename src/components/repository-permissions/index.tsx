@@ -13,11 +13,7 @@ interface RepositoryPermissionsProps {
   autoCheck?: boolean;
 }
 
-export function RepositoryPermissions({
-  repositoryUrl,
-  workspaceSlug,
-  autoCheck = false
-}: RepositoryPermissionsProps) {
+export function RepositoryPermissions({ repositoryUrl, workspaceSlug, autoCheck = false }: RepositoryPermissionsProps) {
   const { permissions, loading, error, checkPermissions, reset } = useRepositoryPermissions();
 
   useEffect(() => {
@@ -60,16 +56,12 @@ export function RepositoryPermissions({
           </CardTitle>
           {getStatusBadge()}
         </div>
-        <CardDescription>
-          GitHub App access permissions for this repository
-        </CardDescription>
+        <CardDescription>GitHub App access permissions for this repository</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {!permissions && !loading && !error && (
           <div className="text-center py-4">
-            <p className="text-sm text-muted-foreground mb-4">
-              Click to check repository permissions
-            </p>
+            <p className="text-sm text-muted-foreground mb-4">Click to check repository permissions</p>
             <Button onClick={handleCheck} variant="outline">
               <Shield className="w-4 h-4 mr-2" />
               Check Permissions
@@ -100,9 +92,7 @@ export function RepositoryPermissions({
             <div className="flex items-center justify-between p-3 rounded-lg border">
               <div>
                 <p className="font-medium text-sm">{permissionLevel.description}</p>
-                <p className="text-xs text-muted-foreground">
-                  {permissions.repository?.full_name}
-                </p>
+                <p className="text-xs text-muted-foreground">{permissions.repository?.full_name}</p>
               </div>
               <div className="text-right">
                 {permissions.repository?.private && (
@@ -115,29 +105,35 @@ export function RepositoryPermissions({
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className={`p-2 rounded text-center border ${
-                permissionLevel.canPerformAction('read')
-                  ? 'bg-green-50 text-green-700 border-green-200'
-                  : 'bg-gray-50 text-gray-500 border-gray-200'
-              }`}>
+              <div
+                className={`p-2 rounded text-center border ${
+                  permissionLevel.canPerformAction("read")
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-gray-50 text-gray-500 border-gray-200"
+                }`}
+              >
                 <div className="font-medium">Read</div>
-                <div>{permissionLevel.canPerformAction('read') ? '✓' : '✗'}</div>
+                <div>{permissionLevel.canPerformAction("read") ? "✓" : "✗"}</div>
               </div>
-              <div className={`p-2 rounded text-center border ${
-                permissionLevel.canPerformAction('push')
-                  ? 'bg-green-50 text-green-700 border-green-200'
-                  : 'bg-gray-50 text-gray-500 border-gray-200'
-              }`}>
+              <div
+                className={`p-2 rounded text-center border ${
+                  permissionLevel.canPerformAction("push")
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-gray-50 text-gray-500 border-gray-200"
+                }`}
+              >
                 <div className="font-medium">Push</div>
-                <div>{permissionLevel.canPerformAction('push') ? '✓' : '✗'}</div>
+                <div>{permissionLevel.canPerformAction("push") ? "✓" : "✗"}</div>
               </div>
-              <div className={`p-2 rounded text-center border ${
-                permissionLevel.canPerformAction('admin')
-                  ? 'bg-green-50 text-green-700 border-green-200'
-                  : 'bg-gray-50 text-gray-500 border-gray-200'
-              }`}>
+              <div
+                className={`p-2 rounded text-center border ${
+                  permissionLevel.canPerformAction("admin")
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-gray-50 text-gray-500 border-gray-200"
+                }`}
+              >
                 <div className="font-medium">Admin</div>
-                <div>{permissionLevel.canPerformAction('admin') ? '✓' : '✗'}</div>
+                <div>{permissionLevel.canPerformAction("admin") ? "✓" : "✗"}</div>
               </div>
             </div>
 
@@ -148,7 +144,8 @@ export function RepositoryPermissions({
                   <p className="text-sm font-medium">Limited Access</p>
                 </div>
                 <p className="text-xs text-yellow-700 mt-1">
-                  Your GitHub App has read-only access. Push permissions may be required for full functionality like creating pull requests or commits.
+                  Your GitHub App has read-only access. Push permissions may be required for full functionality like
+                  creating pull requests or commits.
                 </p>
               </div>
             )}

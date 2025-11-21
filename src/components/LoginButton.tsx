@@ -19,17 +19,9 @@ export default function LoginButton() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           {session.user?.image && (
-            <Image
-              src={session.user.image}
-              alt="Avatar"
-              width={32}
-              height={32}
-              className="w-8 h-8 rounded-full"
-            />
+            <Image src={session.user.image} alt="Avatar" width={32} height={32} className="w-8 h-8 rounded-full" />
           )}
-          <span className="text-sm">
-            {session.user?.name || session.user?.email}
-          </span>
+          <span className="text-sm">{session.user?.name || session.user?.email}</span>
         </div>
         <button
           onClick={() => signOut()}

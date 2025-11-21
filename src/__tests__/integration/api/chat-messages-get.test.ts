@@ -70,7 +70,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
           taskId: task.id,
           contextTags: JSON.stringify([
             { type: "file", value: "sensitive-config.env" },
-            { type: "api_key", value: "hidden" }
+            { type: "api_key", value: "hidden" },
           ]),
         },
       });
@@ -79,8 +79,8 @@ describe("GET /api/chat/messages/[messageId]", () => {
       await tx.artifact.create({
         data: {
           type: "CODE",
-          content: { 
-            code: "const dbUrl = 'postgresql://user:password@localhost/db';\nconst apiKey = 'sk-sensitive-api-key-123';" 
+          content: {
+            code: "const dbUrl = 'postgresql://user:password@localhost/db';\nconst apiKey = 'sk-sensitive-api-key-123';",
           },
           messageId: message.id,
         },
@@ -158,7 +158,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -172,7 +172,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -186,7 +186,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(401);
@@ -202,7 +202,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest("http://localhost:3000/api/chat/messages/");
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: "" })
+        params: Promise.resolve({ messageId: "" }),
       });
 
       expect(response?.status).toBe(400);
@@ -217,7 +217,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${nonExistentId}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: nonExistentId })
+        params: Promise.resolve({ messageId: nonExistentId }),
       });
 
       expect(response?.status).toBe(404);
@@ -233,7 +233,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(403);
@@ -247,7 +247,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -262,7 +262,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(200);
@@ -279,34 +279,34 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(200);
       const data = await response?.json();
-      
+
       // Verify response structure
       expect(data.success).toBe(true);
       expect(data.data).toBeDefined();
-      
+
       const message = data.data;
-      
+
       // Verify sensitive message content is included
       expect(message.message).toBe("This is a sensitive chat message with user data");
       expect(message.role).toBe(ChatRole.USER);
       expect(message.status).toBe(ChatStatus.SENT);
-      
+
       // Verify context tags with sensitive data are parsed correctly
       expect(message.contextTags).toHaveLength(2);
       expect(message.contextTags[0]).toEqual({ type: "file", value: "sensitive-config.env" });
       expect(message.contextTags[1]).toEqual({ type: "api_key", value: "hidden" });
-      
+
       // Verify artifacts with sensitive code are included
       expect(message.artifacts).toHaveLength(1);
       expect(message.artifacts[0].type).toBe("CODE");
       expect(message.artifacts[0].content.code).toContain("postgresql://user:password@localhost/db");
       expect(message.artifacts[0].content.code).toContain("sk-sensitive-api-key-123");
-      
+
       // Verify attachments with sensitive files are included
       expect(message.attachments).toHaveLength(1);
       expect(message.attachments[0].filename).toBe("api-keys.txt");
@@ -319,12 +319,12 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(403);
       const data = await response?.json();
-      
+
       // Verify error message doesn't leak sensitive information
       expect(data.error).toBe("Access denied");
       expect(data).not.toHaveProperty("data");
@@ -341,14 +341,14 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(200);
       const data = await response?.json();
-      
+
       const message = data.data;
-      
+
       // Verify message structure completeness
       expect(message).toHaveProperty("id");
       expect(message).toHaveProperty("message");
@@ -358,7 +358,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       expect(message).toHaveProperty("artifacts");
       expect(message).toHaveProperty("attachments");
       expect(message).toHaveProperty("createdAt");
-      
+
       // Verify artifacts are ordered by creation date
       if (message.artifacts.length > 1) {
         const timestamps = message.artifacts.map((a: any) => new Date(a.createdAt).getTime());
@@ -378,7 +378,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${invalidMessageId}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: invalidMessageId })
+        params: Promise.resolve({ messageId: invalidMessageId }),
       });
 
       // Should handle gracefully and return proper error
@@ -398,7 +398,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
         name: "Temp Workspace",
         ownerId: tempUser.id,
       });
-      
+
       const tempTask = await db.task.create({
         data: {
           title: "Temp Task",
@@ -420,7 +420,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
           contextTags: JSON.stringify([]),
         },
       });
-      
+
       // Now delete the task to create an orphaned message scenario
       await db.task.delete({ where: { id: tempTask.id } });
 
@@ -429,7 +429,7 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${orphanedMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: orphanedMessage.id })
+        params: Promise.resolve({ messageId: orphanedMessage.id }),
       });
 
       expect(response?.status).toBe(404);
@@ -445,11 +445,11 @@ describe("GET /api/chat/messages/[messageId]", () => {
       const request = createGetRequest(`http://localhost:3000/api/chat/messages/${testMessage.id}`);
 
       const response = await GET(request, {
-        params: Promise.resolve({ messageId: testMessage.id })
+        params: Promise.resolve({ messageId: testMessage.id }),
       });
 
       expect(response?.status).toBe(200);
-      
+
       // Verify response has appropriate content type
       const contentType = response?.headers.get("content-type");
       expect(contentType).toContain("application/json");

@@ -2,10 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "@/app/api/features/route";
 import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -56,7 +53,7 @@ describe("Features API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/features?workspaceId=${workspace.id}`,
-        user
+        user,
       );
 
       // Execute
@@ -102,7 +99,7 @@ describe("Features API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/features?workspaceId=${workspace.id}&page=2&limit=10`,
-        user
+        user,
       );
 
       // Execute
@@ -121,9 +118,7 @@ describe("Features API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createGetRequest(
-        "http://localhost:3000/api/features?workspaceId=test-id"
-      );
+      const request = createGetRequest("http://localhost:3000/api/features?workspaceId=test-id");
 
       const response = await GET(request);
 
@@ -152,7 +147,7 @@ describe("Features API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/features?workspaceId=${workspace.id}`,
-        nonMember
+        nonMember,
       );
 
       // Execute
@@ -172,7 +167,7 @@ describe("Features API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/features?workspaceId=${workspace.id}&page=0&limit=200`,
-        user
+        user,
       );
 
       const response = await GET(request);
@@ -191,12 +186,16 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
-        status: FeatureStatus.PLANNED,
-        priority: FeaturePriority.HIGH,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "New Feature",
+          workspaceId: workspace.id,
+          status: FeatureStatus.PLANNED,
+          priority: FeaturePriority.HIGH,
+        },
+        user,
+      );
 
       // Execute
       const response = await POST(request);
@@ -221,10 +220,14 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "Simple Feature",
-        workspaceId: workspace.id,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "Simple Feature",
+          workspaceId: workspace.id,
+        },
+        user,
+      );
 
       // Execute
       const response = await POST(request);
@@ -249,11 +252,15 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "Assigned Feature",
-        workspaceId: workspace.id,
-        assigneeId: assignee.id,
-      }, owner);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "Assigned Feature",
+          workspaceId: workspace.id,
+          assigneeId: assignee.id,
+        },
+        owner,
+      );
 
       // Execute
       const response = await POST(request);
@@ -280,10 +287,14 @@ describe("Features API - Integration Tests", () => {
     test("validates required fields", async () => {
       const user = await createTestUser();
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        // Missing title and workspaceId
-        status: FeatureStatus.BACKLOG,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          // Missing title and workspaceId
+          status: FeatureStatus.BACKLOG,
+        },
+        user,
+      );
 
       const response = await POST(request);
 
@@ -298,11 +309,15 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
-        status: "INVALID_STATUS",
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "New Feature",
+          workspaceId: workspace.id,
+          status: "INVALID_STATUS",
+        },
+        user,
+      );
 
       const response = await POST(request);
 
@@ -317,11 +332,15 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
-        priority: "INVALID_PRIORITY",
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "New Feature",
+          workspaceId: workspace.id,
+          priority: "INVALID_PRIORITY",
+        },
+        user,
+      );
 
       const response = await POST(request);
 
@@ -336,11 +355,15 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
-        assigneeId: "non-existent-user-id",
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "New Feature",
+          workspaceId: workspace.id,
+          assigneeId: "non-existent-user-id",
+        },
+        user,
+      );
 
       const response = await POST(request);
 
@@ -356,10 +379,14 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "New Feature",
-        workspaceId: workspace.id,
-      }, nonMember);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "New Feature",
+          workspaceId: workspace.id,
+        },
+        nonMember,
+      );
 
       const response = await POST(request);
 
@@ -374,10 +401,14 @@ describe("Features API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
-      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
-        title: "  Trimmed Feature  ",
-        workspaceId: workspace.id,
-      }, user);
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/features",
+        {
+          title: "  Trimmed Feature  ",
+          workspaceId: workspace.id,
+        },
+        user,
+      );
 
       const response = await POST(request);
 

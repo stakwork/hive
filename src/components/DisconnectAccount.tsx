@@ -53,12 +53,7 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
 
         // Clear any NextAuth cookies
         document.cookie.split(";").forEach(function (c) {
-          document.cookie = c
-            .replace(/^ +/, "")
-            .replace(
-              /=.*/,
-              "=;expires=" + new Date().toUTCString() + ";path=/",
-            );
+          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
         });
       }
 
@@ -90,27 +85,20 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
         <div className="flex-1">
           <div className="font-medium">@{user.github.username}</div>
           <div className="text-sm text-muted-foreground">
-            {user.github.publicRepos} public repos • {user.github.followers}{" "}
-            followers
+            {user.github.publicRepos} public repos • {user.github.followers} followers
           </div>
         </div>
         <div className="text-sm text-green-600 font-medium">Connected</div>
       </div>
 
       <div className="border-t pt-4">
-        <Button
-          variant="destructive"
-          onClick={handleDisconnect}
-          disabled={isDisconnecting}
-          className="w-full"
-        >
+        <Button variant="destructive" onClick={handleDisconnect} disabled={isDisconnecting} className="w-full">
           <Unlink className="w-4 h-4 mr-2" />
           {isDisconnecting ? "Disconnecting..." : "Disconnect GitHub Account"}
         </Button>
 
         <p className="text-xs text-muted-foreground mt-2 text-center">
-          This will revoke access to your GitHub data and sign you out of the
-          application.
+          This will revoke access to your GitHub data and sign you out of the application.
         </p>
       </div>
     </div>

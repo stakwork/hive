@@ -34,7 +34,13 @@ interface AssigneeComboboxProps {
   } | null;
   onSelect: (
     assigneeId: string | null,
-    assigneeData?: { id: string; name: string | null; email: string | null; image: string | null; icon?: string | null } | null
+    assigneeData?: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      image: string | null;
+      icon?: string | null;
+    } | null,
   ) => Promise<void>;
   showSpecialAssignees?: boolean;
   ticketData?: {
@@ -49,7 +55,13 @@ interface AssigneeComboboxProps {
   };
 }
 
-export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, showSpecialAssignees = false, ticketData }: AssigneeComboboxProps) {
+export function AssigneeCombobox({
+  workspaceSlug,
+  currentAssignee,
+  onSelect,
+  showSpecialAssignees = false,
+  ticketData,
+}: AssigneeComboboxProps) {
   const [open, setOpen] = useState(false);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [systemAssignees, setSystemAssignees] = useState<WorkspaceMember[]>([]);
@@ -66,7 +78,9 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
   const fetchMembers = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/workspaces/${workspaceSlug}/members${showSpecialAssignees ? '?includeSystemAssignees=true' : ''}`);
+      const response = await fetch(
+        `/api/workspaces/${workspaceSlug}/members${showSpecialAssignees ? "?includeSystemAssignees=true" : ""}`,
+      );
       if (response.ok) {
         const data = await response.json();
         // Combine owner and members into a single array
@@ -83,22 +97,30 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
 
   const handleSelect = async (
     memberId: string | null,
-    memberData?: { id: string; name: string | null; email: string | null; image: string | null; icon?: string | null } | null
+    memberData?: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      image: string | null;
+      icon?: string | null;
+    } | null,
   ) => {
     try {
       setUpdating(true);
       await onSelect(memberId, memberData);
       setOpen(false);
-      
+
       if (memberId === "system:bounty-hunter" && ticketData) {
         const bountyUrl = generateSphinxBountyUrl({
           ...ticketData,
           description: ticketData.description ?? undefined,
           estimatedHours: ticketData.estimatedHours ?? undefined,
           bountyCode: ticketData.bountyCode ?? undefined,
-          repository: ticketData.repository ? {
-            repositoryUrl: ticketData.repository.repositoryUrl ?? undefined
-          } : undefined,
+          repository: ticketData.repository
+            ? {
+                repositoryUrl: ticketData.repository.repositoryUrl ?? undefined,
+              }
+            : undefined,
         });
         window.open(bountyUrl, "_blank", "noopener,noreferrer");
       }

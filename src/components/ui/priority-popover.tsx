@@ -10,10 +10,7 @@ interface PriorityPopoverProps {
   onUpdate: (priority: Priority) => Promise<void>;
 }
 
-export function PriorityPopover({
-  currentPriority,
-  onUpdate
-}: PriorityPopoverProps) {
+export function PriorityPopover({ currentPriority, onUpdate }: PriorityPopoverProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
 

@@ -31,12 +31,15 @@ export interface JanitorConfigFields {
 /**
  * Complete janitor type configuration
  */
-export const JANITOR_CONFIG: Record<JanitorType, {
-  name: string;
-  description: string;
-  icon: LucideIcon;
-  enabledField: keyof JanitorConfigFields;
-}> = {
+export const JANITOR_CONFIG: Record<
+  JanitorType,
+  {
+    name: string;
+    description: string;
+    icon: LucideIcon;
+    enabledField: keyof JanitorConfigFields;
+  }
+> = {
   UNIT_TESTS: {
     name: "Unit Tests",
     description: "Identify missing unit tests.",
@@ -44,7 +47,7 @@ export const JANITOR_CONFIG: Record<JanitorType, {
     enabledField: "unitTestsEnabled",
   },
   INTEGRATION_TESTS: {
-    name: "Integration Tests", 
+    name: "Integration Tests",
     description: "Identify missing integration tests.",
     icon: Zap,
     enabledField: "integrationTestsEnabled",
@@ -73,10 +76,7 @@ export function getEnabledFieldName(janitorType: JanitorType): keyof JanitorConf
 /**
  * Check if a janitor type is enabled in a config object
  */
-export function isJanitorEnabled(
-  janitorConfig: JanitorConfigFields, 
-  janitorType: JanitorType
-): boolean {
+export function isJanitorEnabled(janitorConfig: JanitorConfigFields, janitorType: JanitorType): boolean {
   const fieldName = getEnabledFieldName(janitorType);
   return janitorConfig[fieldName];
 }
@@ -85,9 +85,7 @@ export function isJanitorEnabled(
  * Get all enabled janitor types from a config object
  */
 export function getEnabledJanitorTypes(janitorConfig: JanitorConfigFields): JanitorType[] {
-  return Object.values(JanitorType).filter(type => 
-    isJanitorEnabled(janitorConfig, type)
-  );
+  return Object.values(JanitorType).filter((type) => isJanitorEnabled(janitorConfig, type));
 }
 
 /**
@@ -115,32 +113,35 @@ export function getAllJanitorItems() {
  * Create Prisma OR conditions for finding workspaces with any enabled janitors
  */
 export function createEnabledJanitorWhereConditions() {
-  return Object.values(JanitorType).map(janitorType => ({
-    [JANITOR_CONFIG[janitorType].enabledField]: true
+  return Object.values(JanitorType).map((janitorType) => ({
+    [JANITOR_CONFIG[janitorType].enabledField]: true,
   }));
 }
 
 /**
  * Priority configuration for display and sorting
  */
-export const PRIORITY_CONFIG: Record<Priority, {
-  label: string;
-  color: string;
-  weight: number;
-}> = {
+export const PRIORITY_CONFIG: Record<
+  Priority,
+  {
+    label: string;
+    color: string;
+    weight: number;
+  }
+> = {
   LOW: {
     label: "Low",
     color: "gray",
     weight: 1,
   },
   MEDIUM: {
-    label: "Medium", 
+    label: "Medium",
     color: "blue",
     weight: 2,
   },
   HIGH: {
     label: "High",
-    color: "orange", 
+    color: "orange",
     weight: 3,
   },
   CRITICAL: {

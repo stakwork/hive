@@ -12,9 +12,9 @@ import { getMetadata } from "@/lib/metadata";
 
 const inter = Inter({ subsets: ["latin"] });
 const roboto = Roboto({
-  weight: ['400', '500', '700'],
+  weight: ["400", "500", "700"],
   subsets: ["latin"],
-  variable: '--font-roboto',
+  variable: "--font-roboto",
 });
 
 export const viewport: Viewport = {

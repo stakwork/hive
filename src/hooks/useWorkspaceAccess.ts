@@ -12,9 +12,7 @@ export function useWorkspaceAccess() {
   const context = useContext(WorkspaceContext);
 
   if (context === undefined) {
-    throw new Error(
-      "useWorkspaceAccess must be used within a WorkspaceProvider",
-    );
+    throw new Error("useWorkspaceAccess must be used within a WorkspaceProvider");
   }
 
   const { role, hasAccess } = context;

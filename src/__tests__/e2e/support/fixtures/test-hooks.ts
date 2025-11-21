@@ -5,8 +5,8 @@
  * Ensures test isolation and clean database state.
  */
 
-import { test as base } from '@playwright/test';
-import { resetDatabase } from './database';
+import { test as base } from "@playwright/test";
+import { resetDatabase } from "./database";
 
 /**
  * Test lifecycle hook for database cleanup
@@ -46,4 +46,4 @@ export const test = base.extend({
   },
 });
 
-export { expect } from '@playwright/test';
+export { expect } from "@playwright/test";

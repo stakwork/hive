@@ -115,30 +115,30 @@ describe("Janitor API Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Set up required environment variables for tests
     process.env.STAKWORK_API_KEY = "test-api-key";
     process.env.STAKWORK_JANITOR_WORKFLOW_ID = "123";
-    
+
     // Set up default Stakwork service mock
     const mockStakworkRequest = vi.fn().mockResolvedValue({
       success: true,
-      data: { project_id: 123 }
+      data: { project_id: 123 },
     });
-    
+
     mockStakworkService.mockReturnValue({
-      stakworkRequest: mockStakworkRequest
+      stakworkRequest: mockStakworkRequest,
     } as any);
   });
 
   describe("Janitor Configuration", () => {
     test("GET /api/workspaces/[slug]/janitors/config - should get janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("OWNER");
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test");
-      
+
       const response = await GetConfig(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -156,14 +156,14 @@ describe("Janitor API Integration Tests", () => {
 
     test("PUT /api/workspaces/[slug]/janitors/config - should update janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPutRequest("http://localhost/api/test", {
         unitTestsEnabled: true,
         integrationTestsEnabled: false,
       });
-      
+
       const response = await UpdateConfig(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -178,13 +178,13 @@ describe("Janitor API Integration Tests", () => {
 
     test("PUT /api/workspaces/[slug]/janitors/config - should reject unauthorized user", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("VIEWER");
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPutRequest("http://localhost/api/test", {
         unitTestsEnabled: true,
       });
-      
+
       const response = await UpdateConfig(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -194,11 +194,11 @@ describe("Janitor API Integration Tests", () => {
 
     test("GET /api/workspaces/[slug]/janitors/config - should reject unauthenticated user", async () => {
       const { workspace } = await createTestWorkspaceWithUser();
-      
+
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createGetRequest("http://localhost/api/test");
-      
+
       const response = await GetConfig(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -210,7 +210,7 @@ describe("Janitor API Integration Tests", () => {
   describe("Janitor Execution", () => {
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should trigger janitor run when enabled", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
+
       // First enable unit tests
       await db.janitorConfig.create({
         data: {
@@ -218,15 +218,15 @@ describe("Janitor API Integration Tests", () => {
           unitTestsEnabled: true,
         },
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
-      
+
       const response = await TriggerRun(request, {
-        params: Promise.resolve({ 
-          slug: workspace.slug, 
-          type: "unit_tests" 
+        params: Promise.resolve({
+          slug: workspace.slug,
+          type: "unit_tests",
         }),
       });
 
@@ -254,15 +254,15 @@ describe("Janitor API Integration Tests", () => {
 
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should reject when janitor disabled", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
-      
+
       const response = await TriggerRun(request, {
-        params: Promise.resolve({ 
-          slug: workspace.slug, 
-          type: "unit_tests" 
+        params: Promise.resolve({
+          slug: workspace.slug,
+          type: "unit_tests",
         }),
       });
 
@@ -273,15 +273,15 @@ describe("Janitor API Integration Tests", () => {
 
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should reject invalid janitor type", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
-      
+
       const response = await TriggerRun(request, {
-        params: Promise.resolve({ 
-          slug: workspace.slug, 
-          type: "invalid_type" 
+        params: Promise.resolve({
+          slug: workspace.slug,
+          type: "invalid_type",
         }),
       });
 
@@ -292,7 +292,7 @@ describe("Janitor API Integration Tests", () => {
 
     test("POST /api/workspaces/[slug]/janitors/[type]/run - should allow concurrent runs", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
+
       // Enable unit tests and create existing run
       const config = await db.janitorConfig.create({
         data: {
@@ -309,15 +309,15 @@ describe("Janitor API Integration Tests", () => {
           status: "RUNNING",
         },
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
-      
+
       const response = await TriggerRun(request, {
-        params: Promise.resolve({ 
-          slug: workspace.slug, 
-          type: "unit_tests" 
+        params: Promise.resolve({
+          slug: workspace.slug,
+          type: "unit_tests",
         }),
       });
 
@@ -331,7 +331,7 @@ describe("Janitor API Integration Tests", () => {
   describe("Janitor Runs", () => {
     test("GET /api/workspaces/[slug]/janitors/runs - should get runs with pagination", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
-      
+
       // Create test data
       const config = await db.janitorConfig.create({
         data: {
@@ -350,17 +350,17 @@ describe("Janitor API Integration Tests", () => {
           },
           {
             janitorConfigId: config.id,
-            janitorType: "INTEGRATION_TESTS", 
+            janitorType: "INTEGRATION_TESTS",
             triggeredBy: "SCHEDULED",
             status: "FAILED",
           },
         ],
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { limit: "10", page: "1" });
-      
+
       const response = await GetRuns(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -380,7 +380,7 @@ describe("Janitor API Integration Tests", () => {
 
     test("GET /api/workspaces/[slug]/janitors/runs - should filter by janitor type", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
-      
+
       const config = await db.janitorConfig.create({
         data: {
           workspaceId: workspace.id,
@@ -399,16 +399,16 @@ describe("Janitor API Integration Tests", () => {
           {
             janitorConfigId: config.id,
             janitorType: "INTEGRATION_TESTS",
-            triggeredBy: "MANUAL", 
+            triggeredBy: "MANUAL",
             status: "COMPLETED",
           },
         ],
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { type: "UNIT_TESTS" });
-      
+
       const response = await GetRuns(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -424,7 +424,7 @@ describe("Janitor API Integration Tests", () => {
   describe("Webhook Processing", () => {
     test("POST /api/janitors/webhook - should process successful webhook", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser();
-      
+
       // Create test janitor run
       const config = await db.janitorConfig.create({
         data: {
@@ -459,7 +459,7 @@ describe("Janitor API Integration Tests", () => {
       };
 
       const request = createPostRequest("http://localhost/api/test", webhookPayload);
-      
+
       const response = await WebhookHandler(request);
       const responseData = await response.json();
 
@@ -481,7 +481,7 @@ describe("Janitor API Integration Tests", () => {
 
     test("POST /api/janitors/webhook - should handle failed webhook", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser();
-      
+
       const config = await db.janitorConfig.create({
         data: {
           workspaceId: workspace.id,
@@ -506,7 +506,7 @@ describe("Janitor API Integration Tests", () => {
       };
 
       const request = createPostRequest("http://localhost/api/test", webhookPayload);
-      
+
       const response = await WebhookHandler(request);
       const responseData = await response.json();
 
@@ -530,7 +530,7 @@ describe("Janitor API Integration Tests", () => {
       };
 
       const request = createPostRequest("http://localhost/api/test", webhookPayload);
-      
+
       const response = await WebhookHandler(request);
 
       expect(response.status).toBe(404);
@@ -540,7 +540,7 @@ describe("Janitor API Integration Tests", () => {
   describe("Recommendation Management", () => {
     test("GET /api/workspaces/[slug]/janitors/recommendations - should get recommendations with pagination", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
-      
+
       // Create test data
       const config = await db.janitorConfig.create({
         data: {
@@ -580,11 +580,11 @@ describe("Janitor API Integration Tests", () => {
           },
         ],
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { limit: "10", page: "1" });
-      
+
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -603,7 +603,7 @@ describe("Janitor API Integration Tests", () => {
 
       // Verify recommendation data structure
       const pendingRec = responseData.recommendations.find((r: any) => r.status === "PENDING");
-      
+
       expect(pendingRec).toMatchObject({
         title: "Add unit tests for UserService",
         priority: "HIGH",
@@ -613,7 +613,7 @@ describe("Janitor API Integration Tests", () => {
 
     test("GET /api/workspaces/[slug]/janitors/recommendations - should filter by status", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
-      
+
       const config = await db.janitorConfig.create({
         data: {
           workspaceId: workspace.id,
@@ -652,11 +652,11 @@ describe("Janitor API Integration Tests", () => {
           },
         ],
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { status: "PENDING" });
-      
+
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -671,7 +671,7 @@ describe("Janitor API Integration Tests", () => {
 
     test("GET /api/workspaces/[slug]/janitors/recommendations - should filter by priority", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
-      
+
       const config = await db.janitorConfig.create({
         data: {
           workspaceId: workspace.id,
@@ -708,11 +708,11 @@ describe("Janitor API Integration Tests", () => {
           },
         ],
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test", { priority: "HIGH" });
-      
+
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -727,11 +727,11 @@ describe("Janitor API Integration Tests", () => {
 
     test("GET /api/workspaces/[slug]/janitors/recommendations - should return empty array when no janitor config exists", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("DEVELOPER");
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createGetRequest("http://localhost/api/test");
-      
+
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -745,11 +745,11 @@ describe("Janitor API Integration Tests", () => {
 
     test("GET /api/workspaces/[slug]/janitors/recommendations - should reject unauthorized user", async () => {
       const { workspace } = await createTestWorkspaceWithUser();
-      
+
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
       const request = createGetRequest("http://localhost/api/test");
-      
+
       const response = await GetRecommendations(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -759,7 +759,7 @@ describe("Janitor API Integration Tests", () => {
 
     test("POST /api/janitors/recommendations/[id]/accept - should accept recommendation and create task", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
+
       // Create test data
       const config = await db.janitorConfig.create({
         data: {
@@ -787,11 +787,11 @@ describe("Janitor API Integration Tests", () => {
           status: "PENDING",
         },
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {});
-      
+
       const response = await AcceptRecommendation(request, {
         params: Promise.resolve({ id: recommendation.id }),
       });
@@ -824,7 +824,7 @@ describe("Janitor API Integration Tests", () => {
 
     test("POST /api/janitors/recommendations/[id]/dismiss - should dismiss recommendation", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
+
       const config = await db.janitorConfig.create({
         data: {
           workspaceId: workspace.id,
@@ -851,13 +851,13 @@ describe("Janitor API Integration Tests", () => {
           status: "PENDING",
         },
       });
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
       const request = createPostRequest("http://localhost/api/test", {
         reason: "Not relevant for this project",
       });
-      
+
       const response = await DismissRecommendation(request, {
         params: Promise.resolve({ id: recommendation.id }),
       });

@@ -62,25 +62,21 @@ export function TestCoverageCard() {
               <Skeleton className="h-4 w-10" />
             </div>
           </div>
-        ) : testCoverage?.unit_tests !== null && testCoverage?.integration_tests !== null && testCoverage?.e2e_tests !== null ? (
+        ) : testCoverage?.unit_tests !== null &&
+          testCoverage?.integration_tests !== null &&
+          testCoverage?.e2e_tests !== null ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Unit</span>
-              <span className="text-sm font-medium">
-                {testCoverage?.unit_tests.percent.toFixed(1)}%
-              </span>
+              <span className="text-sm font-medium">{testCoverage?.unit_tests.percent.toFixed(1)}%</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Integration</span>
-              <span className="text-sm font-medium">
-                {testCoverage?.integration_tests?.percent.toFixed(1) || 0}%
-              </span>
+              <span className="text-sm font-medium">{testCoverage?.integration_tests?.percent.toFixed(1) || 0}%</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">E2E</span>
-              <span className="text-sm font-medium">
-                {testCoverage?.e2e_tests?.percent.toFixed(1) || 0}%
-              </span>
+              <span className="text-sm font-medium">{testCoverage?.e2e_tests?.percent.toFixed(1) || 0}%</span>
             </div>
           </div>
         ) : (

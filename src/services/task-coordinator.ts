@@ -24,10 +24,7 @@ export interface FeatureContext {
  * Build feature context JSON for Stakwork workflow
  * Used by task coordinator cron and manual task starts
  */
-export async function buildFeatureContext(
-  featureId: string,
-  phaseId: string
-): Promise<FeatureContext> {
+export async function buildFeatureContext(featureId: string, phaseId: string): Promise<FeatureContext> {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
     include: {

@@ -1,10 +1,7 @@
 import { db } from "@/lib/db";
 import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
-import { 
-  createEnabledJanitorWhereConditions, 
-  isJanitorEnabled 
-} from "@/lib/constants/janitor";
+import { createEnabledJanitorWhereConditions, isJanitorEnabled } from "@/lib/constants/janitor";
 
 export interface CronExecutionResult {
   success: boolean;
@@ -21,25 +18,27 @@ export interface CronExecutionResult {
 /**
  * Get all workspaces with enabled janitors
  */
-export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
-  id: string;
-  slug: string;
-  name: string;
-  ownerId: string;
-  janitorConfig: {
+export async function getWorkspacesWithEnabledJanitors(): Promise<
+  Array<{
     id: string;
-    unitTestsEnabled: boolean;
-    integrationTestsEnabled: boolean;
-    e2eTestsEnabled: boolean;
-    securityReviewEnabled: boolean;
-  } | null;
-}>> {
+    slug: string;
+    name: string;
+    ownerId: string;
+    janitorConfig: {
+      id: string;
+      unitTestsEnabled: boolean;
+      integrationTestsEnabled: boolean;
+      e2eTestsEnabled: boolean;
+      securityReviewEnabled: boolean;
+    } | null;
+  }>
+> {
   return await db.workspace.findMany({
     where: {
       deleted: false,
       janitorConfig: {
-        OR: createEnabledJanitorWhereConditions()
-      }
+        OR: createEnabledJanitorWhereConditions(),
+      },
     },
     select: {
       id: true,
@@ -53,12 +52,11 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
           integrationTestsEnabled: true,
           e2eTestsEnabled: true,
           securityReviewEnabled: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 }
-
 
 /**
  * Execute scheduled janitor runs across all enabled workspaces
@@ -69,7 +67,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     workspacesProcessed: 0,
     runsCreated: 0,
     errors: [],
-    timestamp: new Date()
+    timestamp: new Date(),
   };
 
   console.log(`[JanitorCron] Starting scheduled janitor execution at ${result.timestamp.toISOString()}`);
@@ -82,7 +80,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
 
     for (const workspace of workspaces) {
       const { slug, name, ownerId, janitorConfig } = workspace;
-      
+
       if (!janitorConfig) {
         console.log(`[JanitorCron] Skipping workspace ${slug}: no janitor config`);
         continue;
@@ -103,7 +101,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
             result.errors.push({
               workspaceSlug: slug,
               janitorType: janitorType,
-              error: errorMessage
+              error: errorMessage,
             });
             result.success = false;
           }
@@ -111,8 +109,9 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       }
     }
 
-    console.log(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Errors: ${result.errors.length}`);
-    
+    console.log(
+      `[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Errors: ${result.errors.length}`,
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[JanitorCron] Critical error during execution:`, errorMessage);
@@ -120,7 +119,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     result.errors.push({
       workspaceSlug: "SYSTEM",
       janitorType: "UNIT_TESTS", // placeholder
-      error: errorMessage
+      error: errorMessage,
     });
   }
 

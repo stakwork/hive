@@ -33,7 +33,6 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 describe("GitHub Repository Permissions API Integration Tests", () => {
-
   beforeEach(async () => {
     vi.clearAllMocks();
     mockFetch.mockClear();
@@ -46,9 +45,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           githubOwner: "test-owner",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -56,12 +53,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -80,29 +74,21 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         });
 
         // Verify GitHub API was called correctly
-        expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/test-owner/test-repo",
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              Accept: "application/vnd.github.v3+json",
-            },
-          }
-        );
+        expect(mockFetch).toHaveBeenCalledWith("https://api.github.com/repos/test-owner/test-repo", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github.v3+json",
+          },
+        });
 
         // Verify token retrieval was called with correct parameters
-        expect(getUserAppTokens).toHaveBeenCalledWith(
-          testUser.id,
-          "test-owner"
-        );
+        expect(getUserAppTokens).toHaveBeenCalledWith(testUser.id, "test-owner");
       });
 
       test("should calculate canPush=true with admin permission", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -110,12 +96,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.adminPermission);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -127,9 +110,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should calculate canPush=true with maintain permission", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -137,12 +118,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.maintainPermission);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -154,9 +132,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should calculate canPush=false and canAdmin=false with only pull permission", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -164,12 +140,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.pullOnlyPermission);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -184,9 +157,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           githubOwner: "octocat",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -210,21 +181,15 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           }),
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.octocat,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.octocat,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
 
         expect(data.success).toBe(true);
-        expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/octocat/Hello-World",
-          expect.any(Object)
-        );
+        expect(mockFetch).toHaveBeenCalledWith("https://api.github.com/repos/octocat/Hello-World", expect.any(Object));
       });
 
       test("should support SSH repository URL format", async () => {
@@ -232,9 +197,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           githubOwner: "nodejs",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -258,29 +221,21 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           }),
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.ssh,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.ssh,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
 
         expect(data.success).toBe(true);
-        expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/nodejs/node",
-          expect.any(Object)
-        );
+        expect(mockFetch).toHaveBeenCalledWith("https://api.github.com/repos/nodejs/node", expect.any(Object));
       });
 
       test("should support repository URL with .git suffix", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -288,12 +243,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.httpsWithGit,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.httpsWithGit,
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -306,12 +258,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should return 401 for unauthenticated user", async () => {
         getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
 
@@ -324,12 +273,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           user: { email: "test@example.com" }, // Missing id field
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -343,18 +289,13 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         // Create user without tokens
         const testUser = await createTestUser({ name: "User Without Tokens" });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue(null);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -362,30 +303,23 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         expect(response.status).toBe(403);
         expect(data.success).toBe(false);
         expect(data.error).toBe("no_github_tokens");
-        expect(data.message).toContain(
-          "No GitHub App tokens found for this repository's organization"
-        );
+        expect(data.message).toContain("No GitHub App tokens found for this repository's organization");
         expect(mockFetch).not.toHaveBeenCalled();
       });
 
       test("should return 403 when tokens exist but accessToken is missing", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Mock getUserAppTokens to return object without accessToken
         vi.mocked(getUserAppTokens).mockResolvedValue({
           refreshToken: "some-refresh-token",
         });
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -399,14 +333,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should return 400 for missing repositoryUrl", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {}
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {});
 
         const response = await POST(request);
         const data = await response.json();
@@ -419,16 +348,11 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should return 400 for invalid repository URL format", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.invalid,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.invalid,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -441,16 +365,11 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should return 400 for malformed GitHub URL", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.malformed,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.malformed,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -464,9 +383,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should handle GitHub API 404 (repository not found)", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -474,12 +391,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.repositoryNotFound());
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/test-owner/nonexistent-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: "https://github.com/test-owner/nonexistent-repo",
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -495,9 +409,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should handle GitHub API 403 (access forbidden)", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -505,12 +417,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.accessForbidden);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/test-owner/private-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: "https://github.com/test-owner/private-repo",
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -523,9 +432,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should handle GitHub API 500 (server error)", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -533,12 +440,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.serverError);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -551,9 +455,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should handle GitHub API network errors", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -561,12 +463,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockRejectedValue(new Error("Network error"));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -579,9 +478,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should handle GitHub API timeout", async () => {
         const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -589,12 +486,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockRejectedValue(new Error("Request timeout"));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -610,9 +504,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
           githubOwner: "specific-owner",
         });
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         vi.mocked(getUserAppTokens).mockResolvedValue({
           accessToken,
@@ -620,12 +512,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/specific-owner/scoped-repo",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: "https://github.com/specific-owner/scoped-repo",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -633,10 +522,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         expect(data.success).toBe(true);
 
         // Verify getUserAppTokens was called with the extracted owner
-        expect(getUserAppTokens).toHaveBeenCalledWith(
-          testUser.id,
-          "specific-owner"
-        );
+        expect(getUserAppTokens).toHaveBeenCalledWith(testUser.id, "specific-owner");
       });
 
       test("should handle multiple organizations for same user", async () => {
@@ -647,15 +533,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         });
 
         // Add tokens for org2 to same user
-        await createAdditionalOrgForUser(
-          user1.id,
-          "org2", 
-          "token_for_org2"
-        );
+        await createAdditionalOrgForUser(user1.id, "org2", "token_for_org2");
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(user1)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(user1));
 
         // Mock getUserAppTokens to return org2 token
         vi.mocked(getUserAppTokens).mockResolvedValue({
@@ -664,12 +544,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: "https://github.com/org2/repo-in-org2",
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: "https://github.com/org2/repo-in-org2",
+        });
 
         const response = await POST(request);
         const data = await expectSuccess(response);
@@ -685,21 +562,14 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should return 500 for unexpected errors", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Mock getUserAppTokens to throw an error
-        vi.mocked(getUserAppTokens).mockRejectedValue(
-          new Error("Database connection failed")
-        );
+        vi.mocked(getUserAppTokens).mockRejectedValue(new Error("Database connection failed"));
 
-        const request = createPostRequest(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            repositoryUrl: testRepositoryUrls.https,
-          }
-        );
+        const request = createPostRequest("http://localhost:3000/api/github/repository/permissions", {
+          repositoryUrl: testRepositoryUrls.https,
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -712,19 +582,14 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
       test("should handle malformed JSON in request body", async () => {
         const testUser = await createTestUser();
 
-        getMockedSession().mockResolvedValue(
-          createAuthenticatedSession(testUser)
-        );
+        getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
         // Create request with invalid JSON
-        const request = new Request(
-          "http://localhost:3000/api/github/repository/permissions",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "invalid json",
-          }
-        );
+        const request = new Request("http://localhost:3000/api/github/repository/permissions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "invalid json",
+        });
 
         const response = await POST(request);
         const data = await response.json();
@@ -739,9 +604,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
     test("should handle query parameters and forward to POST", async () => {
       const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       vi.mocked(getUserAppTokens).mockResolvedValue({
         accessToken,
@@ -749,12 +612,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
       mockFetch.mockResolvedValue(mockGitHubApiResponses.pushPermission);
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: testRepositoryUrls.https,
-        }
-      );
+      const request = createGetRequest("http://localhost:3000/api/github/repository/permissions", {
+        repositoryUrl: testRepositoryUrls.https,
+      });
 
       const response = await GET(request);
       const data = await expectSuccess(response);
@@ -766,13 +626,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
     test("should return 400 for missing repositoryUrl query parameter", async () => {
       const testUser = await createTestUser();
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/github/repository/permissions"
-      );
+      const request = createGetRequest("http://localhost:3000/api/github/repository/permissions");
 
       const response = await GET(request);
       const data = await response.json();
@@ -785,9 +641,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
     test("should handle workspaceSlug query parameter", async () => {
       const { testUser, accessToken } = await createTestUserWithGitHubTokens();
 
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(testUser)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
       vi.mocked(getUserAppTokens).mockResolvedValue({
         accessToken,
@@ -811,13 +665,10 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
         }),
       });
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: testRepositoryUrls.https,
-          workspaceSlug: "my-workspace",
-        }
-      );
+      const request = createGetRequest("http://localhost:3000/api/github/repository/permissions", {
+        repositoryUrl: testRepositoryUrls.https,
+        workspaceSlug: "my-workspace",
+      });
 
       const response = await GET(request);
       const data = await expectSuccess(response);
@@ -828,12 +679,9 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
     test("should return 401 for unauthenticated GET request", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createGetRequest(
-        "http://localhost:3000/api/github/repository/permissions",
-        {
-          repositoryUrl: "https://github.com/test-owner/test-repo",
-        }
-      );
+      const request = createGetRequest("http://localhost:3000/api/github/repository/permissions", {
+        repositoryUrl: "https://github.com/test-owner/test-repo",
+      });
 
       const response = await GET(request);
 

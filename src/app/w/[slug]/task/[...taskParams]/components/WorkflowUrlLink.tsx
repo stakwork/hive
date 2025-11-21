@@ -8,18 +8,13 @@ interface WorkflowUrlLinkProps {
   className?: string;
 }
 
-export function WorkflowUrlLink({
-  workflowUrl,
-  className = "",
-}: WorkflowUrlLinkProps) {
+export function WorkflowUrlLink({ workflowUrl, className = "" }: WorkflowUrlLinkProps) {
   const handleClick = () => {
     window.open(workflowUrl, "_blank", "noopener,noreferrer");
   };
 
   return (
-    <div 
-      className={`absolute -top-2 -right-2 transition-opacity duration-200 z-10 ${className}`}
-    >
+    <div className={`absolute -top-2 -right-2 transition-opacity duration-200 z-10 ${className}`}>
       <Button
         onClick={handleClick}
         variant="ghost"

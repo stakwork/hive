@@ -12,7 +12,6 @@ export default function SessionProvider({ children }: SessionProviderProps) {
     <NextAuthSessionProvider
     // Disable automatic session refetch on window focus to prevent network errors
     // Reduce refetch interval to prevent excessive requests
-
     >
       {children}
     </NextAuthSessionProvider>

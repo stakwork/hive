@@ -35,7 +35,7 @@ describe("ErrorDisplay Component", () => {
 
     test("should render known workspace errors with proper config", () => {
       const { getByText } = render(<ErrorDisplay error={TEST_ERRORS.KNOWN_ERROR} />);
-      
+
       expect(getByText("Workspace Limit Reached")).toBeInTheDocument();
       expect(getByText("You can only create up to 2 workspaces.")).toBeInTheDocument();
       expect(getByText("You can delete an existing workspace to create a new one.")).toBeInTheDocument();
@@ -43,34 +43,30 @@ describe("ErrorDisplay Component", () => {
 
     test("should render unknown errors with default config", () => {
       const { getByText } = render(<ErrorDisplay error={TEST_ERRORS.UNKNOWN_ERROR} />);
-      
+
       expect(getByText("Error")).toBeInTheDocument();
       expect(getByText(TEST_ERRORS.UNKNOWN_ERROR)).toBeInTheDocument();
     });
 
     test("should render compact mode correctly", () => {
-      const { container, getByText } = render(
-        <ErrorDisplay error={TEST_ERRORS.KNOWN_ERROR} compact={true} />
-      );
-      
+      const { container, getByText } = render(<ErrorDisplay error={TEST_ERRORS.KNOWN_ERROR} compact={true} />);
+
       expect(getByText("You can only create up to 2 workspaces.")).toBeInTheDocument();
-      expect(container.querySelector('.text-destructive')).toBeInTheDocument();
+      expect(container.querySelector(".text-destructive")).toBeInTheDocument();
     });
   });
 
   describe("styling and accessibility", () => {
     test("should apply custom className", () => {
       const customClass = "custom-error-class";
-      const { container } = render(
-        <ErrorDisplay error={TEST_ERRORS.UNKNOWN_ERROR} className={customClass} />
-      );
-      
+      const { container } = render(<ErrorDisplay error={TEST_ERRORS.UNKNOWN_ERROR} className={customClass} />);
+
       expect(container.firstChild).toHaveClass(customClass);
     });
 
     test("should render with proper ARIA attributes", () => {
       const { container } = render(<ErrorDisplay error={TEST_ERRORS.ACCESS_ERROR} />);
-      
+
       // Alert component should have proper role
       const alertElement = container.querySelector('[role="alert"]');
       expect(alertElement).toBeInTheDocument();
@@ -90,7 +86,7 @@ describe("classifyError utility", () => {
       [WORKSPACE_ERRORS.ACCESS_DENIED, "Access Denied"],
     ])("should classify %s correctly", (errorMessage, expectedTitle) => {
       const config = classifyError(errorMessage);
-      
+
       expect(config.type).toBe("error");
       expect(config.title).toBe(expectedTitle);
       expect(config.description).toBeTruthy();
@@ -100,13 +96,13 @@ describe("classifyError utility", () => {
   describe("unknown errors", () => {
     test("should classify unknown errors with defaults", () => {
       const config = classifyError(TEST_ERRORS.UNKNOWN_ERROR);
-      
+
       expect(config).toEqual(EXPECTED_CONFIGS.UNKNOWN_DEFAULT);
     });
 
     test("should handle empty string errors", () => {
       const config = classifyError("");
-      
+
       expect(config.type).toBe("error");
       expect(config.title).toBe("Something went wrong");
       expect(config.description).toBe("");
@@ -116,7 +112,7 @@ describe("classifyError utility", () => {
   describe("configuration completeness", () => {
     test("should return complete ErrorDisplayConfig interface", () => {
       const config = classifyError(TEST_ERRORS.KNOWN_ERROR);
-      
+
       expect(config).toHaveProperty("type");
       expect(config).toHaveProperty("title");
       expect(config).toHaveProperty("description");
@@ -138,7 +134,7 @@ describe("useErrorDisplay hook", () => {
       const error = TEST_ERRORS.KNOWN_ERROR;
       const hookConfig = hookResult.getErrorConfig(error);
       const utilityConfig = classifyError(error);
-      
+
       expect(hookConfig).toEqual(utilityConfig);
     });
   });

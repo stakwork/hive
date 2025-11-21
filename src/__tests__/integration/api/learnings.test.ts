@@ -2,18 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET } from "@/app/api/learnings/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  createTestWorkspaceScenario,
-  createTestSwarm,
-} from "@/__tests__/support/fixtures";
-import {
-  createGetRequest,
-  createAuthenticatedGetRequest,
-  generateUniqueId,
-} from "@/__tests__/support/helpers";
+import { createTestWorkspaceScenario, createTestSwarm } from "@/__tests__/support/fixtures";
+import { createGetRequest, createAuthenticatedGetRequest, generateUniqueId } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
-
-
 
 describe("GET /api/learnings - Authorization", () => {
   let owner: User;
@@ -28,11 +19,7 @@ describe("GET /api/learnings - Authorization", () => {
     await db.$transaction(async (tx) => {
       const scenario = await createTestWorkspaceScenario({
         owner: { name: "Learnings Owner" },
-        members: [
-          { role: "VIEWER" },
-          { role: "DEVELOPER" },
-          { role: "ADMIN" },
-        ],
+        members: [{ role: "VIEWER" }, { role: "DEVELOPER" }, { role: "ADMIN" }],
       });
 
       owner = scenario.owner;
@@ -43,10 +30,7 @@ describe("GET /api/learnings - Authorization", () => {
 
       // Create swarm with encrypted API key
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "swarmApiKey",
-        "test-swarm-api-key"
-      );
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-swarm-api-key");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -77,7 +61,6 @@ describe("GET /api/learnings - Authorization", () => {
     vi.restoreAllMocks();
   });
 
-
   it("should return 401 for unauthenticated requests", async () => {
     const request = createGetRequest(`/api/learnings?workspace=${workspace.slug}`);
     const response = await GET(request);
@@ -97,10 +80,7 @@ describe("GET /api/learnings - Authorization", () => {
   });
 
   it("should return 403 for non-member access", async () => {
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      nonMember
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, nonMember);
     const response = await GET(request);
 
     expect(response.status).toBe(403);
@@ -114,10 +94,7 @@ describe("GET /api/learnings - Authorization", () => {
       data: { deleted: true, deletedAt: new Date() },
     });
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     const response = await GET(request);
 
     expect(response.status).toBe(403);
@@ -130,13 +107,10 @@ describe("GET /api/learnings - Authorization", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      memberViewer
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, memberViewer);
     const response = await GET(request);
 
     expect(response.status).toBe(200);
@@ -147,7 +121,7 @@ describe("GET /api/learnings - Authorization", () => {
         headers: expect.objectContaining({
           "x-api-token": "test-swarm-api-key",
         }),
-      })
+      }),
     );
 
     fetchSpy.mockRestore();
@@ -158,13 +132,10 @@ describe("GET /api/learnings - Authorization", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      memberDeveloper
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, memberDeveloper);
     const response = await GET(request);
 
     expect(response.status).toBe(200);
@@ -176,13 +147,10 @@ describe("GET /api/learnings - Authorization", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      memberAdmin
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, memberAdmin);
     const response = await GET(request);
 
     expect(response.status).toBe(200);
@@ -194,13 +162,10 @@ describe("GET /api/learnings - Authorization", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     const response = await GET(request);
 
     expect(response.status).toBe(200);
@@ -223,10 +188,7 @@ describe("GET /api/learnings - Data Integrity", () => {
       workspace = scenario.workspace;
 
       const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "swarmApiKey",
-        "test-api-key-integrity"
-      );
+      const encryptedApiKey = encryptionService.encryptField("swarmApiKey", "test-api-key-integrity");
 
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
@@ -257,7 +219,7 @@ describe("GET /api/learnings - Data Integrity", () => {
 
     const request = createAuthenticatedGetRequest(
       `/api/learnings?workspace=${newScenario.workspace.slug}`,
-      newScenario.owner
+      newScenario.owner,
     );
     const response = await GET(request);
 
@@ -272,10 +234,7 @@ describe("GET /api/learnings - Data Integrity", () => {
       data: { swarmUrl: null },
     });
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     const response = await GET(request);
 
     expect(response.status).toBe(404);
@@ -288,13 +247,10 @@ describe("GET /api/learnings - Data Integrity", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     const response = await GET(request);
 
     expect(response.status).toBe(200);
@@ -314,13 +270,13 @@ describe("GET /api/learnings - Data Integrity", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
     const testQuestion = "How do I implement authentication?";
     const request = createAuthenticatedGetRequest(
       `/api/learnings?workspace=${workspace.slug}&question=${encodeURIComponent(testQuestion)}`,
-      owner
+      owner,
     );
     const response = await GET(request);
 
@@ -329,36 +285,25 @@ describe("GET /api/learnings - Data Integrity", () => {
     // Verify question parameter is forwarded
     const fetchCall = fetchSpy.mock.calls[0];
     const fetchUrl = fetchCall[0] as string;
-    expect(fetchUrl).toContain(
-      `question=${encodeURIComponent(testQuestion)}`
-    );
+    expect(fetchUrl).toContain(`question=${encodeURIComponent(testQuestion)}`);
 
     fetchSpy.mockRestore();
   });
 
   it("should return valid Learnings response structure", async () => {
     const mockLearnings = {
-      prompts: [
-        "Prompt 1: Test authentication flow",
-        "Prompt 2: Implement user roles",
-      ],
-      hints: [
-        "Hint 1: Use NextAuth.js for authentication",
-        "Hint 2: Implement role-based access control",
-      ],
+      prompts: ["Prompt 1: Test authentication flow", "Prompt 2: Implement user roles"],
+      hints: ["Hint 1: Use NextAuth.js for authentication", "Hint 2: Implement role-based access control"],
     };
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(mockLearnings), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     const response = await GET(request);
 
     expect(response.status).toBe(200);
@@ -378,13 +323,10 @@ describe("GET /api/learnings - Data Integrity", () => {
       new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     const response = await GET(request);
 
     expect(response.status).toBe(500);
@@ -393,14 +335,9 @@ describe("GET /api/learnings - Data Integrity", () => {
   });
 
   it("should handle external API network errors gracefully", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(
-      new Error("Network error: Connection timeout")
-    );
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error: Connection timeout"));
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     const response = await GET(request);
 
     expect(response.status).toBe(500);
@@ -413,22 +350,17 @@ describe("GET /api/learnings - Data Integrity", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     await GET(request);
 
     const fetchCall = fetchSpy.mock.calls[0];
     const fetchUrl = fetchCall[0] as string;
 
     // Verify URL format: https://{hostname}:3355/learnings
-    expect(fetchUrl).toMatch(
-      /^https:\/\/integrity-swarm\.sphinx\.chat:3355\/learnings/
-    );
+    expect(fetchUrl).toMatch(/^https:\/\/integrity-swarm\.sphinx\.chat:3355\/learnings/);
 
     fetchSpy.mockRestore();
   });
@@ -443,13 +375,10 @@ describe("GET /api/learnings - Data Integrity", () => {
       new Response(JSON.stringify({ prompts: [], hints: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+      }),
     );
 
-    const request = createAuthenticatedGetRequest(
-      `/api/learnings?workspace=${workspace.slug}`,
-      owner
-    );
+    const request = createAuthenticatedGetRequest(`/api/learnings?workspace=${workspace.slug}`, owner);
     await GET(request);
 
     const fetchCall = fetchSpy.mock.calls[0];

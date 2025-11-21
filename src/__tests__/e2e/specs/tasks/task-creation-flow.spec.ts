@@ -1,5 +1,5 @@
-import { test, expect } from '@/__tests__/e2e/support/fixtures/test-hooks';
-import { AuthPage, DashboardPage, TasksPage } from '@/__tests__/e2e/support/page-objects';
+import { test, expect } from "@/__tests__/e2e/support/fixtures/test-hooks";
+import { AuthPage, DashboardPage, TasksPage } from "@/__tests__/e2e/support/page-objects";
 
 /**
  * Task Creation Flow E2E Tests
@@ -13,7 +13,7 @@ import { AuthPage, DashboardPage, TasksPage } from '@/__tests__/e2e/support/page
  * 6. Navigate back to Tasks list
  * 7. Verify task appears in the list
  */
-test.describe('Task Creation Flow', () => {
+test.describe("Task Creation Flow", () => {
   let authPage: AuthPage;
   let dashboardPage: DashboardPage;
   let tasksPage: TasksPage;
@@ -31,7 +31,7 @@ test.describe('Task Creation Flow', () => {
     await dashboardPage.waitForLoad();
   });
 
-  test('should create a new task and verify it appears in the task list', async ({ page }) => {
+  test("should create a new task and verify it appears in the task list", async ({ page }) => {
     // Navigate to Tasks page
     await dashboardPage.goToTasks();
     await tasksPage.waitForLoad();
@@ -68,7 +68,7 @@ test.describe('Task Creation Flow', () => {
     await tasksPage.verifyTaskInList(taskTitle);
   });
 
-  test('should navigate to task details when clicking on a task in the list', async ({ page }) => {
+  test("should navigate to task details when clicking on a task in the list", async ({ page }) => {
     // Navigate to Tasks page
     await dashboardPage.goToTasks();
     await tasksPage.waitForLoad();
@@ -96,7 +96,7 @@ test.describe('Task Creation Flow', () => {
     expect(page.url()).toContain(taskId);
   });
 
-  test('should show task count after creating multiple tasks', async ({ page }) => {
+  test("should show task count after creating multiple tasks", async ({ page }) => {
     // Navigate to Tasks page
     await dashboardPage.goToTasks();
     await tasksPage.waitForLoad();
@@ -141,7 +141,7 @@ test.describe('Task Creation Flow', () => {
     expect(finalCount).toBeGreaterThanOrEqual(initialCount + 2);
   });
 
-  test('should persist task after page reload', async ({ page }) => {
+  test("should persist task after page reload", async ({ page }) => {
     // Navigate to Tasks page
     await dashboardPage.goToTasks();
     await tasksPage.waitForLoad();

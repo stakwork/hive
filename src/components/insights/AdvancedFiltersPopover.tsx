@@ -150,12 +150,7 @@ export function AdvancedFiltersPopover({
               <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
               <h4 className="font-semibold text-sm">Advanced Filters</h4>
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setOpen(false)}
-              className="h-6 w-6"
-            >
+            <Button variant="ghost" size="icon-sm" onClick={() => setOpen(false)} className="h-6 w-6">
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -210,9 +205,7 @@ export function AdvancedFiltersPopover({
 
           {/* Test Pattern Filters */}
           <div className="space-y-3">
-            <Label className="text-xs font-medium text-muted-foreground">
-              Test Pattern Filters (glob)
-            </Label>
+            <Label className="text-xs font-medium text-muted-foreground">Test Pattern Filters (glob)</Label>
 
             {/* Unit Tests */}
             <div className="space-y-1.5">
@@ -294,12 +287,7 @@ export function AdvancedFiltersPopover({
             >
               Clear All
             </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => setOpen(false)}
-              className="text-xs h-8"
-            >
+            <Button variant="default" size="sm" onClick={() => setOpen(false)} className="text-xs h-8">
               Done
             </Button>
           </div>

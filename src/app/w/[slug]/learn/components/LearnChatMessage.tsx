@@ -36,8 +36,9 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
         className={`flex ${isUser ? "justify-end" : "justify-start"}`}
       >
         <div
-          className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm overflow-hidden ${isUser ? "bg-primary text-primary-foreground ml-12" : "bg-muted mr-12"
-            }`}
+          className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm overflow-hidden ${
+            isUser ? "bg-primary text-primary-foreground ml-12" : "bg-muted mr-12"
+          }`}
         >
           {!isUser && (
             <div className="font-medium text-sm text-muted-foreground mb-1 flex items-center gap-2">

@@ -1,15 +1,18 @@
-import React from 'react';
-import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { ScreenshotModal } from '@/components/ScreenshotModal';
-import type { Screenshot } from '@/types/common';
+import React from "react";
+import { describe, test, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { ScreenshotModal } from "@/components/ScreenshotModal";
+import type { Screenshot } from "@/types/common";
 
 // Mock Dialog components
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children, open, onOpenChange }: { children: React.ReactNode; open: boolean; onOpenChange: () => void }) => (
-    open ? <div data-testid="dialog-mock" role="dialog">{children}</div> : null
-  ),
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ children, open, onOpenChange }: { children: React.ReactNode; open: boolean; onOpenChange: () => void }) =>
+    open ? (
+      <div data-testid="dialog-mock" role="dialog">
+        {children}
+      </div>
+    ) : null,
   DialogContent: ({ children, className, ...props }: any) => (
     <div data-testid="screenshot-modal" className={className} {...props}>
       {children}
@@ -203,7 +206,9 @@ describe("ScreenshotModal", () => {
       expect(onNavigate).not.toHaveBeenCalled();
 
       // Open modal
-      rerender(<ScreenshotModal {...defaultProps} isOpen={true} screenshot={mockScreenshots[1]} onNavigate={onNavigate} />);
+      rerender(
+        <ScreenshotModal {...defaultProps} isOpen={true} screenshot={mockScreenshots[1]} onNavigate={onNavigate} />,
+      );
 
       await user.keyboard("{ArrowRight}");
       expect(onNavigate).toHaveBeenCalledWith(mockScreenshots[2]);

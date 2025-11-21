@@ -7,10 +7,7 @@ import { GENERATION_TYPES, GENERATION_CONFIG_MAP, GenerationType } from "@/lib/a
 
 type Provider = "anthropic" | "openai";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ featureId: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ featureId: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -23,7 +20,7 @@ export async function POST(
     if (!type || !GENERATION_TYPES.includes(type)) {
       return NextResponse.json(
         { error: `Invalid type parameter. Must be one of: ${GENERATION_TYPES.join(", ")}` },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -41,8 +38,8 @@ export async function POST(
             title: true,
           },
           orderBy: {
-            order: 'asc',
-          }
+            order: "asc",
+          },
         },
         workspace: {
           select: {
@@ -51,38 +48,29 @@ export async function POST(
             ownerId: true,
             members: {
               where: { userId: userOrResponse.id },
-              select: { role: true }
-            }
-          }
-        }
-      }
+              select: { role: true },
+            },
+          },
+        },
+      },
     });
 
     if (!feature) {
-      return NextResponse.json(
-        { error: "Feature not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
     }
 
     const isOwner = feature.workspace.ownerId === userOrResponse.id;
     const isMember = feature.workspace.members.length > 0;
 
     if (!isOwner && !isMember) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
 
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "AI provider not configured. Please set ANTHROPIC_API_KEY." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "AI provider not configured. Please set ANTHROPIC_API_KEY." }, { status: 500 });
     }
 
     const model = await getModel(provider, apiKey);
@@ -98,13 +86,10 @@ export async function POST(
       config.systemPrompt,
       featureId,
       feature.title,
-      type
+      type,
     );
   } catch (error) {
     console.error("Error generating content:", error);
-    return NextResponse.json(
-      { error: "Failed to generate content" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to generate content" }, { status: 500 });
   }
 }

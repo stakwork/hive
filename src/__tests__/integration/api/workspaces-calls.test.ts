@@ -1,10 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/workspaces/[slug]/calls/route";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-  mockData,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario, mockData } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -12,11 +8,7 @@ import {
   createGetRequest,
   createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
-import {
-  callMockSetup,
-  resetCallMocks,
-  createMockCallBatch,
-} from "@/__tests__/support/call-mocks";
+import { callMockSetup, resetCallMocks, createMockCallBatch } from "@/__tests__/support/call-mocks";
 
 describe("Calls API - Integration Tests", () => {
   beforeEach(() => {
@@ -31,9 +23,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       // Request without middleware auth headers
-      const request = createGetRequest(
-        `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
-      );
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/calls`);
 
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -265,11 +255,7 @@ describe("Calls API - Integration Tests", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      await expectError(
-        response,
-        "Failed to fetch call recordings.",
-        502,
-      );
+      await expectError(response, "Failed to fetch call recordings.", 502);
     });
 
     test("accepts limit and skip query params", async () => {

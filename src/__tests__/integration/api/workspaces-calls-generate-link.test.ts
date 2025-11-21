@@ -1,9 +1,6 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
 import { POST } from "@/app/api/workspaces/[slug]/calls/generate-link/route";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -345,9 +342,7 @@ describe("Generate Call Link API - Integration Tests", () => {
         const data = await expectSuccess(response, 200);
 
         // Verify URL format: ${baseUrl}${swarmName}.sphinx.chat-.${timestamp}
-        expect(data.url).toMatch(
-          /^https:\/\/call\.livekit\.io\/swarm42\.sphinx\.chat-\.\d+$/,
-        );
+        expect(data.url).toMatch(/^https:\/\/call\.livekit\.io\/swarm42\.sphinx\.chat-\.\d+$/);
       });
 
       test("timestamp in URL is recent", async () => {

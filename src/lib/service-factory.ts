@@ -15,13 +15,9 @@ export class ServiceFactory {
     if (!this.instances.has(serviceName)) {
       const config = getServiceConfig(serviceName);
 
-      console.log(
-        "--------------------------------config--------------------------------",
-      );
+      console.log("--------------------------------config--------------------------------");
       console.log(config);
-      console.log(
-        "--------------------------------config--------------------------------",
-      );
+      console.log("--------------------------------config--------------------------------");
 
       switch (serviceName) {
         case "stakwork":

@@ -1,10 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/features/[featureId]/tickets/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -20,10 +17,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
 
   describe("Authentication", () => {
     test("requires authentication", async () => {
-      const request = createPostRequest(
-        "http://localhost:3000/api/features/test-id/tickets",
-        { title: "New Ticket" }
-      );
+      const request = createPostRequest("http://localhost:3000/api/features/test-id/tickets", { title: "New Ticket" });
 
       const response = await POST(request, { params: Promise.resolve({ featureId: "test-id" }) });
 
@@ -38,7 +32,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/non-existent-id/tickets",
         { title: "New Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
@@ -67,7 +61,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "New Ticket" },
-        nonMember
+        nonMember,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -100,7 +94,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "New Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -128,7 +122,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Owner Ticket" },
-        owner
+        owner,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -166,7 +160,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Member Ticket" },
-        member
+        member,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -197,7 +191,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         {},
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -225,7 +219,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "   " },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -253,7 +247,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "  Trimmed Ticket  " },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -284,7 +278,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", status: "TODO" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -313,7 +307,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", status: "IN_PROGRESS" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -342,7 +336,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", status: "INVALID_STATUS" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -370,7 +364,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", priority: "MEDIUM" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -399,7 +393,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", priority: "CRITICAL" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -428,7 +422,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", priority: "INVALID_PRIORITY" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -466,7 +460,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", phaseId: phase.id },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -514,7 +508,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature1.id}/tickets`,
         { title: "Test Ticket", phaseId: phase2.id },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature1.id }) });
@@ -542,7 +536,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", phaseId: "non-existent-phase-id" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -571,7 +565,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", assigneeId: assignee.id },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -600,7 +594,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", assigneeId: "non-existent-user-id" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -628,7 +622,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", assigneeId: null },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -659,7 +653,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", assigneeId: "system:task-coordinator" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -695,7 +689,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", assigneeId: "system:bounty-hunter" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -733,7 +727,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "First Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -773,7 +767,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Second Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -822,7 +816,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Second Ticket in Phase", phaseId: phase.id },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -854,7 +848,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", description: "Test description" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -883,7 +877,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -912,13 +906,13 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", runBuild: true },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
-      
+
       // Verify in database
       const task = await db.task.findUnique({
         where: { id: data.data.id },
@@ -947,13 +941,13 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", runBuild: false },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
-      
+
       // Verify in database
       const task = await db.task.findUnique({
         where: { id: data.data.id },
@@ -982,13 +976,13 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", runTestSuite: true },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
-      
+
       // Verify in database
       const task = await db.task.findUnique({
         where: { id: data.data.id },
@@ -1017,13 +1011,13 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", runTestSuite: false },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
-      
+
       // Verify in database
       const task = await db.task.findUnique({
         where: { id: data.data.id },
@@ -1052,13 +1046,13 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
 
       const data = await expectSuccess(response, 201);
-      
+
       // Verify in database that defaults are applied
       const task = await db.task.findUnique({
         where: { id: data.data.id },
@@ -1088,7 +1082,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -1135,7 +1129,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
           phaseId: phase.id,
           assigneeId: assignee.id,
         },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -1187,13 +1181,13 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request1 = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Ticket 1" },
-        user
+        user,
       );
 
       const request2 = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Ticket 2" },
-        user
+        user,
       );
 
       const response1 = await POST(request1, { params: Promise.resolve({ featureId: feature.id }) });
@@ -1229,7 +1223,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -1257,7 +1251,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -1294,7 +1288,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", assigneeId: assignee.id },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -1334,7 +1328,7 @@ describe("POST /api/features/[featureId]/tickets - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/tickets`,
         { title: "Test Ticket", phaseId: phase.id },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });

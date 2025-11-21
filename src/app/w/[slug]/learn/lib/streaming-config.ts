@@ -20,21 +20,15 @@ export interface AskQuestionResponse {
 /**
  * Converts citation tags to markdown links using web search results
  */
-export function convertCitationsToLinks(
-  text: string,
-  webSearchResults: WebSearchResult[]
-): string {
-  return text.replace(
-    /<cite index="(\d+)-\d+">(.*?)<\/cite>/g,
-    (_match: string, index: string, text: string) => {
-      const resultIndex = parseInt(index) - 1;
-      if (webSearchResults[resultIndex]) {
-        const result = webSearchResults[resultIndex];
-        return `[${text}](${result.url})`;
-      }
-      return text;
+export function convertCitationsToLinks(text: string, webSearchResults: WebSearchResult[]): string {
+  return text.replace(/<cite index="(\d+)-\d+">(.*?)<\/cite>/g, (_match: string, index: string, text: string) => {
+    const resultIndex = parseInt(index) - 1;
+    if (webSearchResults[resultIndex]) {
+      const result = webSearchResults[resultIndex];
+      return `[${text}](${result.url})`;
     }
-  );
+    return text;
+  });
 }
 
 /**

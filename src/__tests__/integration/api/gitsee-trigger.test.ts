@@ -13,10 +13,7 @@ import {
   expectForbidden,
   expectNotFound,
 } from "@/__tests__/support/helpers";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario } from "@/__tests__/support/fixtures";
 
 describe("POST /api/gitsee/trigger - Integration Tests", () => {
   let fetchSpy: any;
@@ -49,13 +46,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
     test("returns 401 when user is not authenticated", async () => {
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: "test-workspace-id",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: "test-workspace-id",
+      });
 
       const response = await POST(request);
 
@@ -68,13 +62,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: "test-workspace-id",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: "test-workspace-id",
+      });
 
       const response = await POST(request);
 
@@ -89,13 +80,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -112,12 +100,9 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -129,12 +114,9 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+      });
 
       const response = await POST(request);
 
@@ -146,10 +128,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {}
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {});
 
       const response = await POST(request);
 
@@ -167,17 +146,12 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       // Create different user who is not a member
       const nonMember = await createTestUser({ email: "nonmember@test.com" });
-      getMockedSession().mockResolvedValue(
-        createAuthenticatedSession(nonMember)
-      );
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -192,13 +166,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -223,13 +194,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(member));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -247,13 +215,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -265,13 +230,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
       const user = await createTestUser();
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: "nonexistent-workspace-id",
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: "nonexistent-workspace-id",
+      });
 
       const response = await POST(request);
 
@@ -289,13 +251,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -314,13 +273,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -329,7 +285,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       // Verify x-api-token header is present
       expect(options.headers).toHaveProperty("x-api-token");
-      
+
       // Verify header contains decrypted value (not JSON encrypted format)
       const apiToken = options.headers["x-api-token"];
       expect(typeof apiToken).toBe("string");
@@ -346,13 +302,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/private-repo",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/private-repo",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -373,13 +326,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -403,13 +353,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -427,13 +374,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -441,13 +385,7 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
       const [url, options] = fetchSpy.mock.calls[0];
 
       const body = JSON.parse(options.body);
-      expect(body.data).toEqual([
-        "repo_info",
-        "contributors",
-        "icon",
-        "files",
-        "stats",
-      ]);
+      expect(body.data).toEqual(["repo_info", "contributors", "icon", "files", "stats"]);
     });
 
     test("handles GitSee service errors gracefully", async () => {
@@ -464,13 +402,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -487,13 +422,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -509,13 +441,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/facebook/react",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/facebook/react",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -533,13 +462,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "git@github.com:vercel/next.js.git",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "git@github.com:vercel/next.js.git",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -557,13 +483,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/microsoft/typescript.git",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/microsoft/typescript.git",
+        workspaceId: workspace.id,
+      });
 
       await POST(request);
 
@@ -583,13 +506,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 200);
@@ -610,13 +530,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 200);
@@ -650,13 +567,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
       const data = await expectSuccess(response, 200);
@@ -675,21 +589,16 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
       await db.swarm.update({
         where: { id: swarm!.id },
         data: {
-          swarmApiKey: JSON.stringify(
-            encryptionService.encryptField("swarmApiKey", "")
-          ),
+          swarmApiKey: JSON.stringify(encryptionService.encryptField("swarmApiKey", "")),
         },
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 
@@ -705,13 +614,10 @@ describe("POST /api/gitsee/trigger - Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const request = createPostRequest(
-        "http://localhost:3000/api/gitsee/trigger",
-        {
-          repositoryUrl: "https://github.com/stakwork/hive",
-          workspaceId: workspace.id,
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/gitsee/trigger", {
+        repositoryUrl: "https://github.com/stakwork/hive",
+        workspaceId: workspace.id,
+      });
 
       const response = await POST(request);
 

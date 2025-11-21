@@ -12,7 +12,7 @@ describe("updateWorkspaceSchema", () => {
         "A".repeat(100), // max length
       ];
 
-      validNames.forEach(name => {
+      validNames.forEach((name) => {
         const result = updateWorkspaceSchema.safeParse({
           name,
           slug: "valid-slug",
@@ -64,15 +64,9 @@ describe("updateWorkspaceSchema", () => {
 
   describe("slug validation", () => {
     test("should accept valid slugs", () => {
-      const validSlugs = [
-        "my-workspace",
-        "test123",
-        "a1",
-        "workspace-with-many-hyphens",
-        "123numbers",
-      ];
+      const validSlugs = ["my-workspace", "test123", "a1", "workspace-with-many-hyphens", "123numbers"];
 
-      validSlugs.forEach(slug => {
+      validSlugs.forEach((slug) => {
         const result = updateWorkspaceSchema.safeParse({
           name: "Test",
           slug,
@@ -88,7 +82,7 @@ describe("updateWorkspaceSchema", () => {
     test("should reject reserved slugs", () => {
       const reservedSlugs = ["api", "admin", "settings", "auth", "workspaces"];
 
-      reservedSlugs.forEach(slug => {
+      reservedSlugs.forEach((slug) => {
         const result = updateWorkspaceSchema.safeParse({
           name: "Test",
           slug,
@@ -115,7 +109,7 @@ describe("updateWorkspaceSchema", () => {
         "A".repeat(51), // too long (max 50)
       ];
 
-      invalidSlugs.forEach(slug => {
+      invalidSlugs.forEach((slug) => {
         const result = updateWorkspaceSchema.safeParse({
           name: "Test",
           slug,
@@ -129,7 +123,7 @@ describe("updateWorkspaceSchema", () => {
       // Since the schema validates lowercase first, then transforms,
       // we test that valid lowercase slugs pass through correctly
       const result = updateWorkspaceSchema.safeParse({
-        name: "Test", 
+        name: "Test",
         slug: "my-workspace",
         description: "",
       });
@@ -160,7 +154,7 @@ describe("updateWorkspaceSchema", () => {
         "", // empty string should become undefined
       ];
 
-      validDescriptions.forEach(description => {
+      validDescriptions.forEach((description) => {
         const result = updateWorkspaceSchema.safeParse({
           name: "Test",
           slug: "test-slug",

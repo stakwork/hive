@@ -3,13 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -28,10 +22,7 @@ interface DeleteWorkspaceProps {
   workspaceName: string;
 }
 
-export function DeleteWorkspace({
-  workspaceSlug,
-  workspaceName,
-}: DeleteWorkspaceProps) {
+export function DeleteWorkspace({ workspaceSlug, workspaceName }: DeleteWorkspaceProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [confirmationText, setConfirmationText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -42,8 +33,7 @@ export function DeleteWorkspace({
     if (confirmationText !== workspaceName) {
       toast({
         title: "Confirmation failed",
-        description:
-          "Please type the workspace name exactly as shown to confirm deletion.",
+        description: "Please type the workspace name exactly as shown to confirm deletion.",
         variant: "destructive",
       });
       return;
@@ -74,10 +64,7 @@ export function DeleteWorkspace({
       console.error("Error deleting workspace:", error);
       toast({
         title: "Error",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete workspace. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to delete workspace. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -98,8 +85,7 @@ export function DeleteWorkspace({
             Delete Workspace
           </CardTitle>
           <CardDescription>
-            Permanently delete this workspace and all its data. This action
-            cannot be undone.
+            Permanently delete this workspace and all its data. This action cannot be undone.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -123,16 +109,15 @@ export function DeleteWorkspace({
               Delete Workspace
             </DialogTitle>
             <DialogDescription>
-              This action cannot be undone. This will permanently delete the
-              workspace &ldquo;{workspaceName}&rdquo; and all of its data.
+              This action cannot be undone. This will permanently delete the workspace &ldquo;{workspaceName}&rdquo; and
+              all of its data.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
               <p className="text-sm text-destructive">
-                <strong>Warning:</strong> This action is irreversible. All data
-                will be permanently lost.
+                <strong>Warning:</strong> This action is irreversible. All data will be permanently lost.
               </p>
             </div>
 

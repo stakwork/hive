@@ -29,13 +29,7 @@ interface WorkspaceLinkProps {
  * - "/w/other-workspace/tasks" -> stays as-is (explicit workspace)
  * - "https://external.com" -> stays as-is (external URL)
  */
-export function WorkspaceLink({
-  href,
-  children,
-  className,
-  prefetch = true,
-  ...linkProps
-}: WorkspaceLinkProps) {
+export function WorkspaceLink({ href, children, className, prefetch = true, ...linkProps }: WorkspaceLinkProps) {
   const { workspace } = useWorkspace();
 
   const getCorrectedHref = () => {
@@ -55,14 +49,7 @@ export function WorkspaceLink({
     }
 
     // Don't modify special pages that shouldn't be workspace-scoped
-    const specialPages = [
-      "/auth/",
-      "/onboarding/",
-      "/workspaces",
-      "/api/",
-      "/login",
-      "/signup",
-    ];
+    const specialPages = ["/auth/", "/onboarding/", "/workspaces", "/api/", "/login", "/signup"];
     if (specialPages.some((page) => href.startsWith(page))) {
       return href;
     }
@@ -89,12 +76,7 @@ export function WorkspaceLink({
   const correctedHref = getCorrectedHref();
 
   return (
-    <Link
-      href={correctedHref}
-      className={className}
-      prefetch={prefetch}
-      {...linkProps}
-    >
+    <Link href={correctedHref} className={className} prefetch={prefetch} {...linkProps}>
       {children}
     </Link>
   );
@@ -116,14 +98,7 @@ export function useWorkspaceUrl() {
     }
 
     // Special pages that shouldn't be workspace-scoped
-    const specialPages = [
-      "/auth/",
-      "/onboarding/",
-      "/workspaces",
-      "/api/",
-      "/login",
-      "/signup",
-    ];
+    const specialPages = ["/auth/", "/onboarding/", "/workspaces", "/api/", "/login", "/signup"];
     if (specialPages.some((page) => path.startsWith(page))) {
       return path;
     }

@@ -18,14 +18,7 @@ interface PersonasSectionProps {
   onBlur: (personas: string[]) => void;
 }
 
-export function PersonasSection({
-  personas,
-  savedField,
-  saving,
-  saved,
-  onChange,
-  onBlur,
-}: PersonasSectionProps) {
+export function PersonasSection({ personas, savedField, saving, saved, onChange, onBlur }: PersonasSectionProps) {
   const [inputValue, setInputValue] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -80,13 +73,9 @@ export function PersonasSection({
   };
 
   // Filter out personas that are already added
-  const availablePersonas = COMMON_PERSONAS.filter(
-    (p) => !personas.includes(p)
-  );
+  const availablePersonas = COMMON_PERSONAS.filter((p) => !personas.includes(p));
 
-  const filteredPersonas = availablePersonas.filter((p) =>
-    p.toLowerCase().includes(inputValue.toLowerCase())
-  );
+  const filteredPersonas = availablePersonas.filter((p) => p.toLowerCase().includes(inputValue.toLowerCase()));
 
   return (
     <div className="space-y-2">
@@ -94,9 +83,7 @@ export function PersonasSection({
         <Label htmlFor="personas" className="text-sm font-medium">
           User Personas
         </Label>
-        {savedField === "personas" && saving && (
-          <span className="text-xs text-muted-foreground">Saving...</span>
-        )}
+        {savedField === "personas" && saving && <span className="text-xs text-muted-foreground">Saving...</span>}
         {savedField === "personas" && saved && !saving && (
           <div className="flex items-center gap-1 text-xs">
             <Check className="h-3 w-3 text-green-600" />
@@ -104,18 +91,12 @@ export function PersonasSection({
           </div>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Define the target user types for this feature.
-      </p>
+      <p className="text-sm text-muted-foreground">Define the target user types for this feature.</p>
 
       <div className="rounded-lg border bg-muted/30 p-3">
         <div className="flex flex-wrap gap-2 mb-2">
           {personas.map((persona) => (
-            <Badge
-              key={persona}
-              variant="secondary"
-              className="gap-1 pr-1 hover:bg-secondary/80"
-            >
+            <Badge key={persona} variant="secondary" className="gap-1 pr-1 hover:bg-secondary/80">
               <span>{persona}</span>
               <button
                 onClick={() => handleRemovePersona(persona)}
@@ -207,11 +188,7 @@ export function PersonasSection({
             )}
           </div>
 
-          <Button
-            size="sm"
-            onClick={() => handleAddPersona(inputValue)}
-            disabled={!inputValue.trim()}
-          >
+          <Button size="sm" onClick={() => handleAddPersona(inputValue)} disabled={!inputValue.trim()}>
             Add
           </Button>
         </div>

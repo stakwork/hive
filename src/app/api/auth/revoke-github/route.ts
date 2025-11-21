@@ -27,41 +27,28 @@ export async function POST() {
     });
 
     if (!account) {
-      return NextResponse.json(
-        { error: "No GitHub account found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "No GitHub account found" }, { status: 404 });
     }
 
     // Revoke the GitHub OAuth access token
     if (account.access_token) {
       try {
-        const response = await fetch(
-          "https://api.github.com/applications/revoke",
-          {
-            method: "DELETE",
-            headers: {
-              Accept: "application/vnd.github.v3+json",
-              "Content-Type": "application/json",
-              Authorization: `Basic ${Buffer.from(
-                `${process.env.GITHUB_CLIENT_ID}:${process.env.GITHUB_CLIENT_SECRET}`,
-              ).toString("base64")}`,
-            },
-            body: JSON.stringify({
-              access_token: encryptionService.decryptField(
-                "access_token",
-                account.access_token,
-              ),
-            }),
+        const response = await fetch("https://api.github.com/applications/revoke", {
+          method: "DELETE",
+          headers: {
+            Accept: "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+            Authorization: `Basic ${Buffer.from(
+              `${process.env.GITHUB_CLIENT_ID}:${process.env.GITHUB_CLIENT_SECRET}`,
+            ).toString("base64")}`,
           },
-        );
+          body: JSON.stringify({
+            access_token: encryptionService.decryptField("access_token", account.access_token),
+          }),
+        });
 
         if (!response.ok) {
-          console.error(
-            "Failed to revoke GitHub token:",
-            response.status,
-            response.statusText,
-          );
+          console.error("Failed to revoke GitHub token:", response.status, response.statusText);
         }
       } catch (error) {
         console.error("Error revoking GitHub token:", error);
@@ -91,18 +78,12 @@ export async function POST() {
         },
       });
     } catch (error) {
-      console.error(
-        "Sessions already deleted or error deleting sessions:",
-        error,
-      );
+      console.error("Sessions already deleted or error deleting sessions:", error);
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error revoking GitHub access:", error);
-    return NextResponse.json(
-      { error: "Failed to revoke GitHub access" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to revoke GitHub access" }, { status: 500 });
   }
 }

@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
     // Get workspace slug for GitHub credentials
     const workspaceData = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspaceData) {
@@ -246,15 +246,16 @@ export async function POST(request: NextRequest) {
       task.id,
       testFilePath,
       testFileUrl,
-      repository?.branch || 'main',
+      repository?.branch || "main",
       testName || taskTitle,
     );
 
     // Update task with stakworkProjectId if Stakwork succeeded
     try {
-      const stakworkProjectId = (stakworkData?.success && stakworkData?.data)
-        ? (stakworkData.data.project_id || stakworkData.data.id || null)
-        : null;
+      const stakworkProjectId =
+        stakworkData?.success && stakworkData?.data
+          ? stakworkData.data.project_id || stakworkData.data.id || null
+          : null;
 
       if (stakworkProjectId) {
         await db.task.update({

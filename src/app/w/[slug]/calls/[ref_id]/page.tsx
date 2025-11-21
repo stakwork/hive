@@ -14,7 +14,6 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-
 export default function CallPage() {
   const params = useParams();
   const router = useRouter();
@@ -50,8 +49,6 @@ export default function CallPage() {
     setTimeout(() => setSeekToTime(undefined), 100);
   };
 
-
-
   useEffect(() => {
     if (!workspaceId || !ref_id) {
       setLoading(false);
@@ -65,7 +62,7 @@ export default function CallPage() {
       try {
         // Fetch the subgraph data for this specific call
         const response = await fetch(
-          `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Call","Clip","Video"]&depth=2&include_properties=true`)}`
+          `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Call","Clip","Video"]&depth=2&include_properties=true`)}`,
         );
 
         if (!response.ok) {
@@ -79,8 +76,8 @@ export default function CallPage() {
         }
 
         // Find the main call node
-        const callNode = data.data.nodes.find((node: any) =>
-          (node.node_type === "Episode" || node.node_type === "Call") && node.ref_id === ref_id
+        const callNode = data.data.nodes.find(
+          (node: any) => (node.node_type === "Episode" || node.node_type === "Call") && node.ref_id === ref_id,
         );
 
         if (!callNode) {
@@ -101,26 +98,30 @@ export default function CallPage() {
         setCall(callData);
 
         // Extract transcript from video nodes
-        const videoNodes = data.data.nodes.filter((node: any) =>
-          (node.node_type === "Video" || node.node_type === "Clip") && node.properties?.text && node.properties?.timestamp
+        const videoNodes = data.data.nodes.filter(
+          (node: any) =>
+            (node.node_type === "Video" || node.node_type === "Clip") &&
+            node.properties?.text &&
+            node.properties?.timestamp,
         );
 
-        const transcriptSegments = videoNodes.map((node: any) => {
-          const timestampStr = node.properties.timestamp || "0-0";
-          const [startStr, endStr] = timestampStr.split('-');
-          const startTime = Number.parseInt(startStr) / 1000;
-          const endTime = Number.parseInt(endStr) / 1000;
+        const transcriptSegments = videoNodes
+          .map((node: any) => {
+            const timestampStr = node.properties.timestamp || "0-0";
+            const [startStr, endStr] = timestampStr.split("-");
+            const startTime = Number.parseInt(startStr) / 1000;
+            const endTime = Number.parseInt(endStr) / 1000;
 
-          return {
-            id: node.ref_id,
-            text: node.properties.text || "",
-            startTime: Number.isNaN(startTime) ? 0 : startTime,
-            endTime: Number.isNaN(endTime) ? startTime + 10 : endTime,
-          };
-        }).sort((a: any, b: any) => a.startTime - b.startTime);
+            return {
+              id: node.ref_id,
+              text: node.properties.text || "",
+              startTime: Number.isNaN(startTime) ? 0 : startTime,
+              endTime: Number.isNaN(endTime) ? startTime + 10 : endTime,
+            };
+          })
+          .sort((a: any, b: any) => a.startTime - b.startTime);
 
         setTranscript(transcriptSegments);
-
       } catch (err) {
         console.error("Error fetching call data:", err);
         setError(err instanceof Error ? err.message : "Failed to load call data");
@@ -189,7 +190,7 @@ export default function CallPage() {
     );
   }
 
-  console.log(transcript, "transcript")
+  console.log(transcript, "transcript");
 
   return (
     <div className="min-h-screen">
@@ -204,9 +205,7 @@ export default function CallPage() {
             </Button>
             <div className="text-right">
               <h1 className="text-lg font-semibold">{call.episode_title}</h1>
-              <p className="text-sm text-muted-foreground">
-                Added {formatDate(call.date_added_to_graph)}
-              </p>
+              <p className="text-sm text-muted-foreground">Added {formatDate(call.date_added_to_graph)}</p>
             </div>
           </div>
         </div>

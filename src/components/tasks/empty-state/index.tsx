@@ -2,13 +2,7 @@
 
 import { useModal } from "@/components/modals/ModlaProvider";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { FileText, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -30,8 +24,7 @@ export function EmptyState({ workspaceSlug }: EmptyStateProps) {
     } else {
       router.push(`/w/${workspaceSlug}/task/new`);
     }
-  }
-
+  };
 
   return (
     <Card>
@@ -40,9 +33,7 @@ export function EmptyState({ workspaceSlug }: EmptyStateProps) {
           <FileText className="h-5 w-5" />
           No tasks created yet
         </CardTitle>
-        <CardDescription>
-          Create your first task to start tracking work in this workspace.
-        </CardDescription>
+        <CardDescription>Create your first task to start tracking work in this workspace.</CardDescription>
       </CardHeader>
       <CardContent>
         <Button onClick={handleClick}>

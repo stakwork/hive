@@ -45,25 +45,18 @@ export function AutoSaveTextarea({
 }: AutoSaveTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const {
-    isDragging,
-    isUploading,
-    handleDragEnter,
-    handleDragLeave,
-    handleDragOver,
-    handleDrop,
-    handlePaste,
-  } = useImageUpload({
-    featureId: featureId || '',
-    onImageInserted: (markdownImage) => {
-      // The value is already updated by the hook
-      console.log('Image inserted:', markdownImage);
-    },
-    onError: (error) => {
-      console.error('Image upload error:', error);
-      // TODO: Show toast notification
-    },
-  });
+  const { isDragging, isUploading, handleDragEnter, handleDragLeave, handleDragOver, handleDrop, handlePaste } =
+    useImageUpload({
+      featureId: featureId || "",
+      onImageInserted: (markdownImage) => {
+        // The value is already updated by the hook
+        console.log("Image inserted:", markdownImage);
+      },
+      onError: (error) => {
+        console.error("Image upload error:", error);
+        // TODO: Show toast notification
+      },
+    });
 
   return (
     <div className="space-y-2">
@@ -71,16 +64,9 @@ export function AutoSaveTextarea({
         <Label htmlFor={id} className="text-sm font-medium">
           {label}
         </Label>
-        <SaveIndicator
-          field={id}
-          savedField={savedField}
-          saving={saving}
-          saved={saved}
-        />
+        <SaveIndicator field={id} savedField={savedField} saving={saving} saved={saved} />
       </div>
-      {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
-      )}
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
       <Textarea
         ref={textareaRef}
         id={id}
@@ -93,15 +79,17 @@ export function AutoSaveTextarea({
         className={cn("resize-y", className)}
         isDragging={enableImageUpload && featureId ? isDragging : false}
         isUploading={enableImageUpload && featureId ? isUploading : false}
-        {...(enableImageUpload && featureId ? {
-          onDragEnter: handleDragEnter,
-          onDragLeave: handleDragLeave,
-          onDragOver: handleDragOver,
-          onDrop: handleDrop,
-          onPaste: handlePaste,
-        } : {})}
+        {...(enableImageUpload && featureId
+          ? {
+              onDragEnter: handleDragEnter,
+              onDragLeave: handleDragLeave,
+              onDragOver: handleDragOver,
+              onDrop: handleDrop,
+              onPaste: handlePaste,
+            }
+          : {})}
       />
-      
+
       {/* Image Preview - Only show when image upload is enabled */}
       {enableImageUpload && featureId && <ImagePreview content={value} />}
     </div>

@@ -16,16 +16,18 @@ export const DEFAULT_MOCK_IDS = {
 /**
  * Helper to create a standard mock task object with workspace and swarm data
  */
-export function createMockTask(options: {
-  workspaceId?: string;
-  ownerId?: string;
-  members?: Array<{ userId: string; role: string }>;
-  swarmUrl?: string;
-  swarmSecretAlias?: string;
-  poolName?: string;
-  swarmName?: string;
-  swarmId?: string;
-} = {}) {
+export function createMockTask(
+  options: {
+    workspaceId?: string;
+    ownerId?: string;
+    members?: Array<{ userId: string; role: string }>;
+    swarmUrl?: string;
+    swarmSecretAlias?: string;
+    poolName?: string;
+    swarmName?: string;
+    swarmId?: string;
+  } = {},
+) {
   const {
     workspaceId = DEFAULT_MOCK_IDS.workspaceId,
     ownerId = DEFAULT_MOCK_IDS.userId,
@@ -56,17 +58,19 @@ export function createMockTask(options: {
 /**
  * Helper to create a standard mock chat message
  */
-export function createMockChatMessage(options: {
-  id?: string;
-  taskId?: string;
-  message?: string;
-  role?: ChatRole;
-  contextTags?: string;
-  status?: ChatStatus;
-  artifacts?: unknown[];
-  attachments?: unknown[];
-  task?: { id: string; title: string };
-} = {}) {
+export function createMockChatMessage(
+  options: {
+    id?: string;
+    taskId?: string;
+    message?: string;
+    role?: ChatRole;
+    contextTags?: string;
+    status?: ChatStatus;
+    artifacts?: unknown[];
+    attachments?: unknown[];
+    task?: { id: string; title: string };
+  } = {},
+) {
   const {
     id = DEFAULT_MOCK_IDS.messageId,
     taskId = DEFAULT_MOCK_IDS.taskId,
@@ -95,13 +99,15 @@ export function createMockChatMessage(options: {
 /**
  * Helper to setup standard database mocks for chat message tests
  */
-export function setupChatMessageDatabaseMocks(options: {
-  taskMock?: ReturnType<typeof createMockTask>;
-  userMock?: { id: string; name: string };
-  workspaceMock?: { id: string; slug: string };
-  chatMessageMock?: ReturnType<typeof createMockChatMessage>;
-  chatHistoryMock?: unknown[];
-} = {}) {
+export function setupChatMessageDatabaseMocks(
+  options: {
+    taskMock?: ReturnType<typeof createMockTask>;
+    userMock?: { id: string; name: string };
+    workspaceMock?: { id: string; slug: string };
+    chatMessageMock?: ReturnType<typeof createMockChatMessage>;
+    chatHistoryMock?: unknown[];
+  } = {},
+) {
   const {
     taskMock = createMockTask(),
     userMock = { id: DEFAULT_MOCK_IDS.userId, name: "Test User" },

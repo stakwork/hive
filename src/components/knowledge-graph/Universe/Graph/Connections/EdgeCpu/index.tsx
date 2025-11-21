@@ -6,81 +6,78 @@ import { LinkPosition } from "../..";
 
 //
 
-const edgeSettings = { color: "#9194A4", opacity: 0.05, lineWidth: 1 }
+const edgeSettings = { color: "#9194A4", opacity: 0.05, lineWidth: 1 };
 
 type Props = {
-    linksPosition: Map<string, LinkPosition>
-}
+  linksPosition: Map<string, LinkPosition>;
+};
 
+export function EdgesGPU({ linksPosition }: Props) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const startRef = useRef<Float32Array>(new Float32Array());
+  const endRef = useRef<Float32Array>(new Float32Array());
 
-export function EdgesGPU({
-    linksPosition,
-}: Props) {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const startRef = useRef<Float32Array>(new Float32Array());
-    const endRef = useRef<Float32Array>(new Float32Array());
+  const { size } = useThree();
 
-    const { size } = useThree();
+  const linksArray = [...linksPosition.values()];
+  const edgeCount = linksArray.length;
 
-    const linksArray = [...linksPosition.values()];
-    const edgeCount = linksArray.length;
+  // 🛡 1. Fully safe geometry creation
+  const geoAndMat = useMemo(() => {
+    if (edgeCount === 0) return null;
 
-    // 🛡 1. Fully safe geometry creation
-    const geoAndMat = useMemo(() => {
-        if (edgeCount === 0) return null;
+    const vCount = edgeCount * 4;
+    const iCount = edgeCount * 6;
 
-        const vCount = edgeCount * 4;
-        const iCount = edgeCount * 6;
+    const aStart = new Float32Array(vCount * 3);
+    const aEnd = new Float32Array(vCount * 3);
+    const aSide = new Float32Array(vCount);
+    const aT = new Float32Array(vCount);
+    const indices = new Uint32Array(iCount);
 
-        const aStart = new Float32Array(vCount * 3);
-        const aEnd = new Float32Array(vCount * 3);
-        const aSide = new Float32Array(vCount);
-        const aT = new Float32Array(vCount);
-        const indices = new Uint32Array(iCount);
+    startRef.current = aStart;
+    endRef.current = aEnd;
 
-        startRef.current = aStart;
-        endRef.current = aEnd;
+    for (let e = 0; e < edgeCount; e++) {
+      const v = e * 4;
+      const i = e * 6;
 
-        for (let e = 0; e < edgeCount; e++) {
-            const v = e * 4;
-            const i = e * 6;
+      aSide[v] = -1;
+      aSide[v + 1] = +1;
+      aSide[v + 2] = -1;
+      aSide[v + 3] = +1;
 
-            aSide[v] = -1;
-            aSide[v + 1] = +1;
-            aSide[v + 2] = -1;
-            aSide[v + 3] = +1;
+      aT[v] = 0;
+      aT[v + 1] = 0;
+      aT[v + 2] = 1;
+      aT[v + 3] = 1;
 
-            aT[v] = 0;
-            aT[v + 1] = 0;
-            aT[v + 2] = 1;
-            aT[v + 3] = 1;
+      indices[i] = v;
+      indices[i + 1] = v + 2;
+      indices[i + 2] = v + 1;
+      indices[i + 3] = v + 2;
+      indices[i + 4] = v + 3;
+      indices[i + 5] = v + 1;
+    }
 
-            indices[i] = v;
-            indices[i + 1] = v + 2;
-            indices[i + 2] = v + 1;
-            indices[i + 3] = v + 2;
-            indices[i + 4] = v + 3;
-            indices[i + 5] = v + 1;
-        }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    geometry.setAttribute("aStart", new THREE.BufferAttribute(aStart, 3));
+    geometry.setAttribute("aEnd", new THREE.BufferAttribute(aEnd, 3));
+    geometry.setAttribute("aSide", new THREE.BufferAttribute(aSide, 1));
+    geometry.setAttribute("aT", new THREE.BufferAttribute(aT, 1));
 
-        const geometry = new THREE.BufferGeometry();
-        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-        geometry.setAttribute("aStart", new THREE.BufferAttribute(aStart, 3));
-        geometry.setAttribute("aEnd", new THREE.BufferAttribute(aEnd, 3));
-        geometry.setAttribute("aSide", new THREE.BufferAttribute(aSide, 1));
-        geometry.setAttribute("aT", new THREE.BufferAttribute(aT, 1));
-
-        const material = new THREE.ShaderMaterial({
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            uniforms: {
-                uColor: { value: new THREE.Color(edgeSettings.color) },
-                uOpacity: { value: edgeSettings.opacity },
-                uLineWidth: { value: edgeSettings.lineWidth },
-                uResolution: { value: new THREE.Vector2(1, 1) },
-            },
-            vertexShader: `
+    const material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uColor: { value: new THREE.Color(edgeSettings.color) },
+        uOpacity: { value: edgeSettings.opacity },
+        uLineWidth: { value: edgeSettings.lineWidth },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+      },
+      vertexShader: `
         uniform vec2 uResolution;
         uniform float uLineWidth;
 
@@ -113,65 +110,58 @@ export function EdgesGPU({
           gl_Position = clip;
         }
       `,
-            fragmentShader: `
+      fragmentShader: `
         uniform vec3 uColor;
         uniform float uOpacity;
         void main() {
           gl_FragColor = vec4(uColor, uOpacity);
         }
       `,
-        });
-
-        return { geometry, material };
-    }, [edgeCount]);
-
-    // 🛡 2. Guard: If geo not ready – don't render anything
-    useFrame(() => {
-        if (!geoAndMat || !startRef.current || !endRef.current) return;
-
-        const { geometry, material } = geoAndMat;
-        const aStart = startRef.current;
-        const aEnd = endRef.current;
-        const max = aStart.length;
-
-        let v = 0;
-
-        for (const link of linksPosition.values()) {
-            if (v + 11 >= max) break; // prevents overflow
-
-            const { sx, sy, sz, tx, ty, tz } = link;
-
-            for (let k = 0; k < 4; k++) {
-                aStart[v] = sx;
-                aStart[v + 1] = sy;
-                aStart[v + 2] = sz;
-
-                aEnd[v] = tx;
-                aEnd[v + 1] = ty;
-                aEnd[v + 2] = tz;
-
-                v += 3;
-            }
-        }
-
-        geometry.attributes.aStart.needsUpdate = true;
-        geometry.attributes.aEnd.needsUpdate = true;
-
-        material.uniforms.uResolution.value.set(size.width, size.height);
     });
 
-    if (!geoAndMat) return null;
+    return { geometry, material };
+  }, [edgeCount]);
+
+  // 🛡 2. Guard: If geo not ready – don't render anything
+  useFrame(() => {
+    if (!geoAndMat || !startRef.current || !endRef.current) return;
 
     const { geometry, material } = geoAndMat;
+    const aStart = startRef.current;
+    const aEnd = endRef.current;
+    const max = aStart.length;
 
-    // 🛡 3. SAFE update loop
+    let v = 0;
 
-    return (
-        <mesh
-            ref={meshRef}
-            geometry={geometry}
-            material={material}
-            frustumCulled={false}
-        />
-    );
+    for (const link of linksPosition.values()) {
+      if (v + 11 >= max) break; // prevents overflow
+
+      const { sx, sy, sz, tx, ty, tz } = link;
+
+      for (let k = 0; k < 4; k++) {
+        aStart[v] = sx;
+        aStart[v + 1] = sy;
+        aStart[v + 2] = sz;
+
+        aEnd[v] = tx;
+        aEnd[v + 1] = ty;
+        aEnd[v + 2] = tz;
+
+        v += 3;
+      }
+    }
+
+    geometry.attributes.aStart.needsUpdate = true;
+    geometry.attributes.aEnd.needsUpdate = true;
+
+    material.uniforms.uResolution.value.set(size.width, size.height);
+  });
+
+  if (!geoAndMat) return null;
+
+  const { geometry, material } = geoAndMat;
+
+  // 🛡 3. SAFE update loop
+
+  return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={false} />;
 }

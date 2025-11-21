@@ -32,14 +32,7 @@ function SortableRoadmapTaskItem({
   workspaceSlug: string;
   onClick: () => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -64,14 +57,9 @@ function SortableRoadmapTaskItem({
       </div>
 
       {/* Clickable task content */}
-      <div
-        onClick={onClick}
-        className="flex items-center gap-2 flex-1 cursor-pointer min-w-0"
-      >
+      <div onClick={onClick} className="flex items-center gap-2 flex-1 cursor-pointer min-w-0">
         {/* Title */}
-        <span className="text-sm flex-1 truncate group-hover:text-primary">
-          {task.title}
-        </span>
+        <span className="text-sm flex-1 truncate group-hover:text-primary">{task.title}</span>
 
         {/* Status badge */}
         <StatusBadge statusType="task" status={task.status} className="shrink-0" />
@@ -153,27 +141,14 @@ export function RoadmapTaskList({
           disabled={creatingTask}
           className="flex-1 h-8 text-sm"
         />
-        <Button
-          size="sm"
-          onClick={handleAddTask}
-          disabled={creatingTask || !newTaskTitle.trim()}
-          className="h-8"
-        >
-          {creatingTask ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Plus className="h-3 w-3" />
-          )}
+        <Button size="sm" onClick={handleAddTask} disabled={creatingTask || !newTaskTitle.trim()} className="h-8">
+          {creatingTask ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
         </Button>
       </div>
 
       {/* Tasks list with drag and drop */}
       {tasks.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={collisionDetection}
-          onDragEnd={handleDragEnd}
-        >
+        <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
           <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
             <div className="space-y-1">
               {tasks
@@ -190,9 +165,7 @@ export function RoadmapTaskList({
           </SortableContext>
         </DndContext>
       ) : (
-        <div className="text-center py-4 text-xs text-muted-foreground">
-          No tasks yet
-        </div>
+        <div className="text-center py-4 text-xs text-muted-foreground">No tasks yet</div>
       )}
     </div>
   );

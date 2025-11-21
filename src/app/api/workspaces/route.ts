@@ -27,10 +27,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { name, description, slug, repositoryUrl } = body;
   if (!name || !slug) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
   try {
     const workspace = await createWorkspace({
@@ -58,10 +55,7 @@ export async function DELETE() {
     where: { ownerId: userId, deleted: false },
   });
   if (!workspace) {
-    return NextResponse.json(
-      { error: "No workspace found for user" },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "No workspace found for user" }, { status: 404 });
   }
   await softDeleteWorkspace(workspace.id);
   return NextResponse.json({ success: true }, { status: 200 });

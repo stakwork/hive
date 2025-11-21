@@ -43,11 +43,7 @@ export function PRStatusBadge({ url, status }: PRStatusBadgeProps) {
         ) : (
           <GitPullRequest className="w-3 h-3" />
         )}
-        {status === "IN_PROGRESS"
-          ? "Open"
-          : status === "CANCELLED"
-            ? "Closed"
-            : "Merged"}
+        {status === "IN_PROGRESS" ? "Open" : status === "CANCELLED" ? "Closed" : "Merged"}
         <ExternalLink className="w-3 h-3 ml-0.5" />
       </Badge>
     </a>

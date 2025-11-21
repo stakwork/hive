@@ -1,37 +1,47 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { type DataStore, defaultFilters } from "./useDataStore";
-import { FetchDataResponse, FilterParams, Link, Node, NodeExtended, NodeType, Sources, Trending, TStats } from '@Universe/types'
+import {
+  FetchDataResponse,
+  FilterParams,
+  Link,
+  Node,
+  NodeExtended,
+  NodeType,
+  Sources,
+  Trending,
+  TStats,
+} from "@Universe/types";
 
 export type SidebarFilterWithCount = {
-  name: string
-  count: number
-}
+  name: string;
+  count: number;
+};
 
 const defaultData: Omit<
   DataStore,
-  | 'setTrendingTopics'
-  | 'setStats'
-  | 'setSidebarFilter'
-  | 'setFilters'
-  | 'setCategoryFilter'
-  | 'setSelectedTimestamp'
-  | 'setSources'
-  | 'setSidebarFilterCounts'
-  | 'setQueuedSources'
-  | 'setHideNodeDetails'
-  | 'addNewNode'
-  | 'updateNode'
-  | 'removeNode'
-  | 'setAbortRequests'
-  | 'resetDataNew'
-  | 'setSeedQuestions'
-  | 'setRunningProjectId'
-  | 'setRunningProjectMessages'
-  | 'resetRunningProjectMessages'
-  | 'resetGraph'
-  | 'resetData'
-  | 'finishLoading'
+  | "setTrendingTopics"
+  | "setStats"
+  | "setSidebarFilter"
+  | "setFilters"
+  | "setCategoryFilter"
+  | "setSelectedTimestamp"
+  | "setSources"
+  | "setSidebarFilterCounts"
+  | "setQueuedSources"
+  | "setHideNodeDetails"
+  | "addNewNode"
+  | "updateNode"
+  | "removeNode"
+  | "setAbortRequests"
+  | "resetDataNew"
+  | "setSeedQuestions"
+  | "setRunningProjectId"
+  | "setRunningProjectMessages"
+  | "resetRunningProjectMessages"
+  | "resetGraph"
+  | "resetData"
+  | "finishLoading"
 > = {
   categoryFilter: null,
   dataInitial: null,
@@ -40,7 +50,7 @@ const defaultData: Omit<
   queuedSources: null,
   selectedTimestamp: null,
   sources: null,
-  sidebarFilter: 'all',
+  sidebarFilter: "all",
   sidebarFilters: [],
   trendingTopics: [],
   sidebarFilterCounts: [],
@@ -49,14 +59,14 @@ const defaultData: Omit<
   abortRequest: false,
   dataNew: null,
   seedQuestions: null,
-  runningProjectId: '',
+  runningProjectId: "",
   hideNodeDetails: false,
   nodeTypes: [],
   linkTypes: [],
   nodesNormalized: new Map<string, NodeExtended>(),
   linksNormalized: new Map<string, Link>(),
   nodeLinksNormalized: {},
-}
+};
 
 export const createDataStore = () =>
   create<DataStore>()(
@@ -69,31 +79,33 @@ export const createDataStore = () =>
           nodesNormalized,
           linksNormalized,
           nodeLinksNormalized: existingNodeLinksNormalized,
-        } = get()
+        } = get();
 
         if (!data?.nodes) {
-          return
+          return;
         }
 
-        const normalizedNodesMap = nodesNormalized || new Map()
-        const normalizedLinksMap = linksNormalized || new Map()
-        const nodeLinksNormalized: Record<string, string[]> = existingNodeLinksNormalized || {}
+        const normalizedNodesMap = nodesNormalized || new Map();
+        const normalizedLinksMap = linksNormalized || new Map();
+        const nodeLinksNormalized: Record<string, string[]> = existingNodeLinksNormalized || {};
 
-        const nodesFilteredByFilters = data.nodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
-        const newNodes: Node[] = []
+        const nodesFilteredByFilters = data.nodes.toSorted(
+          (a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0),
+        );
+        const newNodes: Node[] = [];
 
         nodesFilteredByFilters.forEach((node) => {
           if (!normalizedNodesMap.has(node.ref_id)) {
-            normalizedNodesMap.set(node.ref_id, { ...node, sources: [], targets: [] })
-            newNodes.push(node)
+            normalizedNodesMap.set(node.ref_id, { ...node, sources: [], targets: [] });
+            newNodes.push(node);
           }
-        })
+        });
 
-        const currentNodes = existingData?.nodes || []
-        const updatedNodes = [...currentNodes, ...newNodes]
+        const currentNodes = existingData?.nodes || [];
+        const updatedNodes = [...currentNodes, ...newNodes];
 
-        const newLinks: Link[] = []
-        const edges = data.edges || []
+        const newLinks: Link[] = [];
+        const edges = data.edges || [];
 
         edges.forEach((link: Link) => {
           if (
@@ -101,44 +113,44 @@ export const createDataStore = () =>
             normalizedNodesMap.has(link.source) &&
             normalizedNodesMap.has(link.target)
           ) {
-            normalizedLinksMap.set(link.ref_id, link)
-            newLinks.push(link)
+            normalizedLinksMap.set(link.ref_id, link);
+            newLinks.push(link);
 
-            const sourceNode = normalizedNodesMap.get(link.source)
-            const targetNode = normalizedNodesMap.get(link.target)
+            const sourceNode = normalizedNodesMap.get(link.source);
+            const targetNode = normalizedNodesMap.get(link.target);
 
             if (sourceNode && targetNode) {
-              sourceNode.targets = [...(sourceNode.targets || []), link.target]
-              targetNode.sources = [...(targetNode.sources || []), link.source]
+              sourceNode.targets = [...(sourceNode.targets || []), link.target];
+              targetNode.sources = [...(targetNode.sources || []), link.source];
 
-              sourceNode.edgeTypes = [...new Set([...(sourceNode.edgeTypes || []), link.edge_type])]
-              targetNode.edgeTypes = [...new Set([...(targetNode.edgeTypes || []), link.edge_type])]
+              sourceNode.edgeTypes = [...new Set([...(sourceNode.edgeTypes || []), link.edge_type])];
+              targetNode.edgeTypes = [...new Set([...(targetNode.edgeTypes || []), link.edge_type])];
             }
 
-            const pairKey = [link.source, link.target].sort().join('--')
+            const pairKey = [link.source, link.target].sort().join("--");
 
             if (!nodeLinksNormalized[pairKey]) {
-              nodeLinksNormalized[pairKey] = []
+              nodeLinksNormalized[pairKey] = [];
             }
 
-            nodeLinksNormalized[pairKey].push(link.ref_id)
+            nodeLinksNormalized[pairKey].push(link.ref_id);
           }
-        })
+        });
 
-        const currentLinks = existingData?.links || []
-        const updatedLinks = [...currentLinks, ...newLinks]
+        const currentLinks = existingData?.links || [];
+        const updatedLinks = [...currentLinks, ...newLinks];
 
-        const nodeTypes = [...new Set(updatedNodes.map((node) => node.node_type))]
-        const linkTypes = [...new Set(updatedLinks.map((node) => node.edge_type))]
-        const sidebarFilters = ['all', ...nodeTypes.map((type) => type.toLowerCase())]
+        const nodeTypes = [...new Set(updatedNodes.map((node) => node.node_type))];
+        const linkTypes = [...new Set(updatedLinks.map((node) => node.edge_type))];
+        const sidebarFilters = ["all", ...nodeTypes.map((type) => type.toLowerCase())];
 
         const sidebarFilterCounts = sidebarFilters.map((filter) => ({
           name: filter,
-          count: updatedNodes.filter((node) => filter === 'all' || node.node_type?.toLowerCase() === filter).length,
-        }))
+          count: updatedNodes.filter((node) => filter === "all" || node.node_type?.toLowerCase() === filter).length,
+        }));
 
         if (!newNodes.length && !newLinks.length) {
-          return
+          return;
         }
 
         set({
@@ -151,7 +163,7 @@ export const createDataStore = () =>
           nodesNormalized: normalizedNodesMap,
           linksNormalized: normalizedLinksMap,
           nodeLinksNormalized,
-        })
+        });
       },
 
       resetGraph: () => {
@@ -159,27 +171,27 @@ export const createDataStore = () =>
           filters: defaultData.filters,
           dataInitial: null,
           dataNew: null,
-        })
+        });
       },
 
       resetData: () => {
         set({
           dataInitial: null,
-          sidebarFilter: 'all',
+          sidebarFilter: "all",
           sidebarFilters: [],
           sidebarFilterCounts: [],
           dataNew: null,
-          runningProjectId: '',
+          runningProjectId: "",
           nodeTypes: [],
           nodesNormalized: new Map<string, NodeExtended>(),
           linksNormalized: new Map<string, Link>(),
           nodeLinksNormalized: {},
-        })
+        });
       },
 
       resetDataNew: () => set({ dataNew: null }),
       setFilters: (filters: Partial<FilterParams>) => {
-        set((state) => ({ filters: { ...state.filters, ...filters, skip: 0 } }))
+        set((state) => ({ filters: { ...state.filters, ...filters, skip: 0 } }));
       },
       setSidebarFilterCounts: (sidebarFilterCounts) => set({ sidebarFilterCounts }),
       setTrendingTopics: (trendingTopics) => set({ trendingTopics }),
@@ -192,25 +204,25 @@ export const createDataStore = () =>
       setHideNodeDetails: (hideNodeDetails) => set({ hideNodeDetails }),
       setSeedQuestions: (questions) => set({ seedQuestions: questions }),
       updateNode: (updatedNode) => {
-        const { nodesNormalized } = get()
+        const { nodesNormalized } = get();
 
-        const newNodesNormalized = new Map(nodesNormalized)
+        const newNodesNormalized = new Map(nodesNormalized);
 
-        newNodesNormalized.set(updatedNode.ref_id, updatedNode)
+        newNodesNormalized.set(updatedNode.ref_id, updatedNode);
 
-        set({ nodesNormalized: newNodesNormalized })
+        set({ nodesNormalized: newNodesNormalized });
       },
 
       removeNode: (id) => id,
 
       setRunningProjectId: (runningProjectId) => set({ runningProjectId, runningProjectMessages: [] }),
       setRunningProjectMessages: (message) => {
-        const { runningProjectMessages } = get()
+        const { runningProjectMessages } = get();
 
-        set({ runningProjectMessages: [...runningProjectMessages, message] })
+        set({ runningProjectMessages: [...runningProjectMessages, message] });
       },
       resetRunningProjectMessages: () => set({ runningProjectMessages: [] }),
       setAbortRequests: (abortRequest) => set({ abortRequest }),
       finishLoading: () => set({ splashDataLoading: false }),
-    }))
+    })),
   );

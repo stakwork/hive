@@ -5,10 +5,7 @@ import { getJanitorRuns } from "@/services/janitor";
 import { parseJanitorType, parseJanitorStatus, validatePaginationParams } from "@/lib/helpers/janitor-validation";
 import { JanitorType, JanitorStatus } from "@prisma/client";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as { id?: string })?.id;
@@ -19,14 +16,10 @@ export async function GET(
 
     const { slug } = await params;
     const { searchParams } = new URL(request.url);
-    
+
     const typeParam = searchParams.get("type");
     const statusParam = searchParams.get("status");
-    const { limit, page } = validatePaginationParams(
-      searchParams.get("limit"),
-      searchParams.get("page")
-    );
-
+    const { limit, page } = validatePaginationParams(searchParams.get("limit"), searchParams.get("page"));
 
     const filters: {
       type?: JanitorType;
@@ -54,7 +47,7 @@ export async function GET(
     const { runs, pagination } = await getJanitorRuns(slug, userId, filters);
 
     return NextResponse.json({
-      runs: runs.map(run => ({
+      runs: runs.map((run) => ({
         id: run.id,
         janitorType: run.janitorType,
         status: run.status,
@@ -67,14 +60,11 @@ export async function GET(
         updatedAt: run.updatedAt,
         recommendationCount: run._count?.recommendations || 0,
       })),
-      pagination
+      pagination,
     });
   } catch (error) {
     console.error("Error fetching janitor runs:", error);
-    
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

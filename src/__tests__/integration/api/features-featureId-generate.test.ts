@@ -1,10 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/features/[featureId]/generate/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectUnauthorized,
   expectError,
@@ -30,10 +27,9 @@ describe("Generate Content API - Integration Tests", () => {
 
   describe("POST /api/features/[featureId]/generate", () => {
     test("requires authentication", async () => {
-      const request = createPostRequest(
-        "http://localhost:3000/api/features/test-feature-id/generate",
-        { type: "userStories" }
-      );
+      const request = createPostRequest("http://localhost:3000/api/features/test-feature-id/generate", {
+        type: "userStories",
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ featureId: "test-feature-id" }),
@@ -48,7 +44,7 @@ describe("Generate Content API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/non-existent-id/generate",
         { type: "userStories" },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -79,7 +75,7 @@ describe("Generate Content API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "userStories" },
-        nonMember
+        nonMember,
       );
 
       const response = await POST(request, {
@@ -109,7 +105,7 @@ describe("Generate Content API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         {}, // No type parameter
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -139,7 +135,7 @@ describe("Generate Content API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "invalid_type" },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -182,7 +178,7 @@ describe("Generate Content API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "userStories" },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -227,7 +223,7 @@ describe("Generate Content API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "requirements" },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -272,7 +268,7 @@ describe("Generate Content API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/generate`,
         { type: "architecture" },
-        user
+        user,
       );
 
       const response = await POST(request, {

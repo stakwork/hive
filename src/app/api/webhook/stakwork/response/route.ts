@@ -20,18 +20,12 @@ export async function POST(request: NextRequest) {
 
     // Validate required query params
     if (!type || !workspace_id) {
-      return NextResponse.json(
-        { error: "Missing required query parameters: type, workspace_id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required query parameters: type, workspace_id" }, { status: 400 });
     }
 
     // Validate type enum
     if (!Object.values(StakworkRunType).includes(type as StakworkRunType)) {
-      return NextResponse.json(
-        { error: `Invalid type: ${type}` },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: `Invalid type: ${type}` }, { status: 400 });
     }
 
     // Parse and validate webhook body
@@ -45,7 +39,7 @@ export async function POST(request: NextRequest) {
           error: "Invalid webhook payload",
           details: validationResult.error.format(),
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -65,17 +59,13 @@ export async function POST(request: NextRequest) {
         status: result.status,
         dataType: result.dataType,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error processing Stakwork webhook:", error);
 
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to process webhook";
+    const errorMessage = error instanceof Error ? error.message : "Failed to process webhook";
 
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

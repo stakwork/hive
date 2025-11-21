@@ -24,25 +24,25 @@ const createWorkspace = (id: string, userRole: string, name: string) => ({
 
 const createWorkspaceSet = (ownedCount: number, otherRoles: string[] = []) => {
   const workspaces = [];
-  
+
   // Add owned workspaces
   for (let i = 1; i <= ownedCount; i++) {
     workspaces.push(createWorkspace(`owned-${i}`, "OWNER", `Owned Workspace ${i}`));
   }
-  
+
   // Add non-owned workspaces
   otherRoles.forEach((role, index) => {
     workspaces.push(createWorkspace(`${role.toLowerCase()}-${index + 1}`, role, `${role} Workspace ${index + 1}`));
   });
-  
+
   return workspaces;
 };
 
 // Helper functions for workspace limit logic
-const getOwnedWorkspaces = (workspaces: Array<{userRole: string}>) => 
-  workspaces.filter(ws => ws.userRole === 'OWNER');
+const getOwnedWorkspaces = (workspaces: Array<{ userRole: string }>) =>
+  workspaces.filter((ws) => ws.userRole === "OWNER");
 
-const isUserAtWorkspaceLimit = (workspaces: Array<{userRole: string}>) => 
+const isUserAtWorkspaceLimit = (workspaces: Array<{ userRole: string }>) =>
   getOwnedWorkspaces(workspaces).length >= WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
 
 describe("WorkspaceSwitcher Logic", () => {
@@ -91,7 +91,7 @@ describe("WorkspaceSwitcher Logic", () => {
 
   describe("edge cases", () => {
     test("should handle empty workspace list", () => {
-      const workspaces: Array<{userRole: string}> = [];
+      const workspaces: Array<{ userRole: string }> = [];
 
       const ownedWorkspaces = getOwnedWorkspaces(workspaces);
       const isAtLimit = isUserAtWorkspaceLimit(workspaces);

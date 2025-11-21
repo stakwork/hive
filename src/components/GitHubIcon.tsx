@@ -11,11 +11,5 @@ export function GitHubIcon() {
   const isDark = resolvedTheme === "dark";
   const iconPath = getGitHubIconPath(isDark);
 
-  return (
-    <img
-      src={iconPath}
-      alt="GitHub"
-      className="inline-block w-4 h-4 mr-1 align-text-bottom"
-    />
-  );
+  return <img src={iconPath} alt="GitHub" className="inline-block w-4 h-4 mr-1 align-text-bottom" />;
 }

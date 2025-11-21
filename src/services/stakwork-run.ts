@@ -1,10 +1,5 @@
 import { db } from "@/lib/db";
-import {
-  WorkflowStatus,
-  StakworkRunType,
-  StakworkRunDecision,
-  Prisma,
-} from "@prisma/client";
+import { WorkflowStatus, StakworkRunType, StakworkRunDecision, Prisma } from "@prisma/client";
 import {
   CreateStakworkRunInput,
   StakworkRunWebhookPayload,
@@ -16,11 +11,7 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 import { stakworkService } from "@/lib/service-factory";
 import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
-import {
-  pusherServer,
-  getWorkspaceChannelName,
-  PUSHER_EVENTS,
-} from "@/lib/pusher";
+import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
@@ -31,10 +22,7 @@ const encryptionService = EncryptionService.getInstance();
  * Create a new Stakwork AI generation run
  * Follows the janitor pattern: Create DB record → Call Stakwork → Update with projectId
  */
-export async function createStakworkRun(
-  input: CreateStakworkRunInput,
-  userId: string
-) {
+export async function createStakworkRun(input: CreateStakworkRunInput, userId: string) {
   // Validate workspace access and fetch related data
   const workspace = await db.workspace.findUnique({
     where: { id: input.workspaceId },
@@ -87,21 +75,13 @@ export async function createStakworkRun(
   }
 
   // Decrypt sensitive data
-  const decryptedPAT =
-    workspace.sourceControlOrg?.tokens[0]?.token
-      ? encryptionService.decryptField(
-          "access_token",
-          workspace.sourceControlOrg.tokens[0].token
-        )
-      : null;
+  const decryptedPAT = workspace.sourceControlOrg?.tokens[0]?.token
+    ? encryptionService.decryptField("access_token", workspace.sourceControlOrg.tokens[0].token)
+    : null;
 
-  const decryptedSwarmApiKey =
-    workspace.swarm?.swarmApiKey
-      ? encryptionService.decryptField(
-          "swarmApiKey",
-          workspace.swarm.swarmApiKey
-        )
-      : null;
+  const decryptedSwarmApiKey = workspace.swarm?.swarmApiKey
+    ? encryptionService.decryptField("swarmApiKey", workspace.swarm.swarmApiKey)
+    : null;
 
   // Get user info for username
   const user = await db.user.findUnique({
@@ -272,7 +252,7 @@ export async function processStakworkRunWebhook(
     type: string;
     workspace_id: string;
     feature_id?: string;
-  }
+  },
 ) {
   const { result, project_status, project_id } = webhookData;
   const { workspace_id, feature_id, type } = queryParams;
@@ -304,9 +284,7 @@ export async function processStakworkRunWebhook(
   }
 
   // Map Stakwork status to our internal status
-  const status = project_status
-    ? mapStakworkStatus(project_status)
-    : WorkflowStatus.COMPLETED;
+  const status = project_status ? mapStakworkStatus(project_status) : WorkflowStatus.COMPLETED;
 
   if (status === null) {
     console.warn(`Unknown status: ${project_status}`);
@@ -319,8 +297,7 @@ export async function processStakworkRunWebhook(
   // Serialize result based on type
   let serializedResult: string | null = null;
   if (result !== undefined && result !== null) {
-    serializedResult =
-      typeof result === "string" ? result : JSON.stringify(result);
+    serializedResult = typeof result === "string" ? result : JSON.stringify(result);
   }
 
   // Step 1: Atomic update to prevent race conditions
@@ -367,10 +344,7 @@ export async function processStakworkRunWebhook(
 /**
  * Get Stakwork runs with filters
  */
-export async function getStakworkRuns(
-  query: StakworkRunQuery,
-  userId: string
-) {
+export async function getStakworkRuns(query: StakworkRunQuery, userId: string) {
   // Validate workspace access
   const workspace = await db.workspace.findUnique({
     where: { id: query.workspaceId },
@@ -437,11 +411,7 @@ export async function getStakworkRuns(
  * - ARCHITECTURE: updates feature.architecture
  * - Future: REQUIREMENTS, USER_STORIES, etc.
  */
-export async function updateStakworkRunDecision(
-  runId: string,
-  userId: string,
-  input: UpdateStakworkRunDecisionInput
-) {
+export async function updateStakworkRunDecision(runId: string, userId: string, input: UpdateStakworkRunDecisionInput) {
   const run = await db.stakworkRun.findUnique({
     where: { id: runId },
     include: {
@@ -496,7 +466,7 @@ export async function updateStakworkRunDecision(
   // If ACCEPTED, update the featureId using connect syntax for relation
   if (input.decision === StakworkRunDecision.ACCEPTED && input.featureId) {
     updateData.feature = {
-      connect: { id: input.featureId }
+      connect: { id: input.featureId },
     };
   }
 
@@ -507,11 +477,7 @@ export async function updateStakworkRunDecision(
   });
 
   // If ACCEPTED with result, update the appropriate feature field based on type
-  if (
-    input.decision === StakworkRunDecision.ACCEPTED &&
-    updatedRun.featureId &&
-    updatedRun.result
-  ) {
+  if (input.decision === StakworkRunDecision.ACCEPTED && updatedRun.featureId && updatedRun.result) {
     switch (updatedRun.type) {
       case StakworkRunType.ARCHITECTURE:
         await db.feature.update({
@@ -530,17 +496,13 @@ export async function updateStakworkRunDecision(
   // Broadcast decision via Pusher
   try {
     const channelName = getWorkspaceChannelName(run.workspace.slug);
-    await pusherServer.trigger(
-      channelName,
-      PUSHER_EVENTS.STAKWORK_RUN_DECISION,
-      {
-        runId: updatedRun.id,
-        type: updatedRun.type,
-        featureId: updatedRun.featureId,
-        decision: updatedRun.decision,
-        timestamp: new Date(),
-      }
-    );
+    await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_DECISION, {
+      runId: updatedRun.id,
+      type: updatedRun.type,
+      featureId: updatedRun.featureId,
+      decision: updatedRun.decision,
+      timestamp: new Date(),
+    });
   } catch (error) {
     console.error("Error broadcasting decision to Pusher:", error);
     // Don't throw - decision update succeeded

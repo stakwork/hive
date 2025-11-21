@@ -3,10 +3,7 @@ import { NextRequest } from "next/server";
 import { GET } from "@/app/api/workspaces/[slug]/user-journeys/route";
 import { db } from "@/lib/db";
 import { resetDatabase } from "@/__tests__/support/fixtures/database";
-import {
-  getMockedSession,
-  createAuthenticatedSession,
-} from "@/__tests__/support/helpers/auth";
+import { getMockedSession, createAuthenticatedSession } from "@/__tests__/support/helpers/auth";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -30,7 +27,7 @@ vi.stubGlobal("fetch", mockFetch);
 
 describe("GET /api/workspaces/[slug]/user-journeys", () => {
   const encryptionService = EncryptionService.getInstance();
-  
+
   let workspace: any;
   let owner: any;
   let admin: any;
@@ -164,10 +161,8 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
     });
 
     // Create swarm with encrypted API key
-    const encryptedApiKey = JSON.stringify(
-      encryptionService.encryptField("swarmApiKey", "test-swarm-api-key")
-    );
-    
+    const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-swarm-api-key"));
+
     swarm = await db.swarm.create({
       data: {
         name: "test-swarm.sphinx.chat",
@@ -257,9 +252,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
     test("returns 401 for unauthenticated requests", async () => {
       getMockedSession().mockResolvedValue(null);
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -273,9 +266,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -307,9 +298,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -336,9 +325,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -356,9 +343,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -374,9 +359,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -392,9 +375,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -410,9 +391,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -428,9 +407,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -446,9 +423,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -466,18 +441,14 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
       const data = await expectSuccess(response, 200);
       expect(data.data).toHaveLength(3); // Only USER_JOURNEY tasks
-      expect(
-        data.data.every((j: any) => j.task?.sourceType === undefined || true)
-      ).toBe(true);
+      expect(data.data.every((j: any) => j.task?.sourceType === undefined || true)).toBe(true);
     });
 
     test("returns user journeys with correct structure", async () => {
@@ -486,9 +457,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -535,9 +504,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -561,9 +528,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -578,16 +543,14 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
       const data = await expectSuccess(response, 200);
       const timestamps = data.data.map((j: any) => new Date(j.createdAt).getTime());
-      
+
       // Verify descending order
       for (let i = 1; i < timestamps.length; i++) {
         expect(timestamps[i - 1]).toBeGreaterThanOrEqual(timestamps[i]);
@@ -621,18 +584,14 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
       const data = await expectSuccess(response, 200);
       expect(data.data).toHaveLength(3); // Only test workspace journeys
-      expect(
-        data.data.every((j: any) => !j.title.includes("Other Workspace"))
-      ).toBe(true);
+      expect(data.data.every((j: any) => !j.title.includes("Other Workspace"))).toBe(true);
     });
 
     test("includes repository details for each user journey", async () => {
@@ -641,9 +600,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -653,9 +610,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
 
       expect(journeyWithRepo).toBeDefined();
       expect(journeyWithRepo.task.repository.name).toBe("test-repo");
-      expect(journeyWithRepo.task.repository.repositoryUrl).toBe(
-        "https://github.com/test/repo"
-      );
+      expect(journeyWithRepo.task.repository.repositoryUrl).toBe("https://github.com/test/repo");
       expect(journeyWithRepo.task.repository.branch).toBe("main");
     });
   });
@@ -667,15 +622,13 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
       const data = await expectSuccess(response, 200);
-      
+
       data.data.forEach((journey: any) => {
         expect(journey).toHaveProperty("badge");
         expect(journey.badge).toBeDefined();
@@ -688,25 +641,19 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
       const data = await expectSuccess(response, 200);
-      
+
       // Find journey with COMPLETED workflow status
-      const completedJourney = data.data.find(
-        (j: any) => j.task.workflowStatus === "COMPLETED"
-      );
+      const completedJourney = data.data.find((j: any) => j.task.workflowStatus === "COMPLETED");
       expect(completedJourney).toBeDefined();
-      
+
       // Find journey with FAILED workflow status
-      const failedJourney = data.data.find(
-        (j: any) => j.task.workflowStatus === "FAILED"
-      );
+      const failedJourney = data.data.find((j: any) => j.task.workflowStatus === "FAILED");
       expect(failedJourney).toBeDefined();
     });
   });
@@ -727,9 +674,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${noSwarmWorkspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${noSwarmWorkspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: noSwarmWorkspace.slug }),
       });
@@ -751,9 +696,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${workspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${workspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: workspace.slug }),
       });
@@ -775,9 +718,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         },
       });
 
-      const encryptedApiKey = JSON.stringify(
-        encryptionService.encryptField("swarmApiKey", "test-key")
-      );
+      const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-key"));
 
       await db.swarm.create({
         data: {
@@ -794,9 +735,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${noRepoWorkspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${noRepoWorkspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: noRepoWorkspace.slug }),
       });
@@ -805,7 +744,6 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
       const status = response.status;
       expect([200, 400]).toContain(status);
     });
-
   });
 
   describe("Empty State", () => {
@@ -819,9 +757,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         },
       });
 
-      const encryptedApiKey = JSON.stringify(
-        encryptionService.encryptField("swarmApiKey", "test-key")
-      );
+      const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-key"));
 
       await db.swarm.create({
         data: {
@@ -838,9 +774,7 @@ describe("GET /api/workspaces/[slug]/user-journeys", () => {
         expires: new Date(Date.now() + 86400000).toISOString(),
       });
 
-      const request = createGetRequest(
-        `/api/workspaces/${emptyWorkspace.slug}/user-journeys`
-      );
+      const request = createGetRequest(`/api/workspaces/${emptyWorkspace.slug}/user-journeys`);
       const response = await GET(request, {
         params: Promise.resolve({ slug: emptyWorkspace.slug }),
       });

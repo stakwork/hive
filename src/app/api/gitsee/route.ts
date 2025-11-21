@@ -19,25 +19,19 @@ export async function POST(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: "Missing required parameter: workspaceId" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required parameter: workspaceId" }, { status: 400 });
     }
 
     // Validate workspace access
     const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
     if (!workspaceAccess.hasAccess) {
-      return NextResponse.json(
-        { error: "Workspace not found or access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
     }
 
     // Get workspace slug for GitHub credentials
     const workspace = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { slug: true }
+      select: { slug: true },
     });
 
     if (!workspace) {

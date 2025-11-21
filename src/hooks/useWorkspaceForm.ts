@@ -52,8 +52,7 @@ export function useWorkspaceForm() {
     } else if (formData.slug.length < 3) {
       newErrors.slug = "Slug must be at least 3 characters";
     } else if (!/^[a-z0-9-]+$/.test(formData.slug)) {
-      newErrors.slug =
-        "Slug can only contain lowercase letters, numbers, and hyphens";
+      newErrors.slug = "Slug can only contain lowercase letters, numbers, and hyphens";
     }
 
     setErrors(newErrors);

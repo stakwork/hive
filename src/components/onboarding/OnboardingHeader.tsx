@@ -6,11 +6,7 @@ interface OnboardingHeaderProps {
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-export function OnboardingHeader({
-  title,
-  description,
-  icon: Icon = Building2,
-}: OnboardingHeaderProps) {
+export function OnboardingHeader({ title, description, icon: Icon = Building2 }: OnboardingHeaderProps) {
   return (
     <div className="text-center mb-8">
       <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-primary rounded-full">

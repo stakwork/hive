@@ -1,6 +1,6 @@
 /**
  * GitHub OAuth Repository Access Check
- * 
+ *
  * This module provides functionality to check repository access
  * using GitHub OAuth tokens (not GitHub App installation tokens).
  * Used during the OAuth callback flow to verify repository permissions.
@@ -25,10 +25,7 @@ export interface RepositoryAccessResult {
  * @param repoUrl - Repository URL (https:// or git@)
  * @returns Repository access information including push permissions
  */
-export async function checkRepositoryAccess(
-  accessToken: string,
-  repoUrl: string,
-): Promise<RepositoryAccessResult> {
+export async function checkRepositoryAccess(accessToken: string, repoUrl: string): Promise<RepositoryAccessResult> {
   try {
     // Extract owner/repo from URL
     const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);

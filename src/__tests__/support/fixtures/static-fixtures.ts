@@ -40,14 +40,7 @@ export const mockData = {
   },
 
   workspaces(count: number, overrides: Array<Partial<Workspace>> = []) {
-    const roles: WorkspaceRole[] = [
-      "OWNER",
-      "ADMIN",
-      "DEVELOPER",
-      "PM",
-      "STAKEHOLDER",
-      "VIEWER",
-    ];
+    const roles: WorkspaceRole[] = ["OWNER", "ADMIN", "DEVELOPER", "PM", "STAKEHOLDER", "VIEWER"];
 
     return Array.from({ length: count }, (_, index) => ({
       id: `ws-${index + 1}`,

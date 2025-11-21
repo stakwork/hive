@@ -3,11 +3,7 @@ import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { WizardStepRenderer } from "./WizardStepRenderer";
 
-export const STEPS_ARRAY = [
-  "WELCOME",
-  "GITHUB_AUTH",
-  "PROJECT_NAME",
-];
+export const STEPS_ARRAY = ["WELCOME", "GITHUB_AUTH", "PROJECT_NAME"];
 
 export type TWizardStep = (typeof STEPS_ARRAY)[number];
 
@@ -24,7 +20,6 @@ export default function WorkspaceWizard() {
     }
   }, []);
 
-
   useEffect(() => {
     if (repositoryUrlDraft && session?.user) {
       setCurrentStep(STEPS_ARRAY[2]);
@@ -38,7 +33,6 @@ export default function WorkspaceWizard() {
       const newStep = currentStepIndex + delta;
 
       setCurrentStep(STEPS_ARRAY[newStep]);
-
     }
   }, [currentStep, session?.user, setCurrentStep]);
 
@@ -46,10 +40,7 @@ export default function WorkspaceWizard() {
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
-          <WizardStepRenderer
-            onNext={handleNext}
-            step={currentStep}
-          />
+          <WizardStepRenderer onNext={handleNext} step={currentStep} />
         </div>
       </div>
     </div>

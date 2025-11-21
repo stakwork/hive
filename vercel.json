@@ -1,18 +1,19 @@
 {
-    "$schema": "https://openapi.vercel.sh/vercel.json",
-    "git": {
-        "deploymentEnabled": {
-            "master": false,
-            "*": false
-        }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "master": false,
+      "*": false
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/janitors",
+      "schedule": "0 */6 * * *"
     },
-    "crons": [{
-            "path": "/api/cron/janitors",
-            "schedule": "0 */6 * * *"
-        },
-        {
-            "path": "/api/cron/task-coordinator",
-            "schedule": "*/5 * * * *"
-        }
-    ]
+    {
+      "path": "/api/cron/task-coordinator",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

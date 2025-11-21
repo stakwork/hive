@@ -508,96 +508,96 @@ export default function UserJourneys() {
                 Create User Journey
               </Button>
             </div>
-              {fetchingJourneys ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : filteredRows.length > 0 ? (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader className="bg-muted/50">
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead className="w-[80px]">Replay</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Test File</TableHead>
-                        <TableHead>Created</TableHead>
-                        <TableHead className="w-[100px]">Archive</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredRows.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell className="font-medium">{row.title}</TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleReplay(row)}
-                              disabled={isReplayingTask === row.id}
-                              className="h-8 w-8 p-0"
-                              title="Replay test"
-                            >
-                              {isReplayingTask === row.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Play className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell>{renderBadge(row.badge)}</TableCell>
-                          <TableCell>
-                            {row.testFileUrl ? (
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => window.open(row.testFileUrl!, "_blank")}
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </Button>
-                              </div>
+            {fetchingJourneys ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredRows.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead className="w-[80px]">Replay</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Test File</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="w-[100px]">Archive</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="font-medium">{row.title}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleReplay(row)}
+                            disabled={isReplayingTask === row.id}
+                            className="h-8 w-8 p-0"
+                            title="Replay test"
+                          >
+                            {isReplayingTask === row.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                              <Play className="h-4 w-4" />
                             )}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {new Date(row.createdAt).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleArchive(row)}
-                              disabled={archivingId === row.id}
-                              className="h-8 w-8 p-0"
-                              title="Archive test"
-                            >
-                              {archivingId === row.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Archive className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">
-                    {!showPendingTasks && userJourneys.length > 0
-                      ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
-                      : !showFailedTasks && userJourneys.length > 0
-                        ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
-                        : "No E2E tests yet. Create a user journey to get started!"}
-                  </p>
-                </div>
-              )}
+                          </Button>
+                        </TableCell>
+                        <TableCell>{renderBadge(row.badge)}</TableCell>
+                        <TableCell>
+                          {row.testFileUrl ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => window.open(row.testFileUrl!, "_blank")}
+                                className="h-6 w-6 p-0"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(row.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleArchive(row)}
+                            disabled={archivingId === row.id}
+                            className="h-8 w-8 p-0"
+                            title="Archive test"
+                          >
+                            {archivingId === row.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Archive className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">
+                  {!showPendingTasks && userJourneys.length > 0
+                    ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
+                    : !showFailedTasks && userJourneys.length > 0
+                      ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
+                      : "No E2E tests yet. Create a user journey to get started!"}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

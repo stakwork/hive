@@ -24,7 +24,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
-  
+
   const devMode = isDevelopmentMode();
 
   useEffect(() => {
@@ -34,9 +34,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
   useEffect(() => {
     if (transcript) {
       // Append transcript to the initial value
-      const newValue = initialValueRef.current 
-        ? `${initialValueRef.current} ${transcript}`.trim()
-        : transcript;
+      const newValue = initialValueRef.current ? `${initialValueRef.current} ${transcript}`.trim() : transcript;
       setValue(newValue);
     }
   }, [transcript]);
@@ -101,9 +99,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
-      <h1 className="text-4xl font-bold text-foreground mb-10 text-center">
-        Build Something
-      </h1>
+      <h1 className="text-4xl font-bold text-foreground mb-10 text-center">Build Something</h1>
       <Card className="relative w-full max-w-2xl p-0 bg-card rounded-3xl shadow-sm border-0 group">
         <Textarea
           ref={textareaRef}

@@ -59,16 +59,13 @@ describe("GET /api/tests/nodes Integration Tests", () => {
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
       const { workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
-      
+
       // Check actual response structure
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -78,7 +75,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should allow authenticated user with workspace access", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock successful Stakgraph API response
@@ -100,10 +97,10 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, node_type: "endpoint" }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        node_type: "endpoint",
+      });
 
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -117,7 +114,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
   describe("Authorization", () => {
     test("should allow workspace owner to access nodes", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -126,10 +123,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
       await expectSuccess(response, 200);
@@ -156,10 +150,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
       await expectSuccess(response, 200);
@@ -171,14 +162,11 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(nonMember));
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
-      
-      // Check actual response structure  
+
+      // Check actual response structure
       expect(response.status).toBe(403);
       const data = await response.json();
       expect(data.success).toBe(false);
@@ -189,13 +177,13 @@ describe("GET /api/tests/nodes Integration Tests", () => {
   describe("Query Parameter Validation", () => {
     test("should return 400 when workspaceId and swarmId are missing", async () => {
       const { user } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createGetRequest("http://localhost/api/tests/nodes", {});
 
       const response = await GET(request);
-      
+
       // Check actual response structure
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -205,7 +193,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should accept valid node_type values", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const nodeTypes = ["endpoint", "function", "class"];
@@ -217,10 +205,10 @@ describe("GET /api/tests/nodes Integration Tests", () => {
           status: 200,
         });
 
-        const request = createGetRequest(
-          "http://localhost/api/tests/nodes",
-          { workspaceId: workspace.id, node_type: nodeType }
-        );
+        const request = createGetRequest("http://localhost/api/tests/nodes", {
+          workspaceId: workspace.id,
+          node_type: nodeType,
+        });
 
         const response = await GET(request);
         const data = await expectSuccess(response, 200);
@@ -230,16 +218,16 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should return 400 for invalid node_type", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, node_type: "invalid" }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        node_type: "invalid",
+      });
 
       const response = await GET(request);
-      
+
       // Check actual response structure
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -249,29 +237,32 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should handle pagination parameters correctly", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
         ok: true,
         data: {
-          items: Array(25).fill(null).map((_, i) => ({
-            name: `Test ${i}`,
-            file: "test.ts",
-            ref_id: `ref-${i}`,
-            weight: 1,
-            test_count: 0,
-            covered: false,
-          })),
+          items: Array(25)
+            .fill(null)
+            .map((_, i) => ({
+              name: `Test ${i}`,
+              file: "test.ts",
+              ref_id: `ref-${i}`,
+              weight: 1,
+              test_count: 0,
+              covered: false,
+            })),
           total_count: 25,
         },
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, limit: "25", offset: "0" }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        limit: "25",
+        offset: "0",
+      });
 
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -282,7 +273,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should handle coverage filter parameter", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -294,10 +285,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       const coverageOptions = ["tested", "untested"]; // Removed "all" since it's not added to endpoint
 
       for (const coverage of coverageOptions) {
-        const request = createGetRequest(
-          "http://localhost/api/tests/nodes",
-          { workspaceId: workspace.id, coverage }
-        );
+        const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id, coverage });
 
         const response = await GET(request);
         await expectSuccess(response, 200);
@@ -306,16 +294,16 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith(
           expect.objectContaining({
             endpoint: expect.stringContaining(`coverage=${coverage}`),
-          })
+          }),
         );
       }
 
       // Test that "all" coverage does not add parameter to endpoint
       vi.clearAllMocks();
-      const requestAll = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, coverage: "all" }
-      );
+      const requestAll = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        coverage: "all",
+      });
 
       const responseAll = await GET(requestAll);
       await expectSuccess(responseAll, 200);
@@ -324,13 +312,13 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       expect(vi.mocked(swarmApiRequest)).toHaveBeenCalledWith(
         expect.objectContaining({
           endpoint: expect.not.stringContaining("coverage="),
-        })
+        }),
       );
     });
 
     test("should enforce limit bounds (1-100)", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -340,20 +328,20 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       });
 
       // Test exceeding max limit
-      const requestMax = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, limit: "150" }
-      );
+      const requestMax = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        limit: "150",
+      });
 
       const responseMax = await GET(requestMax);
       const dataMax = await expectSuccess(responseMax, 200);
       expect(dataMax.data.pageSize).toBe(100);
 
       // Test below min limit
-      const requestMin = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, limit: "0" }
-      );
+      const requestMin = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        limit: "0",
+      });
 
       const responseMin = await GET(requestMin);
       const dataMin = await expectSuccess(responseMin, 200);
@@ -364,7 +352,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
   describe("External Service Integration", () => {
     test("should successfully fetch nodes from Stakgraph API", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const mockNodes = [
@@ -395,10 +383,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -411,7 +396,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should handle Stakgraph API errors", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -420,13 +405,10 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 503,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
-      
+
       const data = await response.json();
       expect(response.status).toBe(503);
       expect(data.success).toBe(false);
@@ -435,7 +417,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should pass correct parameters to swarmApiRequest", async () => {
       const { user, workspace, swarm } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -444,15 +426,12 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { 
-          workspaceId: workspace.id,
-          node_type: "function",
-          limit: "50",
-          offset: "10",
-        }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        node_type: "function",
+        limit: "50",
+        offset: "10",
+      });
 
       await GET(request);
 
@@ -462,7 +441,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
           swarmUrl: expect.stringContaining("https://"),
           endpoint: expect.stringMatching(/^\/tests\/nodes\?/),
           method: "GET",
-        })
+        }),
       );
 
       const call = vi.mocked(swarmApiRequest).mock.calls[0][0];
@@ -475,7 +454,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
   describe("Response Normalization", () => {
     test("should normalize response with items array", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -496,10 +475,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -515,7 +491,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should handle response with endpoints structure", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -537,10 +513,10 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, node_type: "endpoint" }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        node_type: "endpoint",
+      });
 
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -551,30 +527,33 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should calculate pagination metadata correctly", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
         ok: true,
         data: {
-          items: Array(20).fill(null).map((_, i) => ({
-            name: `Node ${i}`,
-            file: "test.ts",
-            ref_id: `ref-${i}`,
-            weight: 1,
-            test_count: 0,
-            covered: false,
-          })),
+          items: Array(20)
+            .fill(null)
+            .map((_, i) => ({
+              name: `Node ${i}`,
+              file: "test.ts",
+              ref_id: `ref-${i}`,
+              weight: 1,
+              test_count: 0,
+              covered: false,
+            })),
           total_count: 100,
           total_pages: 5,
         },
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id, limit: "20", offset: "40" }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: workspace.id,
+        limit: "20",
+        offset: "40",
+      });
 
       const response = await GET(request);
       const data = await expectSuccess(response, 200);
@@ -597,13 +576,10 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
-      
+
       // Debug: Check actual response
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -629,13 +605,10 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
-      
+
       // Check actual response structure
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -645,19 +618,16 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should handle general exceptions with 500 status", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock swarmApiRequest to throw an exception
       vi.mocked(swarmApiRequest).mockRejectedValue(new Error("Network error"));
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: workspace.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { workspaceId: workspace.id });
 
       const response = await GET(request);
-      
+
       const data = await response.json();
       expect(response.status).toBe(500);
       expect(data.success).toBe(false);
@@ -666,17 +636,16 @@ describe("GET /api/tests/nodes Integration Tests", () => {
 
     test("should return 404 for non-existent workspace", async () => {
       const user = await createTestUser();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { workspaceId: "non-existent-workspace-id" }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: "non-existent-workspace-id",
+      });
 
       const response = await GET(request);
-      
-      // Check actual response structure  
+
+      // Check actual response structure
       expect(response.status).toBe(403);
       const data = await response.json();
       expect(data.success).toBe(false);
@@ -687,7 +656,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
   describe("SwarmId Parameter", () => {
     test("should accept swarmId instead of workspaceId", async () => {
       const { user, swarm } = await createTestWorkspaceWithSwarm();
-      
+
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       vi.mocked(swarmApiRequest).mockResolvedValue({
@@ -696,17 +665,14 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { swarmId: swarm.id }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", { swarmId: swarm.id });
 
       const response = await GET(request);
-      
+
       // For swarmId lookups, we need to check if the swarm exists but currently there's no auth check
       // The test expects 200 but we need to verify actual API behavior
       const data = await response.json();
-      // May get 404 if swarm lookup by swarmId fails or no auth check implemented  
+      // May get 404 if swarm lookup by swarmId fails or no auth check implemented
       if (response.status === 404) {
         expect(data.message).toContain("Swarm not found");
       } else {
@@ -731,23 +697,20 @@ describe("GET /api/tests/nodes Integration Tests", () => {
         status: 200,
       });
 
-      const request = createGetRequest(
-        "http://localhost/api/tests/nodes",
-        { 
-          workspaceId: otherWorkspace.id, // Different workspace (user has no access)
-          swarmId: swarm.id // But valid swarm
-        }
-      );
+      const request = createGetRequest("http://localhost/api/tests/nodes", {
+        workspaceId: otherWorkspace.id, // Different workspace (user has no access)
+        swarmId: swarm.id, // But valid swarm
+      });
 
       const response = await GET(request);
-      
+
       const data = await response.json();
       // API may not have auth checks for swarmId - check actual behavior
       if (response.status === 403) {
         // If auth check still applies when swarmId is present
         expect(data.message).toContain("Workspace not found or access denied");
       } else if (response.status === 404) {
-        expect(data.message).toContain("Swarm not found");  
+        expect(data.message).toContain("Swarm not found");
       } else {
         expect(response.status).toBe(200);
         expect(data.success).toBe(true);

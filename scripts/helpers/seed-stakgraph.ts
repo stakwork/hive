@@ -104,11 +104,7 @@ async function main() {
 
   // Resolve or create workspace
   let workspace = await prisma.workspace.findFirst({
-    where: workspaceId
-      ? { id: workspaceId }
-      : workspaceSlug
-        ? { slug: workspaceSlug }
-        : undefined,
+    where: workspaceId ? { id: workspaceId } : workspaceSlug ? { slug: workspaceSlug } : undefined,
   });
 
   if (!workspace) {
@@ -126,9 +122,7 @@ async function main() {
     if (!resolvedOwnerId) throw new Error("Owner id could not be resolved");
 
     const slug = workspaceSlug || "webhook-test";
-    const name =
-      workspaceName ||
-      slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const name = workspaceName || slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
     workspace = await prisma.workspace.create({
       data: { name, slug, ownerId: resolvedOwnerId },

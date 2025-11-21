@@ -46,7 +46,7 @@ function DraggableItem({ id, children, disabled }: DraggableItemProps) {
         "touch-none",
         isDragging && "opacity-30",
         !disabled && !isDragging && "cursor-grab",
-        isDragging && "cursor-grabbing"
+        isDragging && "cursor-grabbing",
       )}
       {...attributes}
       {...listeners}
@@ -97,14 +97,17 @@ export function KanbanView<T, S extends string>({
 }: KanbanViewProps<T, S>) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const itemsByStatus = items.reduce((acc, item) => {
-    const status = getItemStatus(item);
-    if (!acc[status]) {
-      acc[status] = [];
-    }
-    acc[status].push(item);
-    return acc;
-  }, {} as Record<S, T[]>);
+  const itemsByStatus = items.reduce(
+    (acc, item) => {
+      const status = getItemStatus(item);
+      if (!acc[status]) {
+        acc[status] = [];
+      }
+      acc[status].push(item);
+      return acc;
+    },
+    {} as Record<S, T[]>,
+  );
 
   if (sortItems) {
     Object.keys(itemsByStatus).forEach((status) => {
@@ -121,7 +124,7 @@ export function KanbanView<T, S extends string>({
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -160,13 +163,7 @@ export function KanbanView<T, S extends string>({
 
           return (
             <div key={column.status} className="w-full">
-              <div
-                className={cn(
-                  "rounded-t-lg px-4 py-3 border-x border-t",
-                  column.bgColor,
-                  "border-b-0"
-                )}
-              >
+              <div className={cn("rounded-t-lg px-4 py-3 border-x border-t", column.bgColor, "border-b-0")}>
                 <div className="flex items-center justify-between">
                   <div className={cn("flex items-center gap-2 text-sm font-semibold", column.color)}>
                     {column.icon}
@@ -174,10 +171,7 @@ export function KanbanView<T, S extends string>({
                   </div>
                   <Badge
                     variant="secondary"
-                    className={cn(
-                      "text-xs font-medium px-2 py-0.5",
-                      columnItems.length > 0 && "bg-background"
-                    )}
+                    className={cn("text-xs font-medium px-2 py-0.5", columnItems.length > 0 && "bg-background")}
                   >
                     {columnItems.length}
                   </Badge>
@@ -192,16 +186,14 @@ export function KanbanView<T, S extends string>({
                     enableDragDrop ? (
                       <DraggableItem key={getItemId(item)} id={getItemId(item)}>
                         {(isDragging) => (
-                          <div className="bg-background rounded-lg shadow-sm">
-                            {renderCard(item, isDragging)}
-                          </div>
+                          <div className="bg-background rounded-lg shadow-sm">{renderCard(item, isDragging)}</div>
                         )}
                       </DraggableItem>
                     ) : (
                       <div key={getItemId(item)} className="bg-background rounded-lg shadow-sm">
                         {renderCard(item)}
                       </div>
-                    )
+                    ),
                   )
                 ) : (
                   <div className="flex items-center justify-center h-20 text-sm text-muted-foreground/60 italic">
@@ -223,13 +215,7 @@ export function KanbanView<T, S extends string>({
             return (
               <div key={column.status} className="flex-shrink-0 w-[340px]">
                 <div className="flex flex-col h-full">
-                  <div
-                    className={cn(
-                      "rounded-t-lg px-4 py-3 border-x border-t",
-                      column.bgColor,
-                      "border-b-0"
-                    )}
-                  >
+                  <div className={cn("rounded-t-lg px-4 py-3 border-x border-t", column.bgColor, "border-b-0")}>
                     <div className="flex items-center justify-between">
                       <div className={cn("flex items-center gap-2 text-sm font-semibold", column.color)}>
                         {column.icon}
@@ -237,10 +223,7 @@ export function KanbanView<T, S extends string>({
                       </div>
                       <Badge
                         variant="secondary"
-                        className={cn(
-                          "text-xs font-medium px-2 py-0.5",
-                          columnItems.length > 0 && "bg-background"
-                        )}
+                        className={cn("text-xs font-medium px-2 py-0.5", columnItems.length > 0 && "bg-background")}
                       >
                         {columnItems.length}
                       </Badge>
@@ -255,16 +238,14 @@ export function KanbanView<T, S extends string>({
                         enableDragDrop ? (
                           <DraggableItem key={getItemId(item)} id={getItemId(item)}>
                             {(isDragging) => (
-                              <div className="bg-background rounded-lg shadow-sm">
-                                {renderCard(item, isDragging)}
-                              </div>
+                              <div className="bg-background rounded-lg shadow-sm">{renderCard(item, isDragging)}</div>
                             )}
                           </DraggableItem>
                         ) : (
                           <div key={getItemId(item)} className="bg-background rounded-lg shadow-sm">
                             {renderCard(item)}
                           </div>
-                        )
+                        ),
                       )
                     ) : (
                       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground/60 italic">
@@ -295,11 +276,7 @@ export function KanbanView<T, S extends string>({
     >
       {content}
       <DragOverlay>
-        {activeItem ? (
-          <div className="bg-background rounded-lg shadow-lg">
-            {renderCard(activeItem, true)}
-          </div>
-        ) : null}
+        {activeItem ? <div className="bg-background rounded-lg shadow-lg">{renderCard(activeItem, true)}</div> : null}
       </DragOverlay>
     </DndContext>
   );

@@ -25,10 +25,7 @@ export function GraphArtifactPanel({ artifacts }: GraphArtifactPanelProps) {
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">
-      <GraphArtifact
-        content={latestArtifact.content as GraphContent}
-        workspaceSlug={workspaceSlug}
-      />
+      <GraphArtifact content={latestArtifact.content as GraphContent} workspaceSlug={workspaceSlug} />
     </div>
   );
 }

@@ -39,7 +39,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       const user = await createTestUser();
       const session = createAuthenticatedSession(user);
       getMockedSession().mockResolvedValue(session);
-      
+
       const poolName = "test-pool";
       const mockResponse = {
         id: "pool-123",
@@ -49,14 +49,11 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      
+
       mockDeletePool.mockResolvedValue(mockResponse);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: poolName }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: poolName });
       const response = await DELETE(request);
 
       // Assert
@@ -75,10 +72,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       getMockedSession().mockResolvedValue(null);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: "test-pool" });
       const response = await DELETE(request);
 
       // Assert
@@ -91,10 +85,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       getMockedSession().mockResolvedValue({ user: null } as any);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: "test-pool" });
       const response = await DELETE(request);
 
       // Assert
@@ -113,7 +104,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       // Act
       const request = createDeleteRequest(
         "http://localhost/api/pool-manager/delete-pool",
-        {} // Missing name
+        {}, // Missing name
       );
       const response = await DELETE(request);
 
@@ -129,10 +120,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       getMockedSession().mockResolvedValue(session);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: "" });
       const response = await DELETE(request);
 
       // Assert
@@ -147,10 +135,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       getMockedSession().mockResolvedValue(session);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: null }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: null });
       const response = await DELETE(request);
 
       // Assert
@@ -165,7 +150,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       const user = await createTestUser();
       const session = createAuthenticatedSession(user);
       getMockedSession().mockResolvedValue(session);
-      
+
       const apiError = {
         status: 404,
         service: "pool-manager",
@@ -175,10 +160,9 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       mockDeletePool.mockRejectedValue(apiError);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "nonexistent-pool" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", {
+        name: "nonexistent-pool",
+      });
       const response = await DELETE(request);
 
       // Assert
@@ -191,7 +175,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       const user = await createTestUser();
       const session = createAuthenticatedSession(user);
       getMockedSession().mockResolvedValue(session);
-      
+
       const apiError = {
         status: 403,
         service: "pool-manager",
@@ -200,10 +184,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       mockDeletePool.mockRejectedValue(apiError);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "protected-pool" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: "protected-pool" });
       const response = await DELETE(request);
 
       // Assert
@@ -215,7 +196,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       const user = await createTestUser();
       const session = createAuthenticatedSession(user);
       getMockedSession().mockResolvedValue(session);
-      
+
       const apiError = {
         status: 500,
         service: "pool-manager",
@@ -224,10 +205,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       mockDeletePool.mockRejectedValue(apiError);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: "test-pool" });
       const response = await DELETE(request);
 
       // Assert
@@ -239,7 +217,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       const user = await createTestUser();
       const session = createAuthenticatedSession(user);
       getMockedSession().mockResolvedValue(session);
-      
+
       const apiError = {
         status: 401,
         service: "pool-manager",
@@ -248,10 +226,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       mockDeletePool.mockRejectedValue(apiError);
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: "test-pool" });
       const response = await DELETE(request);
 
       // Assert
@@ -263,15 +238,12 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       const user = await createTestUser();
       const session = createAuthenticatedSession(user);
       getMockedSession().mockResolvedValue(session);
-      
+
       // Generic error without ApiError structure
       mockDeletePool.mockRejectedValue(new Error("Network timeout"));
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: "test-pool" }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: "test-pool" });
       const response = await DELETE(request);
 
       // Assert
@@ -287,14 +259,11 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       getMockedSession().mockResolvedValue(session);
 
       // Act
-      const request = new Request(
-        "http://localhost/api/pool-manager/delete-pool",
-        {
-          method: "DELETE",
-          body: "invalid json",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      const request = new Request("http://localhost/api/pool-manager/delete-pool", {
+        method: "DELETE",
+        body: "invalid json",
+        headers: { "Content-Type": "application/json" },
+      });
       const response = await DELETE(request);
 
       // Assert
@@ -311,13 +280,10 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       getMockedSession().mockResolvedValue(session);
 
       // Act
-      const request = new Request(
-        "http://localhost/api/pool-manager/delete-pool",
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      const request = new Request("http://localhost/api/pool-manager/delete-pool", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
       const response = await DELETE(request);
 
       // Assert
@@ -332,7 +298,7 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       const user = await createTestUser();
       const session = createAuthenticatedSession(user);
       getMockedSession().mockResolvedValue(session);
-      
+
       const poolName = "my-specific-pool-name";
       mockDeletePool.mockResolvedValue({
         id: "pool-456",
@@ -344,16 +310,13 @@ describe("DELETE /api/pool-manager/delete-pool", () => {
       });
 
       // Act
-      const request = createDeleteRequest(
-        "http://localhost/api/pool-manager/delete-pool",
-        { name: poolName }
-      );
+      const request = createDeleteRequest("http://localhost/api/pool-manager/delete-pool", { name: poolName });
       await DELETE(request);
 
       // Assert
       expect(mockDeletePool).toHaveBeenCalledWith({ name: poolName });
       expect(mockDeletePool).toHaveBeenCalledTimes(1);
-      
+
       // Verify exact call signature
       const callArgs = mockDeletePool.mock.calls[0][0];
       expect(callArgs).toEqual({ name: poolName });

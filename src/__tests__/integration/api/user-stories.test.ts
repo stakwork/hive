@@ -3,10 +3,7 @@ import { GET, POST } from "@/app/api/features/[featureId]/user-stories/route";
 import { POST as POST_REORDER } from "@/app/api/features/[featureId]/user-stories/reorder/route";
 import { PATCH, DELETE } from "@/app/api/user-stories/[storyId]/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -72,7 +69,7 @@ describe("User Stories API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        user
+        user,
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -85,9 +82,7 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createGetRequest(
-        "http://localhost:3000/api/features/test-id/user-stories"
-      );
+      const request = createGetRequest("http://localhost:3000/api/features/test-id/user-stories");
 
       const response = await GET(request, { params: Promise.resolve({ featureId: "test-id" }) });
 
@@ -99,7 +94,7 @@ describe("User Stories API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         "http://localhost:3000/api/features/non-existent-id/user-stories",
-        user
+        user,
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
@@ -127,7 +122,7 @@ describe("User Stories API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        nonMember
+        nonMember,
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -154,7 +149,7 @@ describe("User Stories API - Integration Tests", () => {
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
-        user
+        user,
       );
 
       const response = await GET(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -195,7 +190,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
         { title: "New Story" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -230,7 +225,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
         { title: "First Story" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -240,10 +235,9 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createPostRequest(
-        "http://localhost:3000/api/features/test-id/user-stories",
-        { title: "New Story" }
-      );
+      const request = createPostRequest("http://localhost:3000/api/features/test-id/user-stories", {
+        title: "New Story",
+      });
 
       const response = await POST(request, { params: Promise.resolve({ featureId: "test-id" }) });
 
@@ -270,7 +264,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
         {},
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -298,7 +292,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
         { title: "   " },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -326,7 +320,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
         { title: "  Trimmed Story  " },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -341,7 +335,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/non-existent-id/user-stories",
         { title: "New Story" },
-        user
+        user,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: "non-existent-id" }) });
@@ -370,7 +364,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories`,
         { title: "New Story" },
-        nonMember
+        nonMember,
       );
 
       const response = await POST(request, { params: Promise.resolve({ featureId: feature.id }) });
@@ -410,7 +404,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { title: "Updated Title" },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -450,7 +444,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { order: 5 },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -490,7 +484,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { completed: true },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -530,7 +524,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { title: "New Title", order: 3, completed: true },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -544,10 +538,7 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createPatchRequest(
-        "http://localhost:3000/api/user-stories/test-id",
-        { title: "Updated" }
-      );
+      const request = createPatchRequest("http://localhost:3000/api/user-stories/test-id", { title: "Updated" });
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: "test-id" }) });
 
@@ -560,7 +551,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         "http://localhost:3000/api/user-stories/non-existent-id",
         { title: "Updated" },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: "non-existent-id" }) });
@@ -598,7 +589,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { title: "   " },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -636,7 +627,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { order: -1 },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -674,7 +665,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { completed: "true" },
-        user
+        user,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -713,7 +704,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/user-stories/${story.id}`,
         { title: "Updated" },
-        nonMember
+        nonMember,
       );
 
       const response = await PATCH(request, { params: Promise.resolve({ storyId: story.id }) });
@@ -750,10 +741,7 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/user-stories/${story.id}`,
-        user
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/user-stories/${story.id}`, user);
 
       const response = await DELETE(request, { params: Promise.resolve({ storyId: story.id }) });
 
@@ -767,9 +755,7 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createDeleteRequest(
-        "http://localhost:3000/api/user-stories/test-id"
-      );
+      const request = createDeleteRequest("http://localhost:3000/api/user-stories/test-id");
 
       const response = await DELETE(request, { params: Promise.resolve({ storyId: "test-id" }) });
 
@@ -779,10 +765,7 @@ describe("User Stories API - Integration Tests", () => {
     test("validates user story exists", async () => {
       const user = await createTestUser();
 
-      const request = createAuthenticatedDeleteRequest(
-        "http://localhost:3000/api/user-stories/non-existent-id",
-        user
-      );
+      const request = createAuthenticatedDeleteRequest("http://localhost:3000/api/user-stories/non-existent-id", user);
 
       const response = await DELETE(request, { params: Promise.resolve({ storyId: "non-existent-id" }) });
 
@@ -817,10 +800,7 @@ describe("User Stories API - Integration Tests", () => {
         },
       });
 
-      const request = createAuthenticatedDeleteRequest(
-        `http://localhost:3000/api/user-stories/${story.id}`,
-        nonMember
-      );
+      const request = createAuthenticatedDeleteRequest(`http://localhost:3000/api/user-stories/${story.id}`, nonMember);
 
       const response = await DELETE(request, { params: Promise.resolve({ storyId: story.id }) });
 
@@ -891,7 +871,7 @@ describe("User Stories API - Integration Tests", () => {
             { id: story2.id, order: 2 },
           ],
         },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -918,12 +898,9 @@ describe("User Stories API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createPostRequest(
-        "http://localhost:3000/api/features/test-id/user-stories/reorder",
-        {
-          stories: [{ id: "story-id", order: 0 }],
-        }
-      );
+      const request = createPostRequest("http://localhost:3000/api/features/test-id/user-stories/reorder", {
+        stories: [{ id: "story-id", order: 0 }],
+      });
 
       const response = await POST_REORDER(request, {
         params: Promise.resolve({ featureId: "test-id" }),
@@ -965,7 +942,7 @@ describe("User Stories API - Integration Tests", () => {
         {
           stories: [{ id: story.id, order: 0 }],
         },
-        nonMember
+        nonMember,
       );
 
       const response = await POST_REORDER(request, {
@@ -983,7 +960,7 @@ describe("User Stories API - Integration Tests", () => {
         {
           stories: [{ id: "story-id", order: 0 }],
         },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -1031,7 +1008,7 @@ describe("User Stories API - Integration Tests", () => {
         {
           stories: [{ id: story.id, order: 0 }],
         },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -1061,7 +1038,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories/reorder`,
         { stories: "not-an-array" },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -1091,7 +1068,7 @@ describe("User Stories API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/user-stories/reorder`,
         { stories: [] },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -1162,7 +1139,7 @@ describe("User Stories API - Integration Tests", () => {
             { id: story2.id, order: 1 }, // Wrong feature!
           ],
         },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -1234,7 +1211,7 @@ describe("User Stories API - Integration Tests", () => {
             { id: story2.id, order: 2 },
           ],
         },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -1303,7 +1280,7 @@ describe("User Stories API - Integration Tests", () => {
             { id: story2.id, order: 0 }, // Duplicate order
           ],
         },
-        user
+        user,
       );
 
       const response = await POST_REORDER(request, {
@@ -1355,7 +1332,7 @@ describe("User Stories API - Integration Tests", () => {
         {
           stories: [{ id: story.id, order: 5 }],
         },
-        owner
+        owner,
       );
 
       const response = await POST_REORDER(request, {
@@ -1414,7 +1391,7 @@ describe("User Stories API - Integration Tests", () => {
         {
           stories: [{ id: story.id, order: 3 }],
         },
-        member
+        member,
       );
 
       const response = await POST_REORDER(request, {

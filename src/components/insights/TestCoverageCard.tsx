@@ -45,7 +45,7 @@ export function TestCoverageCard() {
 
       if (result.success && result.data) {
         setData(result.data);
-        
+
         if (!hasInitializedIgnoreDirs.current && result.ignoreDirs !== undefined) {
           setIgnoreDirs(result.ignoreDirs);
           hasInitializedIgnoreDirs.current = true;
@@ -163,9 +163,7 @@ export function TestCoverageCard() {
                   total={data.unit_tests.total_lines || 0}
                 />
               ) : (
-                <div className="text-xs text-muted-foreground py-2">
-                  Line coverage data not available
-                </div>
+                <div className="text-xs text-muted-foreground py-2">Line coverage data not available</div>
               )}
             </div>
           )}

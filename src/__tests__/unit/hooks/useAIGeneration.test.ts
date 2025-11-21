@@ -10,19 +10,24 @@ vi.mock("@/components/ui/use-toast", () => ({
 
 global.fetch = vi.fn();
 
+// Test helper to render the hook with default props
+const renderAIGenerationHook = () => {
+  return renderHook(() =>
+    useAIGeneration({
+      featureId: "feature-123",
+      workspaceId: "workspace-123",
+      type: "ARCHITECTURE",
+    }),
+  );
+};
+
 describe("useAIGeneration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("should initialize with null content", () => {
-    const { result } = renderHook(() =>
-      useAIGeneration({
-        featureId: "feature-123",
-        workspaceId: "workspace-123",
-        type: "ARCHITECTURE",
-      }),
-    );
+    const { result } = renderAIGenerationHook();
 
     expect(result.current.content).toBeNull();
     expect(result.current.source).toBeNull();
@@ -30,13 +35,7 @@ describe("useAIGeneration", () => {
   });
 
   it("should set content with source", async () => {
-    const { result } = renderHook(() =>
-      useAIGeneration({
-        featureId: "feature-123",
-        workspaceId: "workspace-123",
-        type: "ARCHITECTURE",
-      }),
-    );
+    const { result } = renderAIGenerationHook();
 
     await waitFor(() => {
       result.current.setContent("Generated content", "quick");
@@ -49,13 +48,7 @@ describe("useAIGeneration", () => {
   });
 
   it("should accept quick generation without API call", async () => {
-    const { result } = renderHook(() =>
-      useAIGeneration({
-        featureId: "feature-123",
-        workspaceId: "workspace-123",
-        type: "ARCHITECTURE",
-      }),
-    );
+    const { result } = renderAIGenerationHook();
 
     act(() => {
       result.current.setContent("Quick content", "quick");
@@ -69,20 +62,14 @@ describe("useAIGeneration", () => {
     expect(result.current.source).toBeNull();
   });
 
-  it.skip("should accept deep generation with API call", async () => {
+  it("should accept deep generation with API call", async () => {
     // Mock the regenerate call first to get a runId
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ run: { id: "run-123", status: "PENDING" } }),
     });
 
-    const { result } = renderHook(() =>
-      useAIGeneration({
-        featureId: "feature-123",
-        workspaceId: "workspace-123",
-        type: "ARCHITECTURE",
-      }),
-    );
+    const { result } = renderAIGenerationHook();
 
     // First, regenerate to create a run and get runId
     await waitFor(async () => {
@@ -98,13 +85,19 @@ describe("useAIGeneration", () => {
       json: async () => ({ success: true, run: { id: "run-123", decision: "ACCEPTED" } }),
     });
 
-    // Simulate content being set from webhook/polling
+    // Simulate content being set from webhook/polling with runId
+    act(() => {
+      result.current.setContent("Deep content", "deep", "run-123");
+    });
+
+    // Wait for state to update
     await waitFor(() => {
-      result.current.setContent("Deep content", "deep");
+      expect(result.current.content).toBe("Deep content");
+      expect(result.current.source).toBe("deep");
     });
 
     // Now accept it
-    await waitFor(async () => {
+    await act(async () => {
       await result.current.accept();
     });
 
@@ -125,13 +118,7 @@ describe("useAIGeneration", () => {
       json: async () => ({ run: { id: "run-123", status: "PENDING" } }),
     });
 
-    const { result } = renderHook(() =>
-      useAIGeneration({
-        featureId: "feature-123",
-        workspaceId: "workspace-123",
-        type: "ARCHITECTURE",
-      }),
-    );
+    const { result } = renderAIGenerationHook();
 
     // First, regenerate to create a run and get runId
     await waitFor(async () => {
@@ -165,13 +152,7 @@ describe("useAIGeneration", () => {
       json: async () => ({ run: { id: "run-new", status: "PENDING" } }),
     });
 
-    const { result } = renderHook(() =>
-      useAIGeneration({
-        featureId: "feature-123",
-        workspaceId: "workspace-123",
-        type: "ARCHITECTURE",
-      }),
-    );
+    const { result } = renderAIGenerationHook();
 
     await waitFor(async () => {
       await result.current.regenerate();
@@ -186,13 +167,7 @@ describe("useAIGeneration", () => {
   });
 
   it("should clear content", () => {
-    const { result } = renderHook(() =>
-      useAIGeneration({
-        featureId: "feature-123",
-        workspaceId: "workspace-123",
-        type: "ARCHITECTURE",
-      }),
-    );
+    const { result } = renderAIGenerationHook();
 
     result.current.setContent("Content to clear", "quick");
     result.current.clear();

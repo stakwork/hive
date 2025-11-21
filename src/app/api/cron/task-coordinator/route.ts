@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         message: "Task Coordinator is disabled",
         workspacesProcessed: 0,
         tasksCreated: 0,
-        errors: []
+        errors: [],
       });
     }
 
@@ -30,9 +30,13 @@ export async function GET(request: NextRequest) {
 
     // Log execution results
     if (result.success) {
-      console.log(`[TaskCoordinatorCron] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks`);
+      console.log(
+        `[TaskCoordinatorCron] Execution completed successfully. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks`,
+      );
     } else {
-      console.error(`[TaskCoordinatorCron] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks, ${result.errors.length} errors`);
+      console.error(
+        `[TaskCoordinatorCron] Execution completed with errors. Processed ${result.workspacesProcessed} workspaces, created ${result.tasksCreated} tasks, ${result.errors.length} errors`,
+      );
 
       // Log individual errors
       result.errors.forEach((error, index) => {
@@ -46,9 +50,8 @@ export async function GET(request: NextRequest) {
       tasksCreated: result.tasksCreated,
       errorCount: result.errors.length,
       errors: result.errors,
-      timestamp: result.timestamp
+      timestamp: result.timestamp,
     });
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[TaskCoordinatorCron] Unhandled error:", errorMessage);
@@ -57,9 +60,9 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         error: "Internal server error",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

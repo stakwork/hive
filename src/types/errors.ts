@@ -1,10 +1,4 @@
-export type ErrorKind =
-  | "validation"
-  | "forbidden"
-  | "not_found"
-  | "conflict"
-  | "unprocessable_entity"
-  | "server_error";
+export type ErrorKind = "validation" | "forbidden" | "not_found" | "conflict" | "unprocessable_entity" | "server_error";
 
 export interface ApiError {
   kind: ErrorKind;
@@ -14,12 +8,7 @@ export interface ApiError {
 }
 
 export function isApiError(error: unknown): error is ApiError {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    "statusCode" in error
-  );
+  return typeof error === "object" && error !== null && "kind" in error && "statusCode" in error;
 }
 
 export function validationError(message: string, details?: unknown): ApiError {

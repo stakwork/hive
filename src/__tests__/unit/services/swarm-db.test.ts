@@ -26,10 +26,10 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
 
   it("encrypts password when creating new swarm", async () => {
     const testPassword = "TestPassword123!@#";
-    
+
     // Mock no existing swarm (will create new one)
     (db.swarm.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
-    
+
     // Mock the created swarm response
     const mockCreatedSwarm = {
       id: "swarm-id",
@@ -39,7 +39,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
       instanceType: "XL",
     };
     (db.swarm.create as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockCreatedSwarm);
-    
+
     const swarm = await saveOrUpdateSwarm({
       workspaceId,
       name: "test-swarm",
@@ -49,13 +49,13 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
 
     expect(swarm.swarmPassword).toBeDefined();
     expect(swarm.swarmPassword).not.toBe(testPassword);
-    
+
     // Verify it's encrypted JSON
     const parsed = JSON.parse(swarm.swarmPassword as string);
     expect(parsed).toHaveProperty("data");
     expect(parsed).toHaveProperty("iv");
     expect(parsed).toHaveProperty("tag");
-    
+
     // Verify decryption works
     const decrypted = enc.decryptField("swarmPassword", swarm.swarmPassword as string);
     expect(decrypted).toBe(testPassword);
@@ -64,7 +64,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
   it("updates password when updating existing swarm", async () => {
     const initialPassword = "InitialPassword123!";
     const newPassword = "UpdatedPassword456!";
-    
+
     // Mock existing swarm
     const existingSwarm = {
       id: "swarm-id",
@@ -74,7 +74,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
       instanceType: "XL",
     };
     (db.swarm.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingSwarm);
-    
+
     // Mock the updated swarm response
     const mockUpdatedSwarm = {
       ...existingSwarm,
@@ -95,7 +95,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
 
   it("does not modify password if not provided in update", async () => {
     const originalPassword = "OriginalPassword789!";
-    
+
     // Mock existing swarm with original password
     const existingSwarm = {
       id: "swarm-id",
@@ -106,7 +106,7 @@ describe("saveOrUpdateSwarm - Password Encryption", () => {
       status: "PENDING",
     };
     (db.swarm.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(existingSwarm);
-    
+
     // Mock the updated swarm response (password unchanged)
     const mockUpdatedSwarm = {
       ...existingSwarm,

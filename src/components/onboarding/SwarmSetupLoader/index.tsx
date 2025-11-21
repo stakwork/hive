@@ -4,11 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GraphNetworkIcon } from "@/components/onboarding/GraphNetworkIcon";
 
-const loadingStates = [
-  "Creating graph database",
-  "Ingesting Code",
-  "Preparing Virtual Environments",
-];
+const loadingStates = ["Creating graph database", "Ingesting Code", "Preparing Virtual Environments"];
 
 export function SwarmSetupLoader() {
   const [currentStateIndex, setCurrentStateIndex] = useState(0);

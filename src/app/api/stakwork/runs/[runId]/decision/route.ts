@@ -11,10 +11,7 @@ export const fetchCache = "force-no-store";
  * Update user decision (accept/reject/feedback) on an AI generation run
  * For ARCHITECTURE type + ACCEPTED: also updates feature.architecture
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ runId: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ runId: string }> }) {
   try {
     // Authenticate user
     const context = getMiddlewareContext(request);
@@ -26,10 +23,7 @@ export async function PATCH(
     const { runId } = await params;
 
     if (!runId) {
-      return NextResponse.json(
-        { error: "runId is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "runId is required" }, { status: 400 });
     }
 
     // Parse and validate request body
@@ -42,7 +36,7 @@ export async function PATCH(
           error: "Invalid request data",
           details: validationResult.error.format(),
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -54,7 +48,7 @@ export async function PATCH(
         {
           error: "featureId is required when accepting a decision",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -74,17 +68,13 @@ export async function PATCH(
           updatedAt: updatedRun.updatedAt,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error updating decision:", error);
 
-    const errorMessage =
-      error instanceof Error ? error.message : "Failed to update decision";
+    const errorMessage = error instanceof Error ? error.message : "Failed to update decision";
 
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

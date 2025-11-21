@@ -74,8 +74,7 @@ export function ChatInput({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Allow sending if we have either text or a pending debug attachment
-    if ((!input.trim() && !pendingDebugAttachment) || isLoading || disabled)
-      return;
+    if ((!input.trim() && !pendingDebugAttachment) || isLoading || disabled) return;
 
     if (isListening) {
       stopListening();
@@ -126,17 +125,11 @@ export function ChatInput({
       {/* Debug attachment display */}
       {pendingDebugAttachment && (
         <div className="px-6 pt-3">
-          <InputDebugAttachment
-            attachment={pendingDebugAttachment}
-            onRemove={onRemoveDebugAttachment || (() => {})}
-          />
+          <InputDebugAttachment attachment={pendingDebugAttachment} onRemove={onRemoveDebugAttachment || (() => {})} />
         </div>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex gap-2 px-6 py-4 border-t bg-background sticky bottom-0 z-10"
-      >
+      <form onSubmit={handleSubmit} className="flex gap-2 px-6 py-4 border-t bg-background sticky bottom-0 z-10">
         <Textarea
           ref={textareaRef}
           placeholder={isListening ? "Listening..." : "Type your message..."}
@@ -176,9 +169,7 @@ export function ChatInput({
         )}
         <Button
           type="submit"
-          disabled={
-            (!input.trim() && !pendingDebugAttachment) || isLoading || disabled
-          }
+          disabled={(!input.trim() && !pendingDebugAttachment) || isLoading || disabled}
           data-testid="chat-message-submit"
         >
           {isLoading ? "Sending..." : "Send"}

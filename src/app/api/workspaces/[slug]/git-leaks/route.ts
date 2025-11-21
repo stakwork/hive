@@ -6,10 +6,7 @@ import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { GitLeakResult } from "@/types/git-leaks";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
@@ -36,7 +33,7 @@ export async function GET(
             repositoryUrl: true,
           },
           orderBy: {
-            createdAt: 'asc',
+            createdAt: "asc",
           },
         },
         members: {
@@ -49,46 +46,28 @@ export async function GET(
     });
 
     if (!workspace) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     if (workspace.ownerId !== userOrResponse.id && workspace.members.length === 0) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     if (!workspace?.swarm) {
-      return NextResponse.json(
-        { error: "Workspace does not have a swarm configured" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Workspace does not have a swarm configured" }, { status: 400 });
     }
 
     if (!workspace.repositories || workspace.repositories.length === 0) {
-      return NextResponse.json(
-        { error: "No repositories configured for this workspace" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No repositories configured for this workspace" }, { status: 400 });
     }
 
     if (!workspace.swarm.swarmApiKey) {
-      return NextResponse.json(
-        { error: "Swarm API key not configured" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Swarm API key not configured" }, { status: 400 });
     }
 
     const graphServiceUrl = transformSwarmUrlToRepo2Graph(workspace.swarm.swarmUrl);
     if (!graphServiceUrl) {
-      return NextResponse.json(
-        { error: "Unable to determine graph service URL" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Unable to determine graph service URL" }, { status: 500 });
     }
 
     const repoUrl = workspace.repositories[0].repositoryUrl;
@@ -96,10 +75,7 @@ export async function GET(
     // Get GitHub username and PAT for authentication
     const githubAuth = await getGithubUsernameAndPAT(userOrResponse.id, slug);
     if (!githubAuth) {
-      return NextResponse.json(
-        { error: "GitHub authentication not configured for this workspace" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "GitHub authentication not configured for this workspace" }, { status: 400 });
     }
 
     const response = await swarmApiRequestAuth({
@@ -121,9 +97,9 @@ export async function GET(
         {
           error: "Failed to scan for git leaks",
           details: `Service returned status ${response.status}`,
-          responseData: response.data
+          responseData: response.data,
         },
-        { status: response.status }
+        { status: response.status },
       );
     }
 
@@ -140,23 +116,14 @@ export async function GET(
 
     if (error instanceof Error) {
       if (error.name === "TimeoutError" || error.message.includes("timeout")) {
-        return NextResponse.json(
-          { error: "Git leaks scan timed out. Please try again." },
-          { status: 504 }
-        );
+        return NextResponse.json({ error: "Git leaks scan timed out. Please try again." }, { status: 504 });
       }
 
       if (error.message.includes("fetch failed")) {
-        return NextResponse.json(
-          { error: "Unable to connect to graph service" },
-          { status: 503 }
-        );
+        return NextResponse.json({ error: "Unable to connect to graph service" }, { status: 503 });
       }
     }
 
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -107,8 +107,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
 
   describe("Success scenarios", () => {
     test("should successfully revoke GitHub access and clean up database", async () => {
-      const { testUser, testAccount, testGitHubAuth, testSessions } = 
-        await createTestUserWithGitHubAccount();
+      const { testUser, testAccount, testGitHubAuth, testSessions } = await createTestUserWithGitHubAccount();
 
       // Mock successful session
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
@@ -138,7 +137,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
           body: JSON.stringify({
             access_token: "github_pat_test_token_123",
           }),
-        })
+        }),
       );
 
       // Verify account was deleted
@@ -284,7 +283,7 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
           body: JSON.stringify({
             access_token: originalToken,
           }),
-        })
+        }),
       );
     });
 

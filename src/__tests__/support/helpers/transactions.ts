@@ -11,8 +11,6 @@ import type { Prisma } from "@prisma/client";
  *   return { user, workspace };
  * });
  */
-export async function createTestData<T>(
-  factory: (tx: Prisma.TransactionClient) => Promise<T>
-): Promise<T> {
+export async function createTestData<T>(factory: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   return db.$transaction(factory);
 }

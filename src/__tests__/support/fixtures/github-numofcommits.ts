@@ -18,13 +18,8 @@ interface CreateTestUserWithGitHubCredsOptions {
 /**
  * Creates a test user with GitHub authentication
  */
-export async function createTestUserWithGitHubCreds(
-  options?: CreateTestUserWithGitHubCredsOptions
-) {
-  const {
-    accessToken = "github_pat_test_token_123",
-    githubUsername = "test-user",
-  } = options || {};
+export async function createTestUserWithGitHubCreds(options?: CreateTestUserWithGitHubCredsOptions) {
+  const { accessToken = "github_pat_test_token_123", githubUsername = "test-user" } = options || {};
 
   return await db.$transaction(async (tx) => {
     const testUser = await tx.user.create({
@@ -44,10 +39,7 @@ export async function createTestUserWithGitHubCreds(
       },
     });
 
-    const encryptedToken = encryptionService.encryptField(
-      "access_token",
-      accessToken
-    );
+    const encryptedToken = encryptionService.encryptField("access_token", accessToken);
 
     const account = await tx.account.create({
       data: {

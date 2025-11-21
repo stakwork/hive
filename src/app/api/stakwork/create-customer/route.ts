@@ -20,14 +20,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { workspaceId } = body;
 
-    const customerResponse =
-      await stakworkService().createCustomer(workspaceId);
+    const customerResponse = await stakworkService().createCustomer(workspaceId);
 
     // Defensive: check for expected shape, fallback to empty object if not
     const data =
-      customerResponse &&
-        typeof customerResponse === "object" &&
-        "data" in customerResponse
+      customerResponse && typeof customerResponse === "object" && "data" in customerResponse
         ? (customerResponse as { data?: { token?: string } }).data
         : undefined;
 
@@ -39,10 +36,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (workspace) {
-        const encryptedStakworkApiKey = encryptionService.encryptField(
-          "stakworkApiKey",
-          token || "",
-        );
+        const encryptedStakworkApiKey = encryptionService.encryptField("stakworkApiKey", token || "");
         await db.workspace.update({
           where: { id: workspace.id },
           data: {
@@ -57,14 +51,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const sanitizedSecretAlias = (swarm?.swarmSecretAlias || "").replace(
-        /{{(.*?)}}/g,
-        "$1",
-      );
-      let decryptedSwarmApiKey = encryptionService.decryptField(
-        "swarmApiKey",
-        swarm?.swarmApiKey || "",
-      );
+      const sanitizedSecretAlias = (swarm?.swarmSecretAlias || "").replace(/{{(.*?)}}/g, "$1");
+      let decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm?.swarmApiKey || "");
       try {
         const maybeEncryptedAgain = JSON.parse(decryptedSwarmApiKey);
         if (
@@ -80,24 +68,17 @@ export async function POST(request: NextRequest) {
             maybeEncryptedAgain as any,
           );
         }
-      } catch { }
+      } catch {}
 
       if (sanitizedSecretAlias && swarm?.swarmApiKey && token) {
-        await stakworkService().createSecret(
-          sanitizedSecretAlias,
-          decryptedSwarmApiKey,
-          token,
-        );
+        await stakworkService().createSecret(sanitizedSecretAlias, decryptedSwarmApiKey, token);
       }
 
       return NextResponse.json({ success: true }, { status: 201 });
     }
 
     // If we don't have a valid token in the response
-    return NextResponse.json(
-      { error: "Invalid response from Stakwork API" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Invalid response from Stakwork API" }, { status: 500 });
   } catch (error) {
     console.error("Error creating Stakwork customer:", error);
 
@@ -114,9 +95,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(
-      { error: "Failed to create customer" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create customer" }, { status: 500 });
   }
 }

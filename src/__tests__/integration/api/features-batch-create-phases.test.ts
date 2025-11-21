@@ -1,10 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/features/[featureId]/phases/batch-create/route";
 import { db } from "@/lib/db";
-import {
-  createTestUser,
-  createTestWorkspace,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspace } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
   expectUnauthorized,
@@ -76,7 +73,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         phasesData,
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -162,7 +159,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         phasesData,
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -209,15 +206,11 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tasks: [
-              { title: "Setup", priority: "HIGH" as const, tempId: "T1", dependsOn: [] },
-            ],
+            tasks: [{ title: "Setup", priority: "HIGH" as const, tempId: "T1", dependsOn: [] }],
           },
           {
             name: "Phase 2",
-            tasks: [
-              { title: "Feature", priority: "MEDIUM" as const, tempId: "T2", dependsOn: ["T1"] },
-            ],
+            tasks: [{ title: "Feature", priority: "MEDIUM" as const, tempId: "T2", dependsOn: ["T1"] }],
           },
         ],
       };
@@ -225,7 +218,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         phasesData,
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -262,9 +255,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
         phases: [
           {
             name: "Valid Phase",
-            tasks: [
-              { title: "Ticket 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-            ],
+            tasks: [{ title: "Ticket 1", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
           },
         ],
       };
@@ -272,7 +263,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         phasesData,
-        user
+        user,
       );
 
       await POST(request, {
@@ -290,10 +281,9 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createPostRequest(
-        "http://localhost:3000/api/features/test-id/phases/batch-create",
-        { phases: [] }
-      );
+      const request = createPostRequest("http://localhost:3000/api/features/test-id/phases/batch-create", {
+        phases: [],
+      });
 
       const response = await POST(request, {
         params: Promise.resolve({ featureId: "test-id" }),
@@ -324,9 +314,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tasks: [
-              { title: "Ticket", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-            ],
+            tasks: [{ title: "Ticket", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
           },
         ],
       };
@@ -334,7 +322,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         phasesData,
-        nonMember
+        nonMember,
       );
 
       const response = await POST(request, {
@@ -351,9 +339,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
         phases: [
           {
             name: "Phase 1",
-            tasks: [
-              { title: "Ticket", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] },
-            ],
+            tasks: [{ title: "Ticket", priority: "MEDIUM" as const, tempId: "T1", dependsOn: [] }],
           },
         ],
       };
@@ -361,7 +347,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         "http://localhost:3000/api/features/non-existent-id/phases/batch-create",
         phasesData,
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -391,7 +377,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         {}, // Missing phases
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -421,7 +407,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         { phases: [] },
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -464,7 +450,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         phasesData,
-        user
+        user,
       );
 
       const response = await POST(request, {
@@ -511,7 +497,7 @@ describe("Batch Create Phases and Tasks API - Integration Tests", () => {
       const request = createAuthenticatedPostRequest(
         `http://localhost:3000/api/features/${feature.id}/phases/batch-create`,
         phasesData,
-        user
+        user,
       );
 
       const response = await POST(request, {

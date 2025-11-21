@@ -28,7 +28,7 @@ interface UseWorkspaceMembersReturn {
 
 export function useWorkspaceMembers(
   workspaceSlug: string | undefined,
-  options?: UseWorkspaceMembersOptions
+  options?: UseWorkspaceMembersOptions,
 ): UseWorkspaceMembersReturn {
   const { includeSystemAssignees = false } = options || {};
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
