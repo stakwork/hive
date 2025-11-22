@@ -310,16 +310,32 @@ export function BrowserArtifactPanel({
                       </Tooltip>
                     </TooltipProvider>
                     {/* <Monitor className="w-4 h-4 flex-shrink-0" /> */}
-                    <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
+                    <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0 relative">
                       <Input
                         type="text"
                         value={isActive ? urlInput : tabUrl}
                         onChange={handleUrlInputChange}
                         onFocus={(e) => e.target.select()}
                         disabled={!isActive}
-                        className="h-7 text-sm"
+                        className="h-7 text-sm pr-9"
                         placeholder="Enter URL..."
                       />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={handleRefresh} 
+                              className="h-6 w-6 p-0 absolute right-1 top-1/2 -translate-y-1/2"
+                              type="button"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Refresh</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </form>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -371,66 +387,6 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-
-                    {isSetup && isRecorderReady && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleRecordToggle}
-                              className={`h-8 w-8 p-0 ${
-                                isRecording
-                                  ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
-                                  : "hover:bg-accent hover:text-accent-foreground"
-                              }`}
-                            >
-                              {isRecording ? <Square className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            {isRecording ? "Stop recording" : "Start recording"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-
-                    {!onUserJourneySave && !isMobile && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setIsTestModalOpen(true)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <FlaskConical className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Tests</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    {!onUserJourneySave && !isMobile && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={debugMode ? "default" : "ghost"}
-                              size="sm"
-                              onClick={handleDebugElement}
-                              className="h-8 w-8 p-0"
-                              title="Debug Element"
-                            >
-                              <Bug className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Debug Element</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -444,16 +400,6 @@ export function BrowserArtifactPanel({
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">Open in new tab</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" onClick={handleRefresh} className="h-8 w-8 p-0">
-                            <RefreshCw className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Refresh</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
