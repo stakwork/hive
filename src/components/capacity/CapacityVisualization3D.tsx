@@ -97,31 +97,43 @@ export const CapacityVisualization3D = forwardRef<CapacityVisualization3DRef, Ca
 
                         return (
                             <group key={vm.id}>
-                                <ServerModel
-                                    position={[x, y, z]}
-                                    state={vm.state}
-                                    usageStatus={vm.usage_status}
-                                    cpuUsage={vm.resource_usage?.usage?.cpu}
-                                    memoryUsage={vm.resource_usage?.usage?.memory}
-                                    name={vm.id.substring(0, 8)}
-                                    subdomain={vm.subdomain}
-                                    userInfo={vm.user_info}
-                                    created={vm.created}
-                                    repoName={vm.repoName}
-                                    selected={isSelected}
-                                    onClick={() => {
-                                        setSelectedId(isSelected ? null : vm.id);
-                                        // Focus camera on selected server
-                                        if (!isSelected) {
-                                            cameraControlsRef.current?.setLookAt(
-                                                x + (isLeftColumn ? 4 : -4), y + 1, z + 6, // Camera position
-                                                x, y, z, // Target
-                                                true // Transition
-                                            );
-                                        }
-                                        onServerClick?.(vm);
-                                    }}
-                                />
+                                {(() => {
+                                    // Calculate percentages to match VMGrid logic
+                                    const cpuPercent = vm.resource_usage?.available
+                                        ? (parseFloat(vm.resource_usage.usage.cpu) / parseFloat(vm.resource_usage.requests.cpu)) * 100
+                                        : 0;
+                                    const memoryPercent = vm.resource_usage?.available
+                                        ? (parseFloat(vm.resource_usage.usage.memory) / parseFloat(vm.resource_usage.requests.memory)) * 100
+                                        : 0;
+
+                                    return (
+                                        <ServerModel
+                                            position={[x, y, z]}
+                                            state={vm.state}
+                                            usageStatus={vm.usage_status}
+                                            cpuUsage={cpuPercent.toString()}
+                                            memoryUsage={memoryPercent.toString()}
+                                            name={vm.id.substring(0, 8)}
+                                            subdomain={vm.subdomain}
+                                            userInfo={vm.user_info}
+                                            created={vm.created}
+                                            repoName={vm.repoName}
+                                            selected={isSelected}
+                                            onClick={() => {
+                                                setSelectedId(isSelected ? null : vm.id);
+                                                // Focus camera on selected server
+                                                if (!isSelected) {
+                                                    cameraControlsRef.current?.setLookAt(
+                                                        x + (isLeftColumn ? 4 : -4), y + 1, z + 6, // Camera position
+                                                        x, y, z, // Target
+                                                        true // Transition
+                                                    );
+                                                }
+                                                onServerClick?.(vm);
+                                            }}
+                                        />
+                                    );
+                                })()}
                                 {/* Particles positioned near the server face */}
                                 <ServerParticles
                                     position={[x, y, z + 1.5]}
