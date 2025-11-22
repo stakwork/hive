@@ -226,6 +226,7 @@ export function UserStoriesSection({
                         variant="outline"
                         onClick={() => handleAcceptAi(story, index)}
                         disabled={accepting !== null}
+                        className="border-green-600/30 hover:bg-green-50 hover:border-green-600/50"
                       >
                         <Check className="h-4 w-4 mr-2 text-green-600" />
                         Accept
@@ -235,6 +236,7 @@ export function UserStoriesSection({
                         variant="ghost"
                         onClick={() => handleRejectAi(index)}
                         disabled={accepting !== null}
+                        className="hover:bg-red-50"
                       >
                         <X className="h-4 w-4 mr-2 text-red-600" />
                         Reject
