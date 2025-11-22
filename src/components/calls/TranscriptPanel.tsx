@@ -2,7 +2,7 @@ import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import { Clock } from 'lucide-react'
+import { Clock, Sparkles } from 'lucide-react'
 
 export interface TranscriptSegment {
   id: string
@@ -13,18 +13,38 @@ export interface TranscriptSegment {
   confidence?: number
 }
 
+// Utility to highlight "hive" keyword in transcript text
+function highlightKeyword(text: string): React.ReactNode {
+  const keywordPattern = /\bhive\b/gi;
+  const parts = text.split(keywordPattern);
+  const matches = text.match(keywordPattern) || [];
+  
+  return parts.map((part, index) => (
+    <React.Fragment key={index}>
+      {part}
+      {matches[index] && (
+        <span className="text-emerald-600 font-semibold bg-emerald-50 px-1 rounded">
+          {matches[index]}
+        </span>
+      )}
+    </React.Fragment>
+  ));
+}
+
 interface TranscriptPanelProps {
   segments: TranscriptSegment[]
   currentTime: number
   onSegmentClick?: (startTime: number) => void
   loading?: boolean
+  processingFeature?: boolean
 }
 
 export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   segments,
   currentTime,
   onSegmentClick,
-  loading = false
+  loading = false,
+  processingFeature = false
 }) => {
   // Find the current active segment
   const currentSegment = segments.find(segment =>
@@ -125,8 +145,17 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                   }}
                 >
                   <p className="text-sm leading-relaxed text-foreground font-medium">
-                    {currentSegment.text}
+                    {highlightKeyword(currentSegment.text)}
                   </p>
+                  
+                  {processingFeature && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs animate-pulse">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        Creating feature...
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (

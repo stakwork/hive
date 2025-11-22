@@ -890,6 +890,7 @@ model StakworkRun {
 
 enum StakworkRunType {
   ARCHITECTURE
+  FEATURE_EXTRACTION
 }
 
 enum StakworkRunDecision {
