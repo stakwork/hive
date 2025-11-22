@@ -223,7 +223,7 @@ export default function FeatureDetailPage() {
         throw new Error("Failed to delete feature");
       }
 
-      router.push(`/w/${workspaceSlug}/roadmap`);
+      router.push(`/w/${workspaceSlug}/plan`);
     } catch (error) {
       console.error("Failed to delete feature:", error);
     }
@@ -259,7 +259,7 @@ export default function FeatureDetailPage() {
       <div className="space-y-6">
         {/* Header with back button */}
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
+          <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/plan`)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
@@ -340,7 +340,7 @@ export default function FeatureDetailPage() {
   if (error || !feature) {
     return (
       <div className="space-y-6">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/plan`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
@@ -360,7 +360,7 @@ export default function FeatureDetailPage() {
     <div className="space-y-6">
       {/* Header with back button */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/roadmap`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/plan`)}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
