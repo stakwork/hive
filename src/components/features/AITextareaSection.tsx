@@ -165,9 +165,17 @@ export function AITextareaSection({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label htmlFor={id} className="text-base font-semibold">
-          {label}
-        </Label>
+        <div className="flex items-center gap-2">
+          <Label htmlFor={id} className="text-base font-semibold">
+            {label}
+          </Label>
+          <SaveIndicator
+            field={id}
+            savedField={savedField}
+            saving={saving}
+            saved={saved}
+          />
+        </div>
         <div className="flex items-center gap-2">
           <AIButton<GeneratedContent>
             endpoint={`/api/features/${featureId}/generate`}
@@ -189,12 +197,6 @@ export function AITextareaSection({
               showDeepThink={true}
             />
           )}
-          <SaveIndicator
-            field={id}
-            savedField={savedField}
-            saving={saving}
-            saved={saved}
-          />
         </div>
       </div>
       {description && (
@@ -217,25 +219,23 @@ export function AITextareaSection({
           <div className="relative">
             {mode === "edit" ? (
               <>
-                {/* Sticky Toggle Button - top right */}
-                <div className="sticky top-0 z-10 pointer-events-none">
-                  <div className="flex justify-end pointer-events-auto pt-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleModeSwitch("preview")}
-                          className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mr-2"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="left">
-                        Preview markdown
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                {/* Sticky Toggle Button - overlaid, doesn't affect layout */}
+                <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleModeSwitch("preview")}
+                        className="pointer-events-auto h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-2 mr-2"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      Preview markdown
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 <Textarea
                   ref={textareaRef}
@@ -245,7 +245,7 @@ export function AITextareaSection({
                   onChange={(e) => onChange(e.target.value)}
                   onBlur={(e) => onBlur(e.target.value || null)}
                   rows={rows}
-                  className={cn("resize-y font-mono text-sm min-h-[200px] -mt-10 pt-12 pr-12", className)}
+                  className={cn("resize-y font-mono text-sm min-h-[200px] pr-12", className)}
                   isDragging={isDragging}
                   isUploading={isUploading}
                   onDragEnter={handleDragEnter}
@@ -257,28 +257,26 @@ export function AITextareaSection({
               </>
             ) : (
               <>
-                {/* Sticky Toggle Button - top right */}
-                <div className="sticky top-0 z-10 pointer-events-none">
-                  <div className="flex justify-end pointer-events-auto pt-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleModeSwitch("edit")}
-                          className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mr-2"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="left">
-                        Edit content
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                {/* Sticky Toggle Button - overlaid, doesn't affect layout */}
+                <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleModeSwitch("edit")}
+                        className="pointer-events-auto h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-2 mr-2"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      Edit content
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 <div className={cn(
-                  "rounded-md border border-border bg-muted/30 p-4 min-h-[200px] pr-12 -mt-10 pt-12",
+                  "rounded-md border border-border bg-muted/30 p-4 min-h-[200px] pr-12",
                   !value && "flex items-center justify-center text-sm text-muted-foreground",
                   className
                 )}>
