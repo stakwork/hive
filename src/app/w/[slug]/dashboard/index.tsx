@@ -73,7 +73,6 @@ function DashboardInner() {
         <WorkspaceMembersPreview workspaceSlug={slug} />
       </div>
 
-      {/* Graph Component */}
       <div className="flex-1 min-h-0">
         <GraphComponent
           endpoint={`graph/search/latest?limit=5000&top_node_count=5000`}
