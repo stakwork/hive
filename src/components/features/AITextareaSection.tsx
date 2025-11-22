@@ -164,36 +164,38 @@ export function AITextareaSection({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Label htmlFor={id} className="text-sm font-medium">
+      <div className="flex items-center justify-between">
+        <Label htmlFor={id} className="text-base font-semibold">
           {label}
         </Label>
-        <AIButton<GeneratedContent>
-          endpoint={`/api/features/${featureId}/generate`}
-          params={{ type }}
-          onGenerated={handleGenerated}
-          onGeneratingChange={setQuickGenerating}
-          disabled={isLoadingState || showWorkflowBadge}
-          iconOnly
-        />
-        {type === "architecture" && (
-          <GenerationControls
-            onQuickGenerate={() => {}}
-            onDeepThink={handleDeepThink}
-            onRetry={handleRetry}
-            status={latestRun?.status}
-            isLoading={aiGeneration.isLoading}
-            isQuickGenerating={quickGenerating}
-            disabled={false}
-            showDeepThink={true}
+        <div className="flex items-center gap-2">
+          <AIButton<GeneratedContent>
+            endpoint={`/api/features/${featureId}/generate`}
+            params={{ type }}
+            onGenerated={handleGenerated}
+            onGeneratingChange={setQuickGenerating}
+            disabled={isLoadingState || showWorkflowBadge}
+            label="Generate"
           />
-        )}
-        <SaveIndicator
-          field={id}
-          savedField={savedField}
-          saving={saving}
-          saved={saved}
-        />
+          {type === "architecture" && (
+            <GenerationControls
+              onQuickGenerate={() => {}}
+              onDeepThink={handleDeepThink}
+              onRetry={handleRetry}
+              status={latestRun?.status}
+              isLoading={aiGeneration.isLoading}
+              isQuickGenerating={quickGenerating}
+              disabled={false}
+              showDeepThink={true}
+            />
+          )}
+          <SaveIndicator
+            field={id}
+            savedField={savedField}
+            saving={saving}
+            saved={saved}
+          />
+        </div>
       </div>
       {description && (
         <p className="text-sm text-muted-foreground">

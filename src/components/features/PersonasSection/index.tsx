@@ -91,7 +91,7 @@ export function PersonasSection({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label htmlFor="personas" className="text-sm font-medium">
+        <Label htmlFor="personas" className="text-base font-semibold">
           User Personas
         </Label>
         {savedField === "personas" && saving && (

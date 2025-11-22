@@ -3,12 +3,6 @@
 import { useEffect } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useAIGenerate } from "@/hooks/useAIGenerate";
 
 interface AIButtonProps<T> {
@@ -16,7 +10,6 @@ interface AIButtonProps<T> {
   params?: Record<string, unknown>;
   onGenerated: (results: T[]) => void;
   onGeneratingChange?: (generating: boolean) => void;
-  tooltip?: string;
   iconOnly?: boolean;
   label?: string;
   variant?: "default" | "outline" | "ghost";
@@ -29,11 +22,10 @@ export function AIButton<T>({
   params,
   onGenerated,
   onGeneratingChange,
-  tooltip = "Generate with AI",
   iconOnly = false,
   label = "Generate",
-  variant = "ghost",
-  size = "icon",
+  variant = "outline",
+  size = "sm",
   disabled = false,
 }: AIButtonProps<T>) {
   const { generating, suggestions, generate, clearSuggestions } = useAIGenerate<T>(endpoint);
@@ -55,38 +47,24 @@ export function AIButton<T>({
     }
   }, [suggestions, onGenerated, clearSuggestions]);
 
-  const button = (
+  return (
     <Button
-      size={iconOnly ? "icon" : size}
-      variant={iconOnly ? "ghost" : variant}
+      size={size}
+      variant={variant}
       onClick={handleGenerate}
       disabled={generating || disabled}
     >
       {generating ? (
-        <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+        <>
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
+          {!iconOnly && <span className="ml-1.5">Generating...</span>}
+        </>
       ) : (
         <>
-          <Sparkles className="h-4 w-4 text-purple-500" />
-          {!iconOnly && <span className="ml-2">{label}</span>}
+          <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+          {!iconOnly && <span className="ml-1.5">{label}</span>}
         </>
       )}
     </Button>
-  );
-
-  if (!tooltip || !iconOnly) {
-    return button;
-  }
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div>{button}</div>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }

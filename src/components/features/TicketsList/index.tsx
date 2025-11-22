@@ -279,10 +279,10 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   return (
     <div className="space-y-2">
-      {/* Header with Tasks heading, AI button, view toggle, and Add Task button */}
+      {/* Header with Tasks heading, AI button, and Add Task button */}
       <div className="flex items-center justify-between">
+        <Label className="text-base font-semibold">Tasks</Label>
         <div className="flex items-center gap-2">
-          <Label className="text-sm font-medium">Tasks</Label>
           <AIButton<GeneratedContent>
             endpoint={`/api/features/${featureId}/generate`}
             params={{ type: "tickets" }}
@@ -292,20 +292,8 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
               }
             }}
             onGeneratingChange={setGenerating}
-            iconOnly
+            label="Generate"
           />
-        </div>
-        <div className="flex items-center gap-2">
-          <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
-            <TabsList>
-              <TabsTrigger value="table" className="gap-2">
-                <TableIcon className="h-4 w-4" />
-              </TabsTrigger>
-              <TabsTrigger value="graph" className="gap-2">
-                <Network className="h-4 w-4" />
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
           {!isCreatingTicket && (
             <Button onClick={() => setIsCreatingTicket(true)} size="sm">
               <Plus className="h-4 w-4 mr-2" />
@@ -389,6 +377,22 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* View Toggle - Only show when there are tasks */}
+      {tickets.length > 0 && (
+        <div className="flex justify-start">
+          <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
+            <TabsList>
+              <TabsTrigger value="table" className="gap-2">
+                <TableIcon className="h-4 w-4" />
+              </TabsTrigger>
+              <TabsTrigger value="graph" className="gap-2">
+                <Network className="h-4 w-4" />
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       )}
 
