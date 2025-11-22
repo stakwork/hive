@@ -35,6 +35,7 @@ import { z } from "zod";
 import { InfoIcon, Search, UserCheck } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { AssignableMemberRoleSchema, WorkspaceRole, RoleLabels } from "@/lib/auth/roles";
+import { NewUserConfirmDialog } from "./NewUserConfirmDialog";
 
 const addMemberSchema = z.object({
   githubUsername: z.string().min(1, "GitHub username is required"),
@@ -67,6 +68,9 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
   const [selectedUser, setSelectedUser] = useState<GitHubUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [showNewUserConfirm, setShowNewUserConfirm] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<AddMemberForm | null>(null);
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -142,208 +146,261 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
     setSearchResults([]);
     setSelectedUser(null);
     setError(null);
+    setIsNewUser(false);
+    setPendingFormData(null);
+    setShowNewUserConfirm(false);
     onOpenChange(false);
   };
 
-  const handleSelectUser = (user: GitHubUser) => {
+  const handleSelectUser = async (user: GitHubUser) => {
     setSelectedUser(user);
     setSearchQuery(user.login);
     form.setValue("githubUsername", user.login);
     setSearchResults([]);
+
+    // Check if user exists in Hive
+    try {
+      const response = await fetch(
+        `/api/github/users/check?username=${encodeURIComponent(user.login)}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setIsNewUser(data.isNewUser);
+      } else {
+        // If check fails, assume user might be new (safer to show warning)
+        setIsNewUser(true);
+      }
+    } catch (error) {
+      console.error("Error checking user:", error);
+      // If check fails, assume user might be new (safer to show warning)
+      setIsNewUser(true);
+    }
   };
 
-  const onSubmit = (data: AddMemberForm) => {
-    addMember(data);
+  const onSubmit = async (data: AddMemberForm) => {
+    // If user is new, show confirmation dialog first
+    if (isNewUser && !pendingFormData) {
+      setPendingFormData(data);
+      setShowNewUserConfirm(true);
+      return;
+    }
+
+    // Otherwise proceed with adding member
+    await addMember(data);
+  };
+
+  const handleConfirmNewUser = async () => {
+    setShowNewUserConfirm(false);
+    if (pendingFormData) {
+      await addMember(pendingFormData);
+      setPendingFormData(null);
+    }
+  };
+
+  const handleCancelNewUser = () => {
+    setShowNewUserConfirm(false);
+    setPendingFormData(null);
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md" data-testid="add-member-modal">
-        <DialogHeader>
-          <DialogTitle>Add Member</DialogTitle>
-          <DialogDescription>
-            Add an existing Hive user to this workspace by their GitHub username.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="sm:max-w-md" data-testid="add-member-modal">
+          <DialogHeader>
+            <DialogTitle>Add Member</DialogTitle>
+            <DialogDescription>
+              Add an existing Hive user to this workspace by their GitHub username.
+            </DialogDescription>
+          </DialogHeader>
 
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4"
-            data-testid="add-member-form"
-          >
-            <FormField
-              control={form.control}
-              name="githubUsername"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>GitHub Username</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        {...field}
-                        placeholder="Search GitHub username..."
-                        className="pl-9"
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value);
-                          field.onChange(e.target.value);
-                          setSelectedUser(null);
-                        }}
-                        data-testid="add-member-github-input"
-                      />
-                    </div>
-                  </FormControl>
-                  <FormDescription>
-                    Start typing to search for GitHub users
-                  </FormDescription>
-                  <FormMessage />
-
-                  {/* Search Results */}
-                  {searchQuery.trim() && searchResults.length > 0 && !selectedUser && (
-                    <div className="mt-2 border rounded-md max-h-40 overflow-y-auto">
-                      {searchResults.slice(0, 5).map((user) => (
-                        <button
-                          key={user.id}
-                          type="button"
-                          className="w-full flex items-center space-x-3 p-3 hover:bg-muted text-left"
-                          onClick={() => handleSelectUser(user)}
-                        >
-                          <Avatar className="w-8 h-8">
-                            <AvatarImage src={user.avatar_url} alt={user.login} />
-                            <AvatarFallback>{user.login.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium">{user.name || user.login}</p>
-                              <Badge variant="outline" className="text-xs">
-                                @{user.login}
-                              </Badge>
-                            </div>
-                            {user.bio && (
-                              <p className="text-sm text-muted-foreground truncate">
-                                {user.bio}
-                              </p>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Selected User Preview */}
-                  {selectedUser && (
-                    <div className="mt-2 flex items-center space-x-3 p-3 bg-muted rounded-md">
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage src={selectedUser.avatar_url} alt={selectedUser.login} />
-                        <AvatarFallback>{selectedUser.login.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <UserCheck className="w-4 h-4 text-green-600" />
-                          <p className="font-medium">{selectedUser.name || selectedUser.login}</p>
-                          <Badge variant="outline" className="text-xs">
-                            @{selectedUser.login}
-                          </Badge>
-                        </div>
-                        {selectedUser.bio && (
-                          <p className="text-sm text-muted-foreground">{selectedUser.bio}</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Loading State */}
-                  {isSearching && (
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      Searching GitHub users...
-                    </div>
-                  )}
-
-                  {/* No Results */}
-                  {searchQuery.trim() && !isSearching && searchResults.length === 0 && searchQuery.length >= 2 && !selectedUser && (
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      No GitHub users found matching "{searchQuery}"
-                    </div>
-                  )}
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Role</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-4"
+              data-testid="add-member-form"
+            >
+              <FormField
+                control={form.control}
+                name="githubUsername"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>GitHub Username</FormLabel>
                     <FormControl>
-                      <SelectTrigger data-testid="add-member-role-trigger">
-                        <SelectValue placeholder="Select a role" />
-                      </SelectTrigger>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          {...field}
+                          placeholder="Search GitHub username..."
+                          className="pl-9"
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            field.onChange(e.target.value);
+                            setSelectedUser(null);
+                          }}
+                          data-testid="add-member-github-input"
+                        />
+                      </div>
                     </FormControl>
-                    <SelectContent>
-                      <SelectItem
-                        value={WorkspaceRole.VIEWER}
-                        data-testid="role-option-viewer"
-                      >
-                        {RoleLabels[WorkspaceRole.VIEWER]}
-                      </SelectItem>
-                      <SelectItem
-                        value={WorkspaceRole.DEVELOPER}
-                        data-testid="role-option-developer"
-                      >
-                        {RoleLabels[WorkspaceRole.DEVELOPER]}
-                      </SelectItem>
-                      <SelectItem
-                        value={WorkspaceRole.PM}
-                        data-testid="role-option-pm"
-                      >
-                        {RoleLabels[WorkspaceRole.PM]}
-                      </SelectItem>
-                      <SelectItem
-                        value={WorkspaceRole.ADMIN}
-                        data-testid="role-option-admin"
-                      >
-                        {RoleLabels[WorkspaceRole.ADMIN]}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Choose the access level for this member
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
+                    <FormDescription>
+                      Start typing to search for GitHub users
+                    </FormDescription>
+                    <FormMessage />
+
+                    {/* Search Results */}
+                    {searchQuery.trim() && searchResults.length > 0 && !selectedUser && (
+                      <div className="mt-2 border rounded-md max-h-40 overflow-y-auto">
+                        {searchResults.slice(0, 5).map((user) => (
+                          <button
+                            key={user.id}
+                            type="button"
+                            className="w-full flex items-center space-x-3 p-3 hover:bg-muted text-left"
+                            onClick={() => handleSelectUser(user)}
+                          >
+                            <Avatar className="w-8 h-8">
+                              <AvatarImage src={user.avatar_url} alt={user.login} />
+                              <AvatarFallback>{user.login.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{user.name || user.login}</p>
+                                <Badge variant="outline" className="text-xs">
+                                  @{user.login}
+                                </Badge>
+                              </div>
+                              {user.bio && (
+                                <p className="text-sm text-muted-foreground truncate">
+                                  {user.bio}
+                                </p>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Selected User Preview */}
+                    {selectedUser && (
+                      <div className="mt-2 flex items-center space-x-3 p-3 bg-muted rounded-md">
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={selectedUser.avatar_url} alt={selectedUser.login} />
+                          <AvatarFallback>{selectedUser.login.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="w-4 h-4 text-green-600" />
+                            <p className="font-medium">{selectedUser.name || selectedUser.login}</p>
+                            <Badge variant="outline" className="text-xs">
+                              @{selectedUser.login}
+                            </Badge>
+                          </div>
+                          {selectedUser.bio && (
+                            <p className="text-sm text-muted-foreground">{selectedUser.bio}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Loading State */}
+                    {isSearching && (
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        Searching GitHub users...
+                      </div>
+                    )}
+
+                    {/* No Results */}
+                    {searchQuery.trim() && !isSearching && searchResults.length === 0 && searchQuery.length >= 2 && !selectedUser && (
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        No GitHub users found matching "{searchQuery}"
+                      </div>
+                    )}
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="add-member-role-trigger">
+                          <SelectValue placeholder="Select a role" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem
+                          value={WorkspaceRole.VIEWER}
+                          data-testid="role-option-viewer"
+                        >
+                          {RoleLabels[WorkspaceRole.VIEWER]}
+                        </SelectItem>
+                        <SelectItem
+                          value={WorkspaceRole.DEVELOPER}
+                          data-testid="role-option-developer"
+                        >
+                          {RoleLabels[WorkspaceRole.DEVELOPER]}
+                        </SelectItem>
+                        <SelectItem
+                          value={WorkspaceRole.PM}
+                          data-testid="role-option-pm"
+                        >
+                          {RoleLabels[WorkspaceRole.PM]}
+                        </SelectItem>
+                        <SelectItem
+                          value={WorkspaceRole.ADMIN}
+                          data-testid="role-option-admin"
+                        >
+                          {RoleLabels[WorkspaceRole.ADMIN]}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Choose the access level for this member
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
               )}
-            />
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+              <div className="flex justify-end space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClose}
+                  data-testid="add-member-cancel"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitting || !form.watch("githubUsername")}
+                  data-testid="add-member-submit"
+                >
+                  {isSubmitting ? "Adding..." : "Add Member"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
-            <div className="flex justify-end space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleClose}
-                data-testid="add-member-cancel"
-              >
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={isSubmitting || !form.watch("githubUsername")}
-                data-testid="add-member-submit"
-              >
-                {isSubmitting ? "Adding..." : "Add Member"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+      <NewUserConfirmDialog
+        open={showNewUserConfirm}
+        onOpenChange={setShowNewUserConfirm}
+        githubUser={selectedUser}
+        role={RoleLabels[form.watch("role")] || "Developer"}
+        onConfirm={handleConfirmNewUser}
+        onCancel={handleCancelNewUser}
+      />
+    </>
   );
 }
