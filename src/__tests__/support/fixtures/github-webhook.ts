@@ -220,9 +220,8 @@ export const testBranches = {
   main: "refs/heads/main",
   master: "refs/heads/master",
   develop: "refs/heads/develop",
-  feature: "refs/heads/feature/test",
-  hotfix: "refs/heads/hotfix/bug-fix",
-};
+  feature: "refs/heads/feature/test-feature",
+} as const;
 
 /**
  * Test repository URLs for different scenarios
@@ -232,3 +231,156 @@ export const testRepositoryUrls = {
   withGit: "https://github.com/test-owner/test-repo.git",
   different: "https://github.com/another-org/different-repo",
 };
+
+/**
+ * GitHub App authorization webhook payload structure
+ */
+interface GitHubAppAuthPayload {
+  action: string;
+  sender: {
+    login: string;
+    id: number;
+  };
+}
+
+/**
+ * Creates a GitHub App authorization webhook payload
+ */
+export function createGitHubAppAuthPayload(
+  action: string = "revoked",
+  username: string = "test-user"
+): GitHubAppAuthPayload {
+  return {
+    action,
+    sender: {
+      login: username,
+      id: Math.floor(Math.random() * 1000000),
+    },
+  };
+}
+
+/**
+ * Creates a NextRequest for GitHub App webhook testing
+ */
+export function createGitHubAppWebhookRequest(
+  url: string,
+  payload: GitHubAppAuthPayload,
+  signature: string,
+  event: string = "github_app_authorization"
+): Request {
+  const body = JSON.stringify(payload);
+
+  return new Request(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-hub-signature-256": signature,
+      "x-github-event": event,
+    },
+    body,
+  });
+}
+
+/**
+ * Options for creating test user with GitHub auth
+ */
+interface CreateTestUserWithGitHubAuthOptions {
+  githubUsername: string;
+  email?: string;
+  name?: string;
+}
+
+/**
+ * Creates a test user with GitHub authentication
+ */
+export async function createTestUserWithGitHubAuth(
+  options: CreateTestUserWithGitHubAuthOptions
+) {
+  const uniqueId = generateUniqueId("user");
+  const { githubUsername, email, name } = options;
+
+  // Check if user already exists
+  const existingUser = await db.user.findFirst({
+    where: {
+      githubAuth: {
+        githubUsername,
+      },
+    },
+    include: {
+      githubAuth: true,
+    },
+  });
+
+  if (existingUser) {
+    return existingUser;
+  }
+
+  // Create user with GitHub auth
+  const user = await db.user.create({
+    data: {
+      name: name || `Test User ${uniqueId}`,
+      email: email || `test-${uniqueId}@example.com`,
+      githubAuth: {
+        create: {
+          githubUserId: generateUniqueId("github"),
+          githubUsername,
+          name: name || `Test User ${uniqueId}`,
+          bio: "Test bio",
+          publicRepos: 10,
+          followers: 5,
+        },
+      },
+    },
+    include: {
+      githubAuth: true,
+    },
+  });
+
+  return user;
+}
+
+/**
+ * Options for creating test source control token
+ */
+interface CreateTestSourceControlTokenOptions {
+  githubLogin?: string;
+  installationId?: number;
+}
+
+/**
+ * Creates a test source control token for a user
+ */
+export async function createTestSourceControlToken(
+  userId: string,
+  options?: CreateTestSourceControlTokenOptions
+) {
+  const { githubLogin, installationId } = options || {};
+  const uniqueId = generateUniqueId("org");
+
+  // Create or get source control org
+  const org = await db.sourceControlOrg.create({
+    data: {
+      githubLogin: githubLogin || `test-org-${uniqueId}`,
+      githubInstallationId: installationId || Math.floor(Math.random() * 1000000),
+      name: `Test Org ${uniqueId}`,
+    },
+  });
+
+  // Create encrypted token
+  const testToken = `ghs_test_token_${uniqueId}`;
+  const encryptedToken = JSON.stringify(
+    encryptionService.encryptField("access_token", testToken)
+  );
+
+  // Create source control token
+  const token = await db.sourceControlToken.create({
+    data: {
+      userId,
+      sourceControlOrgId: org.id,
+      token: encryptedToken,
+      scopes: ["repo", "read:org"],
+    },
+  });
+
+  return { token, org };
+}
