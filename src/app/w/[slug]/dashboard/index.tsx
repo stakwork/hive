@@ -76,7 +76,7 @@ function DashboardInner() {
       {/* Graph Component */}
       <div className="flex-1 min-h-0">
         <GraphComponent
-          endpoint={`graph/search/latest?limit=1000&top_node_count=500`}
+          endpoint={`graph/search/latest?limit=5000&top_node_count=5000`}
           enableRotation={true}
           enablePolling={true}
           height="h-full"
