@@ -18,7 +18,7 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
   const router = useRouter();
 
   const handleClick = () => {
-    router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`);
+    router.push(`/w/${workspaceSlug}/plan/${feature.id}`);
   };
 
   return (

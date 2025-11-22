@@ -44,22 +44,22 @@ export class DashboardPage {
   }
 
   /**
-   * Navigate to roadmap page
+   * Navigate to plan page
    */
   async goToRoadmap(): Promise<void> {
     // First expand the Build section if not already expanded
     const buildButton = this.page.locator('[data-testid="nav-build"]');
-    const roadmapLink = this.page.locator(selectors.navigation.roadmapLink).first();
+    const planLink = this.page.locator(selectors.navigation.roadmapLink).first();
 
-    // Check if roadmap link is visible, if not, click Build to expand
-    const isRoadmapVisible = await roadmapLink.isVisible();
-    if (!isRoadmapVisible) {
+    // Check if plan link is visible, if not, click Build to expand
+    const isPlanVisible = await planLink.isVisible();
+    if (!isPlanVisible) {
       await buildButton.click();
       await this.page.waitForTimeout(300); // Wait for expand animation
     }
 
-    await roadmapLink.click();
-    await this.page.waitForURL(/\/w\/.*\/roadmap/, { timeout: 10000 });
+    await planLink.click();
+    await this.page.waitForURL(/\/w\/.*\/plan/, { timeout: 10000 });
   }
 
   /**

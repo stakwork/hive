@@ -77,9 +77,9 @@ export default function PhaseDetailPage() {
 
   const handleBackClick = () => {
     if (phase?.feature) {
-      router.push(`/w/${workspaceSlug}/roadmap/${phase.feature.id}`);
+      router.push(`/w/${workspaceSlug}/plan/${phase.feature.id}`);
     } else {
-      router.push(`/w/${workspaceSlug}/roadmap`);
+      router.push(`/w/${workspaceSlug}/plan`);
     }
   };
 
@@ -250,7 +250,7 @@ export default function PhaseDetailPage() {
           <div className="text-sm text-muted-foreground">
             <span
               className="hover:underline cursor-pointer"
-              onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${phase.feature.id}`)}
+              onClick={() => router.push(`/w/${workspaceSlug}/plan/${phase.feature.id}`)}
             >
               {phase.feature.title}
             </span>

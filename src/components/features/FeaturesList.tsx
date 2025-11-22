@@ -469,7 +469,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
 
       if (result.success) {
         // Navigate to the new feature detail page
-        router.push(`/w/${workspaceSlug}/roadmap/${result.data.id}`);
+        router.push(`/w/${workspaceSlug}/plan/${result.data.id}`);
       }
     } catch (error) {
       console.error("Failed to create feature:", error);
@@ -753,7 +753,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       onStatusUpdate={handleUpdateStatus}
                       onAssigneeUpdate={handleUpdateAssignee}
                       onDelete={handleDeleteFeature}
-                      onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${feature.id}`)}
+                      onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
                     />
                   ))
                 )}

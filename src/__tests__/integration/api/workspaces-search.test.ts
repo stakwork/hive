@@ -110,7 +110,7 @@ describe("Workspace Search API - Integration Tests", () => {
       expect(data.data.features[0]).toMatchObject({
         type: "feature",
         title: "Call Recording Feature",
-        url: "/w/test-workspace/roadmap/" + feature.id,
+        url: "/w/test-workspace/plan/" + feature.id,
         metadata: {
           status: FeatureStatus.IN_PROGRESS,
           priority: FeaturePriority.HIGH,
