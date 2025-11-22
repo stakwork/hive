@@ -936,6 +936,7 @@ export async function addWorkspaceMember(
   workspaceId: string,
   githubUsername: string,
   role: WorkspaceRole,
+  addedByUserId?: string
 ) {
   // Find existing user by GitHub username
   const githubAuth = await findUserByGitHubUsername(githubUsername);
@@ -962,8 +963,8 @@ export async function addWorkspaceMember(
 
   // Add the member (either create new or reactivate previous)
   const member = previousMember
-    ? await reactivateWorkspaceMember(previousMember.id, role)
-    : await createWorkspaceMember(workspaceId, userId, role);
+    ? await reactivateWorkspaceMember(previousMember.id, role, addedByUserId)
+    : await createWorkspaceMember(workspaceId, userId, role, addedByUserId);
 
   return mapWorkspaceMember(member);
 }

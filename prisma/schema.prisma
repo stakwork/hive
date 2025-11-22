@@ -73,6 +73,7 @@ model User {
   // Workspace relationships
   ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
   workspaceMembers WorkspaceMember[]
+  addedWorkspaceMembers WorkspaceMember[] @relation("WorkspaceMemberAddedBy")
 
   // Task assignments
   assignedTasks Task[] @relation("TaskAssignee")
@@ -249,10 +250,15 @@ model WorkspaceMember {
   role        WorkspaceRole @default(VIEWER)
   joinedAt    DateTime      @default(now()) @map("joined_at")
   leftAt      DateTime?     @map("left_at")
+  
+  // Track who invited/added this member
+  addedById   String?       @map("added_by_id")
+  addedBy     User?         @relation("WorkspaceMemberAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
 
   @@unique([workspaceId, userId])
   @@index([workspaceId])
   @@index([userId])
+  @@index([addedById])
   @@map("workspace_members")
 }
 

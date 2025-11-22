@@ -242,7 +242,7 @@ describe("Workspace Member Management", () => {
       expect(mockedFindActiveMember).toHaveBeenCalledWith("workspace1", "user1");
       expect(mockedIsWorkspaceOwner).toHaveBeenCalledWith("workspace1", "user1");
       expect(mockedFindPreviousMember).toHaveBeenCalledWith("workspace1", "user1");
-      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user1", "DEVELOPER");
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user1", "DEVELOPER", undefined);
       expect(mockedMapWorkspaceMember).toHaveBeenCalledWith(mockCreatedMember);
 
       expect(result.user.github?.username).toBe("johndoe");
@@ -320,7 +320,7 @@ describe("Workspace Member Management", () => {
 
       const result = await addWorkspaceMember("workspace1", "johndoe", "DEVELOPER");
 
-      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-1", "DEVELOPER");
+      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-1", "DEVELOPER", undefined);
       expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
       expect(result.user.github?.username).toBe("johndoe");
     });
@@ -373,7 +373,7 @@ describe("Workspace Member Management", () => {
 
       const result = await addWorkspaceMember("workspace1", "viewer-user", "VIEWER");
 
-      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user2", "VIEWER");
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user2", "VIEWER", undefined);
       expect(result.role).toBe("VIEWER");
     });
 
@@ -425,7 +425,7 @@ describe("Workspace Member Management", () => {
 
       const result = await addWorkspaceMember("workspace1", "pm-user", "PM");
 
-      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user3", "PM");
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user3", "PM", undefined);
       expect(result.role).toBe("PM");
     });
 
@@ -477,7 +477,7 @@ describe("Workspace Member Management", () => {
 
       const result = await addWorkspaceMember("workspace1", "admin-user", "ADMIN");
 
-      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user4", "ADMIN");
+      expect(mockedCreateWorkspaceMember).toHaveBeenCalledWith("workspace1", "user4", "ADMIN", undefined);
       expect(result.role).toBe("ADMIN");
     });
 
@@ -537,7 +537,7 @@ describe("Workspace Member Management", () => {
 
       const result = await addWorkspaceMember("workspace1", "upgraded-user", "ADMIN");
 
-      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-2", "ADMIN");
+      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-2", "ADMIN", undefined);
       expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
       expect(result.role).toBe("ADMIN");
     });
@@ -598,7 +598,7 @@ describe("Workspace Member Management", () => {
 
       const result = await addWorkspaceMember("workspace1", "downgraded-user", "DEVELOPER");
 
-      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-3", "DEVELOPER");
+      expect(mockedReactivateWorkspaceMember).toHaveBeenCalledWith("previous-member-3", "DEVELOPER", undefined);
       expect(mockedCreateWorkspaceMember).not.toHaveBeenCalled();
       expect(result.role).toBe("DEVELOPER");
     });

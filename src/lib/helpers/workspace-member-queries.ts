@@ -56,13 +56,15 @@ export async function isWorkspaceOwner(workspaceId: string, userId: string): Pro
 export async function createWorkspaceMember(
   workspaceId: string,
   userId: string,
-  role: WorkspaceRole
+  role: WorkspaceRole,
+  addedByUserId?: string
 ): Promise<PrismaWorkspaceMemberWithUser> {
   return await db.workspaceMember.create({
     data: {
       workspaceId,
       userId,
       role,
+      addedById: addedByUserId,
     },
     include: WORKSPACE_MEMBER_INCLUDE,
   });
@@ -73,7 +75,8 @@ export async function createWorkspaceMember(
  */
 export async function reactivateWorkspaceMember(
   memberId: string,
-  role: WorkspaceRole
+  role: WorkspaceRole,
+  addedByUserId?: string
 ): Promise<PrismaWorkspaceMemberWithUser> {
   return await db.workspaceMember.update({
     where: { id: memberId },
@@ -81,6 +84,7 @@ export async function reactivateWorkspaceMember(
       role,
       leftAt: null, // Reactivate by clearing leftAt
       joinedAt: new Date(), // Update join date to current time
+      addedById: addedByUserId, // Track who reactivated the member
     },
     include: WORKSPACE_MEMBER_INCLUDE,
   });
@@ -122,4 +126,26 @@ export async function softDeleteMember(memberId: string): Promise<void> {
     where: { id: memberId },
     data: { leftAt: new Date() },
   });
+}
+
+/**
+ * Check if an inviter has ever invited a specific user to any workspace before
+ * Used for first-time invite confirmation logic
+ * 
+ * @param inviterId - User ID of the person inviting
+ * @param inviteeId - User ID of the person being invited
+ * @returns true if inviter has invited this user before (to any workspace)
+ */
+export async function hasInvitedUserBefore(
+  inviterId: string,
+  inviteeId: string
+): Promise<boolean> {
+  const count = await db.workspaceMember.count({
+    where: {
+      userId: inviteeId,
+      addedById: inviterId,
+    },
+  });
+  
+  return count > 0;
 }

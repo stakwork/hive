@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -67,6 +68,10 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
   const [selectedUser, setSelectedUser] = useState<GitHubUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmFirstTime, setConfirmFirstTime] = useState<{
+    open: boolean;
+    data: AddMemberForm | null;
+  }>({ open: false, data: null });
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -109,7 +114,27 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
     searchUsers();
   }, [debouncedSearchQuery]);
 
-  // Add member function
+  // Check if this is a first-time invite
+  const checkFirstTimeInvite = async (githubUsername: string): Promise<boolean> => {
+    try {
+      const response = await fetch(
+        `/api/workspaces/${workspaceSlug}/members/check-first-time?githubUsername=${encodeURIComponent(githubUsername)}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.isFirstTime;
+      }
+      
+      // If check fails, default to not showing confirmation (fail open)
+      return false;
+    } catch (err) {
+      console.error("Error checking first-time invite:", err);
+      return false;
+    }
+  };
+
+  // Add member function with first-time confirmation
   const addMember = async (data: AddMemberForm) => {
     setIsSubmitting(true);
     setError(null);
@@ -136,6 +161,14 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
     }
   };
 
+  // Handle actual member addition after confirmation
+  const confirmAddMember = async () => {
+    if (confirmFirstTime.data) {
+      await addMember(confirmFirstTime.data);
+      setConfirmFirstTime({ open: false, data: null });
+    }
+  };
+
   const handleClose = () => {
     form.reset();
     setSearchQuery("");
@@ -152,8 +185,17 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
     setSearchResults([]);
   };
 
-  const onSubmit = (data: AddMemberForm) => {
-    addMember(data);
+  const onSubmit = async (data: AddMemberForm) => {
+    // Check if this is a first-time invite
+    const isFirstTime = await checkFirstTimeInvite(data.githubUsername);
+    
+    if (isFirstTime) {
+      // Show confirmation dialog for first-time invite
+      setConfirmFirstTime({ open: true, data });
+    } else {
+      // Proceed directly without confirmation
+      await addMember(data);
+    }
   };
 
   return (
@@ -344,6 +386,18 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
           </form>
         </Form>
       </DialogContent>
+      
+      {/* First-time invite confirmation dialog */}
+      <ConfirmDialog
+        open={confirmFirstTime.open}
+        onOpenChange={(open) => setConfirmFirstTime(prev => ({ ...prev, open }))}
+        title="First Time Inviting This User"
+        description={`This is the first time you're inviting ${confirmFirstTime.data?.githubUsername} to a workspace. Are you sure you want to add them as a ${confirmFirstTime.data?.role.toLowerCase()}?`}
+        confirmText="Add Member"
+        cancelText="Cancel"
+        onConfirm={confirmAddMember}
+        testId="first-time-invite-confirmation"
+      />
     </Dialog>
   );
 }

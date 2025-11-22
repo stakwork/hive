@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH, DELETE } from "@/app/api/workspaces/[slug]/members/[userId]/route";
+import { GET as GET_CHECK_FIRST_TIME } from "@/app/api/workspaces/[slug]/members/check-first-time/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/support/fixtures/workspace";
@@ -350,6 +351,189 @@ describe("Workspace Members API Integration Tests", () => {
       });
 
       await expectNotFound(response, "Member not found");
+    });
+  });
+
+  describe("GET /api/workspaces/[slug]/members/check-first-time", () => {
+    test("should return isFirstTime=true for new inviter-invitee pair", async () => {
+      const { ownerUser, workspace, targetUser } = await createTestWorkspaceWithUsers();
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/members/check-first-time?githubUsername=targetuser`
+      );
+      const response = await GET_CHECK_FIRST_TIME(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      const data = await expectSuccess(response);
+      expect(data.isFirstTime).toBe(true);
+      expect(data.githubUsername).toBe("targetuser");
+    });
+
+    test("should return isFirstTime=false after inviter has invited user before", async () => {
+      const { ownerUser, workspace, targetUser } = await createTestWorkspaceWithUsers();
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      // Add the user to the workspace first
+      const addRequest = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "targetuser",
+        role: WorkspaceRole.DEVELOPER,
+      });
+      await POST(addRequest, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      // Verify addedById was set
+      const memberInDb = await db.workspaceMember.findFirst({
+        where: { workspaceId: workspace.id, userId: targetUser.id },
+      });
+      expect(memberInDb?.addedById).toBe(ownerUser.id);
+
+      // Now check if it's first time (should be false)
+      const checkRequest = createGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/members/check-first-time?githubUsername=targetuser`
+      );
+      const response = await GET_CHECK_FIRST_TIME(checkRequest, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      const data = await expectSuccess(response);
+      expect(data.isFirstTime).toBe(false);
+      expect(data.githubUsername).toBe("targetuser");
+    });
+
+    test("should return 401 when user not authenticated", async () => {
+      const { workspace } = await createTestWorkspaceWithUsers();
+      
+      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
+
+      const request = createGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/members/check-first-time?githubUsername=targetuser`
+      );
+      const response = await GET_CHECK_FIRST_TIME(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      await expectUnauthorized(response);
+    });
+
+    test("should return 400 when githubUsername parameter is missing", async () => {
+      const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/members/check-first-time`
+      );
+      const response = await GET_CHECK_FIRST_TIME(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      await expectError(response, "GitHub username is required", 400);
+    });
+
+    test("should return 404 when GitHub user not found", async () => {
+      const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createGetRequest(
+        `http://localhost:3000/api/workspaces/${workspace.slug}/members/check-first-time?githubUsername=nonexistentuser`
+      );
+      const response = await GET_CHECK_FIRST_TIME(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      await expectNotFound(response, "User not found");
+    });
+  });
+
+  describe("Member addedById tracking", () => {
+    test("should track who added a member when creating new membership", async () => {
+      const { ownerUser, workspace, targetUser } = await createTestWorkspaceWithUsers();
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "targetuser",
+        role: WorkspaceRole.DEVELOPER,
+      });
+      await POST(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      // Verify addedById was set correctly
+      const memberInDb = await db.workspaceMember.findFirst({
+        where: { workspaceId: workspace.id, userId: targetUser.id },
+      });
+      expect(memberInDb).toBeTruthy();
+      expect(memberInDb?.addedById).toBe(ownerUser.id);
+    });
+
+    test("should track who reactivated a member", async () => {
+      const { ownerUser, workspace, memberUser } = await createTestWorkspaceWithUsers();
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      // First, remove the member
+      const deleteRequest = createDeleteRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members/${memberUser.id}`);
+      await DELETE(deleteRequest, {
+        params: Promise.resolve({ slug: workspace.slug, userId: memberUser.id })
+      });
+
+      // Verify member was soft-deleted
+      await expectMemberLeft(workspace.id, memberUser.id);
+
+      // Create a different admin user to reactivate
+      const adminUser = await createTestUser({
+        name: "Admin User",
+        withGitHubAuth: true,
+        githubUsername: "adminuser",
+      });
+      await createTestMembership({
+        workspaceId: workspace.id,
+        userId: adminUser.id,
+        role: "ADMIN",
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(adminUser));
+
+      // Reactivate the member
+      const addRequest = createPostRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`, {
+        githubUsername: "testuser",
+        role: WorkspaceRole.PM,
+      });
+      await POST(addRequest, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      // Verify addedById was updated to the reactivator
+      const memberInDb = await db.workspaceMember.findFirst({
+        where: { workspaceId: workspace.id, userId: memberUser.id, leftAt: null },
+      });
+      expect(memberInDb).toBeTruthy();
+      expect(memberInDb?.addedById).toBe(adminUser.id);
+      expect(memberInDb?.role).toBe(WorkspaceRole.PM);
+    });
+
+    test("should allow isFirstTime check across multiple workspaces", async () => {
+      // Create two separate workspaces
+      const scenario1 = await createTestWorkspaceScenario({
+        owner: { name: "Owner 1" },
+      });
+      const scenario2 = await createTestWorkspaceScenario({
+        owner: { name: "Owner 2" },
+      });
+
+      const targetUser = await createTestUser({
+        name: "Target User",
+        withGitHubAuth: true,
+        githubUsername: "multiworkspaceuser",
+      });
+
+      // Owner 1 adds target user to workspace 1
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(scenario1.owner));
+      const addRequest1 = createPostRequest(`http://localhost:3000/api/workspaces/${scenario1.workspace.slug}/members`, {
+        githubUsername: "multiworkspaceuser",
+        role: WorkspaceRole.DEVELOPER,
+      });
+      await POST(addRequest1, { params: Promise.resolve({ slug: scenario1.workspace.slug }) });
+
+      // Check in workspace 2 - should return false (owner 1 has invited this user before)
+      const checkRequest = createGetRequest(
+        `http://localhost:3000/api/workspaces/${scenario2.workspace.slug}/members/check-first-time?githubUsername=multiworkspaceuser`
+      );
+      const response = await GET_CHECK_FIRST_TIME(checkRequest, { params: Promise.resolve({ slug: scenario2.workspace.slug }) });
+
+      const data = await expectSuccess(response);
+      expect(data.isFirstTime).toBe(false); // Same inviter has invited this user before in workspace 1
     });
   });
 });
