@@ -6,7 +6,7 @@ import {
   StakgraphSettings,
   SwarmData,
 } from "@/components/stakgraph/types";
-import { ToastProps } from "@/components/ui/toast";
+import { toast } from "sonner";
 import { EnvironmentVariable } from "@/types/wizard";
 import { getPM2AppsContent } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
@@ -53,7 +53,7 @@ type StakgraphStore = {
 
   // Actions
   loadSettings: (slug: string) => Promise<void>;
-  saveSettings: (slug: string, toast: (opts: Omit<ToastProps, "open" | "onOpenChange">) => void) => Promise<void>;
+  saveSettings: (slug: string) => Promise<void>;
   resetForm: () => void;
 
   // Form change handlers
@@ -175,14 +175,12 @@ export const useStakgraphStore = create<StakgraphStore>()(
     },
 
     // Save settings
-    saveSettings: async (slug: string, toast: (opts: Omit<ToastProps, "open" | "onOpenChange">) => void) => {
+    saveSettings: async (slug: string) => {
       const state = get();
 
       if (!slug) {
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: "Workspace not found",
-          variant: "destructive",
         });
         return;
       }
@@ -292,10 +290,8 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
         if (response.ok && result.success) {
           set({ saved: true });
-          toast({
-            title: "Configuration saved",
+          toast.success("Configuration saved", {
             description: "Your Stakgraph settings have been saved successfully!",
-            variant: "default",
           });
 
           // Update form data with response data
@@ -326,10 +322,8 @@ export const useStakgraphStore = create<StakgraphStore>()(
             });
           }
 
-          toast({
-            title: result.error === "INSUFFICIENT_PERMISSIONS" ? "Permission Required" : "Error",
+          toast.error(result.error === "INSUFFICIENT_PERMISSIONS" ? "Permission Required" : "Error", {
             description: result.message || "Failed to save configuration",
-            variant: "destructive",
           });
         }
       } catch (error) {
@@ -339,10 +333,8 @@ export const useStakgraphStore = create<StakgraphStore>()(
             general: "Failed to save configuration. Please try again.",
           },
         });
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: "Network error occurred while saving",
-          variant: "destructive",
         });
       } finally {
         set({ loading: false });

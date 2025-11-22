@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import type { StakworkRunType } from "@prisma/client";
 
 export type GenerationSource = "quick" | "deep";
@@ -32,7 +32,6 @@ export function useAIGeneration({
   const [source, setSource] = useState<GenerationSource | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-  const { toast } = useToast();
 
   const setContentWithSource = useCallback((newContent: string | null, newSource: GenerationSource, runId?: string) => {
     setContent(newContent);
@@ -66,8 +65,7 @@ export function useAIGeneration({
           }
         }
 
-        toast({
-          title: "Result accepted",
+        toast.success("Result accepted", {
           description: "The generated content has been saved.",
         });
 
@@ -81,17 +79,15 @@ export function useAIGeneration({
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to accept result";
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: message,
-          variant: "destructive",
         });
         throw error;
       } finally {
         setIsLoading(false);
       }
     },
-    [content, source, currentRunId, featureId, enabled, toast]
+    [content, source, currentRunId, featureId, enabled]
   );
 
   const reject = useCallback(
@@ -118,8 +114,7 @@ export function useAIGeneration({
           }
         }
 
-        toast({
-          title: "Result rejected",
+        toast("Result rejected", {
           description: "The generated content has been discarded.",
         });
 
@@ -129,17 +124,15 @@ export function useAIGeneration({
         setCurrentRunId(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to reject result";
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: message,
-          variant: "destructive",
         });
         throw error;
       } finally {
         setIsLoading(false);
       }
     },
-    [source, currentRunId, enabled, toast]
+    [source, currentRunId, enabled]
   );
 
   const regenerate = useCallback(async () => {
@@ -172,22 +165,19 @@ export function useAIGeneration({
       const data = await response.json();
       setCurrentRunId(data.run.id);
 
-      toast({
-        title: "Generation restarted",
+      toast("Generation restarted", {
         description: "Your deep thinking process has been restarted.",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to regenerate";
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: message,
-        variant: "destructive",
       });
       throw error;
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, workspaceId, currentRunId, type, featureId, reject, toast]);
+  }, [enabled, workspaceId, currentRunId, type, featureId, reject]);
 
   const clear = useCallback(() => {
     setContent(null);

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Loader2, Sparkles, Clock, User } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import { getPriorityConfig, getJanitorIcon } from "@/lib/constants/janitor";
@@ -11,8 +11,6 @@ import { JanitorType, Priority } from "@prisma/client";
 
 export function RecommendationsSection() {
   const { workspace } = useWorkspace();
-  const { toast } = useToast();
-
   // Get state and actions from store
   const {
     recommendations,
@@ -36,33 +34,19 @@ export function RecommendationsSection() {
     try {
       const result = await acceptRecommendation(recommendationId);
       if (result.task) {
-        toast({
-          title: "Recommendation accepted!",
-          description: "Task created successfully. You can view it in the tasks section.",
-        });
+        toast("Recommendation accepted!", { description: "Task created successfully. You can view it in the tasks section." });
       }
     } catch (error) {
-      toast({
-        title: "Failed to accept recommendation",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to accept recommendation", { description: error instanceof Error ? error.message : "Please try again." });
     }
   };
 
   const handleDismiss = async (recommendationId: string) => {
     try {
       await dismissRecommendation(recommendationId);
-      toast({
-        title: "Recommendation dismissed",
-        description: "Recommendation has been removed from your list.",
-      });
+      toast("Recommendation dismissed", { description: "Recommendation has been removed from your list." });
     } catch (error) {
-      toast({
-        title: "Failed to dismiss recommendation",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to dismiss recommendation", { description: error instanceof Error ? error.message : "Please try again." });
     }
   };
 

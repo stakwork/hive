@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
 
-vi.mock("@/components/ui/use-toast", () => ({
-  useToast: () => ({
-    toast: vi.fn(),
+vi.mock("sonner", () => ({
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    error: vi.fn(),
   }),
 }));
 

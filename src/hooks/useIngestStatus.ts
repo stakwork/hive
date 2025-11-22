@@ -1,10 +1,9 @@
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useEffect, useRef, useState } from "react";
 
 export function useIngestStatus() {
   const { workspace, id: workspaceId, updateWorkspace } = useWorkspace();
-  const { toast } = useToast();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRequestPendingRef = useRef(false);
   const [ingestError, setIngestError] = useState(false);
@@ -73,10 +72,8 @@ export function useIngestStatus() {
           return;
         } else if (data?.status === "Failed") {
           console.log('Ingestion failed');
-          toast({
-            title: "Code Ingestion Failed",
+          toast.error("Code Ingestion Failed", {
             description: "There was an error ingesting your codebase. Please try again.",
-            variant: "destructive",
           });
           setIngestError(true);
           setIsIngesting(false);
@@ -114,7 +111,7 @@ export function useIngestStatus() {
         pollingIntervalRef.current = null;
       }
     };
-  }, [ingestRefId, workspaceId, codeIsSynced, ingestError, updateWorkspace, workspace?.repositories, toast]);
+  }, [ingestRefId, workspaceId, codeIsSynced, ingestError, updateWorkspace, workspace?.repositories]);
 
   return { ingestError, isIngesting, statusMessage };
 }

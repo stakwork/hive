@@ -14,12 +14,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Loader2, Phone, Mic, MicOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { TranscriptTooltip } from "./TranscriptTooltip";
 
 export default function CallsPage() {
   const { workspace, slug } = useWorkspace();
-  const { toast } = useToast();
   const [calls, setCalls] = useState<CallRecording[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -195,19 +194,14 @@ export default function CallsPage() {
 
               const data = await response.json();
 
-              toast({
-                title: "Feature created!",
+              toast.success("Feature created!", {
                 description: `"${data.title}" has been added to your workspace.`,
               });
 
               console.log("✅ Feature created:", data);
             } catch (error) {
               console.error("❌ Error creating feature:", error);
-              toast({
-                title: "Failed to create feature",
-                description: error instanceof Error ? error.message : "Unknown error",
-                variant: "destructive",
-              });
+              toast.error("Failed to create feature", { description: error instanceof Error ? error.message : "Unknown error" });
               // Reset flag on error so user can retry
               hasDetectedFeatureRequestRef.current = false;
             } finally {
@@ -228,7 +222,7 @@ export default function CallsPage() {
     };
 
     checkNewChunks();
-  }, [transcriptBuffer, currentTranscript, isRecording, slug, processingFeature, getRecentTranscript, toast]);
+  }, [transcriptBuffer, currentTranscript, isRecording, slug, processingFeature, getRecentTranscript]);
 
   useEffect(() => {
     if (!slug || !workspace?.isCodeGraphSetup) {

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import { JanitorType } from "@prisma/client";
@@ -46,8 +46,6 @@ export function JanitorSection({
   comingSoon = false
 }: JanitorSectionProps) {
   const { workspace } = useWorkspace();
-  const { toast } = useToast();
-
   const open = useModal();
 
   // Get state and actions from store
@@ -91,11 +89,7 @@ export function JanitorSection({
     try {
       await toggleJanitor(workspace.slug, janitor.configKey);
     } catch (error) {
-      toast({
-        title: "Failed to update janitor configuration",
-        description: "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to update janitor configuration", { description: "Please try again." });
     }
   };
 
@@ -104,16 +98,9 @@ export function JanitorSection({
 
     try {
       await runJanitor(workspace.slug, janitor.id);
-      toast({
-        title: "Janitor run started!",
-        description: "The janitor is now analyzing your codebase.",
-      });
+      toast("Janitor run started!", { description: "The janitor is now analyzing your codebase." });
     } catch (error) {
-      toast({
-        title: "Failed to start janitor run",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Failed to start janitor run", { description: error instanceof Error ? error.message : "Please try again." });
     }
   };
 

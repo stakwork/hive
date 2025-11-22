@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getRepositoryDefaultBranch } from "@/utils/getRepositoryDefaultBranch";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
@@ -14,7 +14,6 @@ interface WorkspaceSetupProps {
 
 export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSetupProps) {
   const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
-  const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
   const ingestRefId = workspace?.ingestRefId;
   const hasStakworkCustomer = workspace?.hasKey;
@@ -80,11 +79,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     } catch (error) {
       console.error("Failed to start ingestion:", error);
       setError(error instanceof Error ? error.message : "Failed to start code ingestion");
-      toast({
-        title: "Ingestion Error",
-        description: error instanceof Error ? error.message : "Failed to start code ingestion",
-        variant: "destructive",
-      });
+      toast.error("Ingestion Error", { description: error instanceof Error ? error.message : "Failed to start code ingestion" });
     }
   }, [workspaceId, swarmId, ingestRefId, toast, updateWorkspace]);
 
@@ -121,13 +116,9 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     } catch (error) {
       console.error("Failed to create customer:", error);
       setError(error instanceof Error ? error.message : "Failed to create customer");
-      toast({
-        title: "Customer Creation Error",
-        description: error instanceof Error ? error.message : "Failed to create customer",
-        variant: "destructive",
-      });
+      toast.error("Customer Creation Error", { description: error instanceof Error ? error.message : "Failed to create customer" });
     }
-  }, [workspaceId, hasStakworkCustomer, toast]);
+  }, [workspaceId, hasStakworkCustomer]);
 
   // Reactive swarm creation: Only execute when conditions transition from false to true
   const shouldCreateSwarm = !!(workspace && workspaceId && slug && !swarmId);
@@ -216,11 +207,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
         } catch (error) {
           console.error(`Failed to create swarm:`, error);
-          toast({
-            title: "Swarm Creation Error",
-            description: error instanceof Error ? error.message : "Failed to create swarm",
-            variant: "destructive",
-          });
+          toast.error("Swarm Creation Error", { description: error instanceof Error ? error.message : "Failed to create swarm" });
         }
       };
 
@@ -362,11 +349,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
         }
       } catch (error) {
         console.error("Failed to setup services:", error);
-        toast({
-          title: "Services Setup Error",
-          description: error instanceof Error ? error.message : "Failed to setup services",
-          variant: "destructive",
-        });
+        toast.error("Services Setup Error", { description: error instanceof Error ? error.message : "Failed to setup services" });
       }
     };
 

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, ShieldAlert, CheckCircle2, ExternalLink } from "lucide-react";
 import { GitLeakResult } from "@/types/git-leaks";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 
 type SortKey = "Date" | "File";
 type SortDirection = "asc" | "desc";
@@ -49,7 +49,6 @@ function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, cl
 
 export function GitLeaksSection() {
   const { workspace } = useWorkspace();
-  const { toast } = useToast();
   const [leaks, setLeaks] = useState<GitLeakResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,18 +77,13 @@ export function GitLeaksSection() {
       setScannedAt(data.scannedAt);
       setPage(1);
 
-      toast({
-        title: "Scan completed",
+      toast.success("Scan completed", {
         description: `Found ${data.count} potential secret${data.count !== 1 ? "s" : ""}`,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred";
       setError(errorMessage);
-      toast({
-        title: "Scan failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast.error("Scan failed", { description: errorMessage });
     } finally {
       setLoading(false);
     }

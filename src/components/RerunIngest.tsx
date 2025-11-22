@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { Database, RefreshCw } from "lucide-react";
 
 interface RerunIngestProps {
@@ -31,14 +31,11 @@ export function RerunIngest({
 }: RerunIngestProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
-  const { toast } = useToast();
 
   const handleRerunIngest = async () => {
     if (!workspaceId) {
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "No workspace ID found",
-        variant: "destructive",
       });
       return;
     }
@@ -62,33 +59,26 @@ export function RerunIngest({
       }
 
       if (response.ok) {
-        toast({
-          title: "Ingest Started",
+        toast.success("Ingest Started", {
           description: "Code ingestion has been started. This may take a few minutes.",
         });
         setIsOpen(false);
       } else if (response.status === 409) {
         // Handle duplicate ingest request
-        toast({
-          title: "Ingest Already in Progress",
+        toast.error("Ingest Already in Progress", {
           description: "A code ingestion is already running for this workspace. Please wait for it to complete before starting another one.",
-          variant: "destructive",
         });
       } else {
         console.error("Ingest API error:", { status: response.status, data });
-        toast({
-          title: "Ingest Failed",
+        toast.error("Ingest Failed", {
           description: data?.message || `Failed to start code ingestion (${response.status})`,
-          variant: "destructive",
         });
       }
     } catch (error) {
       console.error("Failed to start ingest:", error);
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
-      toast({
-        title: "Ingest Failed",
+      toast.error("Ingest Failed", {
         description: `Network error: ${errorMessage}`,
-        variant: "destructive",
       });
     } finally {
       setIsIngesting(false);

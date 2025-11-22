@@ -3,7 +3,7 @@
 import { RecommendationsSection } from "@/components/insights/RecommendationsSection";
 import { GitLeaksSection } from "@/components/insights/GitLeaksSection";
 import { PageHeader } from "@/components/ui/page-header";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { RecommendationsUpdatedEvent, usePusherConnection } from "@/hooks/usePusherConnection";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -20,8 +20,6 @@ export default function DefenseInsightsPage() {
     fetchJanitorConfig,
     reset
   } = useInsightsStore();
-  const { toast } = useToast();
-
   if (!canAccessDefense) {
     redirect("/");
   }
@@ -31,8 +29,7 @@ export default function DefenseInsightsPage() {
     (update: RecommendationsUpdatedEvent) => {
       if (workspace?.slug && update.workspaceSlug === workspace.slug) {
         // Show toast notification for new recommendations
-        toast({
-          title: "New recommendations available",
+        toast("New recommendations available", {
           description: `${update.newRecommendationCount} new recommendations found`,
           duration: 5000,
         });
@@ -53,13 +50,9 @@ export default function DefenseInsightsPage() {
   // Show Pusher connection errors as toasts
   useEffect(() => {
     if (pusherError) {
-      toast({
-        title: "Real-time updates unavailable",
-        description: pusherError,
-        variant: "destructive",
-      });
+      toast.error("Real-time updates unavailable", { description: pusherError });
     }
-  }, [pusherError, toast]);
+  }, [pusherError]);
 
   // Initialize store data on mount
   useEffect(() => {

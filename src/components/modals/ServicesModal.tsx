@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
 import { parseEnv } from "@/lib/env-parser";
@@ -47,7 +47,6 @@ export default function ServicesModal({
   onReject,
 }: ModalComponentProps<ServicesModalProps>) {
   const { slug, id: workspaceId, updateWorkspace } = useWorkspace();
-  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
   // Local state for services and environment variables
@@ -105,10 +104,8 @@ export default function ServicesModal({
         }
       } catch (error) {
         console.error("Failed to load settings:", error);
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: "Failed to load settings",
-          variant: "destructive",
         });
       } finally {
         setDataLoading(false);
@@ -132,25 +129,20 @@ export default function ServicesModal({
 
       const count = Object.keys(parsed).length;
       if (count === 0) {
-        toast({
-          title: "No variables found",
+        toast.error("No variables found", {
           description: "The clipboard content doesn't contain valid environment variables.",
-          variant: "destructive",
         });
         return;
       }
 
       bulkAddEnvVars(parsed);
-      toast({
-        title: "Variables imported",
+      toast.success("Variables imported", {
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
       });
     } catch (err) {
       console.error("Failed to paste environment variables:", err);
-      toast({
-        title: "Paste failed",
+      toast.error("Paste failed", {
         description: "Unable to read from clipboard. Please try again.",
-        variant: "destructive",
       });
     }
   };
@@ -161,26 +153,21 @@ export default function ServicesModal({
 
       const count = Object.keys(parsed).length;
       if (count === 0) {
-        toast({
-          title: "No variables found",
+        toast.error("No variables found", {
           description: `The file "${fileName}" doesn't contain valid environment variables.`,
-          variant: "destructive",
         });
         return;
       }
 
       bulkAddEnvVars(parsed);
-      toast({
-        title: "Variables imported",
+      toast.success("Variables imported", {
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''} from ${fileName}.`,
       });
       setShowImportSection(false);
     } catch (err) {
       console.error("Failed to parse file:", err);
-      toast({
-        title: "Import failed",
+      toast.error("Import failed", {
         description: "Failed to parse the file. Please check the format.",
-        variant: "destructive",
       });
     }
   };
@@ -191,10 +178,8 @@ export default function ServicesModal({
 
   const handleSave = useCallback(async () => {
     if (!slug || !workspaceId) {
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "Workspace not ready",
-        variant: "destructive",
       });
       return;
     }
@@ -251,22 +236,19 @@ export default function ServicesModal({
         poolState: 'COMPLETE',
       });
 
-      toast({
-        title: "Configuration saved",
+      toast.success("Configuration saved", {
         description: "Your services, environment variables, and pool have been updated.",
       });
       onResolve(true);
     } catch (error) {
       console.error("Failed to save settings:", error);
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "Failed to save settings. Please try again.",
-        variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  }, [slug, workspaceId, services, envVars, repoName, toast, onResolve, updateWorkspace]);
+  }, [slug, workspaceId, services, envVars, repoName, onResolve, updateWorkspace]);
 
 
   return (
