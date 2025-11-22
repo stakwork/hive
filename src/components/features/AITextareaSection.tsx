@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
@@ -212,6 +213,29 @@ export function AITextareaSection({
         /* Content Area - Toggle between Edit and Preview */
         <div className="space-y-2">
           <div className="relative">
+            {/* Toggle Button - positioned in top right */}
+            <div className="absolute top-2 right-2 z-10">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleModeSwitch(mode === "edit" ? "preview" : "edit")}
+                    className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90"
+                  >
+                    {mode === "edit" ? (
+                      <Eye className="h-4 w-4" />
+                    ) : (
+                      <Edit className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  {mode === "edit" ? "Preview markdown" : "Edit content"}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
             {mode === "edit" ? (
               <Textarea
                 ref={textareaRef}
@@ -221,7 +245,7 @@ export function AITextareaSection({
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={(e) => onBlur(e.target.value || null)}
                 rows={rows}
-                className={cn("resize-y font-mono text-sm min-h-[200px] pr-10", className)}
+                className={cn("resize-y font-mono text-sm min-h-[200px] pr-12", className)}
                 isDragging={isDragging}
                 isUploading={isUploading}
                 onDragEnter={handleDragEnter}
@@ -232,7 +256,7 @@ export function AITextareaSection({
               />
             ) : (
               <div className={cn(
-                "rounded-md border border-border bg-muted/30 p-4 min-h-[200px]",
+                "rounded-md border border-border bg-muted/30 p-4 min-h-[200px] pr-12",
                 !value && "flex items-center justify-center text-sm text-muted-foreground",
                 className
               )}>
@@ -243,28 +267,6 @@ export function AITextareaSection({
                 )}
               </div>
             )}
-
-            {/* Toggle Buttons - positioned inside content area */}
-            <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm border border-border/50 rounded-md p-0.5">
-              <Button
-                size="sm"
-                variant={mode === "preview" ? "secondary" : "ghost"}
-                onClick={() => handleModeSwitch("preview")}
-                className="h-6 w-6 p-0"
-                title="Preview"
-              >
-                <Eye className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                size="sm"
-                variant={mode === "edit" ? "secondary" : "ghost"}
-                onClick={() => handleModeSwitch("edit")}
-                className="h-6 w-6 p-0"
-                title="Edit"
-              >
-                <Edit className="h-3.5 w-3.5" />
-              </Button>
-            </div>
           </div>
 
           {/* Image Preview - Only show in edit mode */}
