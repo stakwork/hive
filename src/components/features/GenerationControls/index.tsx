@@ -1,12 +1,5 @@
 import { Brain, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import type { WorkflowStatus } from "@prisma/client";
 
 interface GenerationControlsProps {
@@ -34,57 +27,39 @@ export function GenerationControls({
     status && ["FAILED", "ERROR", "HALTED"].includes(status);
   const isLoadingState =
     status && ["PENDING", "IN_PROGRESS"].includes(status);
-  const showWorkflowBadge = !!(status && isErrorState);
 
   return (
     <div className="flex items-center gap-2">
       {showDeepThink && (
-        <>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={onDeepThink}
-                  disabled={
-                    isLoading ||
-                    isLoadingState ||
-                    showWorkflowBadge ||
-                    isQuickGenerating ||
-                    disabled
-                  }
-                  className="h-6 w-6 p-0"
-                >
-                  {isLoadingState ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
-                  ) : (
-                    <Brain className="h-3.5 w-3.5 text-purple-600" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Deep Research</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          {showWorkflowBadge && (
-            <div className="flex items-center gap-2">
-              <WorkflowStatusBadge status={isErrorState ? "FAILED" : status} />
-              {isErrorState && onRetry && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onRetry}
-                  disabled={isLoading}
-                  className="h-6 text-xs px-2"
-                >
-                  Retry
-                </Button>
-              )}
-            </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={isErrorState ? onRetry : onDeepThink}
+          disabled={
+            isLoading ||
+            isLoadingState ||
+            isQuickGenerating ||
+            disabled
+          }
+          className={isErrorState ? "border-yellow-600/50 bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-950/30 dark:hover:bg-yellow-950/50" : ""}
+        >
+          {isLoadingState ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
+              <span className="ml-1.5">Researching...</span>
+            </>
+          ) : isErrorState ? (
+            <>
+              <Brain className="h-3.5 w-3.5 text-yellow-700 dark:text-yellow-500" />
+              <span className="ml-1.5 text-yellow-700 dark:text-yellow-500">Retry</span>
+            </>
+          ) : (
+            <>
+              <Brain className="h-3.5 w-3.5 text-purple-600" />
+              <span className="ml-1.5">Deep Research</span>
+            </>
           )}
-        </>
+        </Button>
       )}
     </div>
   );

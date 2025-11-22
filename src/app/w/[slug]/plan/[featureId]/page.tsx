@@ -302,7 +302,7 @@ export default function FeatureDetailPage() {
                 {/* Brief */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 min-h-9">
-                    <Label className="text-sm font-medium">Brief</Label>
+                    <Label className="text-base font-semibold">Brief</Label>
                   </div>
                   <Skeleton className="h-24 w-full rounded-md" />
                 </div>

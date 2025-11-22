@@ -49,9 +49,11 @@ export function useAIGenerate<T>(endpoint: string): UseAIGenerateResult<T> {
         if (data.stories && Array.isArray(data.stories)) {
           // User stories format: { stories: [...] }
           setSuggestions(data.stories);
-        } else if (data.phases && Array.isArray(data.phases)) {
+        } else if (data.phases) {
           // Phases and tickets format: { phases: [...] }
-          setSuggestions([data as T]);
+          // Handle case where phases might be stringified
+          const phases = typeof data.phases === 'string' ? JSON.parse(data.phases) : data.phases;
+          setSuggestions([{ ...data, phases } as T]);
         } else if (Array.isArray(data)) {
           // Fallback for simple array format
           setSuggestions(data);

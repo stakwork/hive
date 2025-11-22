@@ -145,23 +145,20 @@ export function UserStoriesSection({
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="flex items-center gap-2">
-          <Label className="text-sm font-medium">User Stories</Label>
-          <AIButton<GeneratedStory>
-            endpoint={`/api/features/${featureId}/generate`}
-            params={{
-              type: "userStories",
-              existingStories: [
-                ...userStories.map((s) => s.title),
-                ...aiSuggestions.map((s) => s.title),
-              ],
-            }}
-            onGenerated={handleAiGenerated}
-            tooltip="Generate with AI"
-            iconOnly
-          />
-        </div>
+      <div className="flex items-center justify-between">
+        <Label className="text-base font-semibold">User Stories</Label>
+        <AIButton<GeneratedStory>
+          endpoint={`/api/features/${featureId}/generate`}
+          params={{
+            type: "userStories",
+            existingStories: [
+              ...userStories.map((s) => s.title),
+              ...aiSuggestions.map((s) => s.title),
+            ],
+          }}
+          onGenerated={handleAiGenerated}
+          label="Generate"
+        />
       </div>
 
       <div className="rounded-lg border bg-muted/30">
