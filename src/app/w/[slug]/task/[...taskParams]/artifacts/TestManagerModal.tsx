@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,8 +25,6 @@ export function TestManagerModal({
 }: TestManagerModalProps) {
   const [testName, setTestName] = useState<string>("");
   const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
-
   useEffect(() => {
     if (isOpen && generatedCode) {
       setTestName("");
@@ -35,11 +33,7 @@ export function TestManagerModal({
 
   const handleSave = async () => {
     if (!testName.trim()) {
-      toast({
-        title: "Test name required",
-        description: "Please enter a name for your test",
-        variant: "destructive",
-      });
+      toast.error("Test name required", { description: "Please enter a name for your test" });
       return;
     }
     if (onUserJourneySave) {

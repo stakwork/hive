@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import {
   ChatMessage,
   ChatRole,
@@ -37,7 +37,6 @@ function generateUniqueId() {
 export default function TaskChatPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: session } = useSession(); // TODO: Use for authentication when creating tasks
-  const { toast } = useToast();
   const params = useParams();
   const { id: workspaceId, workspace } = useWorkspace();
   const isMobile = useIsMobile();
@@ -131,11 +130,7 @@ export default function TaskChatPage() {
   // Show connection errors as toasts
   useEffect(() => {
     if (connectionError) {
-      toast({
-        title: "Connection Error",
-        description: "Lost connection to chat server. Attempting to reconnect...",
-        variant: "destructive",
-      });
+      toast.error("Connection Error", { description: "Lost connection to chat server. Attempting to reconnect..." });
     }
     // toast in deps causes infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,11 +198,7 @@ export default function TaskChatPage() {
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load existing messages.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to load existing messages." });
     } finally {
       setIsLoading(false);
     }
@@ -280,19 +271,11 @@ export default function TaskChatPage() {
               setClaimedPodId(freshPodId);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
-              toast({
-                title: "Warning",
-                description: "Failed to claim pod. Continuing without pod integration.",
-                variant: "destructive",
-              });
+              toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
             }
           } catch (error) {
             console.error("Error claiming pod:", error);
-            toast({
-              title: "Warning",
-              description: "Failed to claim pod. Continuing without pod integration.",
-              variant: "destructive",
-            });
+            toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
           }
         }
 
@@ -316,11 +299,7 @@ export default function TaskChatPage() {
     } catch (error) {
       console.error("Error in handleStart:", error);
       setIsLoading(false);
-      toast({
-        title: "Error",
-        description: "Failed to start task. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to start task. Please try again." });
     }
   };
 
@@ -549,11 +528,7 @@ export default function TaskChatPage() {
       // Update message status to ERROR
       setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)));
 
-      toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to send message. Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -587,10 +562,8 @@ export default function TaskChatPage() {
   const handleCommit = async () => {
     if (!workspaceId || !currentTaskId) {
       console.error("Missing commit requirements:", { workspaceId, claimedPodId, currentTaskId });
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: `Missing required information to commit. workspaceId: ${!!workspaceId}, taskId: ${!!currentTaskId}`,
-        variant: "destructive",
       });
       return;
     }
@@ -622,11 +595,7 @@ export default function TaskChatPage() {
       setShowCommitModal(true);
     } catch (error) {
       console.error("Error generating commit information:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to generate commit information.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to generate commit information." });
     } finally {
       setIsGeneratingCommitInfo(false);
     }
@@ -639,10 +608,8 @@ export default function TaskChatPage() {
     console.log("🔍 Claimed pod ID:", claimedPodId);
     // Block actual commit in local dev without a pod
     if (!claimedPodId) {
-      toast({
-        title: "Local Development",
+      toast("Local Development", {
         description: "Commit & Push is not available - no pod claimed",
-        variant: "default",
       });
       setShowCommitModal(false);
       return;
@@ -678,10 +645,7 @@ export default function TaskChatPage() {
       // Check if PRs were created
       if (result.data?.prs && Object.keys(result.data.prs).length > 0) {
         // Display success message
-        toast({
-          title: "Success",
-          description: "Changes committed and pushed successfully!",
-        });
+        toast("Success", { description: "Changes committed and pushed successfully!" });
 
         // Save PR URLs as PULL_REQUEST artifacts
         const artifacts = Object.entries(result.data.prs).map(([repo, prUrl]) =>
@@ -729,24 +693,13 @@ export default function TaskChatPage() {
         }
       } else {
         // No PRs were created - show error
-        toast({
-          title: "Error",
-          description: "Changes were pushed but no pull requests were created.",
-          variant: "destructive",
-        });
+        toast.error("Error", { description: "Changes were pushed but no pull requests were created." });
       }
       // Display success message
-      toast({
-        title: "Success",
-        description: "Changes committed and pushed successfully! Check the chat for PR links.",
-      });
+      toast("Success", { description: "Changes committed and pushed successfully! Check the chat for PR links." });
     } catch (error) {
       console.error("Error committing:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to commit changes.",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to commit changes." });
     } finally {
       setIsCommitting(false);
     }

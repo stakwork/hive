@@ -25,7 +25,7 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/comp
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 import { ActionsList } from "@/components/ActionsList";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
 
 export function BrowserArtifactPanel({
@@ -63,8 +63,6 @@ export function BrowserArtifactPanel({
   // Track URL loading status
   const { isReady: isUrlReady } = useBrowserLoadingStatus(activeContent?.url);
 
-  const { toast } = useToast();
-
   // Local toast handler for all action types
   const showActionToast = useCallback((type: string, text: string) => {
     const id = Date.now();
@@ -100,11 +98,7 @@ export function BrowserArtifactPanel({
       // Show error toast if test generation failed
       if (error) {
         console.error("[Browser] Test generation failed:", error);
-        toast({
-          title: "Test Generation Failed",
-          description: error,
-          variant: "destructive",
-        });
+        toast.error("Test Generation Failed", { description: error });
         return; // Don't open modal on error
       }
 

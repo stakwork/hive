@@ -1,4 +1,4 @@
-import { ToastProvider } from "@/components/ui/toast-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -44,17 +44,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="/js/playwright-generator.js" />
       </head>
       <body className={`${inter.className} ${roboto.variable} min-h-screen bg-background text-foreground antialiased`}>
-        <ToastProvider>
-          <ThemeProvider defaultTheme="system" storageKey="theme">
-            <SessionProvider>
-              <WorkspaceProvider>
-                <QueryProvider>
-                  <ModalClient>{children}</ModalClient>
-                </QueryProvider>
-              </WorkspaceProvider>
-            </SessionProvider>
-          </ThemeProvider>
-        </ToastProvider>
+        <ThemeProvider defaultTheme="system" storageKey="theme">
+          <SessionProvider>
+            <WorkspaceProvider>
+              <QueryProvider>
+                <ModalClient>{children}</ModalClient>
+              </QueryProvider>
+            </WorkspaceProvider>
+          </SessionProvider>
+        </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );

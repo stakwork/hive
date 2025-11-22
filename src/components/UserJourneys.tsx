@@ -11,7 +11,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { Archive, ExternalLink, Loader2, Plus, Play, Eye } from "lucide-react";
@@ -52,7 +52,6 @@ interface UserJourneyRow {
 
 export default function UserJourneys() {
   const { id, slug, workspace } = useWorkspace();
-  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
   const [userJourneys, setUserJourneys] = useState<UserJourneyRow[]>([]);
@@ -227,20 +226,13 @@ export default function UserJourneys() {
         throw new Error("Failed to archive task");
       }
 
-      toast({
-        title: "Test Archived",
-        description: "The test has been archived successfully.",
-      });
+      toast("Test Archived", { description: "The test has been archived successfully." });
 
       // Refresh the list
       await fetchUserJourneys();
     } catch (error) {
       console.error("Error archiving test:", error);
-      toast({
-        variant: "destructive",
-        title: "Archive Failed",
-        description: "Unable to archive the test. Please try again.",
-      });
+      toast.error("Archive Failed", { description: "Unable to archive the test. Please try again." });
     } finally {
       setArchivingId(null);
     }
@@ -274,11 +266,7 @@ export default function UserJourneys() {
         const errorData = await response.json();
         console.error("Failed to claim pod:", errorData);
 
-        toast({
-          variant: "destructive",
-          title: "Unable to Create User Journey",
-          description: "No virtual machines are available right now. Please try again later.",
-        });
+        toast.error("Unable to Create User Journey", { description: "No virtual machines are available right now. Please try again later." });
         return;
       }
 
@@ -290,11 +278,7 @@ export default function UserJourneys() {
       }
     } catch (error) {
       console.error("Error claiming pod:", error);
-      toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: "Unable to connect to the service. Please try again later.",
-      });
+      toast.error("Connection Error", { description: "Unable to connect to the service. Please try again later." });
     } finally {
       setIsLoading(false);
     }
@@ -313,11 +297,7 @@ export default function UserJourneys() {
       const testCode = await fetchTestCode(row);
 
       if (!testCode) {
-        toast({
-          variant: "destructive",
-          title: "Test Code Not Found",
-          description: "Unable to retrieve test code for this journey.",
-        });
+        toast.error("Test Code Not Found", { description: "Unable to retrieve test code for this journey." });
         setIsReplayingTask(null);
         return;
       }
@@ -331,11 +311,7 @@ export default function UserJourneys() {
       });
 
       if (!response.ok) {
-        toast({
-          variant: "destructive",
-          title: "Unable to Start Replay",
-          description: "No virtual machines are available right now. Please try again later.",
-        });
+        toast.error("Unable to Start Replay", { description: "No virtual machines are available right now. Please try again later." });
         setIsReplayingTask(null);
         return;
       }
@@ -351,11 +327,7 @@ export default function UserJourneys() {
       }
     } catch (error) {
       console.error("Error starting replay:", error);
-      toast({
-        variant: "destructive",
-        title: "Replay Error",
-        description: "An unexpected error occurred. Please try again.",
-      });
+      toast.error("Replay Error", { description: "An unexpected error occurred. Please try again." });
       setIsReplayingTask(null);
     }
   };
@@ -382,39 +354,27 @@ export default function UserJourneys() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Failed to save user journey:", errorData);
-        toast({
-          variant: "destructive",
-          title: "Failed to Save",
-          description: errorData.error || "Unable to save user journey test. Please try again.",
-        });
+        toast.error("Failed to Save", { description: errorData.error || "Unable to save user journey test. Please try again." });
         return;
       }
 
       const data = await response.json();
 
       if (data.task) {
-        toast({
-          title: "User Journey Created",
+        toast.success("User Journey Created", {
           description: `Task "${title}" has been created and is now in progress.`,
         });
 
         await fetchUserJourneys();
         handleCloseBrowser();
       } else {
-        toast({
-          title: "Test Saved",
-          description: "Test was saved but task creation may have failed.",
-        });
+        toast("Test Saved", { description: "Test was saved but task creation may have failed." });
 
         handleCloseBrowser();
       }
     } catch (error) {
       console.error("Error saving user journey:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
-      });
+      toast.error("Error", { description: "An unexpected error occurred. Please try again." });
     }
   };
 
