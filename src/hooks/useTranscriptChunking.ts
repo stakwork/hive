@@ -42,6 +42,8 @@ export function useTranscriptChunking({
       if (!workspaceSlug) return;
 
       const wordCount = countWords(chunk);
+      const containsKeyword = /\bhive\b/i.test(chunk);
+      
       try {
         await fetch("/api/transcript/chunk", {
           method: "POST",
@@ -50,6 +52,7 @@ export function useTranscriptChunking({
             chunk,
             wordCount,
             workspaceSlug,
+            containsKeyword,
           }),
         });
       } catch (error) {
