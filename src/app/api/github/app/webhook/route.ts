@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: NextRequest) {
+async function POST(req: NextRequest) {
 
     console.log("🔴 Github app webhook received");
 
@@ -31,3 +31,5 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
 }
+
+export { POST };
