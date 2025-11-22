@@ -18,7 +18,7 @@ export default function RoadmapPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Roadmap"
+        title="Plan"
         actions={
           <Button onClick={handleNewFeature}>
             <Plus className="w-4 h-4 mr-2" />

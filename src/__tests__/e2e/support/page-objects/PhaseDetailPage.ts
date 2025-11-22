@@ -88,6 +88,6 @@ export class PhaseDetailPage {
   async clickBack(): Promise<void> {
     const backButton = this.page.locator('button:has-text("Back")').first();
     await backButton.click();
-    await this.page.waitForURL(/\/w\/.*\/roadmap\/.*/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/plan\/.*/, { timeout: 10000 });
   }
 }

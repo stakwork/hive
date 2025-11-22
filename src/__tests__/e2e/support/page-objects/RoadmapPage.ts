@@ -13,7 +13,7 @@ export class RoadmapPage {
    * Navigate to roadmap for a specific workspace
    */
   async goto(workspaceSlug: string): Promise<void> {
-    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/roadmap`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/plan`);
     await this.waitForLoad();
   }
 
@@ -21,9 +21,9 @@ export class RoadmapPage {
    * Wait for roadmap page to fully load
    */
   async waitForLoad(): Promise<void> {
-    await this.page.waitForURL(/\/w\/.*\/roadmap/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/plan/, { timeout: 10000 });
     // Wait for the page title to be visible using data-testid
-    await waitForElement(this.page, '[data-testid="page-title"]:has-text("Roadmap")', { timeout: 10000 });
+    await waitForElement(this.page, '[data-testid="page-title"]:has-text("Plan")', { timeout: 10000 });
   }
 
   /**
@@ -37,11 +37,11 @@ export class RoadmapPage {
     await input.press('Enter');
     
     // Wait for navigation to feature detail page
-    await this.page.waitForURL(/\/w\/.*\/roadmap\/.*/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/plan\/.*/, { timeout: 10000 });
     
     // Extract feature ID from URL
     const url = this.page.url();
-    const match = url.match(/\/roadmap\/([^/]+)$/);
+    const match = url.match(/\/plan\/([^/]+)$/);
     if (!match) {
       throw new Error('Failed to extract feature ID from URL');
     }
@@ -61,6 +61,6 @@ export class RoadmapPage {
    */
   async clickFeature(featureTitle: string): Promise<void> {
     await this.page.locator(`text=${featureTitle}`).click();
-    await this.page.waitForURL(/\/w\/.*\/roadmap\/.*/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/plan\/.*/, { timeout: 10000 });
   }
 }

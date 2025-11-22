@@ -93,7 +93,7 @@ const baseNavigationItems: NavigationItem[] = [
     href: "/build",
     children: [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
-      { icon: Map, label: "Roadmap", href: "/roadmap" },
+      { icon: Map, label: "Plan", href: "/plan" },
     ],
   },
   {

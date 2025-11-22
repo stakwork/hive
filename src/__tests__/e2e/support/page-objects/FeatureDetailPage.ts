@@ -12,7 +12,7 @@ export class FeatureDetailPage {
    * Navigate to feature detail page
    */
   async goto(workspaceSlug: string, featureId: string): Promise<void> {
-    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/roadmap/${featureId}`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/plan/${featureId}`);
     await this.waitForLoad();
   }
 

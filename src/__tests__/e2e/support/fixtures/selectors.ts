@@ -20,7 +20,7 @@ export const selectors = {
     insightsLink: '[data-testid="nav-insights"]',
     learnLink: '[data-testid="nav-learn"]',
     userJourneysLink: '[data-testid="nav-user-journeys"]',
-    roadmapLink: '[data-testid="nav-roadmap"]',
+    roadmapLink: '[data-testid="nav-plan"]',
     callsLink: '[data-testid="nav-calls"]',
   },
 
