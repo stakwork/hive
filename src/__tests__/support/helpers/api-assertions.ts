@@ -21,12 +21,13 @@ export async function expectSuccess<T = any>(
  * @param response - NextResponse or Response object
  * @param expectedError - Expected error message (can be partial match)
  * @param expectedStatus - Expected HTTP status code (default: 400)
+ * @returns Parsed JSON data from response
  */
-export async function expectError(
+export async function expectError<T = any>(
   response: Response | NextResponse,
   expectedError: string | RegExp,
   expectedStatus: number = 400
-): Promise<void> {
+): Promise<T> {
   expect(response.status).toBe(expectedStatus);
   const data = await response.json();
 
@@ -35,6 +36,8 @@ export async function expectError(
   } else {
     expect(data.error).toMatch(expectedError);
   }
+  
+  return data as T;
 }
 
 /**
