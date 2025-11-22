@@ -75,13 +75,12 @@ const NodePointsComponent = () => {
     })
   }, [dataInitial?.nodes, nodesNormalized, normalizedSchemasByType, nodeTypes])
 
-  const nodeCount = nodeInstanceData.length
 
   return (
     <Instances
       geometry={sharedGeometry as BufferGeometry}
-      limit={Math.max(1000, nodeCount)} // Dynamic limit based on actual node count
-      range={Math.max(1000, nodeCount)}
+      limit={100000} // Dynamic limit based on actual node count
+      range={100000}
       visible={!selectedNode || true}
       frustumCulled={false}
     >
