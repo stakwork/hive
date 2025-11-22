@@ -85,7 +85,8 @@ export async function POST(
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
-    const member = await addWorkspaceMember(access.workspace.id, githubUsername, role);
+    // Pass the session user ID as the inviter/adder
+    const member = await addWorkspaceMember(access.workspace.id, githubUsername, role, userId);
     return NextResponse.json({ member }, { status: 201 });
   } catch (error: unknown) {
     console.error("Error adding workspace member:", error);

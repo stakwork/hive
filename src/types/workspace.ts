@@ -88,6 +88,7 @@ export interface WorkspaceMember {
   userId: string;
   role: WorkspaceRole;
   joinedAt: string;
+  addedById?: string | null;
   user: WorkspaceMemberUser;
 }
 
