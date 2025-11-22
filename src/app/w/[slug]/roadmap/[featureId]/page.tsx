@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2, ChevronRight } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
@@ -32,9 +31,6 @@ export default function FeatureDetailPage() {
 
   // Tab state management
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "overview");
-  const [personasExpanded, setPersonasExpanded] = useState(false);
-  const [userStoriesExpanded, setUserStoriesExpanded] = useState(false);
-  const [requirementsExpanded, setRequirementsExpanded] = useState(false);
 
   // User story creation state
   const [newStoryTitle, setNewStoryTitle] = useState("");
@@ -86,25 +82,6 @@ export default function FeatureDetailPage() {
     data: feature,
     onSave: handleSave,
   });
-
-  // Auto-expand sections if they have content
-  useEffect(() => {
-    if (feature) {
-      // Check if personas have content
-      const hasPersonas =
-        feature.personas && feature.personas.length > 0 && feature.personas.some((p) => p.trim().length > 0);
-      setPersonasExpanded(hasPersonas || false);
-
-      // Check if user stories exist
-      const hasUserStories = feature.userStories && feature.userStories.length > 0;
-      setUserStoriesExpanded(hasUserStories || false);
-
-      // Check if requirements have content
-      const hasRequirements = feature.requirements && feature.requirements.trim().length > 0;
-      setRequirementsExpanded(hasRequirements || false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feature?.id]); // Only run when feature id changes (initial load)
 
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
     await handleSave({ status });
@@ -465,68 +442,44 @@ export default function FeatureDetailPage() {
                 enableImageUpload={true}
               />
 
-              {/* User Personas - Collapsible */}
-              <Collapsible open={personasExpanded} onOpenChange={setPersonasExpanded}>
-                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
-                  <ChevronRight className={`h-4 w-4 transition-transform ${personasExpanded ? "rotate-90" : ""}`} />
-                  User Personas
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <PersonasSection
-                    personas={feature.personas || []}
-                    savedField={savedField}
-                    saving={saving}
-                    saved={saved}
-                    onChange={(value) => updateFeature({ personas: value })}
-                    onBlur={(value) => handleFieldBlur("personas", value)}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+              {/* User Personas - Always visible */}
+              <PersonasSection
+                personas={feature.personas || []}
+                savedField={savedField}
+                saving={saving}
+                saved={saved}
+                onChange={(value) => updateFeature({ personas: value })}
+                onBlur={(value) => handleFieldBlur("personas", value)}
+              />
 
-              {/* User Stories - Collapsible */}
-              <Collapsible open={userStoriesExpanded} onOpenChange={setUserStoriesExpanded}>
-                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
-                  <ChevronRight className={`h-4 w-4 transition-transform ${userStoriesExpanded ? "rotate-90" : ""}`} />
-                  User Stories
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <UserStoriesSection
-                    featureId={featureId}
-                    userStories={feature.userStories}
-                    newStoryTitle={newStoryTitle}
-                    creatingStory={creatingStory}
-                    onNewStoryTitleChange={setNewStoryTitle}
-                    onAddUserStory={handleAddUserStory}
-                    onDeleteUserStory={handleDeleteUserStory}
-                    onUpdateUserStory={handleUpdateUserStory}
-                    onReorderUserStories={handleReorderUserStories}
-                    onAcceptGeneratedStory={handleAcceptGeneratedStory}
-                    shouldFocusRef={storyFocusRef}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+              {/* User Stories - Always visible */}
+              <UserStoriesSection
+                featureId={featureId}
+                userStories={feature.userStories}
+                newStoryTitle={newStoryTitle}
+                creatingStory={creatingStory}
+                onNewStoryTitleChange={setNewStoryTitle}
+                onAddUserStory={handleAddUserStory}
+                onDeleteUserStory={handleDeleteUserStory}
+                onUpdateUserStory={handleUpdateUserStory}
+                onReorderUserStories={handleReorderUserStories}
+                onAcceptGeneratedStory={handleAcceptGeneratedStory}
+                shouldFocusRef={storyFocusRef}
+              />
 
-              {/* Requirements - Collapsible */}
-              <Collapsible open={requirementsExpanded} onOpenChange={setRequirementsExpanded}>
-                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
-                  <ChevronRight className={`h-4 w-4 transition-transform ${requirementsExpanded ? "rotate-90" : ""}`} />
-                  Requirements
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <AITextareaSection
-                    id="requirements"
-                    label="Requirements"
-                    type="requirements"
-                    featureId={featureId}
-                    value={feature.requirements}
-                    savedField={savedField}
-                    saving={saving}
-                    saved={saved}
-                    onChange={(value) => updateFeature({ requirements: value })}
-                    onBlur={(value) => handleFieldBlur("requirements", value)}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+              {/* Requirements - Always visible */}
+              <AITextareaSection
+                id="requirements"
+                label="Requirements"
+                type="requirements"
+                featureId={featureId}
+                value={feature.requirements}
+                savedField={savedField}
+                saving={saving}
+                saved={saved}
+                onChange={(value) => updateFeature({ requirements: value })}
+                onBlur={(value) => handleFieldBlur("requirements", value)}
+              />
 
               {/* Navigation buttons */}
               <div className="flex justify-end pt-4">
