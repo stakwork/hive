@@ -213,59 +213,80 @@ export function AITextareaSection({
         /* Content Area - Toggle between Edit and Preview */
         <div className="space-y-2">
           <div className="relative">
-            {/* Toggle Button - positioned in top right */}
-            <div className="absolute top-2 right-2 z-10">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleModeSwitch(mode === "edit" ? "preview" : "edit")}
-                    className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90"
-                  >
-                    {mode === "edit" ? (
-                      <Eye className="h-4 w-4" />
-                    ) : (
-                      <Edit className="h-4 w-4" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  {mode === "edit" ? "Preview markdown" : "Edit content"}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-
             {mode === "edit" ? (
-              <Textarea
-                ref={textareaRef}
-                id={id}
-                placeholder={`Type your ${label.toLowerCase()} here...`}
-                value={value || ""}
-                onChange={(e) => onChange(e.target.value)}
-                onBlur={(e) => onBlur(e.target.value || null)}
-                rows={rows}
-                className={cn("resize-y font-mono text-sm min-h-[200px] pr-12", className)}
-                isDragging={isDragging}
-                isUploading={isUploading}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                onPaste={handlePaste}
-              />
+              <>
+                {/* Sticky Toggle Button - top right */}
+                <div className="sticky top-0 z-10 pointer-events-none">
+                  <div className="flex justify-end pointer-events-auto pt-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleModeSwitch("preview")}
+                          className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mr-2"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        Preview markdown
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+                <Textarea
+                  ref={textareaRef}
+                  id={id}
+                  placeholder={`Type your ${label.toLowerCase()} here...`}
+                  value={value || ""}
+                  onChange={(e) => onChange(e.target.value)}
+                  onBlur={(e) => onBlur(e.target.value || null)}
+                  rows={rows}
+                  className={cn("resize-y font-mono text-sm min-h-[200px] -mt-10 pt-12 pr-12", className)}
+                  isDragging={isDragging}
+                  isUploading={isUploading}
+                  onDragEnter={handleDragEnter}
+                  onDragLeave={handleDragLeave}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  onPaste={handlePaste}
+                />
+              </>
             ) : (
-              <div className={cn(
-                "rounded-md border border-border bg-muted/30 p-4 min-h-[200px] pr-12",
-                !value && "flex items-center justify-center text-sm text-muted-foreground",
-                className
-              )}>
-                {value ? (
-                  <MarkdownRenderer size="compact">{value}</MarkdownRenderer>
-                ) : (
-                  <p>No content yet. Click Edit to add {label.toLowerCase()}.</p>
-                )}
-              </div>
+              <>
+                {/* Sticky Toggle Button - top right */}
+                <div className="sticky top-0 z-10 pointer-events-none">
+                  <div className="flex justify-end pointer-events-auto pt-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleModeSwitch("edit")}
+                          className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mr-2"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        Edit content
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+                <div className={cn(
+                  "rounded-md border border-border bg-muted/30 p-4 min-h-[200px] pr-12 -mt-10 pt-12",
+                  !value && "flex items-center justify-center text-sm text-muted-foreground",
+                  className
+                )}>
+                  {value ? (
+                    <MarkdownRenderer size="compact">{value}</MarkdownRenderer>
+                  ) : (
+                    <p>No content yet. Click Edit to add {label.toLowerCase()}.</p>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
