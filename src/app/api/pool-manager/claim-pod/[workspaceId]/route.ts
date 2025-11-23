@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, updatePodRepositories, startGoose, checkGooseRunning, POD_PORTS } from "@/lib/pods";
+import { claimPodAndGetFrontend, updatePodRepositories, startGoose, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -110,34 +110,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
     // Get services from swarm
-    const services = workspace.swarm.services as Array<{ name: string; port: number; scripts?: Record<string, string> }> | null | undefined;
+    const services = workspace.swarm.services as
+      | Array<{ name: string; port: number; scripts?: Record<string, string> }>
+      | null
+      | undefined;
 
     const {
       frontend,
       workspace: podWorkspace,
-      processList,
+      // processList,
     } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined);
-
-    // If "latest" parameter is provided, update the pod repositories
-    if (shouldUpdateToLatest) {
-      const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
-
-      if (!controlPortUrl) {
-        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository update`);
-      } else {
-        const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
-
-        if (repositories.length > 0) {
-          try {
-            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
-          } catch (error) {
-            console.error("Error updating pod repositories:", error);
-          }
-        } else {
-          console.log(">>> No repositories to update");
-        }
-      }
-    }
 
     // Extract control, IDE, and goose URLs
     const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
@@ -147,15 +129,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let goose: string | null = null;
     if (shouldIncludeGoose) {
       // Check if goose service is already running by checking process list
-      const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
+      // const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
 
-      if (gooseIsRunning) {
-        // Goose is always on the designated port
-        goose = podWorkspace.portMappings[POD_PORTS.GOOSE] || null;
-        if (goose) {
-          console.log(`✅ Goose service already running on port ${POD_PORTS.GOOSE}:`, goose);
-        }
-      }
+      // if (gooseIsRunning) {
+      //   // Goose is always on the designated port
+      //   goose = podWorkspace.portMappings[POD_PORTS.GOOSE] || null;
+      //   if (goose) {
+      //     console.log(`✅ Goose service already running on port ${POD_PORTS.GOOSE}:`, goose);
+      //   }
+      // }
 
       // If goose service is not running, start it up via control port
       if (!goose && control) {
@@ -192,6 +174,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       } catch (error) {
         console.error("Failed to store agent credentials:", error);
         // Don't fail the request, but log the error
+      }
+    }
+
+    // If "latest" parameter is provided, update the pod repositories
+    if (shouldUpdateToLatest) {
+      const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+
+      if (!controlPortUrl) {
+        console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository update`);
+      } else {
+        const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
+
+        if (repositories.length > 0) {
+          try {
+            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+          } catch (error) {
+            console.error("Error updating pod repositories:", error);
+          }
+        } else {
+          console.log(">>> No repositories to update");
+        }
       }
     }
 
