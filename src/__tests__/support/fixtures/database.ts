@@ -73,6 +73,11 @@ export async function resetDatabase() {
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
     await db.task.deleteMany();
+    await db.screenshot.deleteMany();
+    await db.stakworkRun.deleteMany();
+    await db.phase.deleteMany();
+    await db.userStory.deleteMany();
+    await db.feature.deleteMany();
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
     await db.janitorConfig.deleteMany();
@@ -100,6 +105,11 @@ async function aggressiveReset() {
       "artifacts",
       "chat_messages",
       "tasks",
+      "screenshots",
+      "stakwork_runs",
+      "phases",
+      "user_stories",
+      "features",
       "janitor_recommendations",
       "janitor_runs",
       "janitor_configs",
