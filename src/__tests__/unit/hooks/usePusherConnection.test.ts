@@ -188,7 +188,10 @@ describe("usePusherConnection Hook", () => {
       )?.[1];
       
       expect(subscriptionErrorCallback).toBeDefined();
-      subscriptionErrorCallback?.(error);
+      
+      await act(async () => {
+        subscriptionErrorCallback?.(error);
+      });
 
       await waitFor(() => {
         expect(result.current.isConnected).toBe(false);
@@ -499,7 +502,9 @@ describe("usePusherConnection Hook", () => {
       });
 
       // Now disconnect
-      result.current.disconnect();
+      act(() => {
+        result.current.disconnect();
+      });
 
       expect(mockChannel.unbind_all).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`task-${taskId}`);

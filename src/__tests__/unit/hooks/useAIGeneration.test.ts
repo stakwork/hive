@@ -195,8 +195,13 @@ describe("useAIGeneration", () => {
       }),
     );
 
-    result.current.setContent("Content to clear", "quick");
-    result.current.clear();
+    act(() => {
+      result.current.setContent("Content to clear", "quick");
+    });
+    
+    act(() => {
+      result.current.clear();
+    });
 
     expect(result.current.content).toBeNull();
     expect(result.current.source).toBeNull();
