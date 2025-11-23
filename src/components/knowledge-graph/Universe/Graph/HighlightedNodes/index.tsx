@@ -209,7 +209,7 @@ export const HighlightedNodesLayer = memo(() => {
 
       // Fade particle in/out for nice effect
       const fade = Math.sin(p.t * Math.PI)
-      p.mesh.material.opacity = 0.2 + fade * 0.8
+      ;(p.mesh.material as MeshBasicMaterial).opacity = 0.2 + fade * 0.8
     })
   })
 
