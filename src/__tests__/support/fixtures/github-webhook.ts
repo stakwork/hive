@@ -152,7 +152,7 @@ export function computeValidWebhookSignature(
  */
 export function createWebhookRequest(
   url: string,
-  payload: GitHubPushPayload,
+  payload: GitHubPushPayload | Record<string, any>,
   signature: string,
   webhookId: string,
   event: string = "push"
@@ -211,7 +211,26 @@ export const mockGitHubEvents = {
   pullRequest: "pull_request",
   issues: "issues",
   release: "release",
+  githubAppAuthorization: "github_app_authorization",
 };
+
+/**
+ * Creates a GitHub App authorization webhook payload
+ * Used for testing /api/github/app/webhook endpoint
+ */
+export function createGitHubAppAuthorizationPayload(
+  action: string = "revoked",
+  senderLogin: string = "testuser"
+) {
+  return {
+    action,
+    sender: {
+      login: senderLogin,
+      id: 12345,
+      type: "User",
+    },
+  };
+}
 
 /**
  * Common branch names for testing branch filtering
