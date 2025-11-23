@@ -13,7 +13,7 @@ interface HighlightEvent {
 
 export const useWebhookHighlights = () => {
   const { workspace } = useWorkspace()
-  const { setWebhookHighlightNodes } = useGraphStore((s) => s)
+  const { setWebhookHighlightNodes, addWebhookHighlightChunk } = useGraphStore((s) => s)
 
   useEffect(() => {
     try {
@@ -30,8 +30,14 @@ export const useWebhookHighlights = () => {
 
         // Verify this is for the current workspace
         if (data.workspaceId === workspace.slug) {
-          console.log("setting webhook highlight nodes:", data.nodeIds, data.depth)
-          setWebhookHighlightNodes(data.nodeIds, data.depth)
+          console.log("setting webhook highlight nodes:", data.nodeIds, data.depth, data.title)
+
+          // Use new chunk-based system if title is provided, fallback to legacy system
+          if (data.title) {
+            addWebhookHighlightChunk(data.title, data.nodeIds, data.depth)
+          } else {
+            setWebhookHighlightNodes(data.nodeIds, data.depth)
+          }
         }
       }
 
@@ -44,5 +50,5 @@ export const useWebhookHighlights = () => {
     } catch (error) {
       console.error('Error subscribing to webhook highlights:', error)
     }
-  }, [workspace?.slug, setWebhookHighlightNodes])
+  }, [workspace?.slug, setWebhookHighlightNodes, addWebhookHighlightChunk])
 }

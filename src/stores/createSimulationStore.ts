@@ -194,9 +194,6 @@ export const createSimulationStore = (
         n.fx = undefined;
         n.fy = undefined;
         n.fz = undefined;
-        n.x = 0;
-        n.y = 0;
-        n.z = 0;
       });
     },
 

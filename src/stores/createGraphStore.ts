@@ -1,7 +1,7 @@
 import { NodeExtended } from '@Universe/types';
 import { create } from "zustand";
 import { createDataStore } from "./createDataStore";
-import { type GraphStore, type GraphStyle } from "./graphStore.types";
+import { type GraphStore, type GraphStyle, type HighlightChunk } from "./graphStore.types";
 
 // Re-export types for backward compatibility
 export type { GraphStyle, Neighbourhood, Position } from "./graphStore.types";
@@ -44,6 +44,8 @@ const defaultData: Omit<
   | 'setCameraTarget'
   | 'saveCameraState'
   | 'setWebhookHighlightNodes'
+  | 'addWebhookHighlightChunk'
+  | 'removeWebhookHighlightChunk'
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
 > = {
@@ -76,6 +78,7 @@ const defaultData: Omit<
   cameraPosition: null,
   cameraTarget: null,
   webhookHighlightNodes: [],
+  webhookHighlightChunks: [],
   highlightTimestamp: null,
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
@@ -200,8 +203,33 @@ export const createGraphStore = (
       highlightTimestamp: Date.now(),
       webhookHighlightDepth: depth
     }),
+    addWebhookHighlightChunk: (title: string, nodeIds: string[], depth = 0) => {
+      const id = crypto.randomUUID()
+      const chunk: HighlightChunk = {
+        id,
+        title,
+        nodeIds,
+        depth,
+        timestamp: Date.now()
+      }
+      const { webhookHighlightChunks } = get()
+      set({
+        webhookHighlightChunks: [...webhookHighlightChunks, chunk],
+        highlightTimestamp: Date.now()
+      })
+      return id
+    },
+    removeWebhookHighlightChunk: (id: string) => {
+      const { webhookHighlightChunks } = get()
+      const updatedChunks = webhookHighlightChunks.filter(chunk => chunk.id !== id)
+      set({
+        webhookHighlightChunks: updatedChunks,
+        highlightTimestamp: updatedChunks.length > 0 ? Date.now() : null
+      })
+    },
     clearWebhookHighlights: () => set({
       webhookHighlightNodes: [],
+      webhookHighlightChunks: [],
       highlightTimestamp: null
     }),
     setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
