@@ -1,4 +1,3 @@
-import { nodeSize } from '@Universe/Graph/Cubes/constants';
 import { Node, NodeExtended } from '@Universe/types';
 import {
   forceCenter,
@@ -200,40 +199,128 @@ export const createSimulationStore = (
     // --- STYLE 1: ORGANIC (Connected Subgraphs) ---
     addLinkForce: () => {
       const { simulation } = get();
+      const nodes = simulation.nodes();
 
       // Defensive link check
       const linkForce = simulation.force('link');
       const currentLinks = linkForce ? linkForce.links() : [];
 
-      simulation
-        // Strong center force pulls the wide "Grid" shape back into a blob
-        .force('center', forceCenter().strength(0.1))
+      const resetPosition = {
+        fx: null,
+        fy: null,
+        fz: null,
+        x: null,
+        y: null,
+        z: null,
+        vx: null,
+        vy: null,
+        vz: null,
+      };
 
-        // Strong negative charge pushes nodes apart to create clarity
-        .force(
-          'charge',
-          forceManyBody()
-            .strength((_d: NodeExtended) => -4)
-        )
+      // Check if we're in concepts filter tab to enable Feature clustering
+      const { activeFilterTab } = graphStore.getState();
+      const shouldUseFeatureClustering = activeFilterTab === 'concepts';
 
-        // Longer links to create space between connected nodes
-        .force(
-          'link',
-          forceLink()
-            .links(currentLinks)
-            .id((d: Node) => d.ref_id)
-            .distance(10)
-            .strength(1)
-        )
+      if (shouldUseFeatureClustering) {
+        // Find all Feature nodes to act as cluster centers
+        const featureNodes = nodes.filter((node: NodeExtended) => node.node_type === 'Feature');
 
-        // Large collision radius to prevent tight bunching
-        .force(
-          'collide',
-          forceCollide()
-            .radius((d: NodeExtended) => (d.scale || 1) * nodeSize * 4)
-            .strength(0.7)
-        )
-      // .force('radial', forceRadial(900, 0, 0, 0).strength(0.1))
+        if (featureNodes.length > 0) {
+          // Create neighborhoods using Feature nodes as centers
+          const featureNeighborhoods = featureNodes.map((node: NodeExtended) => ({ ref_id: node.ref_id, name: node.name }));
+          const centers = distributeNodesOnSphere(featureNeighborhoods, 3000);
+
+          // Assign each non-Feature node to Feature nodes in a round-robin fashion for even distribution
+          let nonFeatureIndex = 0;
+          const updatedNodes = simulation.nodes().map((node: NodeExtended) => {
+            if (node.node_type === 'Feature') {
+              // Feature nodes become neighborhood centers
+              return { ...node, neighbourHood: node.ref_id };
+            } else {
+              // Distribute other nodes evenly across Feature nodes
+              const assignedFeature = featureNodes[nonFeatureIndex % featureNodes.length];
+              nonFeatureIndex++;
+              return { ...node, neighbourHood: assignedFeature.ref_id };
+            }
+          });
+
+          simulation
+            .nodes(updatedNodes)
+            .force('center', forceCenter().strength(0.05))
+            .force('charge', forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -30))
+            .force(
+              'x',
+              forceX((n: NodeExtended) => {
+                const c = centers[n.neighbourHood || ''];
+                return c ? c.x : 0;
+              }).strength(0.2)
+            )
+            .force(
+              'y',
+              forceY((n: NodeExtended) => {
+                const c = centers[n.neighbourHood || ''];
+                return c ? c.y : 0;
+              }).strength(0.2)
+            )
+            .force(
+              'z',
+              forceZ((n: NodeExtended) => {
+                const c = centers[n.neighbourHood || ''];
+                return c ? c.z : 0;
+              }).strength(0.2)
+            )
+            .force(
+              'link',
+              forceLink()
+                .links(currentLinks)
+                .id((d: Node) => d.ref_id)
+                .distance(200)
+                .strength(0.3)
+            )
+            .force('collide', forceCollide().radius((node: NodeExtended) => (node.scale || 1) * 80).strength(0.7));
+        } else {
+          // No Feature nodes in concepts mode - use compact layout
+          simulation
+            .force('center', forceCenter().strength(0.3))
+            .force('charge', forceManyBody().strength(-200))
+            .force('radial', null)
+            .force('x', forceX().strength(0.1))
+            .force('y', forceY().strength(0.1))
+            .force('z', forceZ().strength(0.1))
+            .force(
+              'link',
+              forceLink()
+                .links(currentLinks)
+                .id((d: Node) => d.ref_id)
+                .distance(150)
+                .strength(0.5)
+            )
+            .force('collide', forceCollide().radius((node: NodeExtended) => (node.scale || 1) * 60).strength(0.8));
+        }
+      } else {
+        // Fallback to regular link-based layout when not in concepts mode
+        simulation
+          // .force('center', forceCenter().strength(0.2))
+          .force('charge', forceManyBody().strength(-600))
+          .force('radial', null)
+          .force('x', forceX().strength(0.1))
+          .force('y', forceY().strength(0.1))
+          .force('z', forceZ().strength(0.1))
+          .force(
+            'link',
+            forceLink()
+              .links(currentLinks)
+              .id((d: Node) => d.ref_id)
+              .distance(20)
+              .strength(1)
+          )
+          .force(
+            'collide',
+            forceCollide()
+              .radius((d: NodeExtended) => (d.scale || 1) * 30)
+              .strength(0.8)
+          );
+      }
     },
 
     // --- STYLE 2: CLUSTER FORCE (Data Grouping) ---
@@ -245,11 +332,11 @@ export const createSimulationStore = (
       const linkForce = simulation.force('link');
       const currentLinks = linkForce ? linkForce.links() : [];
 
-      const centers = neighbourhoods?.length ? distributeNodesOnSphere(neighbourhoods, 3000) : {};
+      const centers = neighbourhoods?.length ? distributeNodesOnSphere(neighbourhoods, 5000) : {};
 
       simulation
         .force('center', forceCenter().strength(0.01))
-        .force('charge', forceManyBody().strength(-30))
+        .force('charge', forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -50))
         .force(
           'x',
           forceX((n: NodeExtended) => {
@@ -279,7 +366,7 @@ export const createSimulationStore = (
             .id((d: Node) => d.ref_id)
             .strength(0.01)
         )
-        .force('collide', forceCollide().radius(50).strength(0.5));
+        .force('collide', forceCollide().radius((node: NodeExtended) => (node.scale || 1) * 120).strength(0.8));
     },
 
     // --- STYLE 3: SPLIT / GRID (Deterministic) ---

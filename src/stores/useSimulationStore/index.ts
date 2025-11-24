@@ -4,7 +4,6 @@ import {
   forceCollide,
   forceLink,
   forceManyBody,
-  forceRadial,
   forceSimulation,
   forceX,
   forceY,
@@ -133,8 +132,17 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   setForces: () => {
-    const { simulationRestart, addLinkForce, addClusterForce, addSplitForce } = get()
+    const { simulation, simulationRestart, addLinkForce, addClusterForce, addSplitForce } = get()
     const { graphStyle } = useGraphStore.getState()
+
+    if (!simulation) return
+
+    // Unlock all nodes before applying new layout forces
+    simulation.nodes().forEach((n: NodeExtended) => {
+      n.fx = undefined
+      n.fy = undefined
+      n.fz = undefined
+    })
 
     switch (graphStyle) {
       case 'sphere':
@@ -156,76 +164,212 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   addLinkForce: () => {
     const { simulation } = get()
+    const nodes = simulation.nodes()
+    const { activeFilterTab } = useGraphStore.getState()
 
-    simulation
-      .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
-      .force('y', null)
-      .force('radial', forceRadial(900, 0, 0, 0).strength(0.1))
-      .force('center', forceCenter().strength(1))
-      .force(
-        'charge',
-        forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -100),
-        // .distanceMax(90),
-      )
-      .force('x', forceX().strength(0))
-      .force('y', forceY().strength(0))
-      .force('z', forceZ().strength(0))
-      .force(
-        'link',
-        forceLink()
-          .links(
-            simulation
-              .force('link')
-              .links()
-              .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
+    // Check if we're in concepts filter tab to enable Feature clustering
+    const shouldUseFeatureClustering = activeFilterTab === 'concepts'
+
+    if (shouldUseFeatureClustering) {
+      // Find all Feature nodes to act as cluster centers
+      const featureNodes = nodes.filter((node: NodeExtended) => node.node_type === 'Feature')
+
+      if (featureNodes.length > 0) {
+        // Create neighborhoods using Feature nodes as centers
+        const featureNeighborhoods = featureNodes.map((node: NodeExtended) => ({ ref_id: node.ref_id, name: node.name }))
+        const neighborhoodCenters = distributeNodesOnSphere(featureNeighborhoods, 3000)
+
+        // Assign each non-Feature node to Feature nodes in a round-robin fashion for even distribution
+        let nonFeatureIndex = 0
+        const updatedNodes = simulation.nodes().map((node: NodeExtended) => {
+          if (node.node_type === 'Feature') {
+            // Feature nodes become neighborhood centers
+            return { ...node, neighbourHood: node.ref_id }
+          } else {
+            // Distribute other nodes evenly across Feature nodes
+            const assignedFeature = featureNodes[nonFeatureIndex % featureNodes.length]
+            nonFeatureIndex++
+            return { ...node, neighbourHood: assignedFeature.ref_id }
+          }
+        })
+
+        simulation
+          .nodes(updatedNodes)
+          .force('y', null)
+          .force('radial', null)
+          .force('center', forceCenter().strength(0.1))
+          .force(
+            'charge',
+            forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -50),
           )
-          .strength(1)
-          .distance(300)
-          .id((d: Node) => d.ref_id),
-      )
-      .force(
-        'collide',
-        forceCollide()
-          .radius((node: NodeExtended) => (node.scale || 1) * 80)
-          .strength(0.5)
-          .iterations(1),
-      )
+          .force(
+            'x',
+            forceX((n: NodeExtended) => {
+              const neighborhood = neighborhoodCenters[n.neighbourHood || '']
+              return neighborhood?.x || 0
+            }).strength(0.2),
+          )
+          .force(
+            'y',
+            forceY((n: NodeExtended) => {
+              const neighborhood = neighborhoodCenters[n.neighbourHood || '']
+              return neighborhood?.y || 0
+            }).strength(0.2),
+          )
+          .force(
+            'z',
+            forceZ((n: NodeExtended) => {
+              const neighborhood = neighborhoodCenters[n.neighbourHood || '']
+              return neighborhood?.z || 0
+            }).strength(0.2),
+          )
+          .force(
+            'link',
+            forceLink()
+              .links(
+                simulation
+                  .force('link')
+                  .links()
+                  .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
+              )
+              .strength(0.3)
+              .distance(400)
+              .id((d: Node) => d.ref_id),
+          )
+          .force(
+            'collide',
+            forceCollide()
+              .radius((node: NodeExtended) => (node.scale || 1) * 100)
+              .strength(0.7)
+              .iterations(2),
+          )
+      } else {
+        // No Feature nodes in concepts mode - use compact layout
+        simulation
+          .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
+          .force('y', null)
+          .force('radial', null)
+          .force('center', forceCenter().strength(0.3))
+          .force('charge', forceManyBody().strength(-200))
+          .force('x', forceX().strength(0.1))
+          .force('y', forceY().strength(0.1))
+          .force('z', forceZ().strength(0.1))
+          .force(
+            'link',
+            forceLink()
+              .links(
+                simulation
+                  .force('link')
+                  .links()
+                  .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
+              )
+              .strength(0.5)
+              .distance(150)
+              .id((d: Node) => d.ref_id),
+          )
+          .force(
+            'collide',
+            forceCollide()
+              .radius((node: NodeExtended) => (node.scale || 1) * 60)
+              .strength(0.8)
+              .iterations(2),
+          )
+      }
+    } else {
+      // Fallback to regular link-based layout when not in concepts mode
+      simulation
+        .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
+        .force('y', null)
+        .force('radial', null)
+        .force('center', forceCenter().strength(0.2))
+        .force('charge', forceManyBody().strength(-100))
+        .force('x', forceX().strength(0.1))
+        .force('y', forceY().strength(0.1))
+        .force('z', forceZ().strength(0.1))
+        .force(
+          'link',
+          forceLink()
+            .links(
+              simulation
+                .force('link')
+                .links()
+                .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
+            )
+            .strength(0.7)
+            .distance(200)
+            .id((d: Node) => d.ref_id),
+        )
+        .force(
+          'collide',
+          forceCollide()
+            .radius((node: NodeExtended) => (node.scale || 1) * 80)
+            .strength(0.8)
+            .iterations(2),
+        )
+    }
   },
 
   addClusterForce: () => {
     const { simulation } = get()
-    const { neighbourhoods } = useGraphStore.getState()
-    const neighborhoodCenters = neighbourhoods?.length ? distributeNodesOnSphere(neighbourhoods, 3000) : null
+    const nodes = simulation.nodes()
+
+    // Find all Feature nodes to act as cluster centers
+    const featureNodes = nodes.filter((node: NodeExtended) => node.node_type === 'Feature')
+
+    // If no Feature nodes, fall back to regular layout
+    if (!featureNodes.length) {
+      simulation
+        .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
+        .force('charge', forceManyBody().strength(-100))
+        .force('center', forceCenter().strength(0.1))
+        .force('collide', forceCollide().radius(100).strength(0.8))
+      return
+    }
+
+    // Create neighborhoods using Feature nodes as centers
+    const featureNeighborhoods = featureNodes.map((node: NodeExtended) => ({ ref_id: node.ref_id, name: node.name }))
+    const neighborhoodCenters = distributeNodesOnSphere(featureNeighborhoods, 5000)
+
+    // Assign each non-Feature node to Feature nodes in a round-robin fashion for even distribution
+    let nonFeatureIndex = 0
+    const updatedNodes = simulation.nodes().map((node: NodeExtended) => {
+      if (node.node_type === 'Feature') {
+        // Feature nodes become neighborhood centers
+        return { ...node, ...resetPosition, neighbourHood: node.ref_id }
+      } else {
+        // Distribute other nodes evenly across Feature nodes
+        const assignedFeature = featureNodes[nonFeatureIndex % featureNodes.length]
+        nonFeatureIndex++
+        return { ...node, ...resetPosition, neighbourHood: assignedFeature.ref_id }
+      }
+    })
 
     simulation
-      .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
+      .nodes(updatedNodes)
       .force(
         'charge',
-        forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * 0),
+        forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -50),
       )
       .force(
         'x',
         forceX((n: NodeExtended) => {
-          const neighborhood = neighborhoodCenters && n.neighbourHood ? neighborhoodCenters[n.neighbourHood] : null
-
+          const neighborhood = neighborhoodCenters[n.neighbourHood || '']
           return neighborhood?.x || 0
-        }).strength(0.1), // Attract to X
+        }).strength(0.3),
       )
       .force(
         'y',
         forceY((n: NodeExtended) => {
-          const neighborhood = neighborhoodCenters && n.neighbourHood ? neighborhoodCenters[n.neighbourHood] : null
-
+          const neighborhood = neighborhoodCenters[n.neighbourHood || '']
           return neighborhood?.y || 0
-        }).strength(0.1), // Attract to X
+        }).strength(0.3),
       )
       .force(
         'z',
         forceZ((n: NodeExtended) => {
-          const neighborhood = neighborhoodCenters && n.neighbourHood ? neighborhoodCenters[n.neighbourHood] : null
-
+          const neighborhood = neighborhoodCenters[n.neighbourHood || '']
           return neighborhood?.z || 0
-        }).strength(0.1), // Attract to X
+        }).strength(0.3),
       )
       .force(
         'link',
@@ -237,15 +381,15 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
               .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
           )
           .strength(0)
-          .distance(400)
+          .distance(600)
           .id((d: NodeExtended) => d.ref_id),
       )
       .force(
         'collide',
         forceCollide()
-          .radius((node: NodeExtended) => (node.scale || 1) * 95)
-          .strength(0.5)
-          .iterations(1),
+          .radius((node: NodeExtended) => (node.scale || 1) * 120)
+          .strength(0.8)
+          .iterations(2),
       )
   },
 
