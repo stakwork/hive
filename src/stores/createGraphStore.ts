@@ -1,7 +1,7 @@
 import { NodeExtended } from '@Universe/types';
 import { create } from "zustand";
 import { createDataStore } from "./createDataStore";
-import { type GraphStore, type GraphStyle } from "./graphStore.types";
+import { type GraphStore, type GraphStyle, type HighlightChunk } from "./graphStore.types";
 
 // Re-export types for backward compatibility
 export type { GraphStyle, Neighbourhood, Position } from "./graphStore.types";
@@ -44,6 +44,8 @@ const defaultData: Omit<
   | 'setCameraTarget'
   | 'saveCameraState'
   | 'setWebhookHighlightNodes'
+  | 'addHighlightChunk'
+  | 'removeHighlightChunk'
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
 > = {
@@ -76,6 +78,7 @@ const defaultData: Omit<
   cameraPosition: null,
   cameraTarget: null,
   webhookHighlightNodes: [],
+  highlightChunks: [],
   highlightTimestamp: null,
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
@@ -200,8 +203,32 @@ export const createGraphStore = (
       highlightTimestamp: Date.now(),
       webhookHighlightDepth: depth
     }),
+    addHighlightChunk: (title: string, ref_ids: string[]) => {
+      const chunkId = crypto.randomUUID()
+      const chunk: HighlightChunk = {
+        chunkId,
+        title,
+        ref_ids,
+        timestamp: Date.now()
+      }
+      const { highlightChunks } = get()
+      set({
+        highlightChunks: [...highlightChunks, chunk],
+        highlightTimestamp: Date.now()
+      })
+      return chunkId
+    },
+    removeHighlightChunk: (chunkId: string) => {
+      const { highlightChunks } = get()
+      const updatedChunks = highlightChunks.filter(chunk => chunk.chunkId !== chunkId)
+      set({
+        highlightChunks: updatedChunks,
+        highlightTimestamp: updatedChunks.length > 0 ? Date.now() : null
+      })
+    },
     clearWebhookHighlights: () => set({
       webhookHighlightNodes: [],
+      highlightChunks: [],
       highlightTimestamp: null
     }),
     setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),

@@ -33,7 +33,7 @@ function DashboardInner() {
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
 
   useGraphPolling({
-    enabled: activeFilterTab === 'all',
+    enabled: false && activeFilterTab === 'all',
     interval: 5000
   });
 
@@ -75,7 +75,7 @@ function DashboardInner() {
 
       <div className="flex-1 min-h-0">
         <GraphComponent
-          endpoint={`graph/search/latest?limit=5000&top_node_count=5000`}
+          endpoint={`graph/search/latest?limit=5&top_node_count=5`}
           enableRotation={true}
           enablePolling={true}
           height="h-full"

@@ -8,6 +8,13 @@ export type CameraTarget = { x: number; y: number; z: number }
 
 export type FilterTab = 'all' | 'code' | 'comms' | 'tasks' | 'concepts'
 
+export type HighlightChunk = {
+  chunkId: string
+  title: string
+  ref_ids: string[]
+  timestamp: number
+}
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -38,6 +45,7 @@ export type GraphStore = {
   cameraPosition: CameraPosition | null
   cameraTarget: CameraTarget | null
   webhookHighlightNodes: string[]
+  highlightChunks: HighlightChunk[]
   highlightTimestamp: number | null
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
@@ -74,6 +82,8 @@ export type GraphStore = {
   setCameraTarget(target: CameraTarget | null): void
   saveCameraState(position: CameraPosition, target: CameraTarget): void
   setWebhookHighlightNodes(nodeIds: string[], depth?: number): void
+  addHighlightChunk(title: string, ref_ids: string[]): string
+  removeHighlightChunk(chunkId: string): void
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
 }
