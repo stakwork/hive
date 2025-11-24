@@ -120,7 +120,7 @@ export function AITextareaSection({
     try {
       setInitiatingDeepThink(true);
       // Use aiGeneration.regenerate() to ensure runId is captured for accept/reject
-      await aiGeneration.regenerate();
+      await aiGeneration.regenerate(false);
       // Immediately fetch the newly created run to show loading state
       await refetch();
     } catch (error) {
@@ -133,7 +133,7 @@ export function AITextareaSection({
   const handleRetry = async () => {
     try {
       setInitiatingDeepThink(true);
-      await aiGeneration.regenerate();
+      await aiGeneration.regenerate(true);
       // Immediately fetch the newly created run to show loading state
       await refetch();
     } catch (error) {
