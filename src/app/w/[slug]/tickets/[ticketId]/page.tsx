@@ -76,7 +76,7 @@ export default function TicketDetailPage() {
 
   const handleBackClick = () => {
     if (ticket?.feature) {
-      router.push(`/w/${workspaceSlug}/plan/${ticket.feature.id}?tab=tickets`);
+      router.push(`/w/${workspaceSlug}/plan/${ticket.feature.id}?tab=tasks`);
     } else {
       router.push(`/w/${workspaceSlug}/plan`);
     }
@@ -171,7 +171,7 @@ export default function TicketDetailPage() {
             <>
               <span
                 className="hover:underline cursor-pointer"
-                onClick={() => router.push(`/w/${workspaceSlug}/plan/${ticket.feature!.id}?tab=tickets`)}
+                onClick={() => router.push(`/w/${workspaceSlug}/plan/${ticket.feature!.id}?tab=tasks`)}
               >
                 {ticket.feature!.title}
               </span>
