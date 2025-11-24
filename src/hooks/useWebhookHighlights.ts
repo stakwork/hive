@@ -1,7 +1,7 @@
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from '@/lib/pusher'
 import { useDataStore, useGraphStore } from '@/stores/useStores'
-import { useEffect, useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 interface HighlightEvent {
   nodeIds: string[]

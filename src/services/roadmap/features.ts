@@ -4,6 +4,7 @@ import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
+import { getSystemAssigneeUser } from "@/lib/system-assignees";
 
 /**
  * Lists features for a workspace with pagination, filtering, and sorting
@@ -334,7 +335,19 @@ export async function updateFeature(
             orderBy: {
               order: "asc",
             },
-            include: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              status: true,
+              priority: true,
+              order: true,
+              featureId: true,
+              phaseId: true,
+              deleted: true,
+              createdAt: true,
+              updatedAt: true,
+              systemAssigneeType: true,
               assignee: {
                 select: {
                   id: true,
@@ -347,10 +360,67 @@ export async function updateFeature(
           },
         },
       },
+      tasks: {
+        where: {
+          phaseId: null,
+          deleted: false,
+        },
+        orderBy: {
+          order: "asc",
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          priority: true,
+          order: true,
+          featureId: true,
+          phaseId: true,
+          deleted: true,
+          createdAt: true,
+          updatedAt: true,
+          systemAssigneeType: true,
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
+          },
+        },
+      },
     },
   });
 
-  return updatedFeature;
+  // Transform system assignees to virtual user objects
+  const transformedFeature = {
+    ...updatedFeature,
+    phases: updatedFeature.phases.map(phase => ({
+      ...phase,
+      tasks: phase.tasks.map(task => {
+        if (task.systemAssigneeType && !task.assignee) {
+          return {
+            ...task,
+            assignee: getSystemAssigneeUser(task.systemAssigneeType),
+          };
+        }
+        return task;
+      }),
+    })),
+    tasks: updatedFeature.tasks.map(task => {
+      if (task.systemAssigneeType && !task.assignee) {
+        return {
+          ...task,
+          assignee: getSystemAssigneeUser(task.systemAssigneeType),
+        };
+      }
+      return task;
+    }),
+  };
+
+  return transformedFeature;
 }
 
 /**

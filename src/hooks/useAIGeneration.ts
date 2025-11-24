@@ -17,7 +17,7 @@ interface GenerationResult {
   source: GenerationSource | null;
   accept: (onSuccess?: () => void) => Promise<void>;
   reject: (feedback?: string) => Promise<void>;
-  regenerate: () => Promise<void>;
+  regenerate: (isRetry?: boolean) => Promise<void>;
   setContent: (content: string | null, source: GenerationSource, runId?: string) => void;
   clear: () => void;
 }
@@ -114,8 +114,8 @@ export function useAIGeneration({
           }
         }
 
-        toast("Result rejected", {
-          description: "The generated content has been discarded.",
+        toast("Output rejected", {
+          description: "The output has been discarded.",
         });
 
         // Clear state
@@ -135,7 +135,7 @@ export function useAIGeneration({
     [source, currentRunId, enabled]
   );
 
-  const regenerate = useCallback(async () => {
+  const regenerate = useCallback(async (isRetry = false) => {
     if (!enabled || !workspaceId) return;
 
     try {
@@ -165,9 +165,16 @@ export function useAIGeneration({
       const data = await response.json();
       setCurrentRunId(data.run.id);
 
-      toast("Generation restarted", {
-        description: "Your deep thinking process has been restarted.",
-      });
+      // Show appropriate toast based on whether this is initial or retry
+      if (isRetry) {
+        toast("Deep research restarted", {
+          description: "This may take a few minutes.",
+        });
+      } else {
+        toast("Deep research started", {
+          description: "This may take a few minutes.",
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to regenerate";
       toast.error("Error", {

@@ -295,7 +295,7 @@ export default function FeatureDetailPage() {
               <TabsList className="mb-6">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="architecture">Architecture</TabsTrigger>
-                <TabsTrigger value="tickets">Tasks</TabsTrigger>
+                <TabsTrigger value="tasks">Tasks</TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="space-y-6 pt-0">
@@ -318,7 +318,7 @@ export default function FeatureDetailPage() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="tickets" className="space-y-6 pt-0">
+              <TabsContent value="tasks" className="space-y-6 pt-0">
                 {/* Tasks */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 min-h-9">
@@ -422,7 +422,7 @@ export default function FeatureDetailPage() {
             <TabsList className="mb-6">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="architecture">Architecture</TabsTrigger>
-              <TabsTrigger value="tickets">Tasks</TabsTrigger>
+              <TabsTrigger value="tasks">Tasks</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6 pt-0">
@@ -506,11 +506,11 @@ export default function FeatureDetailPage() {
                 <Button variant="outline" onClick={() => setActiveTab("overview")}>
                   Back
                 </Button>
-                <Button onClick={() => setActiveTab("tickets")}>Next</Button>
+                <Button onClick={() => setActiveTab("tasks")}>Next</Button>
               </div>
             </TabsContent>
 
-            <TabsContent value="tickets" className="space-y-6 pt-0">
+            <TabsContent value="tasks" className="space-y-6 pt-0">
               <TicketsList featureId={featureId} feature={feature} onUpdate={setFeature} />
 
               {/* Navigation buttons */}

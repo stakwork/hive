@@ -1,7 +1,7 @@
+import type { HighlightChunk } from '@/stores/useGraphStore'
 import { useGraphStore } from '@/stores/useStores'
 import { memo } from 'react'
 import { ChunkLayer } from './ChunkLayer'
-import type { HighlightChunk } from '@/stores/useGraphStore'
 
 export const HighlightedNodesLayer = memo(() => {
   const { highlightChunks } = useGraphStore((s) => s)
