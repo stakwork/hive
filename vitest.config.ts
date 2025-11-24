@@ -30,6 +30,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@Universe": path.resolve(__dirname, "./src/components/knowledge-graph/Universe"),
     },
   },
 });

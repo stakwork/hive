@@ -18,7 +18,7 @@ import { distributeNodesOnSphere } from './useSimulationStore/utils/distributeNo
 
 // --- HELPER: Pure Grid Logic ---
 // Calculates target positions but does NOT modify the simulation directly.
-const calculateGridMap = (nodes: Node[], nodeTypes: string[]) => {
+export const calculateGridMap = (nodes: Node[], nodeTypes: string[]) => {
   const nodesByType: Record<string, Node[]> = {};
 
   // 1. Group by type
