@@ -20,6 +20,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { useAIGeneration } from "@/hooks/useAIGeneration";
+import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
@@ -50,7 +53,7 @@ interface GeneratedContent {
 
 export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) {
   const router = useRouter();
-  const { slug: workspaceSlug } = useWorkspace();
+  const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
 
   // Task creation state
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
@@ -72,11 +75,28 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   // AI generation state
   const [generating, setGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
+  const [acceptingTasks, setAcceptingTasks] = useState(false);
 
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const { createTicket, loading: creatingTicket } = useRoadmapTaskMutations();
+
+  // Deep research hooks
+  const { latestRun, refetch: refetchStakworkRun } = useStakworkGeneration({
+    featureId,
+    type: "TASK_GENERATION",
+    enabled: true,
+  });
+
+  const aiGeneration = useAIGeneration({
+    featureId,
+    workspaceId: workspaceId || "",
+    type: "TASK_GENERATION",
+    enabled: true,
+  });
+
+  const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
 
   // Get the default phase (Phase 1)
   const defaultPhase = feature.phases?.[0];
@@ -90,6 +110,25 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       titleInputRef.current?.focus();
     }
   }, [creatingTicket, newTicketTitle, isCreatingTicket]);
+
+  // Watch for deep research completion
+  useEffect(() => {
+    if (
+      latestRun?.status === "COMPLETED" &&
+      !latestRun.decision &&
+      latestRun.result &&
+      !aiGeneration.content // Don't re-set if already accepted/cleared
+    ) {
+      try {
+        const parsed = JSON.parse(latestRun.result);
+        aiGeneration.setContent(latestRun.result, "deep", latestRun.id);
+        setGeneratedContent(parsed);
+      } catch (error) {
+        console.error("Failed to parse deep research result:", error);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestRun]); // aiGeneration.setContent is stable (useCallback), safe to omit
 
   const handleCreateTicket = async () => {
     if (!newTicketTitle.trim() || !defaultPhase) return;
@@ -150,6 +189,30 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     setIsCreatingTicket(false);
   };
 
+  const handleDeepThink = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await aiGeneration.regenerate(false);
+      await refetchStakworkRun();
+    } catch (error) {
+      console.error("Deep think failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await aiGeneration.regenerate(true);
+      await refetchStakworkRun();
+    } catch (error) {
+      console.error("Retry failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
+
   const handleTasksReordered = (reorderedTasks: TicketListItem[]) => {
     if (!feature.phases || !defaultPhase) return;
 
@@ -191,55 +254,79 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   };
 
   const handleAcceptGenerated = async () => {
-    if (!generatedContent || !defaultPhase) return;
+    if (!generatedContent || !defaultPhase || acceptingTasks) return;
 
+    setAcceptingTasks(true);
     try {
       // Get all tasks from the first phase (we only generate one phase)
       const generatedTasks = generatedContent.phases[0]?.tasks || [];
 
-      // Map tempId to real database ID
-      const tempIdToRealId: Record<string, string> = {};
+      // Clear preview immediately
+      setGeneratedContent(null);
 
-      // Create all tasks in order, mapping dependencies
-      for (const task of generatedTasks) {
-        // Map tempId dependencies to real IDs
-        const dependsOnTaskIds = (task.dependsOn || [])
-          .map((tempId) => tempIdToRealId[tempId])
-          .filter(Boolean);
+      if (aiGeneration.source === "quick") {
+        // QUICK PATH: Frontend creates tasks directly via API
+        const tempIdToRealId: Record<string, string> = {};
 
-        const response = await fetch(`/api/features/${featureId}/tickets`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: task.title,
-            description: task.description || null,
-            status: TaskStatus.TODO,
-            priority: task.priority as Priority,
-            phaseId: defaultPhase.id,
-            dependsOnTaskIds,
-          }),
-        });
+        for (const task of generatedTasks) {
+          // Map tempId dependencies to real IDs
+          const dependsOnTaskIds = (task.dependsOn || [])
+            .map((tempId) => tempIdToRealId[tempId])
+            .filter(Boolean);
 
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data?.id) {
-            // Store the mapping from tempId to real database ID
-            tempIdToRealId[task.tempId] = result.data.id;
+          const response = await fetch(`/api/features/${featureId}/tickets`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: task.title,
+              description: task.description || null,
+              status: TaskStatus.TODO,
+              priority: task.priority as Priority,
+              phaseId: defaultPhase.id,
+              dependsOnTaskIds,
+            }),
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data?.id) {
+              tempIdToRealId[task.tempId] = result.data.id;
+            }
           }
         }
+
+        // Call accept to clear state (no API call for quick source)
+        await aiGeneration.accept();
+      } else if (aiGeneration.source === "deep") {
+        // DEEP PATH: Backend creates tasks via decision handler
+        await aiGeneration.accept();
       }
 
-      // Refetch feature to get updated tickets
+      // Refetch to get created tasks
       const featureResponse = await fetch(`/api/features/${featureId}`);
       const featureResult = await featureResponse.json();
       if (featureResult.success) {
         onUpdate(featureResult.data);
       }
-
-      setGeneratedContent(null);
     } catch (error) {
       console.error("Failed to accept generated tickets:", error);
+      // Refetch on error
+      const featureResponse = await fetch(`/api/features/${featureId}`);
+      const featureResult = await featureResponse.json();
+      if (featureResult.success) {
+        onUpdate(featureResult.data);
+      }
+    } finally {
+      setAcceptingTasks(false);
     }
+  };
+
+  const handleRejectGenerated = async () => {
+    if (aiGeneration.source === "deep") {
+      await aiGeneration.reject();
+    }
+    setGeneratedContent(null);
+    aiGeneration.clear();
   };
 
   if (!defaultPhase) {
@@ -270,9 +357,10 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     return (
       <GenerationPreview
         content={previewContent}
-        source="quick"
+        source={aiGeneration.source || "quick"}
         onAccept={handleAcceptGenerated}
-        onReject={() => setGeneratedContent(null)}
+        onReject={handleRejectGenerated}
+        isLoading={aiGeneration.isLoading || acceptingTasks}
       />
     );
   }
@@ -283,17 +371,33 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Tasks</Label>
         <div className="flex items-center gap-2">
+          {/* Quick Generate */}
           <AIButton<GeneratedContent>
             endpoint={`/api/features/${featureId}/generate`}
             params={{ type: "tickets" }}
             onGenerated={(results) => {
               if (results.length > 0) {
+                aiGeneration.setContent(JSON.stringify(results[0]), "quick");
                 setGeneratedContent(results[0]);
               }
             }}
             onGeneratingChange={setGenerating}
             label="Generate"
+            disabled={initiatingDeepThink || latestRun?.status === "IN_PROGRESS"}
           />
+
+          {/* Deep Research */}
+          <GenerationControls
+            onQuickGenerate={() => {}}
+            onDeepThink={handleDeepThink}
+            onRetry={handleRetry}
+            status={latestRun?.status}
+            isLoading={aiGeneration.isLoading || initiatingDeepThink}
+            isQuickGenerating={generating}
+            disabled={false}
+            showDeepThink={true}
+          />
+
           {!isCreatingTicket && (
             <Button onClick={() => setIsCreatingTicket(true)} size="sm">
               <Plus className="h-4 w-4 mr-2" />
