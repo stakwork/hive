@@ -135,6 +135,19 @@ export async function createStakworkRun(
         workspace: {
           select: { description: true },
         },
+        phases: {
+          include: {
+            tasks: {
+              where: { deleted: false },
+              select: {
+                title: true,
+                description: true,
+                status: true,
+                priority: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -142,8 +155,8 @@ export async function createStakworkRun(
       throw new Error("Feature not found");
     }
 
-    // Build feature context for ARCHITECTURE type
-    if (input.type === StakworkRunType.ARCHITECTURE) {
+    // Build feature context for ARCHITECTURE and TASK_GENERATION types
+    if (input.type === StakworkRunType.ARCHITECTURE || input.type === StakworkRunType.TASK_GENERATION) {
       featureContext = buildFeatureContext(feature as Parameters<typeof buildFeatureContext>[0]);
     }
   }
@@ -199,7 +212,7 @@ export async function createStakworkRun(
       swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
       poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
 
-      // Include formatted feature context for ARCHITECTURE type
+      // Include formatted feature context for ARCHITECTURE and TASK_GENERATION types
       ...(featureContext && {
         featureTitle: featureContext.title,
         featureBrief: featureContext.brief,
@@ -208,6 +221,7 @@ export async function createStakworkRun(
         userStories: featureContext.userStoriesText,
         requirements: featureContext.requirementsText,
         architecture: featureContext.architectureText,
+        existingTasks: featureContext.tasksText,
       }),
 
       // Allow params override
@@ -471,6 +485,11 @@ export async function updateStakworkRunDecision(
     throw new Error("Access denied");
   }
 
+  // Prevent duplicate decisions
+  if (run.decision) {
+    throw new Error("This run has already been decided on");
+  }
+
   // If ACCEPTED, validate and verify the feature exists
   if (input.decision === StakworkRunDecision.ACCEPTED && input.featureId) {
     const feature = await db.feature.findUnique({
@@ -521,6 +540,67 @@ export async function updateStakworkRunDecision(
           },
         });
         break;
+
+      case StakworkRunType.TASK_GENERATION:
+        // Parse the result JSON (phasesTasksSchema format)
+        const tasksData = JSON.parse(updatedRun.result);
+
+        // Get feature and its first phase
+        const featureWithPhase = await db.feature.findUnique({
+          where: { id: updatedRun.featureId },
+          include: {
+            phases: {
+              orderBy: { order: 'asc' },
+              take: 1
+            },
+            workspace: {
+              select: { id: true }
+            }
+          }
+        });
+
+        if (!featureWithPhase) {
+          throw new Error("Feature not found");
+        }
+
+        const defaultPhase = featureWithPhase.phases[0];
+        if (!defaultPhase) {
+          throw new Error("No phase found for feature");
+        }
+
+        // Extract tasks from FIRST phase only (matches quick generation)
+        const tasks = tasksData.phases[0]?.tasks || [];
+
+        // Map tempId to real database ID for dependency handling
+        const tempIdToRealId: Record<string, string> = {};
+
+        // Create tasks sequentially to handle dependencies
+        for (const task of tasks) {
+          // Map tempId dependencies to real IDs
+          const dependsOnTaskIds = (task.dependsOn || [])
+            .map((tempId: string) => tempIdToRealId[tempId])
+            .filter(Boolean);
+
+          const createdTask = await db.task.create({
+            data: {
+              title: task.title,
+              description: task.description || null,
+              priority: task.priority,
+              phaseId: defaultPhase.id,
+              featureId: updatedRun.featureId,
+              workspaceId: featureWithPhase.workspace.id,
+              status: 'TODO',
+              dependsOnTaskIds,
+              createdById: userId,
+              updatedById: userId,
+            },
+          });
+
+          // Store mapping for next tasks' dependencies
+          tempIdToRealId[task.tempId] = createdTask.id;
+        }
+        break;
+
       // Future: Add cases for REQUIREMENTS, USER_STORIES, etc.
       default:
         console.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);

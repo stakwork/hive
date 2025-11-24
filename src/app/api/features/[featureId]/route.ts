@@ -109,6 +109,7 @@ export async function GET(
                 createdAt: true,
                 updatedAt: true,
                 systemAssigneeType: true,
+                dependsOnTaskIds: true,
                 assignee: {
                   select: {
                     id: true,
@@ -142,6 +143,7 @@ export async function GET(
             createdAt: true,
             updatedAt: true,
             systemAssigneeType: true,
+            dependsOnTaskIds: true,
             assignee: {
               select: {
                 id: true,

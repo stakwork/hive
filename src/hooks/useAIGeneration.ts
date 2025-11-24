@@ -65,9 +65,14 @@ export function useAIGeneration({
           }
         }
 
-        toast.success("Result accepted", {
-          description: "The generated content has been saved.",
-        });
+        // Type-specific success message
+        const successMessage = type === "TASK_GENERATION"
+          ? "Tasks have been accepted"
+          : type === "ARCHITECTURE"
+          ? "Architecture has been accepted"
+          : "Result accepted";
+
+        toast.success(successMessage);
 
         // Clear state
         setContent(null);
@@ -87,7 +92,7 @@ export function useAIGeneration({
         setIsLoading(false);
       }
     },
-    [content, source, currentRunId, featureId, enabled]
+    [content, source, currentRunId, featureId, enabled, type]
   );
 
   const reject = useCallback(
@@ -114,9 +119,14 @@ export function useAIGeneration({
           }
         }
 
-        toast("Output rejected", {
-          description: "The output has been discarded.",
-        });
+        // Type-specific rejection message
+        const rejectMessage = type === "TASK_GENERATION"
+          ? "Tasks have been discarded"
+          : type === "ARCHITECTURE"
+          ? "Architecture has been discarded"
+          : "Output has been discarded";
+
+        toast(rejectMessage);
 
         // Clear state
         setContent(null);
@@ -132,7 +142,7 @@ export function useAIGeneration({
         setIsLoading(false);
       }
     },
-    [source, currentRunId, enabled]
+    [source, currentRunId, enabled, type]
   );
 
   const regenerate = useCallback(async (isRetry = false) => {
