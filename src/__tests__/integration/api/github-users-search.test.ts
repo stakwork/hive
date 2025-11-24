@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/github/users/search/route";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import axios from "axios";
 import {
   createAuthenticatedSession,
@@ -9,11 +8,10 @@ import {
   expectSuccess,
   expectUnauthorized,
   expectError,
-  generateUniqueId,
   getMockedSession,
   createGetRequest,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser, createTestUserWithGitHubAccount } from "@/__tests__/support/fixtures/user";
 
 // Mock axios for GitHub API calls
 vi.mock("axios");
@@ -21,51 +19,6 @@ vi.mock("axios");
 const mockAxios = axios as vi.Mocked<typeof axios>;
 
 describe("GitHub Users Search API Integration Tests", () => {
-  const encryptionService = EncryptionService.getInstance();
-
-  async function createTestUserWithGitHubAccount() {
-    // Use a transaction to ensure atomicity
-    return await db.$transaction(async (tx) => {
-      // Create test user with real database operations
-      const testUser = await tx.user.create({
-        data: {
-          id: generateUniqueId("test-user"),
-          email: `test-${generateUniqueId()}@example.com`,
-          name: "Test User",
-        },
-      });
-
-      // Create GitHub account with encrypted access token
-      const encryptedToken = encryptionService.encryptField("access_token", "github_pat_test_token");
-      const testAccount = await tx.account.create({
-        data: {
-          id: generateUniqueId("test-account"),
-          userId: testUser.id,
-          type: "oauth",
-          provider: "github",
-          providerAccountId: generateUniqueId(),
-          access_token: JSON.stringify(encryptedToken),
-        },
-      });
-
-      const testGitHubAuth = await tx.gitHubAuth.create({
-        data: {
-          userId: testUser.id,
-          githubUserId: "123456",
-          githubUsername: "testuser",
-          githubNodeId: "U_test123",
-          name: "Test User",
-          publicRepos: 5,
-          followers: 10,
-          following: 5,
-          accountType: "User",
-        },
-      });
-
-      return { testUser, testAccount, testGitHubAuth };
-    });
-  }
-
   beforeEach(async () => {
     vi.clearAllMocks();
   });
@@ -76,8 +29,8 @@ describe("GitHub Users Search API Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
 
-      // Mock GitHub API response
-      const mockGitHubResponse = {
+      // Mock GitHub search API response
+      const mockSearchResponse = {
         data: {
           total_count: 2,
           items: [
@@ -99,9 +52,57 @@ describe("GitHub Users Search API Integration Tests", () => {
             },
           ],
         },
+        headers: {
+          "x-ratelimit-remaining": "5000",
+        },
       };
 
-      mockAxios.get.mockResolvedValue(mockGitHubResponse);
+      // Mock GitHub profile API responses for each user
+      const mockProfileJohnDoe = {
+        data: {
+          id: 1,
+          login: "johndoe",
+          avatar_url: "https://avatars.githubusercontent.com/u/1",
+          html_url: "https://github.com/johndoe",
+          type: "User",
+          name: "John Doe",
+          bio: "Software Engineer",
+          public_repos: 25,
+          followers: 100,
+        },
+        headers: {
+          "x-ratelimit-remaining": "4999",
+        },
+      };
+
+      const mockProfileJohnSmith = {
+        data: {
+          id: 2,
+          login: "johnsmith",
+          avatar_url: "https://avatars.githubusercontent.com/u/2",
+          html_url: "https://github.com/johnsmith",
+          type: "User",
+          name: "John Smith",
+          bio: "Developer",
+          public_repos: 15,
+          followers: 50,
+        },
+        headers: {
+          "x-ratelimit-remaining": "4998",
+        },
+      };
+
+      // Mock axios.get to return different responses based on URL
+      mockAxios.get.mockImplementation((url: string) => {
+        if (url === "https://api.github.com/search/users") {
+          return Promise.resolve(mockSearchResponse);
+        } else if (url === "https://api.github.com/users/johndoe") {
+          return Promise.resolve(mockProfileJohnDoe);
+        } else if (url === "https://api.github.com/users/johnsmith") {
+          return Promise.resolve(mockProfileJohnSmith);
+        }
+        return Promise.reject(new Error(`Unexpected URL: ${url}`));
+      });
 
       const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "john" });
       const response = await GET(request);
@@ -109,7 +110,15 @@ describe("GitHub Users Search API Integration Tests", () => {
 
       expect(data.users).toHaveLength(2);
       expect(data.users[0].login).toBe("johndoe");
+      expect(data.users[0].name).toBe("John Doe");
+      expect(data.users[0].bio).toBe("Software Engineer");
+      expect(data.users[0].public_repos).toBe(25);
+      expect(data.users[0].followers).toBe(100);
       expect(data.users[1].login).toBe("johnsmith");
+      expect(data.users[1].name).toBe("John Smith");
+      expect(data.users[1].bio).toBe("Developer");
+      expect(data.users[1].public_repos).toBe(15);
+      expect(data.users[1].followers).toBe(50);
       expect(data.total_count).toBe(2);
 
       // Verify GitHub API was called with decrypted token
@@ -123,6 +132,27 @@ describe("GitHub Users Search API Integration Tests", () => {
           params: {
             q: "john",
             per_page: 10,
+          },
+        }
+      );
+
+      // Verify profile API calls were made
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        "https://api.github.com/users/johndoe",
+        {
+          headers: {
+            Authorization: "token github_pat_test_token",
+            Accept: "application/vnd.github.v3+json",
+          },
+        }
+      );
+
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        "https://api.github.com/users/johnsmith",
+        {
+          headers: {
+            Authorization: "token github_pat_test_token",
+            Accept: "application/vnd.github.v3+json",
           },
         }
       );
@@ -217,6 +247,9 @@ describe("GitHub Users Search API Integration Tests", () => {
           total_count: 0,
           items: [],
         },
+        headers: {
+          "x-ratelimit-remaining": "5000",
+        },
       });
 
       const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "veryrareusername" });
@@ -234,6 +267,9 @@ describe("GitHub Users Search API Integration Tests", () => {
 
       mockAxios.get.mockResolvedValue({
         data: { total_count: 0, items: [] },
+        headers: {
+          "x-ratelimit-remaining": "5000",
+        },
       });
 
       const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "test" });
@@ -257,6 +293,277 @@ describe("GitHub Users Search API Integration Tests", () => {
           }),
         })
       );
+    });
+
+    test("should skip profile fetches when rate limit is low", async () => {
+      const { testUser } = await createTestUserWithGitHubAccount();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      // Mock search response with low rate limit
+      const mockSearchResponse = {
+        data: {
+          total_count: 2,
+          items: [
+            {
+              id: 1,
+              login: "user1",
+              avatar_url: "https://avatars.githubusercontent.com/u/1",
+              html_url: "https://github.com/user1",
+              type: "User",
+              score: 1.0,
+            },
+            {
+              id: 2,
+              login: "user2",
+              avatar_url: "https://avatars.githubusercontent.com/u/2",
+              html_url: "https://github.com/user2",
+              type: "User",
+              score: 0.8,
+            },
+          ],
+        },
+        headers: {
+          "x-ratelimit-remaining": "5", // Low rate limit
+        },
+      };
+
+      mockAxios.get.mockResolvedValue(mockSearchResponse);
+
+      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "user" });
+      const response = await GET(request);
+      const data = await expectSuccess(response);
+
+      // Should return users without enriched data
+      expect(data.users).toHaveLength(2);
+      expect(data.users[0].login).toBe("user1");
+      expect(data.users[0].name).toBeNull();
+      expect(data.users[0].bio).toBeNull();
+      expect(data.users[0].public_repos).toBe(0);
+      expect(data.users[0].followers).toBe(0);
+
+      // Verify only search endpoint was called, not profile endpoints
+      expect(mockAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockAxios.get).toHaveBeenCalledWith(
+        "https://api.github.com/search/users",
+        expect.any(Object)
+      );
+    });
+
+    test("should handle rate limit error (429) on search request", async () => {
+      const { testUser } = await createTestUserWithGitHubAccount();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      // Mock rate limit error
+      mockAxios.get.mockRejectedValue({
+        response: { status: 429 },
+      });
+
+      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "test" });
+      const response = await GET(request);
+
+      await expectError(response, "GitHub API rate limit exceeded", 429);
+    });
+
+    test("should handle rate limit error (403) on search request", async () => {
+      const { testUser } = await createTestUserWithGitHubAccount();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      // Mock rate limit error (secondary rate limit)
+      mockAxios.get.mockRejectedValue({
+        response: { status: 403 },
+      });
+
+      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "test" });
+      const response = await GET(request);
+
+      await expectError(response, "GitHub API rate limit exceeded", 429);
+    });
+
+    test("should fallback to search data when profile fetch fails", async () => {
+      const { testUser } = await createTestUserWithGitHubAccount();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      const mockSearchResponse = {
+        data: {
+          total_count: 1,
+          items: [
+            {
+              id: 1,
+              login: "testuser",
+              avatar_url: "https://avatars.githubusercontent.com/u/1",
+              html_url: "https://github.com/testuser",
+              type: "User",
+              score: 1.0,
+            },
+          ],
+        },
+        headers: {
+          "x-ratelimit-remaining": "5000",
+        },
+      };
+
+      // Mock search success but profile fetch failure
+      mockAxios.get.mockImplementation((url: string) => {
+        if (url === "https://api.github.com/search/users") {
+          return Promise.resolve(mockSearchResponse);
+        } else if (url.includes("/users/testuser")) {
+          return Promise.reject(new Error("Profile fetch failed"));
+        }
+        return Promise.reject(new Error(`Unexpected URL: ${url}`));
+      });
+
+      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "testuser" });
+      const response = await GET(request);
+      const data = await expectSuccess(response);
+
+      // Should return user with search data only
+      expect(data.users).toHaveLength(1);
+      expect(data.users[0].login).toBe("testuser");
+      expect(data.users[0].name).toBeNull();
+      expect(data.users[0].bio).toBeNull();
+      expect(data.users[0].public_repos).toBe(0);
+      expect(data.users[0].followers).toBe(0);
+    });
+
+    test("should stop profile fetches when rate limit hit during enrichment", async () => {
+      const { testUser } = await createTestUserWithGitHubAccount();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      const mockSearchResponse = {
+        data: {
+          total_count: 3,
+          items: [
+            {
+              id: 1,
+              login: "user1",
+              avatar_url: "https://avatars.githubusercontent.com/u/1",
+              html_url: "https://github.com/user1",
+              type: "User",
+              score: 1.0,
+            },
+            {
+              id: 2,
+              login: "user2",
+              avatar_url: "https://avatars.githubusercontent.com/u/2",
+              html_url: "https://github.com/user2",
+              type: "User",
+              score: 0.8,
+            },
+            {
+              id: 3,
+              login: "user3",
+              avatar_url: "https://avatars.githubusercontent.com/u/3",
+              html_url: "https://github.com/user3",
+              type: "User",
+              score: 0.6,
+            },
+          ],
+        },
+        headers: {
+          "x-ratelimit-remaining": "5000",
+        },
+      };
+
+      const mockProfile1 = {
+        data: {
+          id: 1,
+          login: "user1",
+          avatar_url: "https://avatars.githubusercontent.com/u/1",
+          html_url: "https://github.com/user1",
+          type: "User",
+          name: "User One",
+          bio: "First user",
+          public_repos: 10,
+          followers: 20,
+        },
+        headers: {
+          "x-ratelimit-remaining": "5", // Low rate limit after first profile
+        },
+      };
+
+      mockAxios.get.mockImplementation((url: string) => {
+        if (url === "https://api.github.com/search/users") {
+          return Promise.resolve(mockSearchResponse);
+        } else if (url === "https://api.github.com/users/user1") {
+          return Promise.resolve(mockProfile1);
+        }
+        // Shouldn't reach here for user2 and user3
+        return Promise.reject(new Error(`Unexpected profile fetch for URL: ${url}`));
+      });
+
+      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "user" });
+      const response = await GET(request);
+      const data = await expectSuccess(response);
+
+      // Should return all 3 users
+      expect(data.users).toHaveLength(3);
+
+      // First user should have enriched data
+      expect(data.users[0].login).toBe("user1");
+      expect(data.users[0].name).toBe("User One");
+      expect(data.users[0].bio).toBe("First user");
+      expect(data.users[0].public_repos).toBe(10);
+      expect(data.users[0].followers).toBe(20);
+
+      // Remaining users should only have search data
+      expect(data.users[1].login).toBe("user2");
+      expect(data.users[1].name).toBeNull();
+      expect(data.users[1].bio).toBeNull();
+
+      expect(data.users[2].login).toBe("user3");
+      expect(data.users[2].name).toBeNull();
+      expect(data.users[2].bio).toBeNull();
+    });
+
+    test("should handle profile fetch rate limit error (429)", async () => {
+      const { testUser } = await createTestUserWithGitHubAccount();
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+
+      const mockSearchResponse = {
+        data: {
+          total_count: 1,
+          items: [
+            {
+              id: 1,
+              login: "testuser",
+              avatar_url: "https://avatars.githubusercontent.com/u/1",
+              html_url: "https://github.com/testuser",
+              type: "User",
+              score: 1.0,
+            },
+          ],
+        },
+        headers: {
+          "x-ratelimit-remaining": "5000",
+        },
+      };
+
+      mockAxios.get.mockImplementation((url: string) => {
+        if (url === "https://api.github.com/search/users") {
+          return Promise.resolve(mockSearchResponse);
+        } else if (url.includes("/users/testuser")) {
+          return Promise.reject({
+            response: { status: 429 },
+          });
+        }
+        return Promise.reject(new Error(`Unexpected URL: ${url}`));
+      });
+
+      const request = createGetRequest("http://localhost:3000/api/github/users/search", { q: "testuser" });
+      const response = await GET(request);
+      const data = await expectSuccess(response);
+
+      // Should return user with fallback data
+      expect(data.users).toHaveLength(1);
+      expect(data.users[0].login).toBe("testuser");
+      expect(data.users[0].name).toBeNull();
+      expect(data.users[0].bio).toBeNull();
     });
   });
 });
