@@ -118,7 +118,7 @@ export async function createStakworkRun(
   const githubUsername = user?.githubAuth?.githubUsername || null;
 
   // Fetch feature data if featureId provided
-  let featureContext: ReturnType<typeof buildFeatureContext> | null = null;
+  let featureContext: Awaited<ReturnType<typeof buildFeatureContext>> | null = null;
 
   if (input.featureId) {
     const feature = await db.feature.findFirst({
@@ -142,9 +142,9 @@ export async function createStakworkRun(
       throw new Error("Feature not found");
     }
 
-    // Build feature context for ARCHITECTURE type
-    if (input.type === StakworkRunType.ARCHITECTURE) {
-      featureContext = buildFeatureContext(feature as Parameters<typeof buildFeatureContext>[0]);
+    // Build feature context for ARCHITECTURE and TASK_GENERATION types
+    if (input.type === StakworkRunType.ARCHITECTURE || input.type === StakworkRunType.TASK_GENERATION) {
+      featureContext = await buildFeatureContext(feature as Parameters<typeof buildFeatureContext>[0]);
     }
   }
 
@@ -199,13 +199,14 @@ export async function createStakworkRun(
       swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
       poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
 
-      // Include formatted feature context for ARCHITECTURE type
+      // Include formatted feature context for ARCHITECTURE and TASK_GENERATION types
       ...(featureContext && {
         featureTitle: featureContext.title,
         featureBrief: featureContext.brief,
         workspaceDesc: featureContext.workspaceDesc,
         personas: featureContext.personasText,
         userStories: featureContext.userStoriesText,
+        existingTasks: featureContext.tasksText,
         requirements: featureContext.requirementsText,
         architecture: featureContext.architectureText,
       }),
@@ -521,6 +522,51 @@ export async function updateStakworkRunDecision(
           },
         });
         break;
+
+      case StakworkRunType.TASK_GENERATION:
+        // Parse the result JSON (phasesTasksSchema format)
+        const tasksData = JSON.parse(updatedRun.result);
+
+        // Get feature to find first phase
+        const feature = await db.feature.findUnique({
+          where: { id: updatedRun.featureId! },
+          include: { phases: { orderBy: { order: 'asc' }, take: 1 } }
+        });
+
+        const defaultPhase = feature?.phases[0];
+        if (!defaultPhase) throw new Error("No phase found for feature");
+
+        // Extract tasks from FIRST phase only (like quick generation)
+        const tasks = tasksData.phases[0]?.tasks || [];
+
+        // Map tempId to real ID for dependencies
+        const tempIdToRealId: Record<string, string> = {};
+
+        // Create tasks sequentially to handle dependencies
+        for (const task of tasks) {
+          const dependsOnTaskIds = (task.dependsOn || [])
+            .map((tempId: string) => tempIdToRealId[tempId])
+            .filter(Boolean);
+
+          const createdTask = await db.task.create({
+            data: {
+              title: task.title,
+              description: task.description || null,
+              priority: task.priority,
+              phaseId: defaultPhase.id,
+              featureId: updatedRun.featureId!,
+              workspaceId: updatedRun.workspaceId,
+              status: 'TODO',
+              dependsOnTaskIds,
+              createdById: userId,
+              updatedById: userId,
+            },
+          });
+
+          tempIdToRealId[task.tempId] = createdTask.id;
+        }
+        break;
+
       // Future: Add cases for REQUIREMENTS, USER_STORIES, etc.
       default:
         console.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);
