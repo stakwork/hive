@@ -7,6 +7,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { ConnectRepository } from "@/components/ConnectRepository";
 import { TasksList } from "@/components/tasks";
 import { PageHeader } from "@/components/ui/page-header";
+import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 
 export default function TasksPage() {
   const router = useRouter();
@@ -16,10 +17,13 @@ export default function TasksPage() {
       <PageHeader
         title="Tasks"
         actions={workspace?.isCodeGraphSetup && (
-          <Button onClick={() => router.push(`/w/${slug}/task/new`)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Task
-          </Button>
+          <>
+            <PoolStatusWidget />
+            <Button onClick={() => router.push(`/w/${slug}/task/new`)}>
+              <Plus className="w-4 h-4 mr-2" />
+              New Task
+            </Button>
+          </>
         )}
       />
 
