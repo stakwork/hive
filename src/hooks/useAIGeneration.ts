@@ -8,6 +8,7 @@ interface UseAIGenerationOptions {
   featureId: string;
   workspaceId: string;
   type: StakworkRunType;
+  displayName?: string; // Optional display name for toast messages
   enabled?: boolean;
 }
 
@@ -17,6 +18,7 @@ interface GenerationResult {
   source: GenerationSource | null;
   accept: (onSuccess?: () => void) => Promise<void>;
   reject: (feedback?: string) => Promise<void>;
+  provideFeedback: (feedback: string) => Promise<void>;
   regenerate: (isRetry?: boolean) => Promise<void>;
   setContent: (content: string | null, source: GenerationSource, runId?: string) => void;
   clear: () => void;
@@ -26,6 +28,7 @@ export function useAIGeneration({
   featureId,
   workspaceId,
   type,
+  displayName,
   enabled = true,
 }: UseAIGenerationOptions): GenerationResult {
   const [content, setContent] = useState<string | null>(null);
@@ -66,7 +69,9 @@ export function useAIGeneration({
         }
 
         // Type-specific success message
-        const successMessage = type === "TASK_GENERATION"
+        const successMessage = displayName
+          ? `${displayName.charAt(0).toUpperCase() + displayName.slice(1)} has been accepted`
+          : type === "TASK_GENERATION"
           ? "Tasks have been accepted"
           : type === "ARCHITECTURE"
           ? "Architecture has been accepted"
@@ -120,7 +125,9 @@ export function useAIGeneration({
         }
 
         // Type-specific rejection message
-        const rejectMessage = type === "TASK_GENERATION"
+        const rejectMessage = displayName
+          ? `${displayName.charAt(0).toUpperCase() + displayName.slice(1)} has been discarded`
+          : type === "TASK_GENERATION"
           ? "Tasks have been discarded"
           : type === "ARCHITECTURE"
           ? "Architecture has been discarded"
@@ -143,6 +150,51 @@ export function useAIGeneration({
       }
     },
     [source, currentRunId, enabled, type]
+  );
+
+  const provideFeedback = useCallback(
+    async (feedback: string) => {
+      if (!enabled || !feedback.trim()) return;
+
+      try {
+        setIsLoading(true);
+
+        // If from Stakwork (deep), provide feedback and trigger regeneration
+        if (source === "deep" && currentRunId) {
+          const response = await fetch(`/api/stakwork/runs/${currentRunId}/decision`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              decision: "FEEDBACK",
+              feedback: feedback.trim(),
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || "Failed to provide feedback");
+          }
+
+          toast("Feedback submitted", {
+            description: "Processing your feedback...",
+          });
+
+          // Clear current content - new result will come via Pusher
+          setContent(null);
+          setSource(null);
+          setCurrentRunId(null);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to provide feedback";
+        toast.error("Error", {
+          description: message,
+        });
+        throw error;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [source, currentRunId, enabled]
   );
 
   const regenerate = useCallback(async (isRetry = false) => {
@@ -209,10 +261,11 @@ export function useAIGeneration({
       source,
       accept,
       reject,
+      provideFeedback,
       regenerate,
       setContent: setContentWithSource,
       clear,
     }),
-    [content, isLoading, source, accept, reject, regenerate, setContentWithSource, clear]
+    [content, isLoading, source, accept, reject, provideFeedback, regenerate, setContentWithSource, clear]
   );
 }

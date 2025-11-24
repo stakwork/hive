@@ -70,6 +70,10 @@ export const CreateStakworkRunSchema = z.object({
   workspaceId: z.string().cuid(),
   featureId: z.string().cuid().optional().nullable(),
   params: z.record(z.string(), z.unknown()).optional(),
+  history: z.array(z.object({
+    role: z.enum(["assistant", "user"]),
+    content: z.string(),
+  })).optional(),
 });
 
 export const StakworkRunWebhookSchema = z.object({
