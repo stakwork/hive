@@ -2,36 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
-import { SystemAssigneeType } from "@prisma/client";
-
-// System assignee configuration
-const SYSTEM_ASSIGNEE_CONFIG = {
-  [SystemAssigneeType.TASK_COORDINATOR]: {
-    id: "system:task-coordinator",
-    name: "Task Coordinator",
-    image: null,
-    icon: "bot",
-  },
-  [SystemAssigneeType.BOUNTY_HUNTER]: {
-    id: "system:bounty-hunter",
-    name: "Bounty Hunter",
-    image: "/sphinx_icon.png",
-    icon: null,
-  },
-} as const;
-
-function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
-  const config = SYSTEM_ASSIGNEE_CONFIG[enumValue];
-  if (!config) return null;
-
-  return {
-    id: config.id,
-    name: config.name,
-    email: null,
-    image: config.image,
-    icon: config.icon,
-  };
-}
+import { getSystemAssigneeUser } from "@/lib/system-assignees";
 
 export async function GET(
   request: NextRequest,
