@@ -1,13 +1,30 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseOwnerRepo, buildFeatureContext } from "@/lib/ai/utils";
 import {
   createMinimalFeatureData,
   createCompleteFeatureData,
 } from "@/__tests__/support/fixtures";
 
+// Mock the database
+vi.mock("@/lib/db", () => ({
+  db: {
+    task: {
+      findMany: vi.fn(),
+    },
+  },
+}));
+
+import { db } from "@/lib/db";
+
 describe("ai/utils", () => {
+  beforeEach(() => {
+    // Reset mocks before each test
+    vi.clearAllMocks();
+    // Default mock: return empty array for tasks
+    (db.task.findMany as any).mockResolvedValue([]);
+  });
   describe("parseOwnerRepo", () => {
-    it("should parse HTTPS GitHub URL", () => {
+    it("should parse HTTPS GitHub URL", async () => {
       const result = parseOwnerRepo("https://github.com/owner/repo");
 
       expect(result).toEqual({
@@ -119,10 +136,10 @@ describe("ai/utils", () => {
   });
 
   describe("buildFeatureContext", () => {
-    it("should transform complete FeatureData to FeatureContext with all fields populated", () => {
+    it("should transform complete FeatureData to FeatureContext with all fields populated", async () => {
       const featureData = createCompleteFeatureData();
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result).toEqual({
         title: "Payment Integration",
@@ -130,22 +147,23 @@ describe("ai/utils", () => {
         workspaceDesc: "\n\nWorkspace Context: E-commerce platform for online retail",
         personasText: "\n\nTarget Personas:\n- Customer\n- Admin\n- Developer",
         userStoriesText: "\n\nUser Stories:\n- Customer can checkout with credit card\n- Admin can view payment history",
+        tasksText: "",
         requirementsText: "Must support credit cards and ACH payments",
         architectureText: "Use Stripe SDK with webhook handlers",
       });
     });
 
-    it("should format personas array as bulleted list with section header", () => {
+    it("should format personas array as bulleted list with section header", async () => {
       const featureData = createMinimalFeatureData({
         personas: ["Product Manager", "Engineer", "Designer"],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.personasText).toBe("\n\nTarget Personas:\n- Product Manager\n- Engineer\n- Designer");
     });
 
-    it("should format user stories array as bulleted list with section header", () => {
+    it("should format user stories array as bulleted list with section header", async () => {
       const featureData = createMinimalFeatureData({
         userStories: [
           { title: "User can sign in with Google" },
@@ -154,97 +172,97 @@ describe("ai/utils", () => {
         ],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe(
         "\n\nUser Stories:\n- User can sign in with Google\n- User can reset password via email\n- User can enable two-factor authentication"
       );
     });
 
-    it("should extract workspace description with section header", () => {
+    it("should extract workspace description with section header", async () => {
       const featureData = createMinimalFeatureData({
         workspace: {
           description: "Healthcare management system for clinics",
         },
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.workspaceDesc).toBe("\n\nWorkspace Context: Healthcare management system for clinics");
     });
 
-    it("should handle empty personas array", () => {
+    it("should handle empty personas array", async () => {
       const featureData = createMinimalFeatureData({
         brief: "Test brief",
         personas: [],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.personasText).toBe("");
     });
 
-    it("should handle empty user stories array", () => {
+    it("should handle empty user stories array", async () => {
       const featureData = createMinimalFeatureData({
         brief: "Test brief",
         personas: ["Developer"],
         userStories: [],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe("");
     });
 
-    it("should handle null workspace description", () => {
+    it("should handle null workspace description", async () => {
       const featureData = createMinimalFeatureData({
         workspace: {
           description: null,
         },
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.workspaceDesc).toBe("");
     });
 
-    it("should handle null brief", () => {
+    it("should handle null brief", async () => {
       const featureData = createMinimalFeatureData({
         brief: null,
         personas: ["Developer"],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.brief).toBeNull();
     });
 
-    it("should handle null requirements with empty string fallback", () => {
+    it("should handle null requirements with empty string fallback", async () => {
       const featureData = createMinimalFeatureData({
         requirements: null,
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.requirementsText).toBe("");
     });
 
-    it("should handle null architecture with empty string fallback", () => {
+    it("should handle null architecture with empty string fallback", async () => {
       const featureData = createMinimalFeatureData({
         architecture: null,
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.architectureText).toBe("");
     });
 
-    it("should handle all optional fields missing or empty", () => {
+    it("should handle all optional fields missing or empty", async () => {
       const featureData = createMinimalFeatureData({
         title: "Minimal Feature",
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result).toEqual({
         title: "Minimal Feature",
@@ -252,74 +270,75 @@ describe("ai/utils", () => {
         workspaceDesc: "",
         personasText: "",
         userStoriesText: "",
+        tasksText: "",
         requirementsText: "",
         architectureText: "",
       });
     });
 
-    it("should preserve title field exactly as provided", () => {
+    it("should preserve title field exactly as provided", async () => {
       const featureData = createMinimalFeatureData({
         title: "Complex Feature: AI-Powered Recommendation Engine",
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.title).toBe("Complex Feature: AI-Powered Recommendation Engine");
     });
 
-    it("should handle single persona correctly", () => {
+    it("should handle single persona correctly", async () => {
       const featureData = createMinimalFeatureData({
         personas: ["End User"],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.personasText).toBe("\n\nTarget Personas:\n- End User");
     });
 
-    it("should handle single user story correctly", () => {
+    it("should handle single user story correctly", async () => {
       const featureData = createMinimalFeatureData({
         userStories: [{ title: "User can export data as CSV" }],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe("\n\nUser Stories:\n- User can export data as CSV");
     });
 
-    it("should pass through requirements text without modification", () => {
+    it("should pass through requirements text without modification", async () => {
       const requirementsText = "Must support OAuth 2.0\nMust handle rate limiting\nMust log all API calls";
       const featureData = createMinimalFeatureData({
         requirements: requirementsText,
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.requirementsText).toBe(requirementsText);
     });
 
-    it("should pass through architecture text without modification", () => {
+    it("should pass through architecture text without modification", async () => {
       const architectureText = "Microservices architecture\nUse Redis for caching\nDeploy on Kubernetes";
       const featureData = createMinimalFeatureData({
         architecture: architectureText,
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.architectureText).toBe(architectureText);
     });
 
-    it("should handle arrays with empty strings in personas", () => {
+    it("should handle arrays with empty strings in personas", async () => {
       const featureData = createMinimalFeatureData({
         personas: ["Developer", "", "Designer", ""],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.personasText).toBe("\n\nTarget Personas:\n- Developer\n- \n- Designer\n- ");
     });
 
-    it("should handle arrays with empty strings in user stories", () => {
+    it("should handle arrays with empty strings in user stories", async () => {
       const featureData = createMinimalFeatureData({
         userStories: [
           { title: "Valid story" },
@@ -328,18 +347,18 @@ describe("ai/utils", () => {
         ],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe("\n\nUser Stories:\n- Valid story\n- \n- Another valid story");
     });
 
-    it("should handle large personas array (10+ items)", () => {
+    it("should handle large personas array (10+ items)", async () => {
       const largePersonasArray = Array.from({ length: 15 }, (_, i) => `Persona ${i + 1}`);
       const featureData = createMinimalFeatureData({
         personas: largePersonasArray,
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.personasText).toContain("Target Personas:");
       expect(result.personasText.split("\n").length).toBe(18); // 2 empty strings + header + 15 personas
@@ -347,7 +366,7 @@ describe("ai/utils", () => {
       expect(result.personasText).toContain("- Persona 15");
     });
 
-    it("should handle large user stories array (10+ items)", () => {
+    it("should handle large user stories array (10+ items)", async () => {
       const largeStoriesArray = Array.from({ length: 20 }, (_, i) => ({
         title: `User story ${i + 1}`,
       }));
@@ -355,7 +374,7 @@ describe("ai/utils", () => {
         userStories: largeStoriesArray,
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toContain("User Stories:");
       expect(result.userStoriesText.split("\n").length).toBe(23); // 2 empty strings + header + 20 stories
@@ -363,17 +382,17 @@ describe("ai/utils", () => {
       expect(result.userStoriesText).toContain("- User story 20");
     });
 
-    it("should handle arrays with whitespace-only strings in personas", () => {
+    it("should handle arrays with whitespace-only strings in personas", async () => {
       const featureData = createMinimalFeatureData({
         personas: ["Developer", "   ", "Designer", "\t\n"],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.personasText).toBe("\n\nTarget Personas:\n- Developer\n-    \n- Designer\n- \t\n");
     });
 
-    it("should handle arrays with whitespace-only strings in user stories", () => {
+    it("should handle arrays with whitespace-only strings in user stories", async () => {
       const featureData = createMinimalFeatureData({
         userStories: [
           { title: "Valid story" },
@@ -382,12 +401,12 @@ describe("ai/utils", () => {
         ],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe("\n\nUser Stories:\n- Valid story\n-   \n- \t");
     });
 
-    it("should not mutate the input FeatureData object", () => {
+    it("should not mutate the input FeatureData object", async () => {
       const originalPersonas = ["Developer", "Designer"];
       const originalStories = [{ title: "Story 1" }, { title: "Story 2" }];
       const featureData = createMinimalFeatureData({
@@ -410,7 +429,7 @@ describe("ai/utils", () => {
       expect(featureData.userStories).toBe(originalStories); // Same reference
     });
 
-    it("should handle mixed scenarios with some null fields and some populated arrays", () => {
+    it("should handle mixed scenarios with some null fields and some populated arrays", async () => {
       const featureData = createMinimalFeatureData({
         title: "Mixed Feature",
         brief: "Brief description",
@@ -421,7 +440,7 @@ describe("ai/utils", () => {
         workspace: { description: null },
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.title).toBe("Mixed Feature");
       expect(result.brief).toBe("Brief description");
@@ -432,19 +451,19 @@ describe("ai/utils", () => {
       expect(result.workspaceDesc).toBe("");
     });
 
-    it("should handle personas array with special characters", () => {
+    it("should handle personas array with special characters", async () => {
       const featureData = createMinimalFeatureData({
         personas: ["Developer (Senior)", "Product Manager @ Company", "Designer/UX Lead"],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.personasText).toBe(
         "\n\nTarget Personas:\n- Developer (Senior)\n- Product Manager @ Company\n- Designer/UX Lead"
       );
     });
 
-    it("should handle user stories with special characters and formatting", () => {
+    it("should handle user stories with special characters and formatting", async () => {
       const featureData = createMinimalFeatureData({
         userStories: [
           { title: "User can: authenticate via OAuth 2.0" },
@@ -453,26 +472,26 @@ describe("ai/utils", () => {
         ],
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.userStoriesText).toBe(
         "\n\nUser Stories:\n- User can: authenticate via OAuth 2.0\n- Admin can [manage] user permissions\n- User can export data (CSV/JSON format)"
       );
     });
 
-    it("should handle very long workspace description", () => {
+    it("should handle very long workspace description", async () => {
       const longDescription = "A".repeat(1000);
       const featureData = createMinimalFeatureData({
         workspace: { description: longDescription },
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.workspaceDesc).toBe(`\n\nWorkspace Context: ${longDescription}`);
       expect(result.workspaceDesc.length).toBe(longDescription.length + 21); // +21 for prefix
     });
 
-    it("should handle all fields populated with maximum data", () => {
+    it("should handle all fields populated with maximum data", async () => {
       const featureData = createMinimalFeatureData({
         title: "Complex Feature Title",
         brief: "Detailed feature brief",
@@ -489,7 +508,7 @@ describe("ai/utils", () => {
         workspace: { description: "Comprehensive workspace description" },
       });
 
-      const result = buildFeatureContext(featureData);
+      const result = await buildFeatureContext(featureData);
 
       expect(result.title).toBe("Complex Feature Title");
       expect(result.brief).toBe("Detailed feature brief");
@@ -504,15 +523,64 @@ describe("ai/utils", () => {
       expect(result.workspaceDesc).toBe("\n\nWorkspace Context: Comprehensive workspace description");
     });
 
-    it("should produce consistent formatting across multiple calls with same input", () => {
+    it("should include tasksText when tasks exist for the feature", async () => {
+      const featureData = createMinimalFeatureData({
+        id: "feature-123",
+      });
+
+      // Mock db.task.findMany to return some tasks
+      (db.task.findMany as any).mockResolvedValue([
+        { title: "Setup database", status: "DONE", priority: "HIGH" },
+        { title: "Create API endpoints", status: "IN_PROGRESS", priority: "MEDIUM" },
+        { title: "Write tests", status: "TODO", priority: "LOW" },
+      ]);
+
+      const result = await buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBe(
+        "\n\nExisting Tasks:\n- Setup database (DONE, HIGH)\n- Create API endpoints (IN_PROGRESS)\n- Write tests (TODO, LOW)"
+      );
+      expect(db.task.findMany).toHaveBeenCalledWith({
+        where: { featureId: "feature-123", deleted: false },
+        select: { title: true, description: true, status: true, priority: true },
+      });
+    });
+
+    it("should handle empty tasksText when no tasks exist for the feature", async () => {
+      const featureData = createMinimalFeatureData({
+        id: "feature-456",
+      });
+
+      // Mock returns empty array (default from beforeEach)
+      const result = await buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBe("");
+    });
+
+    it("should omit priority from tasksText when priority is MEDIUM", async () => {
+      const featureData = createMinimalFeatureData({
+        id: "feature-789",
+      });
+
+      (db.task.findMany as any).mockResolvedValue([
+        { title: "Medium priority task", status: "TODO", priority: "MEDIUM" },
+      ]);
+
+      const result = await buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBe("\n\nExisting Tasks:\n- Medium priority task (TODO)");
+      expect(result.tasksText).not.toContain("MEDIUM");
+    });
+
+    it("should produce consistent formatting across multiple calls with same input", async () => {
       const featureData = createMinimalFeatureData({
         personas: ["Developer", "Designer"],
         userStories: [{ title: "Story 1" }],
       });
 
-      const result1 = buildFeatureContext(featureData);
-      const result2 = buildFeatureContext(featureData);
-      const result3 = buildFeatureContext(featureData);
+      const result1 = await buildFeatureContext(featureData);
+      const result2 = await buildFeatureContext(featureData);
+      const result3 = await buildFeatureContext(featureData);
 
       expect(result1).toEqual(result2);
       expect(result2).toEqual(result3);

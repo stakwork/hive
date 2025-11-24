@@ -1,5 +1,6 @@
 import { streamObject } from "ai";
 import { z } from "zod";
+import { db } from "@/lib/db";
 
 export function parseOwnerRepo(repoUrl: string): { owner: string; repo: string } {
   // Handle different GitHub URL formats
@@ -50,11 +51,12 @@ export type FeatureContext = {
   workspaceDesc: string;
   personasText: string;
   userStoriesText: string;
+  tasksText: string;
   requirementsText: string;
   architectureText: string;
 };
 
-export function buildFeatureContext(feature: FeatureData): FeatureContext {
+export async function buildFeatureContext(feature: FeatureData): Promise<FeatureContext> {
   const workspaceDesc = feature.workspace.description
     ? `\n\nWorkspace Context: ${feature.workspace.description}`
     : '';
@@ -67,6 +69,16 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
     ? `\n\nUser Stories:\n${feature.userStories.map((s) => `- ${s.title}`).join('\n')}`
     : '';
 
+  // Query existing tasks for this feature
+  const existingTasks = await db.task.findMany({
+    where: { featureId: feature.id, deleted: false },
+    select: { title: true, description: true, status: true, priority: true }
+  });
+
+  const tasksText = existingTasks.length > 0
+    ? `\n\nExisting Tasks:\n${existingTasks.map(t => `- ${t.title} (${t.status}${t.priority !== 'MEDIUM' ? `, ${t.priority}` : ''})`).join('\n')}`
+    : '';
+
   const requirementsText = feature.requirements || '';
   const architectureText = feature.architecture || '';
 
@@ -76,6 +88,7 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
     workspaceDesc,
     personasText,
     userStoriesText,
+    tasksText,
     requirementsText,
     architectureText,
   };
