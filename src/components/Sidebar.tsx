@@ -101,7 +101,7 @@ const baseNavigationItems: NavigationItem[] = [
     label: "Protect",
     href: "/protect",
     children: [
-      { icon: BarChart3, label: "Insights", href: "/insights" },
+      { icon: BarChart3, label: "Recommendations", href: "/recommendations" },
       { icon: TestTube2, label: "Testing", href: "/testing" },
       { icon: Bot, label: "Janitors", href: "/janitors" },
     ],
