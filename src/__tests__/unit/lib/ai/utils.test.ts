@@ -132,6 +132,7 @@ describe("ai/utils", () => {
         userStoriesText: "\n\nUser Stories:\n- Customer can checkout with credit card\n- Admin can view payment history",
         requirementsText: "Must support credit cards and ACH payments",
         architectureText: "Use Stripe SDK with webhook handlers",
+        tasksText: null,
       });
     });
 
@@ -254,6 +255,7 @@ describe("ai/utils", () => {
         userStoriesText: "",
         requirementsText: "",
         architectureText: "",
+        tasksText: null,
       });
     });
 
