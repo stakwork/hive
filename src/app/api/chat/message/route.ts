@@ -9,6 +9,7 @@ import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
+import { updateTaskStatusForPullRequest } from "@/lib/helpers/tasks";
 
 export const runtime = "nodejs";
 
@@ -240,6 +241,9 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Check if artifacts contain PULL_REQUEST to auto-complete task
+    await updateTaskStatusForPullRequest(taskId, artifacts);
 
     // Convert to client-side type
     const clientMessage: ChatMessage = {
