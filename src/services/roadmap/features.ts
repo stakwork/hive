@@ -1,38 +1,10 @@
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority, SystemAssigneeType } from "@prisma/client";
+import { FeatureStatus, FeaturePriority } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
-
-// System assignee configuration
-const SYSTEM_ASSIGNEE_CONFIG = {
-  [SystemAssigneeType.TASK_COORDINATOR]: {
-    id: "system:task-coordinator",
-    name: "Task Coordinator",
-    image: null,
-    icon: "bot",
-  },
-  [SystemAssigneeType.BOUNTY_HUNTER]: {
-    id: "system:bounty-hunter",
-    name: "Bounty Hunter",
-    image: "/sphinx_icon.png",
-    icon: null,
-  },
-} as const;
-
-function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
-  const config = SYSTEM_ASSIGNEE_CONFIG[enumValue];
-  if (!config) return null;
-
-  return {
-    id: config.id,
-    name: config.name,
-    email: null,
-    image: config.image,
-    icon: config.icon,
-  };
-}
+import { getSystemAssigneeUser } from "@/lib/system-assignees";
 
 /**
  * Lists features for a workspace with pagination, filtering, and sorting

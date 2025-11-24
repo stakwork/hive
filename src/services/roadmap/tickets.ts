@@ -10,49 +10,7 @@ import { validateFeatureAccess, validateRoadmapTaskAccess, calculateNextOrder } 
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
-
-// System assignee configuration
-const SYSTEM_ASSIGNEE_CONFIG = {
-  "system:task-coordinator": {
-    enumValue: SystemAssigneeType.TASK_COORDINATOR,
-    name: "Task Coordinator",
-    image: null,
-    icon: "bot",
-  },
-  "system:bounty-hunter": {
-    enumValue: SystemAssigneeType.BOUNTY_HUNTER,
-    name: "Bounty Hunter",
-    image: "/sphinx_icon.png",
-    icon: null,
-  },
-} as const;
-
-type SystemAssigneeId = keyof typeof SYSTEM_ASSIGNEE_CONFIG;
-
-function isSystemAssigneeId(id: string | null | undefined): id is SystemAssigneeId {
-  if (!id) return false;
-  return id in SYSTEM_ASSIGNEE_CONFIG;
-}
-
-function getSystemAssigneeEnum(id: string): SystemAssigneeType | null {
-  if (!isSystemAssigneeId(id)) return null;
-  return SYSTEM_ASSIGNEE_CONFIG[id].enumValue;
-}
-
-function getSystemAssigneeUser(enumValue: SystemAssigneeType) {
-  const entry = Object.entries(SYSTEM_ASSIGNEE_CONFIG).find(([, config]) => config.enumValue === enumValue);
-
-  if (!entry) return null;
-
-  const [id, config] = entry;
-  return {
-    id,
-    name: config.name,
-    email: null,
-    image: config.image,
-    icon: config.icon,
-  };
-}
+import { getSystemAssigneeEnum, getSystemAssigneeUser, isSystemAssigneeId } from "@/lib/system-assignees";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
