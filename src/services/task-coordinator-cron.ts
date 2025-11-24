@@ -16,6 +16,94 @@ export interface TaskCoordinatorExecutionResult {
 }
 
 /**
+ * Check if all task dependencies are satisfied (completed)
+ *
+ * Dependency satisfaction logic:
+ * 1. If task has NO PR artifacts: Check task.status === "DONE" (manual completion)
+ * 2. If task has PR artifacts: Check latest PR artifact status === "DONE" (merged)
+ *    - Ignores task.status when PR exists (PR merge is source of truth)
+ */
+async function areDependenciesSatisfied(
+  dependsOnTaskIds: string[]
+): Promise<boolean> {
+  if (dependsOnTaskIds.length === 0) {
+    return true; // No dependencies = always satisfied
+  }
+
+  // Batch fetch all dependency tasks with their PR artifacts
+  const dependencyTasks = await db.task.findMany({
+    where: {
+      id: {
+        in: dependsOnTaskIds,
+      },
+    },
+    include: {
+      chatMessages: {
+        include: {
+          artifacts: {
+            where: {
+              type: "PULL_REQUEST",
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc", // Latest messages first for finding latest PR
+        },
+      },
+    },
+  });
+
+  // Detect circular or missing dependencies
+  if (dependencyTasks.length !== dependsOnTaskIds.length) {
+    console.warn(
+      `[TaskCoordinator] Dependency validation warning: Expected ${dependsOnTaskIds.length} dependencies, found ${dependencyTasks.length}`
+    );
+    return false; // Missing dependencies = not satisfied
+  }
+
+  // Check if each dependency is satisfied
+  for (const depTask of dependencyTasks) {
+    // Collect all PR artifacts from chat messages
+    const prArtifacts = depTask.chatMessages.flatMap((message) => message.artifacts);
+
+    let isDependencySatisfied = false;
+
+    if (prArtifacts.length === 0) {
+      // No PR artifacts - check manual status
+      isDependencySatisfied = depTask.status === "DONE";
+
+      if (!isDependencySatisfied) {
+        console.log(
+          `[TaskCoordinator] Dependency ${depTask.id} not satisfied - no PR artifact, status: ${depTask.status}`
+        );
+      }
+    } else {
+      // Has PR artifacts - find latest and check if merged
+      // Sort by createdAt to get most recent
+      const sortedArtifacts = [...prArtifacts].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      const latestPrArtifact = sortedArtifacts[0];
+      const content = latestPrArtifact.content as { status?: string; url?: string };
+
+      isDependencySatisfied = content.status === "DONE";
+
+      if (!isDependencySatisfied) {
+        console.log(
+          `[TaskCoordinator] Dependency ${depTask.id} not satisfied - has PR artifact (${content.url || 'unknown'}), latest status: ${content.status || 'unknown'}`
+        );
+      }
+    }
+
+    if (!isDependencySatisfied) {
+      return false;
+    }
+  }
+
+  return true; // All dependencies satisfied
+}
+
+/**
  * Process ticket sweep - find and process eligible tasks assigned to TASK_COORDINATOR
  */
 async function processTicketSweep(
@@ -25,17 +113,14 @@ async function processTicketSweep(
 ): Promise<boolean> {
   console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug}`);
 
-  // Query for eligible tickets: TODO status, TASK_COORDINATOR assignee, no dependencies
-  const eligibleTasks = await db.task.findMany({
+  // Query for candidate tickets: TODO status, TASK_COORDINATOR assignee
+  // We fetch more tasks to filter by dependency satisfaction
+  const candidateTasks = await db.task.findMany({
     where: {
       workspaceId,
       status: "TODO",
       systemAssigneeType: "TASK_COORDINATOR",
       deleted: false,
-      // Tasks with empty dependsOnTaskIds array (no dependencies)
-      dependsOnTaskIds: {
-        isEmpty: true,
-      },
     },
     include: {
       feature: {
@@ -59,15 +144,42 @@ async function processTicketSweep(
         createdAt: "asc", // Oldest first for same priority
       },
     ],
-    take: 1, // Only process one task at a time
+    take: 20, // Fetch more candidates to filter through
   });
 
-  if (eligibleTasks.length === 0) {
-    console.log(`[TaskCoordinator] No eligible tickets found for workspace ${workspaceSlug}`);
+  if (candidateTasks.length === 0) {
+    console.log(`[TaskCoordinator] No candidate tickets found for workspace ${workspaceSlug}`);
     return false;
   }
 
-  const task = eligibleTasks[0];
+  console.log(`[TaskCoordinator] Found ${candidateTasks.length} candidate tickets, checking dependencies...`);
+
+  // Filter tasks by dependency satisfaction
+  let task = null;
+  for (const candidateTask of candidateTasks) {
+    const dependenciesSatisfied = await areDependenciesSatisfied(
+      candidateTask.dependsOnTaskIds
+    );
+
+    if (dependenciesSatisfied) {
+      task = candidateTask;
+      console.log(
+        `[TaskCoordinator] Found eligible task ${task.id} with ${task.dependsOnTaskIds.length} satisfied dependencies`
+      );
+      break;
+    } else {
+      console.log(
+        `[TaskCoordinator] Skipping task ${candidateTask.id} - dependencies not satisfied`
+      );
+    }
+  }
+
+  if (!task) {
+    console.log(
+      `[TaskCoordinator] No tickets with satisfied dependencies found for workspace ${workspaceSlug}`
+    );
+    return false;
+  }
   console.log(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
   try {
