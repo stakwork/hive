@@ -4,6 +4,7 @@ import {
   processStakworkRunWebhook,
   getStakworkRuns,
   updateStakworkRunDecision,
+  getFeatureRunHistory,
 } from "@/services/stakwork-run";
 import { db } from "@/lib/db";
 import { stakworkService } from "@/lib/service-factory";
@@ -758,6 +759,483 @@ describe("Stakwork Run Service", () => {
       });
 
       expect(result).toBeDefined();
+    });
+
+    test("should throw error when FEEDBACK decision lacks feedback text", async () => {
+      const mockRun = {
+        id: "run-1",
+        workspace: {
+          slug: "test-workspace",
+          members: [{ userId: "user-1" }],
+        },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+
+      await expect(
+        updateStakworkRunDecision("run-1", "user-1", {
+          decision: StakworkRunDecision.FEEDBACK,
+        })
+      ).rejects.toThrow("Feedback is required when decision is FEEDBACK");
+    });
+
+    test("should allow FEEDBACK decision even when run already has a decision", async () => {
+      const mockRun = {
+        id: "run-1",
+        decision: StakworkRunDecision.REJECTED,
+        workspace: {
+          slug: "test-workspace",
+          members: [{ userId: "user-1" }],
+        },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue({
+        ...mockRun,
+        decision: StakworkRunDecision.FEEDBACK,
+        feedback: "Please revise",
+      });
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await updateStakworkRunDecision("run-1", "user-1", {
+        decision: StakworkRunDecision.FEEDBACK,
+        feedback: "Please revise",
+      });
+
+      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+        where: { id: "run-1" },
+        data: {
+          decision: StakworkRunDecision.FEEDBACK,
+          feedback: "Please revise",
+        },
+      });
+    });
+
+    test("should create new run with history when FEEDBACK decision is applied", async () => {
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        workspace: {
+          slug: "test-workspace",
+          members: [{ userId: "user-1" }],
+        },
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        decision: StakworkRunDecision.FEEDBACK,
+        feedback: "Need more details",
+      };
+
+      const mockHistoryRuns = [
+        {
+          result: "Previous architecture",
+          feedback: "Need iteration",
+          createdAt: new Date("2024-01-01"),
+        },
+      ];
+
+      const mockNewRun = {
+        id: "run-2",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        status: WorkflowStatus.PENDING,
+      };
+
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: {
+          swarmUrl: "https://swarm.example.com",
+          swarmApiKey: "encrypted-key",
+          swarmSecretAlias: "secret-alias",
+          poolName: "test-pool",
+          id: "swarm-1",
+        },
+        sourceControlOrg: {
+          tokens: [{ token: "encrypted-pat" }],
+        },
+        repositories: [{ repositoryUrl: "https://github.com/test/repo" }],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: "Test brief",
+        architecture: "Existing architecture",
+        userStories: [],
+        workspace: { description: "Test workspace" },
+      };
+
+      // Mock the findUnique call for updateStakworkRunDecision
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+
+      // Mock the update call to return the updated run with feedback
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(mockUpdatedRun);
+
+      // Mock the findMany call for getFeatureRunHistory
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue(mockHistoryRuns);
+
+      // Mock the workspace/user/feature queries for createStakworkRun
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+
+      // Mock the create call for the new run
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockNewRun);
+
+      // Mock Stakwork service call
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 123 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      await updateStakworkRunDecision("run-1", "user-1", {
+        decision: StakworkRunDecision.FEEDBACK,
+        feedback: "Need more details",
+      });
+
+      // Verify history was fetched
+      expect(db.stakworkRun.findMany).toHaveBeenCalledWith({
+        where: {
+          featureId: "feature-1",
+          type: StakworkRunType.ARCHITECTURE,
+          status: WorkflowStatus.COMPLETED,
+          result: { not: null },
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          result: true,
+          feedback: true,
+          createdAt: true,
+        },
+      });
+
+      // Verify new run was created with history
+      expect(db.stakworkRun.create).toHaveBeenCalled();
+      
+      // Verify Pusher was called at least once for decision update
+      expect(mockedPusherServer.trigger).toHaveBeenCalled();
+    });
+  });
+
+  describe("getFeatureRunHistory", () => {
+    test("should return empty array when no completed runs exist", async () => {
+      const { getFeatureRunHistory } = await import("@/services/stakwork-run");
+
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue([]);
+
+      const history = await getFeatureRunHistory("feature-1", StakworkRunType.ARCHITECTURE);
+
+      expect(history).toEqual([]);
+      expect(db.stakworkRun.findMany).toHaveBeenCalledWith({
+        where: {
+          featureId: "feature-1",
+          type: StakworkRunType.ARCHITECTURE,
+          status: WorkflowStatus.COMPLETED,
+          result: { not: null },
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          result: true,
+          feedback: true,
+          createdAt: true,
+        },
+      });
+    });
+
+    test("should build history with alternating assistant/user messages", async () => {
+      const { getFeatureRunHistory } = await import("@/services/stakwork-run");
+
+      const mockRuns = [
+        {
+          result: "First architecture attempt",
+          feedback: "Need more details on API layer",
+          createdAt: new Date("2024-01-01"),
+        },
+        {
+          result: "Second architecture with API details",
+          feedback: "Add database schema",
+          createdAt: new Date("2024-01-02"),
+        },
+        {
+          result: "Third architecture with database",
+          feedback: null,
+          createdAt: new Date("2024-01-03"),
+        },
+      ];
+
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue(mockRuns);
+
+      const history = await getFeatureRunHistory("feature-1", StakworkRunType.ARCHITECTURE);
+
+      expect(history).toEqual([
+        { role: "assistant", content: "First architecture attempt" },
+        { role: "user", content: "Need more details on API layer" },
+        { role: "assistant", content: "Second architecture with API details" },
+        { role: "user", content: "Add database schema" },
+        { role: "assistant", content: "Third architecture with database" },
+      ]);
+    });
+
+    test("should handle runs with result but no feedback", async () => {
+      const { getFeatureRunHistory } = await import("@/services/stakwork-run");
+
+      const mockRuns = [
+        {
+          result: "Architecture design",
+          feedback: null,
+          createdAt: new Date("2024-01-01"),
+        },
+      ];
+
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue(mockRuns);
+
+      const history = await getFeatureRunHistory("feature-1", StakworkRunType.ARCHITECTURE);
+
+      expect(history).toEqual([
+        { role: "assistant", content: "Architecture design" },
+      ]);
+    });
+
+    test("should handle runs with feedback but no result (filtered by query)", async () => {
+      const { getFeatureRunHistory } = await import("@/services/stakwork-run");
+
+      // The DB query filters for result: { not: null }, so runs with null results won't be returned
+      // This test verifies behavior if somehow a run with null result was included
+      const mockRuns = [
+        {
+          result: null,
+          feedback: "This feedback appears since result filter is at DB level",
+          createdAt: new Date("2024-01-01"),
+        },
+      ];
+
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue(mockRuns);
+
+      const history = await getFeatureRunHistory("feature-1", StakworkRunType.ARCHITECTURE);
+
+      // Since the run has no result, only feedback would be added (assistant message skipped)
+      expect(history).toEqual([
+        { role: "user", content: "This feedback appears since result filter is at DB level" },
+      ]);
+    });
+
+    test("should order history by createdAt ascending", async () => {
+      const { getFeatureRunHistory } = await import("@/services/stakwork-run");
+
+      const mockRuns = [
+        {
+          result: "First",
+          feedback: "Feedback 1",
+          createdAt: new Date("2024-01-01"),
+        },
+        {
+          result: "Second",
+          feedback: "Feedback 2",
+          createdAt: new Date("2024-01-03"),
+        },
+        {
+          result: "Third",
+          feedback: null,
+          createdAt: new Date("2024-01-05"),
+        },
+      ];
+
+      mockedDb.stakworkRun.findMany = vi.fn().mockResolvedValue(mockRuns);
+
+      const history = await getFeatureRunHistory("feature-1", StakworkRunType.ARCHITECTURE);
+
+      expect(history).toEqual([
+        { role: "assistant", content: "First" },
+        { role: "user", content: "Feedback 1" },
+        { role: "assistant", content: "Second" },
+        { role: "user", content: "Feedback 2" },
+        { role: "assistant", content: "Third" },
+      ]);
+    });
+  });
+
+  describe("createStakworkRun with history", () => {
+    test("should include history in Stakwork API call when provided", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: {
+          swarmUrl: "https://swarm.example.com",
+          swarmApiKey: "encrypted-key",
+          swarmSecretAlias: "secret-alias",
+          poolName: "test-pool",
+          id: "swarm-1",
+        },
+        sourceControlOrg: {
+          tokens: [{ token: "encrypted-pat" }],
+        },
+        repositories: [{ repositoryUrl: "https://github.com/test/repo" }],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: "Test brief",
+        architecture: "Existing architecture",
+        userStories: [],
+        workspace: { description: "Test workspace" },
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        status: WorkflowStatus.PENDING,
+      };
+
+      const mockHistory = [
+        { role: "assistant" as const, content: "Previous attempt" },
+        { role: "user" as const, content: "Needs improvement" },
+      ];
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(mockRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 123 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: "feature-1",
+          history: mockHistory,
+        },
+        "user-1"
+      );
+
+      // Verify Stakwork was called with history in params
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  history: mockHistory,
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should not include history in Stakwork API call when history is empty", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: {
+          swarmUrl: "https://swarm.example.com",
+          swarmApiKey: "encrypted-key",
+          swarmSecretAlias: "secret-alias",
+          poolName: "test-pool",
+          id: "swarm-1",
+        },
+        sourceControlOrg: {
+          tokens: [{ token: "encrypted-pat" }],
+        },
+        repositories: [{ repositoryUrl: "https://github.com/test/repo" }],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: "Test brief",
+        architecture: "Existing architecture",
+        userStories: [],
+        workspace: { description: "Test workspace" },
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        status: WorkflowStatus.PENDING,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(mockRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 123 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: "feature-1",
+          history: [],
+        },
+        "user-1"
+      );
+
+      // Verify Stakwork was called without history in params
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.not.objectContaining({
+                  history: expect.anything(),
+                }),
+              }),
+            }),
+          }),
+        })
+      );
     });
   });
 });
