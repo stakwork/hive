@@ -3,44 +3,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { checkRepositoryAccess } from "@/lib/github/checkRepositoryAccess";
 import { useCallback, useEffect, useState } from "react";
 
 interface GitHubAccessManagerProps {
   repositoryUrl: string;
   onAccessError: (error: boolean) => void;
 }
-
-// Check if user has access to repository
-const checkRepositoryAccess = async (repoUrl: string): Promise<{
-  hasAccess: boolean;
-  error?: string;
-  requiresReauth?: boolean;
-  requiresInstallationUpdate?: boolean;
-  installationId?: number;
-}> => {
-  try {
-    const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`);
-    const statusData = await statusResponse.json();
-
-    console.log("statusData", statusData);
-
-    // If there's an error, treat it as no access
-    if (statusData.error) {
-      return {
-        hasAccess: false,
-        error: statusData.error,
-        requiresReauth: statusData.requiresReauth,
-        requiresInstallationUpdate: statusData.requiresInstallationUpdate,
-        installationId: statusData.installationId
-      };
-    }
-
-    return { hasAccess: statusData.hasPushAccess === true };
-  } catch (error) {
-    console.error("Failed to check repository access:", error);
-    return { hasAccess: false, error: "Failed to check repository access" };
-  }
-};
 
 export function GitHubAccessManager({ repositoryUrl, onAccessError }: GitHubAccessManagerProps) {
   const { workspace } = useWorkspace();
