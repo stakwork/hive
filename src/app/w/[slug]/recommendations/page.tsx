@@ -69,7 +69,7 @@ export default function DefenseInsightsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Insights" />
+      <PageHeader title="Recommendations" />
 
       <div className="max-w-5xl space-y-6">
         <RecommendationsSection />

@@ -63,11 +63,22 @@ export class DashboardPage {
   }
 
   /**
-   * Navigate to insights page
+   * Navigate to recommendations page
    */
-  async goToInsights(): Promise<void> {
-    await this.page.locator(selectors.navigation.insightsLink).first().click();
-    await this.page.waitForURL(/\/w\/.*\/insights/, { timeout: 10000 });
+  async goToRecommendations(): Promise<void> {
+    // First expand the Protect section if not already expanded
+    const protectButton = this.page.locator('[data-testid="nav-protect"]');
+    const recommendationsLink = this.page.locator(selectors.navigation.recommendationsLink).first();
+
+    // Check if recommendations link is visible, if not, click Protect to expand
+    const isRecommendationsVisible = await recommendationsLink.isVisible();
+    if (!isRecommendationsVisible) {
+      await protectButton.click();
+      await this.page.waitForTimeout(300); // Wait for expand animation
+    }
+
+    await recommendationsLink.click();
+    await this.page.waitForURL(/\/w\/.*\/recommendations/, { timeout: 10000 });
   }
 
   /**

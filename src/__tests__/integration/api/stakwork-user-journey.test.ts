@@ -534,7 +534,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const analyticsMessage =
-        "User viewed insights page, clicked on recommendation #42, and opened file explorer";
+        "User viewed recommendations page, clicked on recommendation #42, and opened file explorer";
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {
