@@ -28,6 +28,52 @@ import { EncryptionService } from "@/lib/encryption";
 const encryptionService = EncryptionService.getInstance();
 
 /**
+ * Get feature run history for building chat-like conversation with Stakwork
+ * Returns alternating assistant/user messages from all completed runs with results
+ */
+export async function getFeatureRunHistory(
+  featureId: string,
+  type: StakworkRunType
+): Promise<Array<{ role: "assistant" | "user"; content: string }>> {
+  const runs = await db.stakworkRun.findMany({
+    where: {
+      featureId,
+      type,
+      status: WorkflowStatus.COMPLETED,
+      result: { not: null },
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      result: true,
+      feedback: true,
+      createdAt: true,
+    },
+  });
+
+  const history: Array<{ role: "assistant" | "user"; content: string }> = [];
+
+  for (const run of runs) {
+    // Add assistant message with the result
+    if (run.result) {
+      history.push({
+        role: "assistant",
+        content: run.result,
+      });
+    }
+
+    // Add user message with feedback if it exists
+    if (run.feedback) {
+      history.push({
+        role: "user",
+        content: run.feedback,
+      });
+    }
+  }
+
+  return history;
+}
+
+/**
  * Create a new Stakwork AI generation run
  * Follows the janitor pattern: Create DB record → Call Stakwork → Update with projectId
  */
@@ -226,6 +272,11 @@ export async function createStakworkRun(
 
       // Allow params override
       ...(input.params || {}),
+
+      // Include conversation history if provided
+      ...(input.history && input.history.length > 0 && {
+        history: input.history,
+      }),
     };
 
     const stakworkPayload = {
@@ -485,9 +536,14 @@ export async function updateStakworkRunDecision(
     throw new Error("Access denied");
   }
 
-  // Prevent duplicate decisions
-  if (run.decision) {
+  // Prevent duplicate decisions (except for FEEDBACK which can be applied)
+  if (run.decision && input.decision !== StakworkRunDecision.FEEDBACK) {
     throw new Error("This run has already been decided on");
+  }
+
+  // For FEEDBACK, require feedback text
+  if (input.decision === StakworkRunDecision.FEEDBACK && !input.feedback) {
+    throw new Error("Feedback is required when decision is FEEDBACK");
   }
 
   // If ACCEPTED, validate and verify the feature exists
@@ -524,6 +580,44 @@ export async function updateStakworkRunDecision(
     where: { id: runId },
     data: updateData,
   });
+
+  // Handle FEEDBACK case: Build history and create new run
+  if (input.decision === StakworkRunDecision.FEEDBACK && updatedRun.featureId) {
+    // Get full history including the current run with feedback
+    const previousHistory = await getFeatureRunHistory(
+      updatedRun.featureId,
+      updatedRun.type
+    );
+
+    // Create new run with history
+    const newRun = await createStakworkRun(
+      {
+        type: updatedRun.type,
+        workspaceId: updatedRun.workspaceId,
+        featureId: updatedRun.featureId,
+        history: previousHistory,
+      },
+      userId
+    );
+
+    // Broadcast the new run creation
+    try {
+      const channelName = getWorkspaceChannelName(run.workspace.slug);
+      await pusherServer.trigger(
+        channelName,
+        PUSHER_EVENTS.STAKWORK_RUN_UPDATE,
+        {
+          runId: newRun.id,
+          type: newRun.type,
+          status: newRun.status,
+          featureId: newRun.featureId,
+          timestamp: new Date(),
+        }
+      );
+    } catch (error) {
+      console.error("Error broadcasting new run to Pusher:", error);
+    }
+  }
 
   // If ACCEPTED with result, update the appropriate feature field based on type
   if (
