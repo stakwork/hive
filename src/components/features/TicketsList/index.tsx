@@ -20,6 +20,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { useAIGeneration } from "@/hooks/useAIGeneration";
+import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
@@ -78,6 +81,22 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   const { createTicket, loading: creatingTicket } = useRoadmapTaskMutations();
 
+  // Deep research hooks
+  const { latestRun, refetch: refetchStakworkRun } = useStakworkGeneration({
+    featureId,
+    type: "TASK_GENERATION",
+    enabled: true,
+  });
+
+  const aiGeneration = useAIGeneration({
+    featureId,
+    workspaceId: workspaceSlug || "",
+    type: "TASK_GENERATION",
+    enabled: true,
+  });
+
+  const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
+
   // Get the default phase (Phase 1)
   const defaultPhase = feature.phases?.[0];
 
@@ -90,6 +109,19 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       titleInputRef.current?.focus();
     }
   }, [creatingTicket, newTicketTitle, isCreatingTicket]);
+
+  // Watch for deep research completion
+  useEffect(() => {
+    if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
+      try {
+        const parsed = JSON.parse(latestRun.result);
+        aiGeneration.setContent(latestRun.result, "deep", latestRun.id);
+        setGeneratedContent(parsed);
+      } catch (error) {
+        console.error("Failed to parse deep research result:", error);
+      }
+    }
+  }, [latestRun, aiGeneration]);
 
   const handleCreateTicket = async () => {
     if (!newTicketTitle.trim() || !defaultPhase) return;
@@ -148,6 +180,30 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     setNewTicketAssigneeId(null);
     setNewTicketAssigneeData(null);
     setIsCreatingTicket(false);
+  };
+
+  const handleDeepThink = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await aiGeneration.regenerate(false);
+      await refetchStakworkRun();
+    } catch (error) {
+      console.error("Deep think failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await aiGeneration.regenerate(true);
+      await refetchStakworkRun();
+    } catch (error) {
+      console.error("Retry failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
   };
 
   const handleTasksReordered = (reorderedTasks: TicketListItem[]) => {
@@ -229,6 +285,13 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
         }
       }
 
+      // If from deep research, mark run as accepted
+      if (aiGeneration.source === "deep" && aiGeneration.content) {
+        await aiGeneration.accept(() => {
+          // Success callback - refresh feature handled below
+        });
+      }
+
       // Refetch feature to get updated tickets
       const featureResponse = await fetch(`/api/features/${featureId}`);
       const featureResult = await featureResponse.json();
@@ -237,8 +300,23 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       }
 
       setGeneratedContent(null);
+      aiGeneration.clear();
     } catch (error) {
       console.error("Failed to accept generated tickets:", error);
+    }
+  };
+
+  const handleRejectGenerated = async () => {
+    try {
+      // If from deep research, mark run as rejected
+      if (aiGeneration.source === "deep" && aiGeneration.content) {
+        await aiGeneration.reject();
+      }
+
+      setGeneratedContent(null);
+      aiGeneration.clear();
+    } catch (error) {
+      console.error("Failed to reject generated tickets:", error);
     }
   };
 
@@ -270,9 +348,10 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     return (
       <GenerationPreview
         content={previewContent}
-        source="quick"
+        source={aiGeneration.source || "quick"}
         onAccept={handleAcceptGenerated}
-        onReject={() => setGeneratedContent(null)}
+        onReject={handleRejectGenerated}
+        isLoading={aiGeneration.isLoading}
       />
     );
   }
@@ -288,11 +367,23 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
             params={{ type: "tickets" }}
             onGenerated={(results) => {
               if (results.length > 0) {
+                aiGeneration.setContent(JSON.stringify(results[0]), "quick");
                 setGeneratedContent(results[0]);
               }
             }}
             onGeneratingChange={setGenerating}
             label="Generate"
+            disabled={initiatingDeepThink || latestRun?.status === "IN_PROGRESS"}
+          />
+          <GenerationControls
+            onQuickGenerate={() => {}}
+            onDeepThink={handleDeepThink}
+            onRetry={handleRetry}
+            status={latestRun?.status}
+            isLoading={aiGeneration.isLoading || initiatingDeepThink}
+            isQuickGenerating={generating}
+            disabled={false}
+            showDeepThink={true}
           />
           {!isCreatingTicket && (
             <Button onClick={() => setIsCreatingTicket(true)} size="sm">

@@ -142,8 +142,8 @@ export async function createStakworkRun(
       throw new Error("Feature not found");
     }
 
-    // Build feature context for ARCHITECTURE type
-    if (input.type === StakworkRunType.ARCHITECTURE) {
+    // Build feature context for ARCHITECTURE and TASK_GENERATION types
+    if (input.type === StakworkRunType.ARCHITECTURE || input.type === StakworkRunType.TASK_GENERATION) {
       featureContext = buildFeatureContext(feature as Parameters<typeof buildFeatureContext>[0]);
     }
   }
@@ -199,7 +199,7 @@ export async function createStakworkRun(
       swarmSecretAlias: workspace.swarm?.swarmSecretAlias || null,
       poolName: workspace.swarm?.poolName || workspace.swarm?.id || null,
 
-      // Include formatted feature context for ARCHITECTURE type
+      // Include formatted feature context for ARCHITECTURE and TASK_GENERATION types
       ...(featureContext && {
         featureTitle: featureContext.title,
         featureBrief: featureContext.brief,
@@ -208,6 +208,7 @@ export async function createStakworkRun(
         userStories: featureContext.userStoriesText,
         requirements: featureContext.requirementsText,
         architecture: featureContext.architectureText,
+        existingTasks: featureContext.tasksText,
       }),
 
       // Allow params override
@@ -514,16 +515,14 @@ export async function updateStakworkRunDecision(
   ) {
     switch (updatedRun.type) {
       case StakworkRunType.ARCHITECTURE:
+        // Update feature's architecture field with the accepted result
         await db.feature.update({
           where: { id: updatedRun.featureId },
-          data: {
-            architecture: updatedRun.result,
-          },
+          data: { architecture: updatedRun.result },
         });
         break;
-      // Future: Add cases for REQUIREMENTS, USER_STORIES, etc.
       default:
-        console.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);
+        console.warn(`Unhandled run type: ${updatedRun.type}`);
     }
   }
 

@@ -42,6 +42,13 @@ type FeatureData = {
   workspace: {
     description: string | null;
   };
+  phases?: {
+    tasks?: {
+      title: string;
+      status: string;
+      priority: string;
+    }[];
+  }[];
 };
 
 export type FeatureContext = {
@@ -52,6 +59,7 @@ export type FeatureContext = {
   userStoriesText: string;
   requirementsText: string;
   architectureText: string;
+  tasksText: string | null;
 };
 
 export function buildFeatureContext(feature: FeatureData): FeatureContext {
@@ -70,6 +78,14 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
   const requirementsText = feature.requirements || '';
   const architectureText = feature.architecture || '';
 
+  // Include existing tasks from default phase (phase 0)
+  const tasksText = feature.phases && feature.phases.length > 0
+    ? feature.phases
+        .flatMap((phase) => phase.tasks || [])
+        .map((task) => `- ${task.title} (${task.status}, ${task.priority})`)
+        .join('\n') || null
+    : null;
+
   return {
     title: feature.title,
     brief: feature.brief,
@@ -78,6 +94,7 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
     userStoriesText,
     requirementsText,
     architectureText,
+    tasksText,
   };
 }
 

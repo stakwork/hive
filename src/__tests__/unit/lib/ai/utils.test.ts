@@ -132,6 +132,7 @@ describe("ai/utils", () => {
         userStoriesText: "\n\nUser Stories:\n- Customer can checkout with credit card\n- Admin can view payment history",
         requirementsText: "Must support credit cards and ACH payments",
         architectureText: "Use Stripe SDK with webhook handlers",
+        tasksText: null,
       });
     });
 
@@ -254,6 +255,7 @@ describe("ai/utils", () => {
         userStoriesText: "",
         requirementsText: "",
         architectureText: "",
+        tasksText: null,
       });
     });
 
@@ -518,6 +520,138 @@ describe("ai/utils", () => {
       expect(result2).toEqual(result3);
       expect(result1.personasText).toBe(result2.personasText);
       expect(result1.userStoriesText).toBe(result2.userStoriesText);
+    });
+
+    it("should return null tasksText when phases are undefined", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature without phases",
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBeNull();
+    });
+
+    it("should return null tasksText when phases array is empty", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature with empty phases",
+        // @ts-expect-error - Testing runtime behavior with empty phases
+        phases: [],
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBeNull();
+    });
+
+    it("should return null tasksText when phases have no tasks", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature with phases but no tasks",
+        // @ts-expect-error - Testing runtime behavior with phases but no tasks
+        phases: [{ tasks: [] }, { tasks: [] }],
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBeNull();
+    });
+
+    it("should format single task correctly", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature with single task",
+        // @ts-expect-error - Testing runtime behavior
+        phases: [
+          {
+            tasks: [
+              { title: "Implement authentication", status: "TODO", priority: "HIGH" },
+            ],
+          },
+        ],
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBe("- Implement authentication (TODO, HIGH)");
+    });
+
+    it("should format multiple tasks across phases", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature with multiple tasks",
+        // @ts-expect-error - Testing runtime behavior
+        phases: [
+          {
+            tasks: [
+              { title: "Setup database", status: "DONE", priority: "HIGH" },
+              { title: "Create API endpoints", status: "IN_PROGRESS", priority: "MEDIUM" },
+            ],
+          },
+          {
+            tasks: [
+              { title: "Write tests", status: "TODO", priority: "LOW" },
+            ],
+          },
+        ],
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBe(
+        "- Setup database (DONE, HIGH)\n- Create API endpoints (IN_PROGRESS, MEDIUM)\n- Write tests (TODO, LOW)"
+      );
+    });
+
+    it("should handle phases with undefined tasks arrays", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature with undefined tasks",
+        // @ts-expect-error - Testing runtime behavior
+        phases: [
+          { tasks: undefined },
+          { tasks: [{ title: "Valid task", status: "TODO", priority: "HIGH" }] },
+        ],
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBe("- Valid task (TODO, HIGH)");
+    });
+
+    it("should handle mixed empty and populated task arrays", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature with mixed phases",
+        // @ts-expect-error - Testing runtime behavior
+        phases: [
+          { tasks: [] },
+          { tasks: [{ title: "Task 1", status: "TODO", priority: "HIGH" }] },
+          { tasks: [] },
+          { tasks: [{ title: "Task 2", status: "DONE", priority: "LOW" }] },
+        ],
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toBe("- Task 1 (TODO, HIGH)\n- Task 2 (DONE, LOW)");
+    });
+
+    it("should handle task titles with special characters", () => {
+      const featureData = createMinimalFeatureData({
+        title: "Feature with special chars",
+        // @ts-expect-error - Testing runtime behavior
+        phases: [
+          {
+            tasks: [
+              { title: "Fix bug: API returns 500", status: "TODO", priority: "CRITICAL" },
+              { title: "Update [config] file", status: "IN_PROGRESS", priority: "HIGH" },
+              { title: "Add support for UTF-8 characters (émojis)", status: "DONE", priority: "MEDIUM" },
+            ],
+          },
+        ],
+      });
+
+      const result = buildFeatureContext(featureData);
+
+      expect(result.tasksText).toContain("Fix bug: API returns 500 (TODO, CRITICAL)");
+      expect(result.tasksText).toContain("Update [config] file (IN_PROGRESS, HIGH)");
+      expect(result.tasksText).toContain("Add support for UTF-8 characters (émojis) (DONE, MEDIUM)");
     });
   });
 });
