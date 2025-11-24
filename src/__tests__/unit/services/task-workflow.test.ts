@@ -35,6 +35,10 @@ vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn(() => "http://localhost:3000"),
 }));
 
+vi.mock("@/services/task-coordinator", () => ({
+  buildFeatureContext: vi.fn(),
+}));
+
 // Mock fetch globally
 global.fetch = vi.fn();
 
@@ -42,6 +46,7 @@ global.fetch = vi.fn();
 const { db: mockDb } = await import("@/lib/db");
 const { config: mockConfig } = await import("@/lib/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+const { buildFeatureContext: mockBuildFeatureContext } = await import("@/services/task-coordinator");
 const mockFetch = fetch as vi.MockedFunction<typeof fetch>;
 
 // Import functions under test
@@ -1197,6 +1202,1404 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
         })
       ).rejects.toThrow("User not found");
     });
+  });
+});
+
+describe("Feature Context Integration", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("via createTaskWithStakworkWorkflow", () => {
+    test("should build and include feature context when task has featureId and phaseId", async () => {
+      mockBuildFeatureContext.mockResolvedValue({
+        feature: {
+          title: "Test Feature",
+          brief: "Feature brief",
+          userStories: ["Story 1", "Story 2"],
+          requirements: "Feature requirements",
+          architecture: "Architecture details",
+        },
+        currentPhase: {
+          name: "Implementation",
+          description: "Implementation phase",
+          tickets: [
+            { id: "ticket-1", title: "Ticket 1", description: "Desc 1", status: "TODO" },
+          ],
+        },
+      });
+
+
+      // Setup task with featureId and phaseId
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask({
+            featureId: "feature-123",
+            phaseId: "phase-456",
+          }),
+          title: params.data.title,
+          description: params.data.description,
+          featureId: "feature-123",
+          phaseId: "phase-456",
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Verify buildFeatureContext was called with correct IDs
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
+
+      // Verify feature context was included in Stakwork payload
+      TestHelpers.expectStakworkCalledWithVars({
+        featureContext: {
+          feature: {
+            title: "Test Feature",
+            brief: "Feature brief",
+            userStories: ["Story 1", "Story 2"],
+            requirements: "Feature requirements",
+            architecture: "Architecture details",
+          },
+          currentPhase: {
+            name: "Implementation",
+            description: "Implementation phase",
+            tickets: [
+              { id: "ticket-1", title: "Ticket 1", description: "Desc 1", status: "TODO" },
+            ],
+          },
+        },
+      });
+    });
+
+    test("should continue without feature context when buildFeatureContext fails", async () => {
+      mockBuildFeatureContext.mockRejectedValue(new Error("Feature context error"));
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask({
+            featureId: "feature-123",
+            phaseId: "phase-456",
+          }),
+          featureId: "feature-123",
+          phaseId: "phase-456",
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Error building feature context:",
+        expect.any(Error)
+      );
+
+      // Verify Stakwork was still called without feature context
+      TestHelpers.expectStakworkCalled();
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    test("should not call buildFeatureContext when task has no featureId", async () => {
+      // mockBuildFeatureContext is already mocked at module level
+
+
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask(),
+          featureId: null,
+          phaseId: "phase-456",
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      expect(mockBuildFeatureContext).not.toHaveBeenCalled();
+    });
+
+    test("should not call buildFeatureContext when task has no phaseId", async () => {
+      // mockBuildFeatureContext is already mocked at module level
+
+
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask(),
+          featureId: "feature-123",
+          phaseId: null,
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      expect(mockBuildFeatureContext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("via sendMessageToStakwork", () => {
+    test("should include provided featureContext in Stakwork payload", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const featureContext = {
+        feature: {
+          title: "Authentication Feature",
+          brief: "User authentication system",
+          userStories: ["As a user, I can log in"],
+          requirements: "Secure authentication",
+          architecture: "OAuth 2.0",
+        },
+        currentPhase: {
+          name: "Testing",
+          description: "Testing phase",
+          tickets: [],
+        },
+      };
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+        featureContext,
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        featureContext,
+      });
+    });
+
+    test("should not include featureContext when not provided", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      expect(vars.featureContext).toBeUndefined();
+    });
+  });
+});
+
+describe("Repository Configuration Handling", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should extract repository URL and branch from workspace repositories", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithRepo = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://test-swarm.example.com/api",
+          swarmSecretAlias: "{{TEST_SECRET}}",
+          poolName: "test-pool",
+          name: "test-swarm",
+        },
+        repositories: [
+          {
+            repositoryUrl: "https://github.com/test/repo",
+            branch: "main",
+          },
+        ],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithRepo as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      repo_url: "https://github.com/test/repo",
+      base_branch: "main",
+    });
+  });
+
+  test("should handle workspace with no repositories", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithoutRepo = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://test-swarm.example.com/api",
+          swarmSecretAlias: "{{TEST_SECRET}}",
+          poolName: "test-pool",
+          name: "test-swarm",
+        },
+        repositories: [],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithoutRepo as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      repo_url: null,
+      base_branch: null,
+    });
+  });
+
+  test("should use most recent repository when multiple exist", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithMultipleRepos = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://test-swarm.example.com/api",
+          swarmSecretAlias: "{{TEST_SECRET}}",
+          poolName: "test-pool",
+          name: "test-swarm",
+        },
+        repositories: [
+          {
+            repositoryUrl: "https://github.com/test/newest-repo",
+            branch: "develop",
+          },
+        ],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithMultipleRepos as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      repo_url: "https://github.com/test/newest-repo",
+      base_branch: "develop",
+    });
+  });
+});
+
+describe("Workspace Configuration Validation", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should handle workspace with null swarm configuration", async () => {
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+
+    const taskWithNullSwarm = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: null,
+        repositories: [],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithNullSwarm as any);
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      swarmUrl: "",
+      swarmSecretAlias: null,
+      poolName: null,
+      repo2graph_url: "",
+    });
+  });
+
+  test("should transform swarmUrl correctly for workflow API", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithSwarmUrl = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://custom-swarm.example.com/api",
+          swarmSecretAlias: "{{CUSTOM_SECRET}}",
+          poolName: "custom-pool",
+          name: "custom-swarm",
+        },
+        repositories: [],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithSwarmUrl as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      swarmUrl: "https://custom-swarm.example.com:8444/api",
+      repo2graph_url: "https://custom-swarm.example.com:3355",
+    });
+  });
+
+  test("should use swarm ID as poolName", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      poolName: "swarm-id",
+    });
+  });
+});
+
+describe("Task Status Consistency", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should not update task status when already IN_PROGRESS", async () => {
+    TestHelpers.setupValidTask();
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("IN_PROGRESS");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBeUndefined();
+    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
+  });
+
+  test("should not update task status when already DONE", async () => {
+    TestHelpers.setupValidTask();
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("DONE");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBeUndefined();
+  });
+
+  test("should update task status from TODO to IN_PROGRESS on successful workflow start", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("IN_PROGRESS");
+    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
+  });
+});
+
+describe("Timestamp and Metadata Handling", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should set workflowStartedAt to current timestamp", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const beforeTime = new Date();
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+    const afterTime = new Date();
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const startedAt = updateCall.data.workflowStartedAt;
+
+    expect(startedAt).toBeInstanceOf(Date);
+    expect(startedAt.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime());
+    expect(startedAt.getTime()).toBeLessThanOrEqual(afterTime.getTime());
+  });
+
+  test("should store stakworkProjectId from Stakwork response", async () => {
+    MockSetup.setupSuccessfulWorkflow(12345);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.stakworkProjectId).toBe(12345);
+  });
+
+  test("should log warning when project_id missing in success response", async () => {
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    TestHelpers.setupValidTask();
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("TODO");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: {} }),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "No project_id found in Stakwork response:",
+      expect.objectContaining({ success: true })
+    );
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.stakworkProjectId).toBeUndefined();
+    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
+
+    consoleWarnSpy.mockRestore();
+  });
+
+  test("should include workspaceId in Stakwork payload", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      workspaceId: "test-workspace-id",
+    });
+  });
+
+  test("should include runBuild and runTestSuite flags in Stakwork payload", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithFlags = TestDataFactory.createValidTask({
+      runBuild: false,
+      runTestSuite: false,
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithFlags as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      runBuild: false,
+      runTestSuite: false,
+    });
+  });
+});
+
+describe("generateChatTitle Parameter Handling", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should include generateChatTitle when explicitly set to true", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+      generateChatTitle: true,
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      generateChatTitle: true,
+    });
+  });
+
+  test("should include generateChatTitle when explicitly set to false", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+      generateChatTitle: false,
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      generateChatTitle: false,
+    });
+  });
+
+  test("should not include generateChatTitle when not provided", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const fetchCall = mockFetch.mock.calls[0];
+    const payload = JSON.parse(fetchCall[1]?.body as string);
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    expect(vars.generateChatTitle).toBeUndefined();
+  });
+});
+
+describe("Feature Context Integration", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("via createTaskWithStakworkWorkflow", () => {
+    test("should build and include feature context when task has featureId and phaseId", async () => {
+      mockBuildFeatureContext.mockResolvedValue({
+        feature: {
+          title: "Test Feature",
+          brief: "Feature brief",
+          userStories: ["Story 1", "Story 2"],
+          requirements: "Feature requirements",
+          architecture: "Architecture details",
+        },
+        currentPhase: {
+          name: "Implementation",
+          description: "Implementation phase",
+          tickets: [
+            { id: "ticket-1", title: "Ticket 1", description: "Desc 1", status: "TODO" },
+          ],
+        },
+      });
+
+
+      // Setup task with featureId and phaseId
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask({
+            featureId: "feature-123",
+            phaseId: "phase-456",
+          }),
+          title: params.data.title,
+          description: params.data.description,
+          featureId: "feature-123",
+          phaseId: "phase-456",
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Verify buildFeatureContext was called with correct IDs
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
+
+      // Verify feature context was included in Stakwork payload
+      TestHelpers.expectStakworkCalledWithVars({
+        featureContext: {
+          feature: {
+            title: "Test Feature",
+            brief: "Feature brief",
+            userStories: ["Story 1", "Story 2"],
+            requirements: "Feature requirements",
+            architecture: "Architecture details",
+          },
+          currentPhase: {
+            name: "Implementation",
+            description: "Implementation phase",
+            tickets: [
+              { id: "ticket-1", title: "Ticket 1", description: "Desc 1", status: "TODO" },
+            ],
+          },
+        },
+      });
+    });
+
+    test("should continue without feature context when buildFeatureContext fails", async () => {
+      mockBuildFeatureContext.mockRejectedValue(new Error("Feature context error"));
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask({
+            featureId: "feature-123",
+            phaseId: "phase-456",
+          }),
+          featureId: "feature-123",
+          phaseId: "phase-456",
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Error building feature context:",
+        expect.any(Error)
+      );
+
+      // Verify Stakwork was still called without feature context
+      TestHelpers.expectStakworkCalled();
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    test("should not call buildFeatureContext when task has no featureId", async () => {
+      // mockBuildFeatureContext is already mocked at module level
+
+
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask(),
+          featureId: null,
+          phaseId: "phase-456",
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      expect(mockBuildFeatureContext).not.toHaveBeenCalled();
+    });
+
+    test("should not call buildFeatureContext when task has no phaseId", async () => {
+      // mockBuildFeatureContext is already mocked at module level
+
+
+      TestHelpers.setupTaskCreate();
+      mockDb.task.create.mockImplementation((params: any) => {
+        return Promise.resolve({
+          ...TestDataFactory.createValidTask(),
+          featureId: "feature-123",
+          phaseId: null,
+        } as any);
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      await createTaskWithStakworkWorkflow({
+        title: "New Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      expect(mockBuildFeatureContext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("via sendMessageToStakwork", () => {
+    test("should include provided featureContext in Stakwork payload", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      const featureContext = {
+        feature: {
+          title: "Authentication Feature",
+          brief: "User authentication system",
+          userStories: ["As a user, I can log in"],
+          requirements: "Secure authentication",
+          architecture: "OAuth 2.0",
+        },
+        currentPhase: {
+          name: "Testing",
+          description: "Testing phase",
+          tickets: [],
+        },
+      };
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+        featureContext,
+      });
+
+      TestHelpers.expectStakworkCalledWithVars({
+        featureContext,
+      });
+    });
+
+    test("should not include featureContext when not provided", async () => {
+      MockSetup.setupSuccessfulWorkflow();
+
+      await sendMessageToStakwork({
+        taskId: "test-task-id",
+        message: "Test message",
+        userId: "test-user-id",
+      });
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      expect(vars.featureContext).toBeUndefined();
+    });
+  });
+});
+
+describe("Repository Configuration Handling", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should extract repository URL and branch from workspace repositories", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithRepo = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://test-swarm.example.com/api",
+          swarmSecretAlias: "{{TEST_SECRET}}",
+          poolName: "test-pool",
+          name: "test-swarm",
+        },
+        repositories: [
+          {
+            repositoryUrl: "https://github.com/test/repo",
+            branch: "main",
+          },
+        ],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithRepo as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      repo_url: "https://github.com/test/repo",
+      base_branch: "main",
+    });
+  });
+
+  test("should handle workspace with no repositories", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithoutRepo = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://test-swarm.example.com/api",
+          swarmSecretAlias: "{{TEST_SECRET}}",
+          poolName: "test-pool",
+          name: "test-swarm",
+        },
+        repositories: [],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithoutRepo as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      repo_url: null,
+      base_branch: null,
+    });
+  });
+
+  test("should use most recent repository when multiple exist", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithMultipleRepos = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://test-swarm.example.com/api",
+          swarmSecretAlias: "{{TEST_SECRET}}",
+          poolName: "test-pool",
+          name: "test-swarm",
+        },
+        repositories: [
+          {
+            repositoryUrl: "https://github.com/test/newest-repo",
+            branch: "develop",
+          },
+        ],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithMultipleRepos as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      repo_url: "https://github.com/test/newest-repo",
+      base_branch: "develop",
+    });
+  });
+});
+
+describe("Workspace Configuration Validation", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should handle workspace with null swarm configuration", async () => {
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+
+    const taskWithNullSwarm = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: null,
+        repositories: [],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithNullSwarm as any);
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      swarmUrl: "",
+      swarmSecretAlias: null,
+      poolName: null,
+      repo2graph_url: "",
+    });
+  });
+
+  test("should transform swarmUrl correctly for workflow API", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithSwarmUrl = TestDataFactory.createValidTask({
+      workspace: {
+        id: "test-workspace-id",
+        slug: "test-workspace",
+        swarm: {
+          id: "swarm-id",
+          swarmUrl: "https://custom-swarm.example.com/api",
+          swarmSecretAlias: "{{CUSTOM_SECRET}}",
+          poolName: "custom-pool",
+          name: "custom-swarm",
+        },
+        repositories: [],
+      },
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithSwarmUrl as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      swarmUrl: "https://custom-swarm.example.com:8444/api",
+      repo2graph_url: "https://custom-swarm.example.com:3355",
+    });
+  });
+
+  test("should use swarm ID as poolName", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      poolName: "swarm-id",
+    });
+  });
+});
+
+describe("Task Status Consistency", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should not update task status when already IN_PROGRESS", async () => {
+    TestHelpers.setupValidTask();
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("IN_PROGRESS");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBeUndefined();
+    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
+  });
+
+  test("should not update task status when already DONE", async () => {
+    TestHelpers.setupValidTask();
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("DONE");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => TestDataFactory.createStakworkSuccessResponse(),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBeUndefined();
+  });
+
+  test("should update task status from TODO to IN_PROGRESS on successful workflow start", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.status).toBe("IN_PROGRESS");
+    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
+  });
+});
+
+describe("Timestamp and Metadata Handling", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should set workflowStartedAt to current timestamp", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const beforeTime = new Date();
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+    const afterTime = new Date();
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    const startedAt = updateCall.data.workflowStartedAt;
+
+    expect(startedAt).toBeInstanceOf(Date);
+    expect(startedAt.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime());
+    expect(startedAt.getTime()).toBeLessThanOrEqual(afterTime.getTime());
+  });
+
+  test("should store stakworkProjectId from Stakwork response", async () => {
+    MockSetup.setupSuccessfulWorkflow(12345);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.stakworkProjectId).toBe(12345);
+  });
+
+  test("should log warning when project_id missing in success response", async () => {
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    TestHelpers.setupValidTask();
+    TestHelpers.setupValidUser();
+    TestHelpers.setupValidChatMessage();
+    TestHelpers.setupValidGithubProfile();
+    TestHelpers.setupTaskStatusCheck("TODO");
+    TestHelpers.setupTaskUpdate();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: {} }),
+    } as Response);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "No project_id found in Stakwork response:",
+      expect.objectContaining({ success: true })
+    );
+
+    const updateCall = mockDb.task.update.mock.calls[0][0];
+    expect(updateCall.data.stakworkProjectId).toBeUndefined();
+    expect(updateCall.data.workflowStatus).toBe("IN_PROGRESS");
+
+    consoleWarnSpy.mockRestore();
+  });
+
+  test("should include workspaceId in Stakwork payload", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      workspaceId: "test-workspace-id",
+    });
+  });
+
+  test("should include runBuild and runTestSuite flags in Stakwork payload", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    const taskWithFlags = TestDataFactory.createValidTask({
+      runBuild: false,
+      runTestSuite: false,
+    });
+
+    mockDb.task.findFirst.mockResolvedValue(taskWithFlags as any);
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      runBuild: false,
+      runTestSuite: false,
+    });
+  });
+});
+
+describe("generateChatTitle Parameter Handling", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("should include generateChatTitle when explicitly set to true", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+      generateChatTitle: true,
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      generateChatTitle: true,
+    });
+  });
+
+  test("should include generateChatTitle when explicitly set to false", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+      generateChatTitle: false,
+    });
+
+    TestHelpers.expectStakworkCalledWithVars({
+      generateChatTitle: false,
+    });
+  });
+
+  test("should not include generateChatTitle when not provided", async () => {
+    MockSetup.setupSuccessfulWorkflow();
+
+    await sendMessageToStakwork({
+      taskId: "test-task-id",
+      message: "Test message",
+      userId: "test-user-id",
+    });
+
+    const fetchCall = mockFetch.mock.calls[0];
+    const payload = JSON.parse(fetchCall[1]?.body as string);
+    const vars = payload.workflow_params.set_var.attributes.vars;
+
+    expect(vars.generateChatTitle).toBeUndefined();
   });
 });
 
