@@ -6,7 +6,7 @@
  *
  * Flow:
  * 1. Validate authentication and fetch task
- * 2. Claim pod from pool manager
+ * 2. Claim pod from pool manager (or use CUSTOM_STAKLINK_URL for local testing)
  * 3. Generate one-time API key for webhook callback
  * 4. POST to pod control port to trigger test execution
  * 5. Update task workflowStatus to IN_PROGRESS
@@ -16,6 +16,10 @@
  * - Pod POSTs recording back to /api/tasks/[taskId]/recording webhook
  * - Recording webhook uploads video to S3 and creates artifacts
  * - API key is invalidated (one-time use)
+ *
+ * Local Development:
+ * Set CUSTOM_STAKLINK_URL=http://localhost:PORT to bypass pod claiming
+ * and test directly against a local StakLink service.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -30,10 +34,7 @@ export const fetchCache = "force-no-store";
 
 const encryptionService = EncryptionService.getInstance();
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
     // Step 1: Request Validation & Authentication
     const { taskId } = await params;
@@ -62,27 +63,18 @@ export async function POST(
     });
 
     if (!task) {
-      return NextResponse.json(
-        { error: "Task not found or not a user journey" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Task not found or not a user journey" }, { status: 404 });
     }
 
     // Validate task has testFilePath
     if (!task.testFilePath) {
-      return NextResponse.json(
-        { error: "Task has no test file path" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Task has no test file path" }, { status: 400 });
     }
 
     // Validate workspace has repository
     const repository = task.workspace.repositories[0];
     if (!repository) {
-      return NextResponse.json(
-        { error: "No repository configured for workspace" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No repository configured for workspace" }, { status: 400 });
     }
 
     // Verify user has access to workspace
@@ -99,51 +91,65 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Validate workspace has swarm with pool configuration
-    if (!task.workspace.swarm) {
-      return NextResponse.json(
-        { error: "No swarm found for this workspace" },
-        { status: 404 }
-      );
-    }
+    // Check for local development mode using custom StakLink URL
+    const customStakLinkUrl = process.env.CUSTOM_STAKLINK_URL;
+    let controlUrl: string;
+    let podPassword: string = ""; // Not needed for local development
+    let frontendUrl: string | null = null;
 
-    if (!task.workspace.swarm.id || !task.workspace.swarm.poolApiKey) {
-      return NextResponse.json(
-        { error: "Swarm not properly configured with pool information" },
-        { status: 400 }
-      );
-    }
+    if (customStakLinkUrl) {
+      // Local development mode - use custom StakLink URL directly
+      console.log("Using CUSTOM_STAKLINK_URL for local testing:", customStakLinkUrl);
+      controlUrl = customStakLinkUrl;
+      frontendUrl = null; // No pod frontend in local mode
+    } else {
+      // Production mode - claim pod from pool manager
 
-    // Step 2: Claim Pod (Reuse Existing Logic)
-    const poolId = task.workspace.swarm.id || task.workspace.swarm.poolName;
-    const poolApiKeyPlain = encryptionService.decryptField(
-      "poolApiKey",
-      task.workspace.swarm.poolApiKey
-    );
+      // Validate workspace has swarm with pool configuration
+      if (!task.workspace.swarm) {
+        return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
+      }
 
-    // Get services from swarm
-    const services = task.workspace.swarm.services as Array<{
-      name: string;
-      port: number;
-      scripts?: Record<string, string>;
-    }> | null | undefined;
+      if (!task.workspace.swarm.id || !task.workspace.swarm.poolApiKey) {
+        return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
+      }
 
-    let podResult;
-    try {
-      podResult = await claimPodAndGetFrontend(
-        poolId as string,
-        poolApiKeyPlain,
-        services || undefined
-      );
-    } catch (error) {
-      console.error("Failed to claim pod:", error);
-      return NextResponse.json(
-        {
-          error: "Failed to claim pod",
-          details: error instanceof Error ? error.message : "Unknown error",
-        },
-        { status: 503 }
-      );
+      // Step 2: Claim Pod (Reuse Existing Logic)
+      const poolId = task.workspace.swarm.id || task.workspace.swarm.poolName;
+      const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", task.workspace.swarm.poolApiKey);
+
+      // Get services from swarm
+      const services = task.workspace.swarm.services as
+        | Array<{
+            name: string;
+            port: number;
+            scripts?: Record<string, string>;
+          }>
+        | null
+        | undefined;
+
+      let podResult;
+      try {
+        podResult = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined);
+      } catch (error) {
+        console.error("Failed to claim pod:", error);
+        return NextResponse.json(
+          {
+            error: "Failed to claim pod",
+            details: error instanceof Error ? error.message : "Unknown error",
+          },
+          { status: 503 },
+        );
+      }
+
+      // Extract control URL and password from pod result
+      controlUrl = podResult.workspace.portMappings[POD_PORTS.CONTROL];
+      podPassword = podResult.workspace.password;
+      frontendUrl = podResult.frontend;
+
+      if (!controlUrl) {
+        return NextResponse.json({ error: "Control port not available on claimed pod" }, { status: 500 });
+      }
     }
 
     // Step 3: Generate One-Time API Key
@@ -168,31 +174,28 @@ export async function POST(
     const repoName = repository.name;
 
     // Step 6: Trigger Test Execution on Pod
-    const controlUrl = podResult.workspace.portMappings[POD_PORTS.CONTROL];
-    const podPassword = podResult.workspace.password;
-
-    if (!controlUrl) {
-      return NextResponse.json(
-        { error: "Control port not available on claimed pod" },
-        { status: 500 }
-      );
-    }
-
     const testPayload = {
       repoName: repoName,
       testFilePath: task.testFilePath,
       responseUrl: responseUrl,
       apiKey: apiKey, // Plain text - pod will use for webhook callback
     };
+    console.log("[user-journeys] Test payload", testPayload);
 
     let testResponse;
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Only add Authorization header if we have a pod password (production mode)
+      if (podPassword) {
+        headers.Authorization = `Bearer ${podPassword}`;
+      }
+
       testResponse = await fetch(`${controlUrl}/playwright_test`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${podPassword}`,
-        },
+        headers,
         body: JSON.stringify(testPayload),
       });
 
@@ -218,7 +221,7 @@ export async function POST(
           error: "Failed to start test execution",
           details: error instanceof Error ? error.message : "Unknown error",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -237,12 +240,12 @@ export async function POST(
         data: {
           taskId: taskId,
           testFilePath: task.testFilePath,
-          podStatus: "claimed",
+          podStatus: customStakLinkUrl ? "local" : "claimed",
           testStatus: "running",
-          frontendUrl: podResult.frontend,
+          frontendUrl: frontendUrl,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Unexpected error in test execution endpoint:", error);

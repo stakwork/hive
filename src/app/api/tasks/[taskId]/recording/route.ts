@@ -43,10 +43,8 @@ export const fetchCache = "force-no-store";
 
 const encryptionService = EncryptionService.getInstance();
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ taskId: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+  console.log("Recording webhook received");
   try {
     // Step 1: Request Validation
     const { taskId } = await params;
@@ -105,7 +103,10 @@ export async function POST(
       formData = await request.formData();
     } catch (error) {
       console.error("Failed to parse multipart form data:", error);
-      return NextResponse.json({ error: "Invalid multipart data" }, { status: 400 });
+      return NextResponse.json({
+        error: "Invalid multipart data",
+        details: "Failed to parse multipart/form-data. Ensure Content-Type header includes boundary parameter.",
+      }, { status: 400 });
     }
 
     const videoFile = formData.get("video") as File | null;
@@ -122,10 +123,7 @@ export async function POST(
     // Validate file size
     const maxVideoSizeMB = getMaxVideoSizeMB();
     if (!validateVideoSize(videoSize, maxVideoSizeMB)) {
-      return NextResponse.json(
-        { error: `File too large. Maximum size: ${maxVideoSizeMB}MB` },
-        { status: 413 }
-      );
+      return NextResponse.json({ error: `File too large. Maximum size: ${maxVideoSizeMB}MB` }, { status: 413 });
     }
 
     // Validate video format (WebM magic numbers)
@@ -244,7 +242,7 @@ export async function POST(
           artifactIds: chatMessage.artifacts.map((a) => a.id),
         },
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Unexpected error in recording webhook:", error);
