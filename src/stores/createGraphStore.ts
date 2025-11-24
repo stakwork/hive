@@ -44,8 +44,8 @@ const defaultData: Omit<
   | 'setCameraTarget'
   | 'saveCameraState'
   | 'setWebhookHighlightNodes'
-  | 'addWebhookHighlightChunk'
-  | 'removeWebhookHighlightChunk'
+  | 'addHighlightChunk'
+  | 'removeHighlightChunk'
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
 > = {
@@ -78,7 +78,7 @@ const defaultData: Omit<
   cameraPosition: null,
   cameraTarget: null,
   webhookHighlightNodes: [],
-  webhookHighlightChunks: [],
+  highlightChunks: [],
   highlightTimestamp: null,
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
@@ -203,33 +203,32 @@ export const createGraphStore = (
       highlightTimestamp: Date.now(),
       webhookHighlightDepth: depth
     }),
-    addWebhookHighlightChunk: (title: string, nodeIds: string[], depth = 0) => {
-      const id = crypto.randomUUID()
+    addHighlightChunk: (title: string, ref_ids: string[]) => {
+      const chunkId = crypto.randomUUID()
       const chunk: HighlightChunk = {
-        id,
+        chunkId,
         title,
-        nodeIds,
-        depth,
+        ref_ids,
         timestamp: Date.now()
       }
-      const { webhookHighlightChunks } = get()
+      const { highlightChunks } = get()
       set({
-        webhookHighlightChunks: [...webhookHighlightChunks, chunk],
+        highlightChunks: [...highlightChunks, chunk],
         highlightTimestamp: Date.now()
       })
-      return id
+      return chunkId
     },
-    removeWebhookHighlightChunk: (id: string) => {
-      const { webhookHighlightChunks } = get()
-      const updatedChunks = webhookHighlightChunks.filter(chunk => chunk.id !== id)
+    removeHighlightChunk: (chunkId: string) => {
+      const { highlightChunks } = get()
+      const updatedChunks = highlightChunks.filter(chunk => chunk.chunkId !== chunkId)
       set({
-        webhookHighlightChunks: updatedChunks,
+        highlightChunks: updatedChunks,
         highlightTimestamp: updatedChunks.length > 0 ? Date.now() : null
       })
     },
     clearWebhookHighlights: () => set({
       webhookHighlightNodes: [],
-      webhookHighlightChunks: [],
+      highlightChunks: [],
       highlightTimestamp: null
     }),
     setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
