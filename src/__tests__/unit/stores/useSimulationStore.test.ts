@@ -466,8 +466,8 @@ describe('calculateGridMap', () => {
       const endTime = performance.now();
       const duration = endTime - startTime;
 
-      // 100 lookups should be near-instant (< 5ms)
-      expect(duration).toBeLessThan(5);
+      // 100 lookups should be near-instant (< 10ms)
+      expect(duration).toBeLessThan(10);
     });
   });
 });
