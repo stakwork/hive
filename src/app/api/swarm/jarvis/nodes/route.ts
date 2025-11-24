@@ -181,18 +181,7 @@ export async function GET(request: NextRequest) {
       // Continue with original data if processing fails
     }
 
-    const nodesDateMapped =
-      (processedData as JarvisResponse).nodes?.map((node: JarvisNode) => {
-        // Check if timestamp is in milliseconds (13+ digits) and convert to seconds
-        const timestamp = node.date_added_to_graph;
-        const isNumber = typeof timestamp === "number";
-        const isMilliseconds = isNumber && timestamp.toString().length >= 13;
 
-        return {
-          ...node,
-          date_added_to_graph: isMilliseconds ? timestamp / 1000 : timestamp,
-        };
-      }) || [];
 
     return NextResponse.json(
       {
@@ -200,7 +189,6 @@ export async function GET(request: NextRequest) {
         status: apiResult.status,
         data: {
           ...(processedData as JarvisResponse),
-          nodes: nodesDateMapped,
         },
       },
       { status: apiResult.status },
