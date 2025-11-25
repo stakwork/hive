@@ -1,6 +1,5 @@
 import { Node, NodeExtended } from '@Universe/types';
 import {
-  forceCenter,
   forceCollide,
   forceLink,
   forceManyBody,
@@ -143,7 +142,7 @@ export const createSimulationStore = (
 
     // --- CORE: LAYOUT MANAGER ---
     setForces: () => {
-      const { simulation, resetSimulation, addLinkForce, addClusterForce, addSplitForce } = get();
+      const { simulation, resetSimulation, addLinkForce, addSplitForce } = get();
       const { graphStyle } = graphStore.getState();
 
       if (!simulation) return;
@@ -155,9 +154,6 @@ export const createSimulationStore = (
       switch (graphStyle) {
         case 'sphere': // Organic / Connected Subgraphs
           addLinkForce();
-          break;
-        case 'force':
-          addClusterForce();
           break;
         case 'split':
           addSplitForce();
@@ -196,178 +192,179 @@ export const createSimulationStore = (
       });
     },
 
-    // --- STYLE 1: ORGANIC (Connected Subgraphs) ---
     addLinkForce: () => {
       const { simulation } = get();
-      const nodes = simulation.nodes();
+      if (!simulation) return;
 
-      // Defensive link check
-      const linkForce = simulation.force('link');
-      const currentLinks = linkForce ? linkForce.links() : [];
+      const nodes = simulation.nodes() as NodeExtended[];
 
-      const resetPosition = {
-        fx: null,
-        fy: null,
-        fz: null,
-        x: null,
-        y: null,
-        z: null,
-        vx: null,
-        vy: null,
-        vz: null,
-      };
+      // 1. Extract Feature nodes
+      const featureNodes = nodes.filter((n) => n.node_type === 'Feature');
 
-      // Check if we're in concepts filter tab to enable Feature clustering
-      const { activeFilterTab } = graphStore.getState();
-      const shouldUseFeatureClustering = activeFilterTab === 'concepts';
+      // If no features – fall back to a normal layout
+      const linkForceExisting = simulation.force('link') as any;
+      const links = linkForceExisting ? linkForceExisting.links() : [];
 
-      if (shouldUseFeatureClustering) {
-        // Find all Feature nodes to act as cluster centers
-        const featureNodes = nodes.filter((node: NodeExtended) => node.node_type === 'Feature');
-
-        if (featureNodes.length > 0) {
-          // Create neighborhoods using Feature nodes as centers
-          const featureNeighborhoods = featureNodes.map((node: NodeExtended) => ({ ref_id: node.ref_id, name: node.name }));
-          const centers = distributeNodesOnSphere(featureNeighborhoods, 3000);
-
-          // Assign each non-Feature node to Feature nodes in a round-robin fashion for even distribution
-          let nonFeatureIndex = 0;
-          const updatedNodes = simulation.nodes().map((node: NodeExtended) => {
-            if (node.node_type === 'Feature') {
-              // Feature nodes become neighborhood centers
-              return { ...node, neighbourHood: node.ref_id };
-            } else {
-              // Distribute other nodes evenly across Feature nodes
-              const assignedFeature = featureNodes[nonFeatureIndex % featureNodes.length];
-              nonFeatureIndex++;
-              return { ...node, neighbourHood: assignedFeature.ref_id };
-            }
-          });
-
-          simulation
-            .nodes(updatedNodes)
-            .force('center', forceCenter().strength(0.05))
-            .force('charge', forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -30))
-            .force(
-              'x',
-              forceX((n: NodeExtended) => {
-                const c = centers[n.neighbourHood || ''];
-                return c ? c.x : 0;
-              }).strength(0.2)
-            )
-            .force(
-              'y',
-              forceY((n: NodeExtended) => {
-                const c = centers[n.neighbourHood || ''];
-                return c ? c.y : 0;
-              }).strength(0.2)
-            )
-            .force(
-              'z',
-              forceZ((n: NodeExtended) => {
-                const c = centers[n.neighbourHood || ''];
-                return c ? c.z : 0;
-              }).strength(0.2)
-            )
-            .force(
-              'link',
-              forceLink()
-                .links(currentLinks)
-                .id((d: Node) => d.ref_id)
-                .distance(200)
-                .strength(0.3)
-            )
-            .force('collide', forceCollide().radius((node: NodeExtended) => (node.scale || 1) * 80).strength(0.7));
-        } else {
-          // No Feature nodes in concepts mode - use compact layout
-          simulation
-            .force('center', forceCenter().strength(0.3))
-            .force('charge', forceManyBody().strength(-200))
-            .force('radial', null)
-            .force('x', forceX().strength(0.1))
-            .force('y', forceY().strength(0.1))
-            .force('z', forceZ().strength(0.1))
-            .force(
-              'link',
-              forceLink()
-                .links(currentLinks)
-                .id((d: Node) => d.ref_id)
-                .distance(150)
-                .strength(0.5)
-            )
-            .force('collide', forceCollide().radius((node: NodeExtended) => (node.scale || 1) * 60).strength(0.8));
-        }
-      } else {
-        // Fallback to regular link-based layout when not in concepts mode
+      if (featureNodes.length === 0) {
         simulation
-          // .force('center', forceCenter().strength(0.2))
           .force('charge', forceManyBody().strength(-600))
-          .force('radial', null)
           .force('x', forceX().strength(0.1))
           .force('y', forceY().strength(0.1))
           .force('z', forceZ().strength(0.1))
           .force(
             'link',
-            forceLink()
-              .links(currentLinks)
-              .id((d: Node) => d.ref_id)
-              .distance(20)
-              .strength(1)
+            forceLink(links)
+              .id((d: any) => d.ref_id)
+              .distance(80)
+              .strength(0.8)
           )
           .force(
             'collide',
-            forceCollide()
-              .radius((d: NodeExtended) => (d.scale || 1) * 30)
-              .strength(0.8)
+            forceCollide().radius((d: NodeExtended) => (d.scale || 1) * 30).strength(0.8)
           );
+        return;
       }
-    },
 
-    // --- STYLE 2: CLUSTER FORCE (Data Grouping) ---
-    addClusterForce: () => {
-      const { simulation } = get();
-      const { neighbourhoods } = graphStore.getState();
+      // 2. Distribute Feature nodes on a sphere
+      // distributeNodesOnSphere returns: { [ref_id]: { x, y, z } }
+      const centers = distributeNodesOnSphere(
+        featureNodes.map((n) => ({ ref_id: n.ref_id })),
+        4000 // radius
+      ) as Record<string, { x: number; y: number; z: number }>;
 
-      // Defensive link check
-      const linkForce = simulation.force('link');
-      const currentLinks = linkForce ? linkForce.links() : [];
+      // 3. Build adjacency: node -> Set<featureRefId>
+      const featureAdj = new Map<string, Set<string>>();
 
-      const centers = neighbourhoods?.length ? distributeNodesOnSphere(neighbourhoods, 5000) : {};
+      for (const l of links) {
+        const sourceNode =
+          typeof l.source === 'object'
+            ? (l.source as NodeExtended)
+            : (nodes.find((n) => n.ref_id === l.source) as NodeExtended | undefined);
+        const targetNode =
+          typeof l.target === 'object'
+            ? (l.target as NodeExtended)
+            : (nodes.find((n) => n.ref_id === l.target) as NodeExtended | undefined);
 
+        if (!sourceNode || !targetNode) continue;
+
+        // If source is Feature, target gets attracted to it
+        if (sourceNode.node_type === 'Feature') {
+          if (!featureAdj.has(targetNode.ref_id)) featureAdj.set(targetNode.ref_id, new Set());
+          featureAdj.get(targetNode.ref_id)!.add(sourceNode.ref_id);
+        }
+
+        // If target is Feature, source gets attracted to it
+        if (targetNode.node_type === 'Feature') {
+          if (!featureAdj.has(sourceNode.ref_id)) featureAdj.set(sourceNode.ref_id, new Set());
+          featureAdj.get(sourceNode.ref_id)!.add(targetNode.ref_id);
+        }
+      }
+
+      // 4. Feature nodes: pulled to their sphere centers
       simulation
-        .force('center', forceCenter().strength(0.01))
-        .force('charge', forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -50))
         .force(
-          'x',
-          forceX((n: NodeExtended) => {
-            const c = centers[n.neighbourHood || ''];
+          'featureX',
+          forceX((n: any) => {
+            if (n.node_type !== 'Feature') return 0;
+            const c = centers[n.ref_id];
             return c ? c.x : 0;
-          }).strength(0.3)
+          }).strength(0.5)
         )
         .force(
-          'y',
-          forceY((n: NodeExtended) => {
-            const c = centers[n.neighbourHood || ''];
+          'featureY',
+          forceY((n: any) => {
+            if (n.node_type !== 'Feature') return 0;
+            const c = centers[n.ref_id];
             return c ? c.y : 0;
-          }).strength(0.3)
+          }).strength(0.5)
         )
         .force(
-          'z',
-          forceZ((n: NodeExtended) => {
-            const c = centers[n.neighbourHood || ''];
+          'featureZ',
+          forceZ((n: any) => {
+            if (n.node_type !== 'Feature') return 0;
+            const c = centers[n.ref_id];
             return c ? c.z : 0;
-          }).strength(0.3)
+          }).strength(0.5)
+        );
+
+      // 5. Non-feature nodes: attracted to ALL related features (multi-cluster)
+      simulation
+        .force(
+          'clusterX',
+          forceX((n: any) => {
+            if (n.node_type === 'Feature') return 0;
+            const features = featureAdj.get(n.ref_id);
+            if (!features || features.size === 0) return 0;
+
+            let x = 0;
+            let count = 0;
+            for (const fId of features) {
+              const c = centers[fId];
+              if (!c) continue;
+              x += c.x;
+              count++;
+            }
+            if (!count) return 0;
+            return x / count;
+          }).strength(0.2)
         )
-        // Weak links allow nodes to travel to their clusters
+        .force(
+          'clusterY',
+          forceY((n: any) => {
+            if (n.node_type === 'Feature') return 0;
+            const features = featureAdj.get(n.ref_id);
+            if (!features || features.size === 0) return 0;
+
+            let y = 0;
+            let count = 0;
+            for (const fId of features) {
+              const c = centers[fId];
+              if (!c) continue;
+              y += c.y;
+              count++;
+            }
+            if (!count) return 0;
+            return y / count;
+          }).strength(0.2)
+        )
+        .force(
+          'clusterZ',
+          forceZ((n: any) => {
+            if (n.node_type === 'Feature') return 0;
+            const features = featureAdj.get(n.ref_id);
+            if (!features || features.size === 0) return 0;
+
+            let z = 0;
+            let count = 0;
+            for (const fId of features) {
+              const c = centers[fId];
+              if (!c) continue;
+              z += c.z;
+              count++;
+            }
+            if (!count) return 0;
+            return z / count;
+          }).strength(0.2)
+        );
+
+      // 6. Base physics
+      simulation
+        .force('charge', forceManyBody().strength(-200))
+        .force(
+          'collide',
+          forceCollide().radius((d: any) => (d.scale || 1) * 40)
+        )
         .force(
           'link',
-          forceLink()
-            .links(currentLinks)
-            .id((d: Node) => d.ref_id)
-            .strength(0.01)
-        )
-        .force('collide', forceCollide().radius((node: NodeExtended) => (node.scale || 1) * 120).strength(0.8));
+          forceLink(links)
+            .id((d: any) => d.ref_id)
+            .distance(120)
+            .strength(0.3)
+        );
     },
+
+
+
 
     // --- STYLE 3: SPLIT / GRID (Deterministic) ---
     addSplitForce: () => {

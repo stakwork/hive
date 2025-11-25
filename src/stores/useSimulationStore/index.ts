@@ -39,7 +39,6 @@ export interface SimulationStore {
   setForces: () => void
   resetSimulation: () => void
   addLinkForce: () => void
-  addClusterForce: () => void
   addSplitForce: () => void
   simulationRestart: () => void
   getLinks: () => Link<NodeExtended>[]
@@ -132,7 +131,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   setForces: () => {
-    const { simulation, simulationRestart, addLinkForce, addClusterForce, addSplitForce } = get()
+    const { simulation, simulationRestart, addLinkForce, addSplitForce } = get()
     const { graphStyle } = useGraphStore.getState()
 
     if (!simulation) return
@@ -147,9 +146,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     switch (graphStyle) {
       case 'sphere':
         addLinkForce()
-        break
-      case 'force':
-        addClusterForce()
         break
       case 'split':
         addSplitForce()
@@ -307,90 +303,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
             .iterations(2),
         )
     }
-  },
-
-  addClusterForce: () => {
-    const { simulation } = get()
-    const nodes = simulation.nodes()
-
-    // Find all Feature nodes to act as cluster centers
-    const featureNodes = nodes.filter((node: NodeExtended) => node.node_type === 'Feature')
-
-    // If no Feature nodes, fall back to regular layout
-    if (!featureNodes.length) {
-      simulation
-        .nodes(simulation.nodes().map((n: Node) => ({ ...n, ...resetPosition })))
-        .force('charge', forceManyBody().strength(-100))
-        .force('center', forceCenter().strength(0.1))
-        .force('collide', forceCollide().radius(100).strength(0.8))
-      return
-    }
-
-    // Create neighborhoods using Feature nodes as centers
-    const featureNeighborhoods = featureNodes.map((node: NodeExtended) => ({ ref_id: node.ref_id, name: node.name }))
-    const neighborhoodCenters = distributeNodesOnSphere(featureNeighborhoods, 5000)
-
-    // Assign each non-Feature node to Feature nodes in a round-robin fashion for even distribution
-    let nonFeatureIndex = 0
-    const updatedNodes = simulation.nodes().map((node: NodeExtended) => {
-      if (node.node_type === 'Feature') {
-        // Feature nodes become neighborhood centers
-        return { ...node, ...resetPosition, neighbourHood: node.ref_id }
-      } else {
-        // Distribute other nodes evenly across Feature nodes
-        const assignedFeature = featureNodes[nonFeatureIndex % featureNodes.length]
-        nonFeatureIndex++
-        return { ...node, ...resetPosition, neighbourHood: assignedFeature.ref_id }
-      }
-    })
-
-    simulation
-      .nodes(updatedNodes)
-      .force(
-        'charge',
-        forceManyBody().strength((node: NodeExtended) => (node.scale || 1) * -50),
-      )
-      .force(
-        'x',
-        forceX((n: NodeExtended) => {
-          const neighborhood = neighborhoodCenters[n.neighbourHood || '']
-          return neighborhood?.x || 0
-        }).strength(0.3),
-      )
-      .force(
-        'y',
-        forceY((n: NodeExtended) => {
-          const neighborhood = neighborhoodCenters[n.neighbourHood || '']
-          return neighborhood?.y || 0
-        }).strength(0.3),
-      )
-      .force(
-        'z',
-        forceZ((n: NodeExtended) => {
-          const neighborhood = neighborhoodCenters[n.neighbourHood || '']
-          return neighborhood?.z || 0
-        }).strength(0.3),
-      )
-      .force(
-        'link',
-        forceLink()
-          .links(
-            simulation
-              .force('link')
-              .links()
-              .map((i: Link<NodeExtended>) => ({ ...i, source: i.source.ref_id, target: i.target.ref_id })),
-          )
-          .strength(0)
-          .distance(600)
-          .id((d: NodeExtended) => d.ref_id),
-      )
-      .force(
-        'collide',
-        forceCollide()
-          .radius((node: NodeExtended) => (node.scale || 1) * 120)
-          .strength(0.8)
-          .iterations(2),
-      )
   },
 
   addSplitForce: () => {
