@@ -85,19 +85,33 @@ export async function createJanitorRun(
   janitorTypeString: string,
   triggeredBy: JanitorTrigger = "MANUAL"
 ) {
-  const validation = await validateWorkspaceAccess(workspaceSlug, userId);
-  if (!validation.hasAccess || !validation.canWrite) {
-    throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
-  }
-
-  // Parse janitor type
+  // Parse janitor type first (needed regardless of auth path)
   const janitorTypeUpper = janitorTypeString.toUpperCase();
   if (!Object.values(JanitorType).includes(janitorTypeUpper as JanitorType)) {
     throw new Error(`Invalid janitor type: ${janitorTypeString}`);
   }
   const janitorType = janitorTypeUpper as JanitorType;
 
-  const workspaceId = validation.workspace!.id;
+  let workspaceId: string;
+
+  // Skip auth validation for SCHEDULED (cron) runs - system-initiated and trusted
+  if (triggeredBy !== "SCHEDULED") {
+    const validation = await validateWorkspaceAccess(workspaceSlug, userId);
+    if (!validation.hasAccess || !validation.canWrite) {
+      throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+    }
+    workspaceId = validation.workspace!.id;
+  } else {
+    // For SCHEDULED runs, fetch workspace directly
+    const workspace = await db.workspace.findUnique({
+      where: { slug: workspaceSlug },
+      select: { id: true }
+    });
+    if (!workspace) {
+      throw new Error("Workspace not found");
+    }
+    workspaceId = workspace.id;
+  }
   let config = await db.janitorConfig.findUnique({
     where: { workspaceId }
   });
