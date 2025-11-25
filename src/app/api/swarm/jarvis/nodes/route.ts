@@ -183,6 +183,18 @@ export async function GET(request: NextRequest) {
 
 
 
+    // Handle null/undefined data from external API (e.g., 503 Service Unavailable)
+    if (!processedData) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: apiResult.status,
+          message: `External service returned ${apiResult.status} with no data`,
+        },
+        { status: apiResult.status },
+      );
+    }
+
     return NextResponse.json(
       {
         success: apiResult.ok,

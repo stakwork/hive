@@ -433,6 +433,31 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       expect(data.message).toBe("Failed to fetch coverage nodes");
     });
 
+    test("should handle null/undefined data from external API", async () => {
+      const { user, workspace } = await createTestWorkspaceWithSwarm();
+      
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      // Mock swarmApiRequest returning 503 with no data (network error case)
+      vi.mocked(swarmApiRequest).mockResolvedValue({
+        ok: false,
+        status: 503,
+        data: undefined,
+      });
+
+      const request = createGetRequest(
+        "http://localhost/api/tests/nodes",
+        { workspaceId: workspace.id }
+      );
+
+      const response = await GET(request);
+      
+      const data = await response.json();
+      expect(response.status).toBe(503);
+      expect(data.success).toBe(false);
+      expect(data.message).toBe("Failed to fetch coverage nodes");
+    });
+
     test("should pass correct parameters to swarmApiRequest", async () => {
       const { user, workspace, swarm } = await createTestWorkspaceWithSwarm();
       
@@ -643,13 +668,18 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       expect(data.message).toContain("Coverage data is not available");
     });
 
-    test("should handle general exceptions with 500 status", async () => {
+    test("should handle general exceptions with 503 status", async () => {
       const { user, workspace } = await createTestWorkspaceWithSwarm();
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock swarmApiRequest to throw an exception
-      vi.mocked(swarmApiRequest).mockRejectedValue(new Error("Network error"));
+      // Mock swarmApiRequest to return network error (503)
+      // swarmApiRequest catches exceptions internally and returns 503
+      vi.mocked(swarmApiRequest).mockResolvedValue({
+        ok: false,
+        status: 503,
+        data: undefined,
+      });
 
       const request = createGetRequest(
         "http://localhost/api/tests/nodes",
@@ -659,7 +689,7 @@ describe("GET /api/tests/nodes Integration Tests", () => {
       const response = await GET(request);
       
       const data = await response.json();
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(503);
       expect(data.success).toBe(false);
       expect(data.message).toBe("Failed to fetch coverage nodes");
     });

@@ -132,7 +132,9 @@ export async function swarmApiRequest({
     };
   } catch (error) {
     console.error("swarmApiRequest", error);
-    return { ok: false, status: 500 };
+    // Network errors, timeouts, or other fetch failures
+    // Return 503 Service Unavailable instead of 500 for external service issues
+    return { ok: false, status: 503, data: undefined };
   }
 }
 
