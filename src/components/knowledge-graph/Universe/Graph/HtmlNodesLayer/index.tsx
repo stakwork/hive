@@ -91,15 +91,6 @@ const CalloutLabel = ({
             style={{ transformOrigin: 'center' }}
           />
 
-          {/* Tech details: External Ticks visible on hover */}
-          {hovered && (
-            <g stroke="white" strokeWidth="1" opacity="0.8">
-              <line x1="2" y1="7" x2="-2" y2="7" />
-              <line x1="22" y1="7" x2="26" y2="7" />
-              <line x1="2" y1="17" x2="-2" y2="17" />
-              <line x1="22" y1="17" x2="26" y2="17" />
-            </g>
-          )}
         </svg>
       </div>
 

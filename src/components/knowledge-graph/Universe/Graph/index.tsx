@@ -7,7 +7,6 @@ import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
 import { Group } from 'three'
 import { Line2 } from 'three-stdlib'
-import { Connections } from './Connections'
 import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
@@ -44,7 +43,7 @@ export const Graph = () => {
   const nodesPositionRef = useRef(new Map<string, NodePosition>())
   const justWokeUpRef = useRef(false)
 
-  const { graphStyle, setGraphRadius, activeFilterTab, hoveredNode, selectedNode } = useGraphStore((s) => s)
+  const { graphStyle, setGraphRadius, activeFilterTab } = useGraphStore((s) => s)
 
   const {
     simulation,

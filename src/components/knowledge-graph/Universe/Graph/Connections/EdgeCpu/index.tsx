@@ -8,12 +8,16 @@ import * as THREE from "three";
 import { LinkPosition } from "../..";
 
 const edgeSettings = {
-  color: "#9194A4",
-  opacity: 0.4,
-  lineWidth: 0.1,
-  highlightColor: "#ffffff",
-  highlightOpacity: 0.8,
-  highlightLineWidth: 0.3
+    color: "#9194A4",
+    opacity: 0.4,
+    lineWidth: 0.1,
+    hoveredColor: "#ffffff",
+    hoveredOpacity: 0.4,
+    hoveredLineWidth: 0.3,
+    selectedColor: "#ffffff",
+    selectedOpacity: 0.2,
+    selectedLineWidth: 0.5,
+    dimmedOpacity: 0.1,  // Much lower opacity for non-related edges when there's active hover/selection
 }
 
 type Props = {
@@ -27,7 +31,7 @@ export function EdgesGPU({
     const meshRef = useRef<THREE.Mesh>(null);
     const startRef = useRef<Float32Array>(new Float32Array());
     const endRef = useRef<Float32Array>(new Float32Array());
-    const highlightRef = useRef<Float32Array>(new Float32Array());
+    const highlightRef = useRef<Float32Array>(new Float32Array()); // 0 = normal, 1 = hovered, 2 = selected
 
     const { size } = useThree();
     const storeId = useStoreId();
@@ -92,15 +96,21 @@ export function EdgesGPU({
                 uColor: { value: new THREE.Color(edgeSettings.color) },
                 uOpacity: { value: edgeSettings.opacity },
                 uLineWidth: { value: edgeSettings.lineWidth },
-                uHighlightColor: { value: new THREE.Color(edgeSettings.highlightColor) },
-                uHighlightOpacity: { value: edgeSettings.highlightOpacity },
-                uHighlightLineWidth: { value: edgeSettings.highlightLineWidth },
+                uHoveredColor: { value: new THREE.Color(edgeSettings.hoveredColor) },
+                uHoveredOpacity: { value: edgeSettings.hoveredOpacity },
+                uHoveredLineWidth: { value: edgeSettings.hoveredLineWidth },
+                uSelectedColor: { value: new THREE.Color(edgeSettings.selectedColor) },
+                uSelectedOpacity: { value: edgeSettings.selectedOpacity },
+                uSelectedLineWidth: { value: edgeSettings.selectedLineWidth },
+                uDimmedOpacity: { value: edgeSettings.dimmedOpacity },
+                uHasActiveNode: { value: 0 }, // 1 if there's any hovered or selected node, 0 otherwise
                 uResolution: { value: new THREE.Vector2(1, 1) },
             },
             vertexShader: `
         uniform vec2 uResolution;
         uniform float uLineWidth;
-        uniform float uHighlightLineWidth;
+        uniform float uHoveredLineWidth;
+        uniform float uSelectedLineWidth;
 
         attribute vec3 aStart;
         attribute vec3 aEnd;
@@ -125,7 +135,14 @@ export function EdgesGPU({
           float aspect = uResolution.x / uResolution.y;
           normal.x *= aspect;
 
-          float lineWidth = mix(uLineWidth, uHighlightLineWidth, aHighlight);
+          // Calculate line width based on highlight state: 0 = normal, 1 = hovered, 2 = selected
+          float lineWidth = uLineWidth;
+          if (aHighlight > 1.5) {
+            lineWidth = uSelectedLineWidth; // Selected state
+          } else if (aHighlight > 0.5) {
+            lineWidth = uHoveredLineWidth; // Hovered state
+          }
+
           vec2 offset = normal * aSide * lineWidth / uResolution.y * 2.0;
 
           vec2 ndc = clip.xy / clip.w;
@@ -138,14 +155,31 @@ export function EdgesGPU({
             fragmentShader: `
         uniform vec3 uColor;
         uniform float uOpacity;
-        uniform vec3 uHighlightColor;
-        uniform float uHighlightOpacity;
+        uniform vec3 uHoveredColor;
+        uniform float uHoveredOpacity;
+        uniform vec3 uSelectedColor;
+        uniform float uSelectedOpacity;
+        uniform float uDimmedOpacity;
+        uniform float uHasActiveNode;
 
         varying float vHighlight;
 
         void main() {
-          vec3 color = mix(uColor, uHighlightColor, vHighlight);
-          float opacity = mix(uOpacity, uHighlightOpacity, vHighlight);
+          vec3 color = uColor;
+          float opacity = uOpacity;
+
+          // Apply colors based on highlight state: 0 = normal, 1 = hovered, 2 = selected
+          if (vHighlight > 1.5) {
+            color = uSelectedColor;
+            opacity = uSelectedOpacity;
+          } else if (vHighlight > 0.5) {
+            color = uHoveredColor;
+            opacity = uHoveredOpacity;
+          } else if (uHasActiveNode > 0.5) {
+            // If there's an active node but this edge isn't highlighted, dim it
+            opacity = uDimmedOpacity;
+          }
+
           gl_FragColor = vec4(color, opacity);
         }
       `,
@@ -168,7 +202,9 @@ export function EdgesGPU({
         const { hoveredNode, selectedNode, selectedNodeTypes, selectedLinkTypes, searchQuery } =
             getStoreBundle(storeId).graph.getState();
 
-        const activeNode = hoveredNode || selectedNode;
+        // Determine if there's any active interaction that should dim non-related edges
+        const hasActiveNode = !!(hoveredNode || selectedNode);
+        material.uniforms.uHasActiveNode.value = hasActiveNode ? 1 : 0;
 
         let v = 0;
 
@@ -179,7 +215,7 @@ export function EdgesGPU({
 
             // Find the corresponding link data to get source/target info
             const linkData = dataInitial?.links?.find(l => l.ref_id === linkRefId);
-            let shouldHighlight = 0;
+            let highlightState = 0; // 0 = normal, 1 = hovered, 2 = selected
 
             if (linkData) {
                 const sourceId = typeof linkData.source === 'string' ? linkData.source : linkData.source?.ref_id;
@@ -194,12 +230,21 @@ export function EdgesGPU({
                         selectedLinkTypes.includes(linkData.edge_type) ||
                         (selectedNodeTypes.includes(sourceNode.node_type) && selectedNodeTypes.includes(targetNode.node_type));
 
-                    const connectedToActiveNode =
-                        activeNode?.ref_id === sourceId || activeNode?.ref_id === targetId;
+                    const connectedToSelectedNode =
+                        selectedNode?.ref_id === sourceId || selectedNode?.ref_id === targetId;
 
-                    // Highlight if: active link type, connected to active node, or search query active
-                    if (activeLink || connectedToActiveNode || searchQuery) {
-                        shouldHighlight = 1;
+                    const connectedToHoveredNode =
+                        hoveredNode?.ref_id === sourceId || hoveredNode?.ref_id === targetId;
+
+                    // Priority: selected > hovered > active link/search > normal
+                    if (activeLink || searchQuery || connectedToSelectedNode || connectedToHoveredNode) {
+                        if (connectedToSelectedNode) {
+                            highlightState = 2; // Selected state (green, thickest)
+                        } else if (connectedToHoveredNode) {
+                            highlightState = 1; // Hovered state (white, medium)
+                        } else {
+                            highlightState = 1; // Active link/search state (white, medium)
+                        }
                     }
                 }
             }
@@ -214,7 +259,7 @@ export function EdgesGPU({
                 aEnd[v + 1] = ty;
                 aEnd[v + 2] = tz;
 
-                aHighlight[v / 3] = shouldHighlight; // Per-vertex highlight
+                aHighlight[v / 3] = highlightState; // Per-vertex highlight state
 
                 v += 3;
             }
