@@ -3,7 +3,7 @@ import { GET } from "@/app/api/cron/janitors/route";
 import { db } from "@/lib/db";
 import { resetDatabase } from "@/__tests__/support/fixtures";
 import { JanitorType, JanitorStatus, JanitorTrigger, TaskStatus, WorkflowStatus } from "@prisma/client";
-import { hasActiveJanitorTask } from "@/services/janitor-cron";
+import { shouldSkipJanitorRun } from "@/services/janitor-cron";
 
 /**
  * Integration tests for GET /api/cron/janitors endpoint
@@ -1078,13 +1078,14 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
-  describe("Sequential Janitor Behavior (hasActiveJanitorTask)", () => {
+  describe("Sequential Janitor Behavior (shouldSkipJanitorRun)", () => {
     /**
-     * These tests verify the hasActiveJanitorTask function which determines
-     * if a workspace has an active task that should block new janitor runs
-     * for sequential janitor types (UNIT_TESTS, INTEGRATION_TESTS).
+     * These tests verify the shouldSkipJanitorRun function which determines
+     * if a workspace has a pending recommendation or active task that should
+     * block new janitor runs for sequential janitor types.
      *
-     * The function queries tasks directly using the janitorType field on Task.
+     * The function first checks for pending recommendations, then queries
+     * tasks directly using the janitorType field on Task.
      */
 
     let testUser: { id: string };
@@ -1112,7 +1113,7 @@ describe("GET /api/cron/janitors", () => {
     });
 
     it("should return false when no janitor tasks exist", async () => {
-      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(result).toBe(false);
     });
 
@@ -1130,7 +1131,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(result).toBe(true);
     });
 
@@ -1163,7 +1164,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(result).toBe(false);
     });
 
@@ -1196,7 +1197,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(result).toBe(false);
     });
 
@@ -1214,7 +1215,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(result).toBe(false);
     });
 
@@ -1232,7 +1233,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(result).toBe(false);
     });
 
@@ -1265,7 +1266,7 @@ describe("GET /api/cron/janitors", () => {
         },
       });
 
-      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const result = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(result).toBe(true);
     });
 
@@ -1284,11 +1285,11 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // UNIT_TESTS should have active task
-      const unitTestsResult = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      const unitTestsResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.UNIT_TESTS);
       expect(unitTestsResult).toBe(true);
 
       // INTEGRATION_TESTS should not have active task
-      const integrationTestsResult = await hasActiveJanitorTask(testWorkspace.id, JanitorType.INTEGRATION_TESTS);
+      const integrationTestsResult = await shouldSkipJanitorRun(testWorkspace.id, JanitorType.INTEGRATION_TESTS);
       expect(integrationTestsResult).toBe(false);
     });
   });
