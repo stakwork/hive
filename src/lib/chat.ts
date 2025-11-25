@@ -102,6 +102,17 @@ export interface DiffContent {
   diffs: ActionResult[];
 }
 
+export interface MediaContent {
+  url: string;              // Presigned download URL
+  s3Key: string;            // S3 storage key
+  mediaType: "video" | "audio";
+  filename: string;         // Original filename
+  size: number;             // File size in bytes
+  contentType: string;      // MIME type (e.g., "video/webm")
+  duration?: number | null; // Duration in seconds (optional)
+  uploadedAt: string;       // ISO timestamp
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?:
@@ -114,7 +125,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | GraphContent
     | WorkflowContent
     | PullRequestContent
-    | DiffContent;
+    | DiffContent
+    | MediaContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -172,7 +184,8 @@ export function createArtifact(data: {
     | GraphContent
     | WorkflowContent
     | PullRequestContent
-    | DiffContent;
+    | DiffContent
+    | MediaContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {
