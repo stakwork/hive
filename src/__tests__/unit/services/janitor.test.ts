@@ -686,7 +686,20 @@ describe("Janitor Service", () => {
         workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
       };
 
-      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      // First findUnique call returns PENDING recommendation, second returns ACCEPTED
+      const enrichedMockRecommendation = {
+        ...mockRecommendation,
+        workspace: mockRecommendation.janitorRun?.janitorConfig?.workspace,
+        workspaceId: "ws-1",
+      };
+      const enrichedUpdatedRecommendation = {
+        ...updatedRecommendation,
+        workspace: mockRecommendation.janitorRun?.janitorConfig?.workspace,
+        workspaceId: "ws-1",
+      };
+      vi.mocked(mockedDb.janitorRecommendation.findUnique)
+        .mockResolvedValueOnce(enrichedMockRecommendation)
+        .mockResolvedValueOnce(enrichedUpdatedRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockRecommendationUpdate(mockedDb, updatedRecommendation);
       mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
