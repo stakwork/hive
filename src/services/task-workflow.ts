@@ -23,6 +23,7 @@ export async function createTaskWithStakworkWorkflow(params: {
   mode?: string;
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMergePr?: boolean;
 }) {
   const {
     title,
@@ -37,6 +38,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     mode = "default",
     runBuild = true,
     runTestSuite = true,
+    autoMergePr,
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -133,6 +135,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     mode,
     generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
+    autoMergePr,
   });
 
   return {
@@ -302,8 +305,9 @@ async function createChatMessageAndTriggerStakwork(params: {
   mode?: string;
   generateChatTitle?: boolean;
   featureContext?: object;
+  autoMergePr?: boolean;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext } = params;
+  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr } = params;
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
@@ -376,6 +380,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         runTestSuite: task.runTestSuite,
         repoUrl,
         baseBranch,
+        autoMergePr,
       });
 
       if (stakworkData.success) {
@@ -455,6 +460,7 @@ export async function callStakworkAPI(params: {
   repoUrl?: string | null;
   baseBranch?: string | null;
   history?: Record<string, unknown>[];
+  autoMergePr?: boolean;
 }) {
   const {
     taskId,
@@ -477,6 +483,7 @@ export async function callStakworkAPI(params: {
     repoUrl = null,
     baseBranch = null,
     history = [],
+    autoMergePr,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -518,6 +525,9 @@ export async function callStakworkAPI(params: {
   // Add optional parameters if provided
   if (generateChatTitle !== undefined) {
     vars.generateChatTitle = generateChatTitle;
+  }
+  if (autoMergePr !== undefined) {
+    vars.auto_merge_pr = autoMergePr;
   }
   if (featureContext !== undefined) {
     vars.featureContext = featureContext;

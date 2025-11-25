@@ -414,8 +414,9 @@ model Task {
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  chatMessages ChatMessage[]
-  screenshots  Screenshot[]
+  chatMessages          ChatMessage[]
+  screenshots           Screenshot[]
+  janitorRecommendation JanitorRecommendation?
 
   @@index([workspaceId])
   @@index([assigneeId])
@@ -595,6 +596,10 @@ model JanitorRecommendation {
   metadata  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Link to task created from this recommendation
+  taskId String? @unique @map("task_id")
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   janitorRun  JanitorRun? @relation(fields: [janitorRunId], references: [id], onDelete: Cascade)
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
