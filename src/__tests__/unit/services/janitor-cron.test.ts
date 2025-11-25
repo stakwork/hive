@@ -41,49 +41,34 @@ describe("hasActiveJanitorTask", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(db, {
-      janitorRecommendation: {
-        findMany: vi.fn(),
+      task: {
+        findFirst: vi.fn(),
       },
     });
   });
 
-  const createMockRecommendation = (overrides: {
-    taskId?: string | null;
-    taskStatus?: TaskStatus;
-    taskWorkflowStatus?: WorkflowStatus;
+  const createMockTask = (overrides: {
+    status?: TaskStatus;
+    workflowStatus?: WorkflowStatus;
     prArtifacts?: Array<{ content: { status?: string } }>;
   } = {}) => {
-    const { taskId = "task-1", taskStatus = TaskStatus.IN_PROGRESS, taskWorkflowStatus = WorkflowStatus.IN_PROGRESS, prArtifacts = [] } = overrides;
+    const { status = TaskStatus.IN_PROGRESS, workflowStatus = WorkflowStatus.IN_PROGRESS, prArtifacts = [] } = overrides;
 
     return {
-      id: "rec-1",
+      id: "task-1",
       workspaceId: "ws-1",
-      status: "ACCEPTED",
-      taskId,
-      janitorRun: { janitorType: JanitorType.UNIT_TESTS },
-      task: taskId ? {
-        id: taskId,
-        status: taskStatus,
-        workflowStatus: taskWorkflowStatus,
-        chatMessages: prArtifacts.length > 0 ? [{
-          artifacts: prArtifacts,
-        }] : [],
-      } : null,
+      janitorType: JanitorType.UNIT_TESTS,
+      status,
+      workflowStatus,
+      deleted: false,
+      chatMessages: prArtifacts.length > 0 ? [{
+        artifacts: prArtifacts,
+      }] : [],
     };
   };
 
-  it("should return false when no accepted recommendations exist", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([]);
-
-    const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
-
-    expect(result).toBe(false);
-  });
-
-  it("should return false when recommendation has no linked task", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({ taskId: null }) as any,
-    ]);
+  it("should return false when no janitor tasks exist", async () => {
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(null);
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
@@ -91,9 +76,9 @@ describe("hasActiveJanitorTask", () => {
   });
 
   it("should return true when task has no PR artifacts and status is not DONE", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({ taskStatus: TaskStatus.IN_PROGRESS }) as any,
-    ]);
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+      createMockTask({ status: TaskStatus.IN_PROGRESS }) as any,
+    );
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
@@ -101,9 +86,9 @@ describe("hasActiveJanitorTask", () => {
   });
 
   it("should return false when task has no PR artifacts and status is DONE", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({ taskStatus: TaskStatus.DONE }) as any,
-    ]);
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+      createMockTask({ status: TaskStatus.DONE }) as any,
+    );
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
@@ -111,11 +96,11 @@ describe("hasActiveJanitorTask", () => {
   });
 
   it("should return true when task has PR with status IN_PROGRESS", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+      createMockTask({
         prArtifacts: [{ content: { status: "IN_PROGRESS" } }],
       }) as any,
-    ]);
+    );
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
@@ -123,11 +108,11 @@ describe("hasActiveJanitorTask", () => {
   });
 
   it("should return false when task has PR with status DONE (merged)", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+      createMockTask({
         prArtifacts: [{ content: { status: "DONE" } }],
       }) as any,
-    ]);
+    );
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
@@ -135,50 +120,50 @@ describe("hasActiveJanitorTask", () => {
   });
 
   it("should return false when task has PR with status CANCELLED (closed)", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+      createMockTask({
         prArtifacts: [{ content: { status: "CANCELLED" } }],
       }) as any,
-    ]);
+    );
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
     expect(result).toBe(false);
   });
 
-  it("should return false when task status is CANCELLED", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({ taskStatus: TaskStatus.CANCELLED }) as any,
-    ]);
+  it("should return false when task status is CANCELLED (discarded)", async () => {
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+      createMockTask({ status: TaskStatus.CANCELLED }) as any,
+    );
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
     expect(result).toBe(false);
   });
 
-  it("should return false when task workflowStatus is FAILED", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([
-      createMockRecommendation({ taskWorkflowStatus: WorkflowStatus.FAILED }) as any,
-    ]);
+  it("should return false when task workflowStatus is FAILED (discarded)", async () => {
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+      createMockTask({ workflowStatus: WorkflowStatus.FAILED }) as any,
+    );
 
     const result = await hasActiveJanitorTask("ws-1", JanitorType.UNIT_TESTS);
 
     expect(result).toBe(false);
   });
 
-  it("should only check recommendations for the specified janitor type", async () => {
-    vi.mocked(mockedDb.janitorRecommendation.findMany).mockResolvedValue([]);
+  it("should query for the most recent task of the specified janitor type", async () => {
+    vi.mocked(mockedDb.task.findFirst).mockResolvedValue(null);
 
     await hasActiveJanitorTask("ws-1", JanitorType.INTEGRATION_TESTS);
 
-    expect(mockedDb.janitorRecommendation.findMany).toHaveBeenCalledWith(
+    expect(mockedDb.task.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           workspaceId: "ws-1",
-          status: "ACCEPTED",
-          taskId: { not: null },
-          janitorRun: { janitorType: JanitorType.INTEGRATION_TESTS },
+          janitorType: JanitorType.INTEGRATION_TESTS,
+          deleted: false,
         }),
+        orderBy: { createdAt: "desc" },
       })
     );
   });

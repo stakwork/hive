@@ -65,61 +65,63 @@ const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [JanitorType.UNIT_TESTS, Janitor
 
 /**
  * Check if a workspace has an active task for a specific janitor type.
- * Active = task from an accepted recommendation that doesn't have a merged PR yet.
+ * Active = janitor task that doesn't have a merged/closed PR yet.
  */
 export async function hasActiveJanitorTask(
   workspaceId: string,
   janitorType: JanitorType
 ): Promise<boolean> {
-  // Find ACCEPTED recommendations with a linked task for this janitor type
-  const activeRecommendations = await db.janitorRecommendation.findMany({
+  // Find the most recent task with this janitor type
+  const task = await db.task.findFirst({
     where: {
       workspaceId,
-      status: "ACCEPTED",
-      taskId: { not: null },
-      janitorRun: { janitorType },
+      janitorType,
+      deleted: false,
     },
     include: {
-      task: {
+      chatMessages: {
         include: {
-          chatMessages: {
-            include: {
-              artifacts: { where: { type: "PULL_REQUEST" } }
-            },
-            orderBy: { createdAt: "desc" }
-          }
-        }
+          artifacts: { where: { type: "PULL_REQUEST" } }
+        },
+        orderBy: { createdAt: "desc" }
       }
-    }
+    },
+    orderBy: { createdAt: "desc" }
   });
 
-  for (const rec of activeRecommendations) {
-    const task = rec.task;
-    // Skip if task is cancelled or workflow failed - these are "discarded" tasks
-    if (!task || task.status === "CANCELLED" || task.workflowStatus === "FAILED") continue;
-
-    const prArtifacts = task.chatMessages.flatMap(m => m.artifacts);
-
-    if (prArtifacts.length === 0) {
-      // No PR yet - task is active if not manually done
-      if (task.status !== "DONE") {
-        console.log(`[JanitorCron] Found active task ${task.id} for ${janitorType}: no PR yet`);
-        return true;
-      }
-    } else {
-      // Has PR - check if merged or cancelled
-      const latestPr = prArtifacts[0];
-      const content = latestPr.content as { status?: string };
-      // DONE = merged, CANCELLED = closed without merge
-      // Only these two statuses allow new janitor runs
-      if (content.status !== "DONE" && content.status !== "CANCELLED") {
-        console.log(`[JanitorCron] Found active task ${task.id} for ${janitorType}: PR not merged/closed (status: ${content.status})`);
-        return true;
-      }
-    }
+  if (!task) {
+    return false;
   }
 
-  return false;
+  // Discarded tasks (cancelled or failed workflow) don't block
+  if (task.status === "CANCELLED" || task.workflowStatus === "FAILED") {
+    console.log(`[JanitorCron] Most recent ${janitorType} task ${task.id} is discarded (status: ${task.status}, workflow: ${task.workflowStatus})`);
+    return false;
+  }
+
+  const prArtifacts = task.chatMessages.flatMap(m => m.artifacts);
+
+  if (prArtifacts.length === 0) {
+    // No PR yet - task is active if not manually done
+    if (task.status !== "DONE") {
+      console.log(`[JanitorCron] Active ${janitorType} task ${task.id}: no PR yet`);
+      return true;
+    }
+    return false;
+  }
+
+  // Has PR - check if merged or closed
+  const latestPr = prArtifacts[0];
+  const content = latestPr.content as { status?: string };
+
+  // DONE = merged, CANCELLED = closed without merge - both allow new runs
+  if (content.status === "DONE" || content.status === "CANCELLED") {
+    console.log(`[JanitorCron] Most recent ${janitorType} task ${task.id} PR is resolved (status: ${content.status})`);
+    return false;
+  }
+
+  console.log(`[JanitorCron] Active ${janitorType} task ${task.id}: PR not merged/closed (status: ${content.status})`);
+  return true;
 }
 
 

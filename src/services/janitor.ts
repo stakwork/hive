@@ -498,6 +498,11 @@ export async function acceptJanitorRecommendation(
           id: true,
           slug: true,
         }
+      },
+      janitorRun: {
+        select: {
+          janitorType: true,
+        }
       }
     }
   });
@@ -573,16 +578,16 @@ export async function acceptJanitorRecommendation(
     userId: userId,
     mode: "live",  // Use production workflow for janitor-created tasks
     autoMergePr: options.autoMergePr,
+    janitorType: recommendation.janitorRun?.janitorType,
   });
 
-  // Link the created task to the recommendation
-  const finalRecommendation = await db.janitorRecommendation.update({
-    where: { id: recommendationId },
-    data: { taskId: taskResult.task.id }
+  // Refetch updated recommendation (we just updated it, so it must exist)
+  const updatedRecommendation = await db.janitorRecommendation.findUnique({
+    where: { id: recommendationId }
   });
 
   return {
-    recommendation: finalRecommendation,
+    recommendation: updatedRecommendation!,
     task: taskResult.task,
     workflow: taskResult.stakworkResult
   };

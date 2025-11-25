@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Priority, TaskStatus, TaskSourceType, WorkflowStatus } from "@prisma/client";
+import { Priority, TaskStatus, TaskSourceType, WorkflowStatus, JanitorType } from "@prisma/client";
 import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -24,6 +24,7 @@ export async function createTaskWithStakworkWorkflow(params: {
   runBuild?: boolean;
   runTestSuite?: boolean;
   autoMergePr?: boolean;
+  janitorType?: JanitorType;
 }) {
   const {
     title,
@@ -39,6 +40,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     runBuild = true,
     runTestSuite = true,
     autoMergePr,
+    janitorType,
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -56,6 +58,7 @@ export async function createTaskWithStakworkWorkflow(params: {
       runTestSuite,
       createdById: userId,
       updatedById: userId,
+      janitorType: janitorType || null,
     },
     include: {
       assignee: {
@@ -527,7 +530,7 @@ export async function callStakworkAPI(params: {
     vars.generateChatTitle = generateChatTitle;
   }
   if (autoMergePr !== undefined) {
-    vars.auto_merge_pr = autoMergePr;
+    vars.autoMergePr = autoMergePr;
   }
   if (featureContext !== undefined) {
     vars.featureContext = featureContext;
