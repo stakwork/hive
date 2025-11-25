@@ -7,6 +7,7 @@ import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
 import { Group } from 'three'
 import { Line2 } from 'three-stdlib'
+import { Connections } from './Connections'
 import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
@@ -43,7 +44,7 @@ export const Graph = () => {
   const nodesPositionRef = useRef(new Map<string, NodePosition>())
   const justWokeUpRef = useRef(false)
 
-  const { graphStyle, setGraphRadius, activeFilterTab } = useGraphStore((s) => s)
+  const { graphStyle, setGraphRadius, activeFilterTab, hoveredNode, selectedNode } = useGraphStore((s) => s)
 
   const {
     simulation,
@@ -380,8 +381,15 @@ export const Graph = () => {
       <group>
         <Cubes />
 
-        {/* <Connections linksPosition={linksPositionRef.current} /> */}
-        <EdgesGPU linksPosition={linksPositionRef.current} />
+        {/* Show EdgesGPU when no node is hovered/selected (default state) */}
+        {!hoveredNode && !selectedNode && (
+          <EdgesGPU linksPosition={linksPositionRef.current} />
+        )}
+
+        {/* Show Connections when a node is hovered or selected */}
+        {(hoveredNode || selectedNode) && (
+          <Connections linksPosition={linksPositionRef.current} />
+        )}
       </group>
       <HighlightedNodesLayer />
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}

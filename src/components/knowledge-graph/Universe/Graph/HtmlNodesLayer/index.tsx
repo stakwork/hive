@@ -1,14 +1,25 @@
-import { useSimulationStore } from '@/stores/useStores';
+import { useGraphStore, useSimulationStore } from '@/stores/useStores';
 import { Html } from '@react-three/drei';
 import { NodeExtended } from '@Universe/types';
 import { memo, useMemo, useState } from 'react';
+import { useNodeNavigation } from '../../useNodeNavigation';
 
 interface HtmlNodesLayerProps {
   nodeTypes: string[];
   enabled?: boolean;
 }
 
-const CalloutLabel = ({ node }: { node: NodeExtended }) => {
+const CalloutLabel = ({
+  node,
+  onNodeHover,
+  onNodeUnhover,
+  onNodeClick
+}: {
+  node: NodeExtended;
+  onNodeHover: (node: NodeExtended) => void;
+  onNodeUnhover: () => void;
+  onNodeClick: (nodeId: string) => void;
+}) => {
   const [hovered, setHovered] = useState(false);
 
   // Theme & Data extraction
@@ -25,11 +36,26 @@ const CalloutLabel = ({ node }: { node: NodeExtended }) => {
   const expandedWidth = 160;
   const currentWidth = hovered ? expandedWidth : collapsedWidth;
 
+  const onPointerOver = () => {
+    setHovered(true);
+    onNodeHover(node);
+  }
+
+  const onPointerOut = () => {
+    setHovered(false);
+    onNodeUnhover();
+  }
+
+  const onPointerClick = () => {
+    onNodeClick(node.ref_id);
+  }
+
   return (
     <div
       className="relative pointer-events-auto select-none group"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={onPointerOver}
+      onMouseLeave={onPointerOut}
+      onClick={onPointerClick}
     >
       {/* --- MARKER (Center 0,0) --- */}
       <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer z-10">
@@ -179,6 +205,8 @@ const CalloutLabel = ({ node }: { node: NodeExtended }) => {
 
 export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = true }) => {
   const { simulation } = useSimulationStore((s) => s);
+  const { setHoveredNode } = useGraphStore((s) => s);
+  const { navigateToNode } = useNodeNavigation();
 
   const filteredNodes = useMemo(() => {
     if (!enabled || nodeTypes.length === 0) return [];
@@ -188,6 +216,18 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
       nodeTypes.includes(node.node_type)
     );
   }, [simulation, nodeTypes, enabled]);
+
+  const handleNodeHover = (node: NodeExtended) => {
+    setHoveredNode(node);
+  };
+
+  const handleNodeUnhover = () => {
+    setHoveredNode(null);
+  };
+
+  const handleNodeClick = (nodeId: string) => {
+    navigateToNode(nodeId);
+  };
 
   if (!enabled || filteredNodes.length === 0) return null;
 
@@ -206,7 +246,12 @@ export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = 
             willChange: 'transform'
           }}
         >
-          <CalloutLabel node={node} />
+          <CalloutLabel
+            node={node}
+            onNodeHover={handleNodeHover}
+            onNodeUnhover={handleNodeUnhover}
+            onNodeClick={handleNodeClick}
+          />
         </Html>
       ))}
     </group>
