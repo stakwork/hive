@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
               timestamp: true,
               artifacts: {
                 where: {
-                  type: "PULL_REQUEST",
+                  type: { in: ["PULL_REQUEST", "FORM"] },
                 },
                 select: {
                   id: true,
@@ -171,7 +171,6 @@ export async function GET(request: NextRequest) {
                 orderBy: {
                   createdAt: "desc",
                 },
-                take: 1,
               },
             },
             ...(includeLatestMessage && {
@@ -202,6 +201,7 @@ export async function GET(request: NextRequest) {
         let hasActionArtifact = false;
 
         // Only check for action artifacts if the workflow is pending or in_progress
+        // Check if the LATEST artifact (by createdAt) in the latest message is a FORM
         if (
           includeLatestMessage &&
           task.chatMessages &&
@@ -209,8 +209,9 @@ export async function GET(request: NextRequest) {
           (task.workflowStatus === WorkflowStatus.PENDING || task.workflowStatus === WorkflowStatus.IN_PROGRESS)
         ) {
           const latestMessage = task.chatMessages[0];
-          hasActionArtifact =
-            latestMessage.artifacts?.some((artifact: { type: string }) => artifact.type === "FORM") || false;
+          // Since artifacts are already ordered by createdAt DESC, the first one is the latest
+          const latestArtifact = latestMessage.artifacts?.[0];
+          hasActionArtifact = latestArtifact?.type === "FORM";
         }
 
         // Extract PR artifact if it exists using shared utility
