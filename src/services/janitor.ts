@@ -546,8 +546,8 @@ export async function acceptJanitorRecommendation(
     }
   }
 
-  // Update recommendation status 
-  const updatedRecommendation = await db.janitorRecommendation.update({
+  // Update recommendation status
+  await db.janitorRecommendation.update({
     where: { id: recommendationId },
     data: {
       status: "ACCEPTED",
@@ -571,11 +571,18 @@ export async function acceptJanitorRecommendation(
     priority: recommendation.priority,
     sourceType: sourceType,
     userId: userId,
-    mode: "live"  // Use production workflow for janitor-created tasks
+    mode: "live",  // Use production workflow for janitor-created tasks
+    autoMergePr: options.autoMergePr,
   });
 
-  return { 
-    recommendation: updatedRecommendation,
+  // Link the created task to the recommendation
+  const finalRecommendation = await db.janitorRecommendation.update({
+    where: { id: recommendationId },
+    data: { taskId: taskResult.task.id }
+  });
+
+  return {
+    recommendation: finalRecommendation,
     task: taskResult.task,
     workflow: taskResult.stakworkResult
   };
@@ -644,7 +651,7 @@ export async function dismissJanitorRecommendation(
  * Process Stakwork webhook for janitor run completion
  */
 export async function processJanitorWebhook(webhookData: StakworkWebhookPayload) {
-  const { projectId, status, results, error, workspaceId } = webhookData;
+  const { projectId, status, results, error, workspaceId, autoCreateTasks } = webhookData;
 
   const isCompleted = status.toLowerCase() === "completed" || status.toLowerCase() === "success";
   const isFailed = status.toLowerCase() === "failed" || status.toLowerCase() === "error";
@@ -692,7 +699,10 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
         janitorConfig: {
           include: {
             workspace: {
-              include: {
+              select: {
+                id: true,
+                slug: true,
+                ownerId: true,
                 swarm: {
                   select: {
                     swarmUrl: true,
@@ -791,10 +801,44 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
       }
     }
 
+    // Auto-create task from first recommendation if flag is set
+    // Only for sequential janitor types (UNIT_TESTS, INTEGRATION_TESTS)
+    let autoCreatedTaskId: string | undefined;
+    const sequentialJanitorTypes: JanitorType[] = ["UNIT_TESTS", "INTEGRATION_TESTS"];
+
+    if (
+      autoCreateTasks &&
+      sequentialJanitorTypes.includes(janitorRun.janitorType) &&
+      results?.recommendations?.length
+    ) {
+      // Get the first created recommendation
+      const createdRec = await db.janitorRecommendation.findFirst({
+        where: { janitorRunId: janitorRun.id, status: "PENDING" },
+        orderBy: { createdAt: "desc" }
+      });
+
+      if (createdRec) {
+        try {
+          const result = await acceptJanitorRecommendation(
+            createdRec.id,
+            janitorRun.janitorConfig.workspace.ownerId,
+            { autoMergePr: true },
+            "JANITOR"
+          );
+          autoCreatedTaskId = result.task.id;
+          console.log(`[Janitor] Auto-created task ${autoCreatedTaskId} from recommendation ${createdRec.id}`);
+        } catch (autoCreateError) {
+          console.error(`[Janitor] Failed to auto-create task from recommendation ${createdRec.id}:`, autoCreateError);
+          // Don't fail the whole webhook if auto-create fails
+        }
+      }
+    }
+
       return {
         runId: janitorRun.id,
         status: "COMPLETED" as JanitorStatus,
-        recommendationCount: results?.recommendations?.length || 0
+        recommendationCount: results?.recommendations?.length || 0,
+        ...(autoCreatedTaskId && { autoCreatedTaskId }),
       };
     } else if (!workspaceId) {
       // No existing run and no workspaceId provided - can't create standalone recommendations

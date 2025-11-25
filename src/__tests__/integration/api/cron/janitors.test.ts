@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { GET } from "@/app/api/cron/janitors/route";
 import { db } from "@/lib/db";
 import { resetDatabase } from "@/__tests__/support/fixtures";
-import { JanitorType, JanitorStatus, JanitorTrigger } from "@prisma/client";
+import { JanitorType, JanitorStatus, JanitorTrigger, TaskStatus, WorkflowStatus } from "@prisma/client";
+import { hasActiveJanitorTask } from "@/services/janitor-cron";
 
 /**
  * Integration tests for GET /api/cron/janitors endpoint
@@ -1082,6 +1083,373 @@ describe("GET /api/cron/janitors", () => {
         where: { janitorConfig: { workspaceId: workspaceWithConfig.id } },
       });
       expect(withConfigRuns).toHaveLength(1);
+    });
+  });
+
+  describe("Sequential Janitor Behavior (hasActiveJanitorTask)", () => {
+    /**
+     * These tests verify the hasActiveJanitorTask function which determines
+     * if a workspace has an active task that should block new janitor runs
+     * for sequential janitor types (UNIT_TESTS, INTEGRATION_TESTS).
+     */
+
+    let testUser: { id: string };
+    let testWorkspace: { id: string; slug: string };
+    let janitorConfig: { id: string };
+
+    beforeEach(async () => {
+      await resetDatabase();
+
+      testUser = await db.user.create({
+        data: {
+          id: "user-sequential-test",
+          email: "sequential@test.com",
+          name: "Sequential Test User",
+        },
+      });
+
+      testWorkspace = await db.workspace.create({
+        data: {
+          id: "ws-sequential-test",
+          slug: "sequential-workspace",
+          name: "Sequential Workspace",
+          ownerId: testUser.id,
+        },
+      });
+
+      janitorConfig = await db.janitorConfig.create({
+        data: {
+          workspaceId: testWorkspace.id,
+          unitTestsEnabled: true,
+          integrationTestsEnabled: true,
+        },
+      });
+    });
+
+    it("should return false when no accepted recommendations exist", async () => {
+      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(result).toBe(false);
+    });
+
+    it("should return true when task has no PR and status is IN_PROGRESS", async () => {
+      // Create janitor run
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: janitorConfig.id,
+          janitorType: JanitorType.UNIT_TESTS,
+          status: JanitorStatus.COMPLETED,
+          triggeredBy: JanitorTrigger.SCHEDULED,
+        },
+      });
+
+      // Create task without PR
+      const task = await db.task.create({
+        data: {
+          title: "Test Task",
+          workspaceId: testWorkspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          createdById: testUser.id,
+        },
+      });
+
+      // Create accepted recommendation with task
+      await db.janitorRecommendation.create({
+        data: {
+          janitorRunId: janitorRun.id,
+          workspaceId: testWorkspace.id,
+          title: "Add unit tests",
+          description: "Test recommendation",
+          priority: "MEDIUM",
+          status: "ACCEPTED",
+          taskId: task.id,
+        },
+      });
+
+      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(result).toBe(true);
+    });
+
+    it("should return false when task has merged PR (status DONE)", async () => {
+      // Create janitor run
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: janitorConfig.id,
+          janitorType: JanitorType.UNIT_TESTS,
+          status: JanitorStatus.COMPLETED,
+          triggeredBy: JanitorTrigger.SCHEDULED,
+        },
+      });
+
+      // Create task
+      const task = await db.task.create({
+        data: {
+          title: "Test Task",
+          workspaceId: testWorkspace.id,
+          status: TaskStatus.DONE,
+          workflowStatus: WorkflowStatus.COMPLETED,
+          createdById: testUser.id,
+        },
+      });
+
+      // Create chat message with merged PR artifact
+      await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "PR merged",
+          role: "ASSISTANT",
+          artifacts: {
+            create: {
+              type: "PULL_REQUEST",
+              content: { status: "DONE", url: "https://github.com/test/pr/1" },
+            },
+          },
+        },
+      });
+
+      // Create accepted recommendation with task
+      await db.janitorRecommendation.create({
+        data: {
+          janitorRunId: janitorRun.id,
+          workspaceId: testWorkspace.id,
+          title: "Add unit tests",
+          description: "Test recommendation",
+          priority: "MEDIUM",
+          status: "ACCEPTED",
+          taskId: task.id,
+        },
+      });
+
+      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(result).toBe(false);
+    });
+
+    it("should return false when task has cancelled PR (closed without merge)", async () => {
+      // Create janitor run
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: janitorConfig.id,
+          janitorType: JanitorType.UNIT_TESTS,
+          status: JanitorStatus.COMPLETED,
+          triggeredBy: JanitorTrigger.SCHEDULED,
+        },
+      });
+
+      // Create task
+      const task = await db.task.create({
+        data: {
+          title: "Test Task",
+          workspaceId: testWorkspace.id,
+          status: TaskStatus.CANCELLED,
+          workflowStatus: WorkflowStatus.COMPLETED,
+          createdById: testUser.id,
+        },
+      });
+
+      // Create chat message with cancelled PR artifact
+      await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "PR closed",
+          role: "ASSISTANT",
+          artifacts: {
+            create: {
+              type: "PULL_REQUEST",
+              content: { status: "CANCELLED", url: "https://github.com/test/pr/1" },
+            },
+          },
+        },
+      });
+
+      // Create accepted recommendation with task
+      await db.janitorRecommendation.create({
+        data: {
+          janitorRunId: janitorRun.id,
+          workspaceId: testWorkspace.id,
+          title: "Add unit tests",
+          description: "Test recommendation",
+          priority: "MEDIUM",
+          status: "ACCEPTED",
+          taskId: task.id,
+        },
+      });
+
+      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(result).toBe(false);
+    });
+
+    it("should return false when task workflowStatus is FAILED", async () => {
+      // Create janitor run
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: janitorConfig.id,
+          janitorType: JanitorType.UNIT_TESTS,
+          status: JanitorStatus.COMPLETED,
+          triggeredBy: JanitorTrigger.SCHEDULED,
+        },
+      });
+
+      // Create task with failed workflow
+      const task = await db.task.create({
+        data: {
+          title: "Test Task",
+          workspaceId: testWorkspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.FAILED,
+          createdById: testUser.id,
+        },
+      });
+
+      // Create accepted recommendation with task
+      await db.janitorRecommendation.create({
+        data: {
+          janitorRunId: janitorRun.id,
+          workspaceId: testWorkspace.id,
+          title: "Add unit tests",
+          description: "Test recommendation",
+          priority: "MEDIUM",
+          status: "ACCEPTED",
+          taskId: task.id,
+        },
+      });
+
+      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(result).toBe(false);
+    });
+
+    it("should return false when task status is CANCELLED", async () => {
+      // Create janitor run
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: janitorConfig.id,
+          janitorType: JanitorType.UNIT_TESTS,
+          status: JanitorStatus.COMPLETED,
+          triggeredBy: JanitorTrigger.SCHEDULED,
+        },
+      });
+
+      // Create cancelled task
+      const task = await db.task.create({
+        data: {
+          title: "Test Task",
+          workspaceId: testWorkspace.id,
+          status: TaskStatus.CANCELLED,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          createdById: testUser.id,
+        },
+      });
+
+      // Create accepted recommendation with task
+      await db.janitorRecommendation.create({
+        data: {
+          janitorRunId: janitorRun.id,
+          workspaceId: testWorkspace.id,
+          title: "Add unit tests",
+          description: "Test recommendation",
+          priority: "MEDIUM",
+          status: "ACCEPTED",
+          taskId: task.id,
+        },
+      });
+
+      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(result).toBe(false);
+    });
+
+    it("should return true when PR has IN_PROGRESS status (not merged yet)", async () => {
+      // Create janitor run
+      const janitorRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: janitorConfig.id,
+          janitorType: JanitorType.UNIT_TESTS,
+          status: JanitorStatus.COMPLETED,
+          triggeredBy: JanitorTrigger.SCHEDULED,
+        },
+      });
+
+      // Create task
+      const task = await db.task.create({
+        data: {
+          title: "Test Task",
+          workspaceId: testWorkspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          createdById: testUser.id,
+        },
+      });
+
+      // Create chat message with open PR artifact
+      await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "PR created",
+          role: "ASSISTANT",
+          artifacts: {
+            create: {
+              type: "PULL_REQUEST",
+              content: { status: "IN_PROGRESS", url: "https://github.com/test/pr/1" },
+            },
+          },
+        },
+      });
+
+      // Create accepted recommendation with task
+      await db.janitorRecommendation.create({
+        data: {
+          janitorRunId: janitorRun.id,
+          workspaceId: testWorkspace.id,
+          title: "Add unit tests",
+          description: "Test recommendation",
+          priority: "MEDIUM",
+          status: "ACCEPTED",
+          taskId: task.id,
+        },
+      });
+
+      const result = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(result).toBe(true);
+    });
+
+    it("should only consider recommendations of the specified janitor type", async () => {
+      // Create UNIT_TESTS janitor run with active task
+      const unitTestsRun = await db.janitorRun.create({
+        data: {
+          janitorConfigId: janitorConfig.id,
+          janitorType: JanitorType.UNIT_TESTS,
+          status: JanitorStatus.COMPLETED,
+          triggeredBy: JanitorTrigger.SCHEDULED,
+        },
+      });
+
+      const task = await db.task.create({
+        data: {
+          title: "Unit Test Task",
+          workspaceId: testWorkspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          createdById: testUser.id,
+        },
+      });
+
+      await db.janitorRecommendation.create({
+        data: {
+          janitorRunId: unitTestsRun.id,
+          workspaceId: testWorkspace.id,
+          title: "Add unit tests",
+          description: "Test recommendation",
+          priority: "MEDIUM",
+          status: "ACCEPTED",
+          taskId: task.id,
+        },
+      });
+
+      // UNIT_TESTS should have active task
+      const unitTestsResult = await hasActiveJanitorTask(testWorkspace.id, JanitorType.UNIT_TESTS);
+      expect(unitTestsResult).toBe(true);
+
+      // INTEGRATION_TESTS should not have active task
+      const integrationTestsResult = await hasActiveJanitorTask(testWorkspace.id, JanitorType.INTEGRATION_TESTS);
+      expect(integrationTestsResult).toBe(false);
     });
   });
 });

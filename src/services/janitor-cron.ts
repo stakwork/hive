@@ -10,6 +10,7 @@ export interface CronExecutionResult {
   success: boolean;
   workspacesProcessed: number;
   runsCreated: number;
+  skipped: number;
   errors: Array<{
     workspaceSlug: string;
     janitorType: JanitorType;
@@ -59,6 +60,68 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
   });
 }
 
+// Sequential janitor types - only one active task at a time per type
+const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [JanitorType.UNIT_TESTS, JanitorType.INTEGRATION_TESTS];
+
+/**
+ * Check if a workspace has an active task for a specific janitor type.
+ * Active = task from an accepted recommendation that doesn't have a merged PR yet.
+ */
+export async function hasActiveJanitorTask(
+  workspaceId: string,
+  janitorType: JanitorType
+): Promise<boolean> {
+  // Find ACCEPTED recommendations with a linked task for this janitor type
+  const activeRecommendations = await db.janitorRecommendation.findMany({
+    where: {
+      workspaceId,
+      status: "ACCEPTED",
+      taskId: { not: null },
+      janitorRun: { janitorType },
+    },
+    include: {
+      task: {
+        include: {
+          chatMessages: {
+            include: {
+              artifacts: { where: { type: "PULL_REQUEST" } }
+            },
+            orderBy: { createdAt: "desc" }
+          }
+        }
+      }
+    }
+  });
+
+  for (const rec of activeRecommendations) {
+    const task = rec.task;
+    // Skip if task is cancelled or workflow failed - these are "discarded" tasks
+    if (!task || task.status === "CANCELLED" || task.workflowStatus === "FAILED") continue;
+
+    const prArtifacts = task.chatMessages.flatMap(m => m.artifacts);
+
+    if (prArtifacts.length === 0) {
+      // No PR yet - task is active if not manually done
+      if (task.status !== "DONE") {
+        console.log(`[JanitorCron] Found active task ${task.id} for ${janitorType}: no PR yet`);
+        return true;
+      }
+    } else {
+      // Has PR - check if merged or cancelled
+      const latestPr = prArtifacts[0];
+      const content = latestPr.content as { status?: string };
+      // DONE = merged, CANCELLED = closed without merge
+      // Only these two statuses allow new janitor runs
+      if (content.status !== "DONE" && content.status !== "CANCELLED") {
+        console.log(`[JanitorCron] Found active task ${task.id} for ${janitorType}: PR not merged/closed (status: ${content.status})`);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 
 /**
  * Execute scheduled janitor runs across all enabled workspaces
@@ -68,6 +131,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     success: true,
     workspacesProcessed: 0,
     runsCreated: 0,
+    skipped: 0,
     errors: [],
     timestamp: new Date()
   };
@@ -81,8 +145,8 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     result.workspacesProcessed = workspaces.length;
 
     for (const workspace of workspaces) {
-      const { slug, name, ownerId, janitorConfig } = workspace;
-      
+      const { id: workspaceId, slug, name, ownerId, janitorConfig } = workspace;
+
       if (!janitorConfig) {
         console.log(`[JanitorCron] Skipping workspace ${slug}: no janitor config`);
         continue;
@@ -93,6 +157,16 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       // Process all enabled janitor types
       for (const janitorType of Object.values(JanitorType)) {
         if (isJanitorEnabled(janitorConfig, janitorType)) {
+          // For sequential janitor types, check if there's an active task
+          if (SEQUENTIAL_JANITOR_TYPES.includes(janitorType)) {
+            const hasActive = await hasActiveJanitorTask(workspaceId, janitorType);
+            if (hasActive) {
+              console.log(`[JanitorCron] Skipping ${janitorType} for ${slug}: active task exists`);
+              result.skipped++;
+              continue;
+            }
+          }
+
           try {
             console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`);
             await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
@@ -111,7 +185,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       }
     }
 
-    console.log(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Errors: ${result.errors.length}`);
+    console.log(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`);
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
