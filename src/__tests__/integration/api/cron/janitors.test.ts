@@ -99,7 +99,7 @@ describe("GET /api/cron/janitors", () => {
       expect(data.workspacesProcessed).toBe(0);
     });
 
-    it.skip("should execute orchestration when JANITOR_CRON_ENABLED is true", async () => {
+    it("should execute orchestration when JANITOR_CRON_ENABLED is true", async () => {
       // Setup: Enable feature flag
       process.env.JANITOR_CRON_ENABLED = "true";
 
@@ -140,23 +140,7 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
-  /**
-   * BUG FOUND: Tests below reveal a production bug where createJanitorRun() requires
-   * user authentication (validateWorkspaceAccess) but cron jobs run without user context.
-   * 
-   * Issue: The janitor-cron service calls createJanitorRun(slug, ownerId, type, "SCHEDULED")
-   * but createJanitorRun internally calls validateWorkspaceAccess(slug, userId) which
-   * expects an authenticated user with workspace permissions. In a cron context, there is
-   * no authenticated user.
-   * 
-   * Recommended Fix (PRODUCTION CODE - not in scope for this test PR):
-   * - Create a separate internal function for creating runs in system/cron context
-   * - OR: Add a system-level bypass in validateWorkspaceAccess for SCHEDULED triggers
-   * - OR: Refactor createJanitorRun to accept optional authentication bypass
-   * 
-   * Tests are skipped until production bug is fixed.
-   */
-  describe.skip("Multi-Workspace Orchestration", () => {
+  describe("Multi-Workspace Orchestration", () => {
     it("should process all workspaces with enabled janitors", async () => {
       // Setup: Enable feature flag
       process.env.JANITOR_CRON_ENABLED = "true";
@@ -348,7 +332,7 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
-  describe.skip("Per-Workspace Error Isolation", () => {
+  describe("Per-Workspace Error Isolation", () => {
     it("should continue processing other workspaces when one fails", async () => {
       // Setup: Enable feature flag
       process.env.JANITOR_CRON_ENABLED = "true";
@@ -559,7 +543,7 @@ describe("GET /api/cron/janitors", () => {
       expect(() => new Date(data.timestamp)).not.toThrow();
     });
 
-    it.skip("should return 500 with error structure on unhandled exception", async () => {
+    it("should return 500 with error structure on unhandled exception", async () => {
       // Setup: Enable flag but cause critical error
       process.env.JANITOR_CRON_ENABLED = "true";
 
@@ -584,7 +568,7 @@ describe("GET /api/cron/janitors", () => {
       expect(data).not.toHaveProperty("runsCreated");
     });
 
-    it.skip("should include error details in response when partial failure occurs", async () => {
+    it("should include error details in response when partial failure occurs", async () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
 
@@ -635,7 +619,7 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
-  describe.skip("Data Integrity", () => {
+  describe("Data Integrity", () => {
     it("should create JanitorRun records with correct metadata", async () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
@@ -835,7 +819,7 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
-  describe.skip("Janitor Type Filtering", () => {
+  describe("Janitor Type Filtering", () => {
     it("should only create runs for enabled janitor types", async () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
@@ -969,7 +953,7 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
-  describe.skip("Workspace Eligibility", () => {
+  describe("Workspace Eligibility", () => {
     it("should skip deleted workspaces", async () => {
       // Setup
       process.env.JANITOR_CRON_ENABLED = "true";
