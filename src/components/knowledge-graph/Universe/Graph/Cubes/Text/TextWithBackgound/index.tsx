@@ -47,7 +47,7 @@ const TextWithBackgroundComponent = ({ text, id }: TextWithBackgroundProps, ref:
           <boxGeometry args={[bgWidth, bgHeight, 1]} />
           <meshBasicMaterial color="yellow" depthWrite={false} opacity={0} transparent />
         </mesh>
-        <RoundedRect ref={cubeRef} color="#23252F" />
+        {/* <RoundedRect ref={cubeRef} color="#23252F" /> */}
       </mesh>
       <Text
         ref={textRef}

@@ -381,15 +381,8 @@ export const Graph = () => {
       <group>
         <Cubes />
 
-        {/* Show EdgesGPU when no node is hovered/selected (default state) */}
-        {!hoveredNode && !selectedNode && (
-          <EdgesGPU linksPosition={linksPositionRef.current} />
-        )}
-
-        {/* Show Connections when a node is hovered or selected */}
-        {(hoveredNode || selectedNode) && (
-          <Connections linksPosition={linksPositionRef.current} />
-        )}
+        {/* EdgesGPU now handles both default rendering and highlighting */}
+        <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
       <HighlightedNodesLayer />
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
