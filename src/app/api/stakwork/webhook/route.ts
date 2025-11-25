@@ -180,8 +180,19 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error processing Stakwork webhook:", error);
+    
+    // Handle malformed JSON (client error)
+    if (error instanceof SyntaxError) {
+      return NextResponse.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
+    
+    // Handle other server errors
+    const errorMessage = error instanceof Error ? error.message : "Failed to process webhook";
     return NextResponse.json(
-      { error: "Failed to process webhook" },
+      { error: errorMessage },
       { status: 500 },
     );
   }
