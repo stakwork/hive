@@ -329,6 +329,11 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     aiGeneration.clear();
   };
 
+  const handleProvideFeedback = async (feedback: string) => {
+    await aiGeneration.provideFeedback(feedback);
+    setGeneratedContent(null);
+  };
+
   if (!defaultPhase) {
     return (
       <Empty>
@@ -340,7 +345,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     );
   }
 
-  // Show generation preview if we have generated content
+  // Show generation preview if we have generated task content (JSON format)
   if (generatedContent) {
     const generatedTasks = generatedContent.phases[0]?.tasks || [];
     const previewContent = generatedTasks
@@ -360,6 +365,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
         source={aiGeneration.source || "quick"}
         onAccept={handleAcceptGenerated}
         onReject={handleRejectGenerated}
+        onProvideFeedback={aiGeneration.source === "deep" ? handleProvideFeedback : undefined}
         isLoading={aiGeneration.isLoading || acceptingTasks}
       />
     );
