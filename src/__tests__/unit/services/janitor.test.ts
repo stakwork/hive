@@ -721,6 +721,8 @@ describe("Janitor Service", () => {
         sourceType: "JANITOR",
         userId: "user-1",
         mode: "live",
+        autoMergePr: undefined,
+        janitorType: "UNIT_TESTS",
       });
       expect(result.recommendation.status).toBe("ACCEPTED");
       expect(result.task).toEqual(mockTask);
