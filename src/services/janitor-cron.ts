@@ -115,8 +115,8 @@ export async function shouldSkipJanitorRun(
     return false;
   }
 
-  // Discarded tasks (cancelled or failed workflow) don't block
-  if (task.status === "CANCELLED" || task.workflowStatus === "FAILED") {
+  // Discarded tasks (cancelled, failed, or halted workflow) don't block
+  if (task.status === "CANCELLED" || task.workflowStatus === "FAILED" || task.workflowStatus === "HALTED") {
     console.log(`[JanitorCron] Most recent ${janitorType} task ${task.id} is discarded (status: ${task.status}, workflow: ${task.workflowStatus})`);
     return false;
   }
