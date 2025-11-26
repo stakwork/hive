@@ -234,6 +234,9 @@ model Workspace {
   // Screenshots
   screenshots Screenshot[]
 
+  // Node type ordering for graph visualization
+  nodeTypeOrder Json @default("[{\"type\":\"Function\",\"value\":20},{\"type\":\"Feature\",\"value\":20},{\"type\":\"File\",\"value\":20},{\"type\":\"Endpoint\",\"value\":20},{\"type\":\"Person\",\"value\":20},{\"type\":\"Episode\",\"value\":20},{\"type\":\"Call\",\"value\":20},{\"type\":\"Message\",\"value\":20}]") @map("node_type_order")
+
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])
