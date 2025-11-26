@@ -464,6 +464,7 @@ export async function callStakworkAPI(params: {
   baseBranch?: string | null;
   history?: Record<string, unknown>[];
   autoMergePr?: boolean;
+  webhook?: string;
 }) {
   const {
     taskId,
@@ -487,6 +488,7 @@ export async function callStakworkAPI(params: {
     baseBranch = null,
     history = [],
     autoMergePr,
+    webhook,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -565,8 +567,11 @@ export async function callStakworkAPI(params: {
   };
 
   // Make Stakwork API call (replicating fetch call from chat/message route)
+  // If webhook is provided, use it to continue existing workflow; otherwise start new project
+  const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
+
   try {
-    const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
+    const response = await fetch(stakworkURL, {
       method: "POST",
       body: JSON.stringify(stakworkPayload),
       headers: {
