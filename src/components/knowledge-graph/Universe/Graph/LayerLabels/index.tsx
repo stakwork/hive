@@ -6,7 +6,7 @@ export const LayerLabels = () => {
   // Use sorted nodeTypes from the dataStore as the single source of truth
   const nodeTypes = useDataStore((s) => s.nodeTypes)
 
-  // Calculate Y positions for each node type using the same logic as calculateGridMap
+  // Calculate Y positions for each node type - ordered top to bottom
   const nodeTypeLabels = useMemo(() => {
     const totalTypes = nodeTypes.length;
     const layerSpacing = 500;
