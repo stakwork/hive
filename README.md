@@ -69,6 +69,31 @@ npm run dev
 - `npm run test:integration` - Run integration tests
 - `npm run test:integration:full` - Full integration test cycle with database
 
+### Testing Pool Manager Mock Server
+
+The mock server includes pool manager endpoints that simulate pod availability:
+
+```bash
+# Start the mock server
+npm run mock-server
+
+# Test pool status endpoint (shows 2 in use, 3 available)
+curl http://localhost:3010/pools/test-pool-123
+
+# Test pod workspaces endpoint (returns 5 pods)
+curl http://localhost:3010/pools/test-pool-123/workspaces
+
+# Run integration tests for mock server endpoints
+npm run test -- pool-status-mock
+```
+
+**Pool Status Simulation:**
+- 5 total pods running
+- 2 pods marked as "in-use" (with repositories)
+- 3 pods marked as "available" (no repositories)
+- All pods include port mappings for frontend (3000) and graph service (3355)
+- Resource usage metrics included for monitoring
+
 ### Database Management
 - `npx prisma studio` - Open Prisma Studio (database GUI)
 - `npx prisma migrate dev` - Create and apply migrations
@@ -84,7 +109,7 @@ npm run dev
 ### Utilities
 - `npm run seed:auto-seed` - Seed workspace with GitHub-linked user
 - `npm run test:decrypt` - View critical database fields
-- `npm run mock-server` - Start mock server for testing
+- `npm run mock-server` - Start mock server for testing (includes pool manager endpoints)
 - `npx shadcn@latest add [component]` - Add shadcn/ui components
 
 ## Environment Variables
