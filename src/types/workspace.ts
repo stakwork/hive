@@ -16,6 +16,7 @@ export interface WorkspaceResponse {
   ownerId: string;
   logoUrl?: string | null;
   logoKey?: string | null;
+  nodeTypeOrder?: Array<{ type: string; value: number }> | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -73,6 +73,7 @@ export async function createWorkspace(
   // Check if the slug already exists
   const existing = await db.workspace.findUnique({
     where: { slug: data.slug, deleted: false },
+    select: { id: true },
   });
 
   if (existing) {
@@ -91,6 +92,7 @@ export async function createWorkspace(
     });
     return {
       ...workspace,
+      nodeTypeOrder: (workspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
       createdAt: workspace.createdAt.toISOString(),
       updatedAt: workspace.updatedAt.toISOString(),
     };
@@ -122,6 +124,7 @@ export async function getWorkspacesByUserId(
 
   return workspaces.map((workspace) => ({
     ...workspace,
+    nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
   }));
@@ -247,7 +250,19 @@ export async function getWorkspaceBySlug(
       slug,
       deleted: false,
     },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      slug: true,
+      ownerId: true,
+      stakworkApiKey: true,
+      repositoryDraft: true,
+      logoKey: true,
+      logoUrl: true,
+      nodeTypeOrder: true,
+      createdAt: true,
+      updatedAt: true,
       owner: {
         select: { id: true, name: true, email: true },
       },
@@ -295,6 +310,7 @@ export async function getWorkspaceBySlug(
       swarmUrl: workspace.swarm?.swarmUrl || null,
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
+      nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
         updatedAt: repo.updatedAt.toISOString(),
@@ -337,6 +353,7 @@ export async function getWorkspaceBySlug(
     swarmUrl: workspace.swarm?.swarmUrl || null,
     logoKey: workspace.logoKey,
     logoUrl: workspace.logoUrl,
+    nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
       updatedAt: repo.updatedAt.toISOString(),
@@ -412,6 +429,8 @@ export async function getUserWorkspaces(
       userRole: "OWNER",
       memberCount: memberCount + 1, // +1 for owner
       logoKey: workspace.logoKey,
+      logoUrl: workspace.logoUrl,
+      nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     });
   }
 
@@ -430,6 +449,8 @@ export async function getUserWorkspaces(
         userRole: membership.role as WorkspaceRole,
         memberCount: memberCount + 1, // +1 for owner
         logoKey: membership.workspace.logoKey,
+        logoUrl: membership.workspace.logoUrl,
+        nodeTypeOrder: membership.workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
       });
     }
   }
@@ -532,6 +553,7 @@ export async function getDefaultWorkspaceForUser(
   if (ownedWorkspace) {
     return {
       ...ownedWorkspace,
+      nodeTypeOrder: (ownedWorkspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
       createdAt: ownedWorkspace.createdAt.toISOString(),
       updatedAt: ownedWorkspace.updatedAt.toISOString(),
     };
@@ -550,6 +572,7 @@ export async function getDefaultWorkspaceForUser(
   if (membership?.workspace) {
     return {
       ...membership.workspace,
+      nodeTypeOrder: (membership.workspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
       createdAt: membership.workspace.createdAt.toISOString(),
       updatedAt: membership.workspace.updatedAt.toISOString(),
     };
@@ -790,6 +813,7 @@ export async function recoverWorkspace(
 
   return {
     ...recoveredWorkspace,
+    nodeTypeOrder: (recoveredWorkspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
     createdAt: recoveredWorkspace.createdAt.toISOString(),
     updatedAt: recoveredWorkspace.updatedAt.toISOString(),
   };
