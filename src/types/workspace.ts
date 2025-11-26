@@ -45,6 +45,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
   containerFilesSetUp: boolean | null;
   repositoryDraft: string | null;
   swarmUrl: string | null;
+  nodeTypeOrder?: Array<{ type: string; value: number }> | null;
   repositories: Array<{
     id: string;
     name: string;
