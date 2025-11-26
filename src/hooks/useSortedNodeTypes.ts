@@ -6,7 +6,7 @@ import { useNodeTypes } from "@/stores/useDataStore";
 
 export interface NodeTypeOrderItem {
   type: string;
-  order: number;
+  value: number;
 }
 
 /**
@@ -30,19 +30,33 @@ export function useSortedNodeTypes() {
     }
 
     // Create order map from configuration
-    const orderMap = new Map(nodeTypeOrder.map(item => [item.type, item.order]));
+    const orderMap = new Map(nodeTypeOrder.map((item, index) => [item.type, index]));
 
     // Sort node types according to configuration
     return [...nodeTypesFromGraph].sort((a, b) => {
-      const orderA = orderMap.get(a) ?? 999; // Put unknown types at end
-      const orderB = orderMap.get(b) ?? 999;
+      const orderA = orderMap.get(a);
+      const orderB = orderMap.get(b);
 
-      if (orderA === orderB) {
-        // If same order (or both unknown), sort alphabetically
-        return a.localeCompare(b);
+      // Both have configured order - sort by order value
+      if (orderA !== undefined && orderB !== undefined) {
+        if (orderA === orderB) {
+          return a.localeCompare(b); // Same order, sort alphabetically
+        }
+        return orderA - orderB;
       }
 
-      return orderA - orderB;
+      // Only A has configured order - A comes first
+      if (orderA !== undefined && orderB === undefined) {
+        return -1;
+      }
+
+      // Only B has configured order - B comes first
+      if (orderA === undefined && orderB !== undefined) {
+        return 1;
+      }
+
+      // Neither has configured order - sort alphabetically
+      return a.localeCompare(b);
     });
   }, [nodeTypesFromGraph, workspace?.nodeTypeOrder]);
 
@@ -62,8 +76,8 @@ export function useNodeTypeOrder(nodeType: string): number {
       return 999; // Default order for unconfigured types
     }
 
-    const orderItem = order.find(item => item.type === nodeType);
-    return orderItem?.order ?? 999;
+    const orderIndex = order.findIndex(item => item.type === nodeType);
+    return orderIndex === -1 ? 999 : orderIndex;
   }, [workspace?.nodeTypeOrder, nodeType]);
 
   return nodeTypeOrder;
@@ -86,18 +100,32 @@ export function sortNodeTypesByConfig(
   }
 
   // Create order map from configuration
-  const orderMap = new Map(nodeTypeOrder.map(item => [item.type, item.order]));
+  const orderMap = new Map(nodeTypeOrder.map((item, index) => [item.type, index]));
 
   // Sort node types according to configuration
   return [...nodeTypes].sort((a, b) => {
-    const orderA = orderMap.get(a) ?? 999; // Put unknown types at end
-    const orderB = orderMap.get(b) ?? 999;
+    const orderA = orderMap.get(a);
+    const orderB = orderMap.get(b);
 
-    if (orderA === orderB) {
-      // If same order (or both unknown), sort alphabetically
-      return a.localeCompare(b);
+    // Both have configured order - sort by order value
+    if (orderA !== undefined && orderB !== undefined) {
+      if (orderA === orderB) {
+        return a.localeCompare(b); // Same order, sort alphabetically
+      }
+      return orderA - orderB;
     }
 
-    return orderA - orderB;
+    // Only A has configured order - A comes first
+    if (orderA !== undefined && orderB === undefined) {
+      return -1;
+    }
+
+    // Only B has configured order - B comes first
+    if (orderA === undefined && orderB !== undefined) {
+      return 1;
+    }
+
+    // Neither has configured order - sort alphabetically
+    return a.localeCompare(b);
   });
 }

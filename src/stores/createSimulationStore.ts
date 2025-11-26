@@ -19,25 +19,43 @@ import { distributeNodesOnSphere } from './useSimulationStore/utils/distributeNo
 // --- HELPER: Pure Grid Logic ---
 // Calculates target positions but does NOT modify the simulation directly.
 export const calculateGridMap = (nodes: Node[], nodeTypes: string[]) => {
+  const normalizeType = (type?: string) => (type || 'Unknown').trim();
   const nodesByType: Record<string, Node[]> = {};
 
   // 1. Group by type
   nodes.forEach((node) => {
-    if (!nodesByType[node.node_type]) nodesByType[node.node_type] = [];
-    nodesByType[node.node_type].push(node);
+    const typeKey = normalizeType(node.node_type);
+    if (!nodesByType[typeKey]) nodesByType[typeKey] = [];
+    nodesByType[typeKey].push(node);
   });
+
+  // Build an ordered list of types: use provided order; if empty, fall back to detected types
+  const providedOrder = Array.from(new Set(nodeTypes.map(normalizeType)));
+  const allTypes = Array.from(new Set(Object.keys(nodesByType)));
+  const typeOrder = providedOrder.length ? providedOrder : allTypes;
+
+  // If we have no types at all, nothing to position
+  if (typeOrder.length === 0) {
+    return new Map<string, { x: number, y: number, z: number }>();
+  }
+
+  const typeIndexMap = new Map(typeOrder.map((type, index) => [type, index]));
 
   const positionMap = new Map<string, { x: number, y: number, z: number }>();
 
   // 2. Calculate positions for each type
   nodes.forEach((n) => {
-    const typeIndex = nodeTypes.indexOf(n.node_type) + 1;
-    // Separate layers by 500 units on Y axis
-    const yLayer = Math.floor(typeIndex / 2) * 500;
-    const isEvenLayer = typeIndex % 2 === 0;
-    const yOffset = isEvenLayer ? yLayer : -yLayer;
+    const typeKey = normalizeType(n.node_type);
+    const typeIndex = typeIndexMap.get(typeKey) ?? typeOrder.length - 1;
+    const totalTypes = typeOrder.length;
 
-    const sameTypeNodes = nodesByType[n.node_type];
+    // Position layers from top to bottom, keeping (0,0,0) as center
+    // First item in nodeTypes is the top layer.
+    const layerSpacing = 500;
+    const startOffset = ((totalTypes - 1) / 2) * layerSpacing;
+    const yOffset = startOffset - (typeIndex >= 0 ? typeIndex : 0) * layerSpacing;
+
+    const sameTypeNodes = nodesByType[typeKey] || [];
     const nodeIndexInType = sameTypeNodes.findIndex(node => node.ref_id === n.ref_id);
 
     const nodesPerRow = Math.ceil(Math.sqrt(sameTypeNodes.length));
