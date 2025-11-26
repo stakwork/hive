@@ -1,3 +1,4 @@
+import { Link, NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from '@/lib/pusher'
 import { useDataStore, useGraphStore } from '@/stores/useStores'
@@ -41,8 +42,8 @@ export const useWebhookHighlights = () => {
     if (!workspace?.slug || nodeIds.length === 0) return []
 
     try {
-      const allNodes: any[] = []
-      const allEdges: any[] = []
+      const allNodes: NodeExtended[] = []
+      const allEdges: Link[] = []
       const allNodeIds = new Set<string>()
 
       for (const nodeId of nodeIds) {
@@ -60,14 +61,14 @@ export const useWebhookHighlights = () => {
         const edges = data?.data?.edges || []
 
         // Collect unique nodes and edges
-        nodes.forEach((node: any) => {
+        nodes.forEach((node: NodeExtended) => {
           if (!allNodeIds.has(node.ref_id)) {
             allNodeIds.add(node.ref_id)
             allNodes.push(node)
           }
         })
 
-        edges.forEach((edge: any) => {
+        edges.forEach((edge: Link) => {
           const edgeExists = allEdges.some(existingEdge =>
             existingEdge.ref_id === edge.ref_id ||
             (existingEdge.source === edge.source && existingEdge.target === edge.target)
@@ -136,7 +137,7 @@ export const useWebhookHighlights = () => {
 
           finalNodeIds = dedupeIds([
             ...fetchedIds,
-            ...sourceNodes.map((n) => n.ref_id),
+            ...sourceNodes.map((n: NodeExtended) => n.ref_id),
             ...nodeIdsWithSource,
           ])
         }
