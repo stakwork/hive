@@ -61,16 +61,38 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
 }
 
 // Sequential janitor types - only one active task at a time per type
-const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [JanitorType.UNIT_TESTS, JanitorType.INTEGRATION_TESTS];
+const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [
+  JanitorType.UNIT_TESTS,
+  JanitorType.INTEGRATION_TESTS,
+  JanitorType.E2E_TESTS,
+  JanitorType.SECURITY_REVIEW,
+];
 
 /**
- * Check if a workspace has an active task for a specific janitor type.
- * Active = janitor task that doesn't have a merged/closed PR yet.
+ * Check if a janitor run should be skipped for a workspace/type.
+ * Skip if there's a pending recommendation OR an active task.
  */
-export async function hasActiveJanitorTask(
+export async function shouldSkipJanitorRun(
   workspaceId: string,
   janitorType: JanitorType
 ): Promise<boolean> {
+  // Check for pending recommendations first
+  const pendingRecommendation = await db.janitorRecommendation.findFirst({
+    where: {
+      workspaceId,
+      status: "PENDING",
+      janitorRun: {
+        janitorType,
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (pendingRecommendation) {
+    console.log(`[JanitorCron] Skipping ${janitorType}: pending recommendation ${pendingRecommendation.id} exists`);
+    return true;
+  }
+
   // Find the most recent task with this janitor type
   const task = await db.task.findFirst({
     where: {
@@ -159,11 +181,10 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       // Process all enabled janitor types
       for (const janitorType of Object.values(JanitorType)) {
         if (isJanitorEnabled(janitorConfig, janitorType)) {
-          // For sequential janitor types, check if there's an active task
+          // For sequential janitor types, check if there's a pending recommendation or active task
           if (SEQUENTIAL_JANITOR_TYPES.includes(janitorType)) {
-            const hasActive = await hasActiveJanitorTask(workspaceId, janitorType);
-            if (hasActive) {
-              console.log(`[JanitorCron] Skipping ${janitorType} for ${slug}: active task exists`);
+            const shouldSkip = await shouldSkipJanitorRun(workspaceId, janitorType);
+            if (shouldSkip) {
               result.skipped++;
               continue;
             }
