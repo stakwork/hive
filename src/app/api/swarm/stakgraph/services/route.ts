@@ -1,6 +1,7 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { config } from "@/lib/env";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
@@ -108,11 +109,24 @@ export async function GET(request: NextRequest) {
     let responseData: { services: ServiceConfig[] } | undefined;
     let environmentVariables: Array<{ name: string; value: string }> | undefined;
     let containerFiles: Record<string, string> | undefined;
-    const cleanSwarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", "") : "";
 
-    let swarmUrl = `${cleanSwarmUrl}:3355`;
-    if (swarm.swarmUrl.includes("localhost")) {
-      swarmUrl = `http://localhost:3355`;
+    // Use environment-based routing like jarvis/nodes
+    let swarmUrl: string;
+    let servicesAgentEndpoint = "/services_agent";
+    let servicesEndpoint = "/services";
+
+    if (config.CUSTOM_SWARM_URL) {
+      // When using mock, route to the mock stakgraph services endpoint
+      swarmUrl = config.CUSTOM_SWARM_URL.replace("/api/mock/jarvis", "/api/mock/swarm");
+      servicesAgentEndpoint = "/stakgraph/services"; // Mock uses same endpoint for both
+      servicesEndpoint = "/stakgraph/services";
+    } else {
+      // Default behavior: construct swarm URL with port 3355
+      const cleanSwarmUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", "") : "";
+      swarmUrl = `${cleanSwarmUrl}:3355`;
+      if (swarm.swarmUrl.includes("localhost")) {
+        swarmUrl = `http://localhost:3355`;
+      }
     }
 
     // Always try agent first if repo_url is provided
@@ -133,7 +147,7 @@ export async function GET(request: NextRequest) {
         });
         const agentInitResult = await swarmApiRequestAuth({
           swarmUrl: swarmUrl,
-          endpoint: "/services_agent",
+          endpoint: servicesAgentEndpoint,
           method: "GET",
           params: {
             owner,
@@ -195,7 +209,7 @@ export async function GET(request: NextRequest) {
           ...(repo_url ? { repo_url } : {}),
           ...(githubProfile?.username ? { username: githubProfile.username } : {}),
           ...(githubProfile ? { pat: githubProfile.token } : {}),
-        });
+        }, servicesEndpoint);
 
         responseData = { services: result.services };
         environmentVariables = result.environmentVariables;
@@ -206,7 +220,7 @@ export async function GET(request: NextRequest) {
         clone: "true", // Always clone to ensure we get the latest code
         ...(githubProfile?.username ? { username: githubProfile.username } : {}),
         ...(githubProfile ? { pat: githubProfile.token } : {}),
-      });
+      }, servicesEndpoint);
 
       responseData = { services: result.services };
       environmentVariables = result.environmentVariables;

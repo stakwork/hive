@@ -1,8 +1,9 @@
 import { Page } from '@playwright/test';
+import { timeoutFor, TIMEOUT_FOR, getTimeout, TIMEOUTS } from '../config/timeouts';
 
 /**
- * Wait helper utilities
- * Common wait patterns to avoid arbitrary timeouts
+ * Wait helper utilities with standardized timeouts
+ * Use semantic timeout names instead of arbitrary numbers
  */
 
 /**
@@ -11,8 +12,9 @@ import { Page } from '@playwright/test';
 export async function waitForElement(
   page: Page,
   selector: string,
-  timeout = 10000
+  options: { timeout?: number } = {}
 ): Promise<void> {
+  const timeout = options.timeout ?? timeoutFor('ELEMENT_VISIBLE');
   await page.locator(selector).waitFor({ state: 'visible', timeout });
 }
 
@@ -22,8 +24,9 @@ export async function waitForElement(
 export async function waitForElementToHide(
   page: Page,
   selector: string,
-  timeout = 10000
+  options: { timeout?: number } = {}
 ): Promise<void> {
+  const timeout = options.timeout ?? timeoutFor('ELEMENT_HIDDEN');
   await page.locator(selector).waitFor({ state: 'hidden', timeout });
 }
 
@@ -32,17 +35,21 @@ export async function waitForElementToHide(
  */
 export async function waitForLoadingToComplete(page: Page): Promise<void> {
   const loader = page.locator('text=/Loading|Saving|Processing/i');
-  const loaderVisible = await loader.isVisible({ timeout: 1000 }).catch(() => false);
+  const checkTimeout = getTimeout(TIMEOUTS.QUICK);
+  const waitTimeout = timeoutFor('LOADING_SPINNER');
+
+  const loaderVisible = await loader.isVisible({ timeout: checkTimeout }).catch(() => false);
 
   if (loaderVisible) {
-    await loader.waitFor({ state: 'hidden', timeout: 30000 });
+    await loader.waitFor({ state: 'hidden', timeout: waitTimeout });
   }
 }
 
 /**
  * Wait for network idle
  */
-export async function waitForNetworkIdle(page: Page, timeout = 5000): Promise<void> {
+export async function waitForNetworkIdle(page: Page, options: { timeout?: number } = {}): Promise<void> {
+  const timeout = options.timeout ?? timeoutFor('NETWORK_IDLE');
   await page.waitForLoadState('networkidle', { timeout });
 }
 
@@ -52,8 +59,9 @@ export async function waitForNetworkIdle(page: Page, timeout = 5000): Promise<vo
 export async function safeWait(
   page: Page,
   selector: string,
-  timeout = 5000
+  options: { timeout?: number } = {}
 ): Promise<boolean> {
+  const timeout = options.timeout ?? timeoutFor('ELEMENT_VISIBLE');
   try {
     await page.locator(selector).waitFor({ state: 'visible', timeout });
     return true;
@@ -67,9 +75,10 @@ export async function safeWait(
  */
 export async function waitForCondition(
   condition: () => Promise<boolean>,
-  timeout = 10000,
-  interval = 500
+  options: { timeout?: number; interval?: number } = {}
 ): Promise<void> {
+  const timeout = options.timeout ?? timeoutFor('API_RESPONSE');
+  const interval = options.interval ?? 500;
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeout) {
@@ -79,5 +88,5 @@ export async function waitForCondition(
     await new Promise(resolve => setTimeout(resolve, interval));
   }
 
-  throw new Error('Condition not met within timeout');
+  throw new Error(`Condition not met within ${timeout}ms timeout`);
 }

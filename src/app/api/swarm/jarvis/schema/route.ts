@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { config } from "@/lib/env";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;
 
+
     const swarm = await db.swarm.findFirst({ where });
     if (!swarm) {
       return NextResponse.json({ success: false, message: "Swarm not found" }, { status: 404 });
@@ -31,8 +33,11 @@ export async function GET(request: NextRequest) {
 
     let jarvisUrl = `https://${getSwarmVanityAddress(swarm.name)}:8444`;
     let apiKey = swarm.swarmApiKey;
-    if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
-    if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
+    if (config.CUSTOM_SWARM_URL) jarvisUrl = `${config.CUSTOM_SWARM_URL}`;
+    if (config.CUSTOM_SWARM_API_KEY) apiKey = config.CUSTOM_SWARM_API_KEY;
+
+    console.log(jarvisUrl, "jarvisUrl")
+    console.log(apiKey, "apiKey")
 
     const apiResult = await swarmApiRequest({
       swarmUrl: jarvisUrl,
