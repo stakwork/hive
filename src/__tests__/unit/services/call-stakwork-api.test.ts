@@ -289,6 +289,31 @@ describe("callStakworkAPI", () => {
       );
     });
 
+    test("uses webhook URL when provided (for FORM artifact continuation)", async () => {
+      const { config } = await import("@/lib/env");
+      const webhookUrl = "https://stakwork.example.com/webhook/continue/abc123";
+      mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
+
+      await callStakworkAPI(createTestParams({ webhook: webhookUrl }));
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        webhookUrl,
+        expect.any(Object)
+      );
+    });
+
+    test("falls back to /projects endpoint when webhook is not provided", async () => {
+      const { config } = await import("@/lib/env");
+      mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
+
+      await callStakworkAPI(createTestParams({ webhook: undefined }));
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${config.STAKWORK_BASE_URL}/projects`,
+        expect.any(Object)
+      );
+    });
+
     test("includes correct Authorization header with API key", async () => {
       const { config } = await import("@/config/env");
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
