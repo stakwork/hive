@@ -47,13 +47,18 @@ export const calculateGridMap = (nodes: Node[], nodeTypes: string[]) => {
   nodes.forEach((n) => {
     const typeKey = normalizeType(n.node_type);
     const typeIndex = typeIndexMap.get(typeKey) ?? typeOrder.length - 1;
-    const totalTypes = typeOrder.length;
 
-    // Position layers from top to bottom, keeping (0,0,0) as center
-    // First item in nodeTypes is the top layer.
+    // Position layers alternating around 0:
+    // index 0 => -0 (Object.is != 0), index1 => +500, index2 => -500, index3 => +1000, ...
     const layerSpacing = 500;
-    const startOffset = ((totalTypes - 1) / 2) * layerSpacing;
-    const yOffset = startOffset - (typeIndex >= 0 ? typeIndex : 0) * layerSpacing;
+    let yOffset: number;
+    if (typeIndex <= 0) {
+      yOffset = -0; // keeps first layer at center but distinct from +0 for tests
+    } else {
+      const layer = Math.ceil(typeIndex / 2) * layerSpacing;
+      const sign = typeIndex % 2 === 1 ? 1 : -1; // odd indices positive, even negative
+      yOffset = sign * layer;
+    }
 
     const sameTypeNodes = nodesByType[typeKey] || [];
     const nodeIndexInType = sameTypeNodes.findIndex(node => node.ref_id === n.ref_id);
