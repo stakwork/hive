@@ -118,6 +118,11 @@ describe("constants/janitor", () => {
       const field = getEnabledFieldName(JanitorType.SECURITY_REVIEW);
       expect(field).toBe("securityReviewEnabled");
     });
+
+    it("should return correct field name for MOCK_GENERATION", () => {
+      const field = getEnabledFieldName(JanitorType.MOCK_GENERATION);
+      expect(field).toBe("mockGenerationEnabled");
+    });
   });
 
   describe("isJanitorEnabled", () => {
@@ -193,14 +198,16 @@ describe("constants/janitor", () => {
         integrationTestsEnabled: true,
         e2eTestsEnabled: true,
         securityReviewEnabled: true,
+        mockGenerationEnabled: true,
       };
 
       const enabled = getEnabledJanitorTypes(config);
-      expect(enabled).toHaveLength(4);
+      expect(enabled).toHaveLength(5);
       expect(enabled).toContain(JanitorType.UNIT_TESTS);
       expect(enabled).toContain(JanitorType.INTEGRATION_TESTS);
       expect(enabled).toContain(JanitorType.E2E_TESTS);
       expect(enabled).toContain(JanitorType.SECURITY_REVIEW);
+      expect(enabled).toContain(JanitorType.MOCK_GENERATION);
     });
   });
 
@@ -233,11 +240,12 @@ describe("constants/janitor", () => {
     it("should return items for all janitor types except E2E_TESTS", () => {
       const items = getAllJanitorItems();
 
-      expect(items).toHaveLength(3);
+      expect(items).toHaveLength(4);
       expect(items.some((item) => item.id === JanitorType.UNIT_TESTS)).toBe(true);
       expect(items.some((item) => item.id === JanitorType.INTEGRATION_TESTS)).toBe(true);
       expect(items.some((item) => item.id === JanitorType.E2E_TESTS)).toBe(false);
       expect(items.some((item) => item.id === JanitorType.SECURITY_REVIEW)).toBe(true);
+      expect(items.some((item) => item.id === JanitorType.MOCK_GENERATION)).toBe(true);
     });
 
     it("should return items with all required properties", () => {
@@ -257,11 +265,12 @@ describe("constants/janitor", () => {
     it("should create OR conditions for all janitor types", () => {
       const conditions = createEnabledJanitorWhereConditions();
 
-      expect(conditions).toHaveLength(4);
+      expect(conditions).toHaveLength(5);
       expect(conditions).toContainEqual({ unitTestsEnabled: true });
       expect(conditions).toContainEqual({ integrationTestsEnabled: true });
       expect(conditions).toContainEqual({ e2eTestsEnabled: true });
       expect(conditions).toContainEqual({ securityReviewEnabled: true });
+      expect(conditions).toContainEqual({ mockGenerationEnabled: true });
     });
   });
 
