@@ -37,6 +37,7 @@ export type HighlightChunk = {
   title: string
   ref_ids: string[]
   timestamp: number
+  sourceNodeRefId?: string
 }
 
 export type GraphStore = {
