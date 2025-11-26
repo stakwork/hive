@@ -432,6 +432,13 @@ describe("Workspace CRUD Operations", () => {
         deletedAt: null,
         ownerId: "user1",
         stakworkApiKey: "api-key",
+        nodeTypeOrder: null,
+        logoUrl: null,
+        logoKey: null,
+        repositoryDraft: null,
+        mission: null,
+        sourceControlOrgId: null,
+        originalSlug: null,
         createdAt: "2023-01-01T00:00:00.000Z",
         updatedAt: "2023-01-02T00:00:00.000Z",
       });
