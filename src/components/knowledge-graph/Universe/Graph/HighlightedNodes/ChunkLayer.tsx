@@ -1,4 +1,4 @@
-import { useGraphStore, useSimulationStore } from '@/stores/useStores'
+import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { Html, Line } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
@@ -40,6 +40,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
   const { simulation } = useSimulationStore((s) => s)
   const { removeHighlightChunk } = useGraphStore((s) => s)
+  const nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
   // Auto-remove this chunk after duration
   useEffect(() => {
@@ -53,17 +54,42 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   // Track chunk nodes state
   const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
 
-  // Update nodes when simulation changes using useFrame
-  useFrame(() => {
-    const simulationNodes = simulation?.nodes() || []
+  // Initialize nodes from nodesNormalized
+  useEffect(() => {
     const foundNodes = chunk.ref_ids
-      .map(id => simulationNodes.find((node: NodeExtended) => node.ref_id === id))
+      .map(id => nodesNormalized.get(id))
       .filter(Boolean) as NodeExtended[]
 
-    // Only update state if nodes have changed
-    if (foundNodes.length !== chunkNodes.length ||
-        foundNodes.some((node, i) => chunkNodes[i]?.ref_id !== node.ref_id)) {
-      setChunkNodes(foundNodes)
+    setChunkNodes(foundNodes)
+  }, [nodesNormalized, chunk.ref_ids])
+
+  // Update node positions from simulation
+  useFrame(() => {
+    if (!simulation || chunkNodes.length === 0) return
+
+    const simulationNodes = simulation.nodes() || []
+    const updatedNodes = chunkNodes.map(chunkNode => {
+      const simulationNode = simulationNodes.find((node: NodeExtended) => node.ref_id === chunkNode.ref_id)
+      if (simulationNode) {
+        return {
+          ...chunkNode,
+          x: simulationNode.x,
+          y: simulationNode.y,
+          z: simulationNode.z,
+        }
+      }
+      return chunkNode
+    })
+
+    // Only update if positions have changed
+    const positionsChanged = updatedNodes.some((node, i) =>
+      node.x !== chunkNodes[i]?.x ||
+      node.y !== chunkNodes[i]?.y ||
+      node.z !== chunkNodes[i]?.z
+    )
+
+    if (positionsChanged) {
+      setChunkNodes(updatedNodes)
     }
   })
 
@@ -71,6 +97,19 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const chunkCenter = useMemo(() => {
     if (chunkNodes.length === 0) return null
 
+    // If chunk.sourceNodeRefId is provided, use that node's position as center
+    if (chunk.sourceNodeRefId) {
+      const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId)
+      if (sourceNode) {
+        return [
+          sourceNode.x || 0,
+          sourceNode.y || 0,
+          sourceNode.z || 0,
+        ] as [number, number, number]
+      }
+    }
+
+    // Otherwise, calculate center as average of all node positions
     const sum = chunkNodes.reduce(
       (acc, n) => {
         acc.x += n.x || 0
@@ -86,7 +125,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       sum.y / chunkNodes.length,
       sum.z / chunkNodes.length,
     ] as [number, number, number]
-  }, [chunkNodes])
+  }, [chunkNodes, chunk.sourceNodeRefId])
 
   // Particle system
   const particles = useRef<

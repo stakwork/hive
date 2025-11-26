@@ -9,6 +9,7 @@ interface GraphWebhookPayload {
   workspace_id?: string;
   depth?: number;
   title?: string;
+  source_node_ref_id?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as GraphWebhookPayload;
-    const { node_ids, workspace_id, depth, title } = body;
+    const { node_ids, workspace_id, depth, title, source_node_ref_id } = body;
 
     console.log(body)
 
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
           depth: depth || 0,
           title: title || "",
           timestamp: Date.now(),
+          sourceNodeRefId: source_node_ref_id || "",
         };
 
         await pusherServer.trigger(
