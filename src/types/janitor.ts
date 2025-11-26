@@ -82,4 +82,10 @@ export interface CronHealthCheck {
   timestamp: string;
 }
 
+export interface SystemContext {
+  source: 'CRON_SERVICE' | 'INTERNAL_SYSTEM';
+  timestamp: Date;
+  operationId?: string;
+}
+
 export { JanitorType, JanitorStatus, JanitorTrigger, RecommendationStatus };

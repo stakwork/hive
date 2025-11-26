@@ -87,6 +87,13 @@ npm run dev
 - `npm run mock-server` - Start mock server for testing
 - `npx shadcn@latest add [component]` - Add shadcn/ui components
 
+### Janitor Cron Jobs
+Automated janitor runs via Vercel cron jobs. Configure with:
+- `JANITOR_CRON_ENABLED=true` - Enable automation
+- Schedule configured in `vercel.json` (currently every 6 hours: `"0 */6 * * *"`)
+
+Endpoint: `/api/cron/janitors` (processes all enabled workspaces)
+
 ## Environment Variables
 
 Required for development:
