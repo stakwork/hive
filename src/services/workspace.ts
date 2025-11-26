@@ -92,7 +92,7 @@ export async function createWorkspace(
     });
     return {
       ...workspace,
-      nodeTypeOrder: (workspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
+      nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
       createdAt: workspace.createdAt.toISOString(),
       updatedAt: workspace.updatedAt.toISOString(),
     };
@@ -124,6 +124,7 @@ export async function getWorkspacesByUserId(
 
   return workspaces.map((workspace) => ({
     ...workspace,
+    nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
   }));
@@ -798,6 +799,7 @@ export async function recoverWorkspace(
 
   return {
     ...recoveredWorkspace,
+    nodeTypeOrder: recoveredWorkspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     createdAt: recoveredWorkspace.createdAt.toISOString(),
     updatedAt: recoveredWorkspace.updatedAt.toISOString(),
   };
@@ -1062,6 +1064,7 @@ export async function updateWorkspace(
 
     return {
       ...updatedWorkspace,
+      nodeTypeOrder: updatedWorkspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
       createdAt: updatedWorkspace.createdAt.toISOString(),
       updatedAt: updatedWorkspace.updatedAt.toISOString(),
     };
