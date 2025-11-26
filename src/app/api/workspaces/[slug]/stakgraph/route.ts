@@ -382,7 +382,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     try {
-      const callbackUrl = getGithubWebhookCallbackUrl(request);
+      const callbackUrl = getGithubWebhookCallbackUrl(request, workspace.id);
       const webhookService = new WebhookService(getServiceConfig("github"));
 
       const primaryRepo = await getPrimaryRepository(workspace.id);
