@@ -518,5 +518,148 @@ describe('layoutUtils', () => {
         expect(getNodeById(layoutedNodes, 'node3')?.type).toBe('output');
       });
     });
+
+    describe('Coordinate clamping', () => {
+      test('should prevent nodes from having negative x coordinates', async () => {
+        // Create nodes that could potentially overlap near the origin
+        const nodes: Node[] = [
+          createTestNode('node1', { position: { x: 10, y: 100 } }),
+          createTestNode('node2', { position: { x: 15, y: 105 } }),
+          createTestNode('node3', { position: { x: 20, y: 110 } }),
+        ];
+
+        const edges: Edge[] = [
+          { id: 'e1', source: 'node1', target: 'node2' },
+          { id: 'e2', source: 'node2', target: 'node3' },
+        ];
+
+        const layoutedNodes = await smartLayout(nodes, edges);
+
+        // After layout and overlap fixing, no node should have negative x coordinate
+        layoutedNodes.forEach((node) => {
+          expect(node.position.x).toBeGreaterThanOrEqual(0);
+        });
+      });
+
+      test('should prevent nodes from having negative y coordinates', async () => {
+        // Create nodes that could potentially overlap near the top edge
+        const nodes: Node[] = [
+          createTestNode('node1', { position: { x: 100, y: 10 } }),
+          createTestNode('node2', { position: { x: 105, y: 15 } }),
+          createTestNode('node3', { position: { x: 110, y: 20 } }),
+        ];
+
+        const edges: Edge[] = [
+          { id: 'e1', source: 'node1', target: 'node2' },
+          { id: 'e2', source: 'node2', target: 'node3' },
+        ];
+
+        const layoutedNodes = await smartLayout(nodes, edges);
+
+        // After layout and overlap fixing, no node should have negative y coordinate
+        layoutedNodes.forEach((node) => {
+          expect(node.position.y).toBeGreaterThanOrEqual(0);
+        });
+      });
+
+      test('should maintain non-negative coordinates after fixing overlaps', async () => {
+        // Create overlapping nodes at the origin
+        const nodes: Node[] = [
+          createTestNode('node1', { position: { x: 0, y: 0 } }),
+          createTestNode('node2', { position: { x: 50, y: 50 } }),
+          createTestNode('node3', { position: { x: 25, y: 25 } }),
+        ];
+
+        const edges: Edge[] = [
+          { id: 'e1', source: 'node1', target: 'node2' },
+          { id: 'e2', source: 'node2', target: 'node3' },
+        ];
+
+        const layoutedNodes = await smartLayout(nodes, edges);
+
+        // All nodes should have non-negative coordinates
+        layoutedNodes.forEach((node) => {
+          expect(node.position.x).toBeGreaterThanOrEqual(0);
+          expect(node.position.y).toBeGreaterThanOrEqual(0);
+        });
+      });
+
+      test('should preserve positive coordinates when no clamping is needed', async () => {
+        // Create well-separated nodes with positive coordinates
+        const nodes: Node[] = [
+          createTestNode('node1', { position: { x: 100, y: 100 } }),
+          createTestNode('node2', { position: { x: 400, y: 100 } }),
+          createTestNode('node3', { position: { x: 100, y: 300 } }),
+        ];
+
+        const edges: Edge[] = [
+          { id: 'e1', source: 'node1', target: 'node2' },
+          { id: 'e2', source: 'node1', target: 'node3' },
+        ];
+
+        const layoutedNodes = await smartLayout(nodes, edges);
+
+        // All nodes should maintain non-negative coordinates
+        layoutedNodes.forEach((node) => {
+          expect(node.position.x).toBeGreaterThanOrEqual(0);
+          expect(node.position.y).toBeGreaterThanOrEqual(0);
+        });
+      });
+
+      test('should handle nodes at exactly (0, 0)', async () => {
+        const nodes: Node[] = [
+          createTestNode('node1', { position: { x: 0, y: 0 } }),
+          createTestNode('node2', { position: { x: 300, y: 0 } }),
+        ];
+
+        const edges: Edge[] = [
+          { id: 'e1', source: 'node1', target: 'node2' },
+        ];
+
+        const layoutedNodes = await smartLayout(nodes, edges);
+
+        // All nodes should have non-negative coordinates
+        layoutedNodes.forEach((node) => {
+          expect(node.position.x).toBeGreaterThanOrEqual(0);
+          expect(node.position.y).toBeGreaterThanOrEqual(0);
+        });
+      });
+
+      test('should handle multiple overlapping nodes without creating negative coordinates', async () => {
+        // Create a cluster of overlapping nodes
+        const nodes: Node[] = [
+          createTestNode('node1', { position: { x: 50, y: 50 } }),
+          createTestNode('node2', { position: { x: 60, y: 55 } }),
+          createTestNode('node3', { position: { x: 55, y: 60 } }),
+          createTestNode('node4', { position: { x: 65, y: 50 } }),
+        ];
+
+        const edges: Edge[] = [
+          { id: 'e1', source: 'node1', target: 'node2' },
+          { id: 'e2', source: 'node2', target: 'node3' },
+          { id: 'e3', source: 'node3', target: 'node4' },
+        ];
+
+        const layoutedNodes = await smartLayout(nodes, edges);
+
+        // After fixNodeOverlaps with clamping, all nodes should have non-negative coordinates
+        layoutedNodes.forEach((node) => {
+          expect(node.position.x).toBeGreaterThanOrEqual(0);
+          expect(node.position.y).toBeGreaterThanOrEqual(0);
+        });
+      });
+
+      test('should handle branching graphs with coordinate clamping', async () => {
+        const { nodes, edges } = createBranchingGraph();
+
+        const layoutedNodes = await smartLayout(nodes, edges);
+
+        // Verify no negative coordinates even with complex branching
+        layoutedNodes.forEach((node) => {
+          expect(node.position.x).toBeGreaterThanOrEqual(0);
+          expect(node.position.y).toBeGreaterThanOrEqual(0);
+        });
+      });
+    });
   });
 });

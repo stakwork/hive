@@ -38,6 +38,29 @@ interface NodeWithBounds extends Node {
   bounds: NodeBounds;
 }
 
+/**
+ * Clamps node coordinates to ensure they remain within visible viewport bounds.
+ * Prevents nodes from being positioned off-screen due to negative coordinates.
+ *
+ * @param node - The node to clamp
+ * @param minX - Minimum X coordinate (default: 0)
+ * @param minY - Minimum Y coordinate (default: 0)
+ * @returns The node with clamped position
+ */
+function clampNodePosition(
+  node: Node,
+  minX: number = 0,
+  minY: number = 0
+): Node {
+  return {
+    ...node,
+    position: {
+      x: Math.max(minX, node.position.x),
+      y: Math.max(minY, node.position.y),
+    },
+  };
+}
+
 interface EdgePath {
   source: string;
   target: string;
@@ -214,6 +237,10 @@ function fixNodeOverlaps(nodes: Node[]): Node[] {
               nodeA.position.x += xShift;
               nodeB.position.x -= xShift;
             }
+
+            // Clamp coordinates to prevent off-screen positioning
+            fixedNodes[i] = clampNodePosition(fixedNodes[i]);
+            fixedNodes[j] = clampNodePosition(fixedNodes[j]);
           } else {
             // Nodes are more horizontally aligned, so move vertically
             const yShift = (nodeSize.height + safetyMargin) / 2;
@@ -224,6 +251,10 @@ function fixNodeOverlaps(nodes: Node[]): Node[] {
               nodeA.position.y += yShift;
               nodeB.position.y -= yShift;
             }
+
+            // Clamp coordinates to prevent off-screen positioning
+            fixedNodes[i] = clampNodePosition(fixedNodes[i]);
+            fixedNodes[j] = clampNodePosition(fixedNodes[j]);
           }
         }
       }
