@@ -2908,6 +2908,28 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
       );
     });
 
+    test("should use webhook URL when provided instead of default projects endpoint", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const customWebhookUrl = "https://custom-stakwork.com/api/continue-workflow";
+      const params = TestDataFactory.createCallStakworkAPIParams({
+        webhook: customWebhookUrl,
+      });
+
+      const { callStakworkAPI } = await import("@/services/task-workflow");
+      await callStakworkAPI(params);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        customWebhookUrl,
+        expect.objectContaining({
+          method: "POST",
+        })
+      );
+    });
+
     test("should include correct authorization header", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
