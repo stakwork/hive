@@ -185,7 +185,9 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             featureId: true;
             phaseId: true;
             bountyCode: true;
+            stakworkProjectId: true;
             dependsOnTaskIds: true;
+            systemAssigneeType: true;
             createdAt: true;
             updatedAt: true;
             assignee: {
@@ -200,6 +202,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
               select: {
                 id: true;
                 name: true;
+                status: true;
               };
             };
           };
@@ -398,7 +401,9 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         featureId: true;
         phaseId: true;
         bountyCode: true;
+        stakworkProjectId: true;
         dependsOnTaskIds: true;
+        systemAssigneeType: true;
         createdAt: true;
         updatedAt: true;
         assignee: {
@@ -413,6 +418,7 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
           select: {
             id: true;
             name: true;
+            status: true;
           };
         };
       };
@@ -449,35 +455,10 @@ type AssigneeWithIcon = {
 };
 
 // Roadmap Task types (tasks that are part of features/phases)
+import { TASK_LIST_SELECT } from '@/lib/db/selects';
+
 type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
-  select: {
-    id: true;
-    title: true;
-    description: true;
-    status: true;
-    priority: true;
-    order: true;
-    featureId: true;
-    phaseId: true;
-    bountyCode: true;
-    dependsOnTaskIds: true;
-    createdAt: true;
-    updatedAt: true;
-    assignee: {
-      select: {
-        id: true;
-        name: true;
-        email: true;
-        image: true;
-      };
-    };
-    phase: {
-      select: {
-        id: true;
-        name: true;
-      };
-    };
-  };
+  select: typeof TASK_LIST_SELECT;
 }>;
 
 export type RoadmapTaskListItem = Omit<RoadmapTaskListItemBase, 'assignee'> & {
@@ -487,59 +468,10 @@ export type RoadmapTaskListItem = Omit<RoadmapTaskListItemBase, 'assignee'> & {
 export type RoadmapTaskWithDetails = RoadmapTaskListItem;
 
 // Roadmap task detail with full context for detail page
+import { TASK_DETAIL_SELECT } from '@/lib/db/selects';
+
 type RoadmapTaskDetailBase = Prisma.TaskGetPayload<{
-  select: {
-    id: true;
-    title: true;
-    description: true;
-    status: true;
-    priority: true;
-    order: true;
-    featureId: true;
-    phaseId: true;
-    bountyCode: true;
-    dependsOnTaskIds: true;
-    createdAt: true;
-    updatedAt: true;
-    assignee: {
-      select: {
-        id: true;
-        name: true;
-        email: true;
-        image: true;
-      };
-    };
-    phase: {
-      select: {
-        id: true;
-        name: true;
-        status: true;
-      };
-    };
-    feature: {
-      select: {
-        id: true;
-        title: true;
-        workspaceId: true;
-      };
-    };
-    createdBy: {
-      select: {
-        id: true;
-        name: true;
-        email: true;
-        image: true;
-      };
-    };
-    updatedBy: {
-      select: {
-        id: true;
-        name: true;
-        email: true;
-        image: true;
-      };
-    };
-  };
+  select: typeof TASK_DETAIL_SELECT;
 }>;
 
 export type RoadmapTaskDetail = Omit<RoadmapTaskDetailBase, 'assignee'> & {
