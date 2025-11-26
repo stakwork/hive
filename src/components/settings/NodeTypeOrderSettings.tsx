@@ -2,33 +2,33 @@
 
 import { Button } from "@/components/ui/button";
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNodeTypes } from "@/stores/useDataStore";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
-    closestCenter,
-    DndContext,
-    KeyboardSensor,
-    PointerSensor,
-    useSensor,
-    useSensors,
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
 import {
-    arrayMove,
-    SortableContext,
-    sortableKeyboardCoordinates,
-    useSortable,
-    verticalListSortingStrategy,
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, RotateCcw, Plus, X } from "lucide-react";
+import { GripVertical, Plus, RotateCcw, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -109,7 +109,7 @@ function SortableNodeTypeRow({ item, onValueChange, onRemove, canRemove = false 
 
 
 export function NodeTypeOrderSettings() {
-  const { workspace } = useWorkspace();
+  const { workspace, updateWorkspace } = useWorkspace();
   const nodeTypesFromGraph = useNodeTypes(); // Node types from current graph data
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddingNewType, setIsAddingNewType] = useState(false);
@@ -267,6 +267,9 @@ export function NodeTypeOrderSettings() {
         throw new Error(result.error || "Failed to save node type configuration");
       }
 
+      // Sync workspace context so new order is reflected immediately
+      updateWorkspace({ nodeTypeOrder: result.data?.nodeTypeOrder ?? apiData });
+
       toast.success("Node type configuration saved successfully");
     } catch (error) {
       console.error("Error saving node type configuration:", error);
@@ -274,15 +277,23 @@ export function NodeTypeOrderSettings() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [workspace, nodeTypeConfig]);
+  }, [workspace, nodeTypeConfig, updateWorkspace]);
 
   // Check if configuration has changed
   const hasChanges = useMemo(() => {
     if (existingConfig.length !== nodeTypeConfig.length) return true;
-    return existingConfig.some(existing => {
-      const current = nodeTypeConfig.find(item => item.type === existing.type);
-      return !current || existing.value !== current.value;
-    });
+
+    // Compare ordered lists; any order or value change counts
+    for (let i = 0; i < nodeTypeConfig.length; i++) {
+      const current = nodeTypeConfig[i];
+      const existing = existingConfig[i];
+
+      if (!existing) return true;
+      if (existing.type !== current.type) return true;
+      if (existing.value !== current.value) return true;
+    }
+
+    return false;
   }, [existingConfig, nodeTypeConfig]);
 
   if (!workspace) return null;
