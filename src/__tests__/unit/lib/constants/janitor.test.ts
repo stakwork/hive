@@ -230,13 +230,13 @@ describe("constants/janitor", () => {
   });
 
   describe("getAllJanitorItems", () => {
-    it("should return items for all janitor types", () => {
+    it("should return items for all janitor types except E2E_TESTS", () => {
       const items = getAllJanitorItems();
 
-      expect(items).toHaveLength(4);
+      expect(items).toHaveLength(3);
       expect(items.some((item) => item.id === JanitorType.UNIT_TESTS)).toBe(true);
       expect(items.some((item) => item.id === JanitorType.INTEGRATION_TESTS)).toBe(true);
-      expect(items.some((item) => item.id === JanitorType.E2E_TESTS)).toBe(true);
+      expect(items.some((item) => item.id === JanitorType.E2E_TESTS)).toBe(false);
       expect(items.some((item) => item.id === JanitorType.SECURITY_REVIEW)).toBe(true);
     });
 

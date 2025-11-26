@@ -106,9 +106,12 @@ export function createJanitorItem(janitorType: JanitorType) {
 
 /**
  * Get all available janitor items for UI
+ * Excludes E2E_TESTS from the list
  */
 export function getAllJanitorItems() {
-  return Object.values(JanitorType).map(createJanitorItem);
+  return Object.values(JanitorType)
+    .filter(type => type !== JanitorType.E2E_TESTS)
+    .map(createJanitorItem);
 }
 
 /**
