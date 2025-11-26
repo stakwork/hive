@@ -146,12 +146,12 @@ describe('calculateGridMap', () => {
       expect(Math.abs(typeAPos.y - typeBPos.y)).toBe(500);
     });
 
-    test('should alternate Y layers between positive and negative', () => {
+    test('should position layers from top to bottom in order', () => {
       const { nodes, nodeTypes } = createMockNodesWithTypes({
-        TypeA: 1, // typeIndex 1 -> yLayer 0, odd -> y = -0 (0)
-        TypeB: 1, // typeIndex 2 -> yLayer 500, even -> y = 500
-        TypeC: 1, // typeIndex 3 -> yLayer 500, odd -> y = -500
-        TypeD: 1, // typeIndex 4 -> yLayer 1000, even -> y = 1000
+        TypeA: 1, // typeIndex 0 -> y = +750 (top)
+        TypeB: 1, // typeIndex 1 -> y = +250
+        TypeC: 1, // typeIndex 2 -> y = -250
+        TypeD: 1, // typeIndex 3 -> y = -750 (bottom)
       });
 
       const gridMap = calculateGridMap(nodes, nodeTypes);
@@ -161,16 +161,16 @@ describe('calculateGridMap', () => {
         return gridMap.get(node.ref_id)!;
       });
 
-      // TypeA (typeIndex 1): yLayer 0, odd -> -0 = 0
-      // TypeB (typeIndex 2): yLayer 500, even -> 500
-      // TypeC (typeIndex 3): yLayer 500, odd -> -500
-      // TypeD (typeIndex 4): yLayer 1000, even -> 1000
-      // Pattern: first type is 0, then alternates positive/negative with increasing magnitude
-      // Note: -0 === 0 is true, but Object.is(-0, 0) is false, so we check mathematically
-      expect(Math.abs(positions[0].y)).toBe(0); // TypeA: -0 or 0, both are fine
-      expect(positions[1].y).toBeGreaterThan(0); // TypeB: 500
-      expect(positions[2].y).toBeLessThan(0); // TypeC: -500
-      expect(positions[3].y).toBeGreaterThan(0); // TypeD: 1000
+      // Top-to-bottom positioning: first type at top, last at bottom
+      // With 4 types, startOffset = ((4-1)/2) * 500 = 750
+      // TypeA (index 0): y = 750 - (0 * 500) = 750
+      // TypeB (index 1): y = 750 - (1 * 500) = 250
+      // TypeC (index 2): y = 750 - (2 * 500) = -250
+      // TypeD (index 3): y = 750 - (3 * 500) = -750
+      expect(positions[0].y).toBe(750);  // TypeA: top
+      expect(positions[1].y).toBe(250);  // TypeB
+      expect(positions[2].y).toBe(-250); // TypeC
+      expect(positions[3].y).toBe(-750); // TypeD: bottom
     });
   });
 
@@ -297,10 +297,10 @@ describe('calculateGridMap', () => {
       expect(gridMap.size).toBe(1);
       const position = gridMap.get('single')!;
 
-      // Single node should be centered at origin in X-Z plane
+      // Single node should be centered at origin
       expect(position.x).toBe(0);
       expect(position.z).toBe(0);
-      expect(position.y).not.toBe(0); // Y is based on type index
+      expect(position.y).toBe(0); // Single type is centered at Y=0
     });
 
     test('should handle single type with multiple nodes', () => {
@@ -389,23 +389,19 @@ describe('calculateGridMap', () => {
 
       const gridMap = calculateGridMap(nodes, nodeTypes);
 
-      // typeIndex = nodeTypes.indexOf(n.node_type) + 1
-      // yLayer = Math.floor(typeIndex / 2) * 500
-      // isEvenLayer = typeIndex % 2 === 0
-      // yOffset = isEvenLayer ? yLayer : -yLayer
-
-      // TypeA: typeIndex = 1, yLayer = Math.floor(1/2) * 500 = 0 * 500 = 0, isEven = (1 % 2 === 0) = false, yOffset = -0 = 0
-      // TypeB: typeIndex = 2, yLayer = Math.floor(2/2) * 500 = 1 * 500 = 500, isEven = (2 % 2 === 0) = true, yOffset = 500
-      // TypeC: typeIndex = 3, yLayer = Math.floor(3/2) * 500 = 1 * 500 = 500, isEven = (3 % 2 === 0) = false, yOffset = -500
+      // Top-to-bottom positioning with 3 types:
+      // startOffset = ((3-1)/2) * 500 = 500
+      // TypeA (index 0): y = 500 - (0 * 500) = 500 (top)
+      // TypeB (index 1): y = 500 - (1 * 500) = 0 (center)
+      // TypeC (index 2): y = 500 - (2 * 500) = -500 (bottom)
 
       const typeAPos = gridMap.get(nodes.find(n => n.node_type === 'TypeA')!.ref_id)!;
       const typeBPos = gridMap.get(nodes.find(n => n.node_type === 'TypeB')!.ref_id)!;
       const typeCPos = gridMap.get(nodes.find(n => n.node_type === 'TypeC')!.ref_id)!;
 
-      // Use Math.abs for TypeA to handle -0 vs +0 edge case
-      expect(Math.abs(typeAPos.y)).toBe(0);
-      expect(typeBPos.y).toBe(500);
-      expect(typeCPos.y).toBe(-500);
+      expect(typeAPos.y).toBe(500);  // TypeA: top
+      expect(typeBPos.y).toBe(0);    // TypeB: center
+      expect(typeCPos.y).toBe(-500); // TypeC: bottom
     });
 
     test('should maintain consistent positions for same node configuration', () => {
