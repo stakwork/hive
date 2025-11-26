@@ -4,11 +4,13 @@ import { db } from "@/lib/db";
 import { resetDatabase } from "@/__tests__/support/fixtures";
 import { JanitorType, JanitorStatus, JanitorTrigger, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { shouldSkipJanitorRun } from "@/services/janitor-cron";
+import { NextRequest } from "next/server";
 
 /**
  * Integration tests for GET /api/cron/janitors endpoint
  * 
  * Tests verify:
+ * - Authentication via CRON_SECRET
  * - Feature flag gating (JANITOR_CRON_ENABLED)
  * - Multi-workspace orchestration
  * - Per-workspace error isolation
@@ -23,6 +25,17 @@ import { shouldSkipJanitorRun } from "@/services/janitor-cron";
  * Cleanup: resetDatabase() in beforeEach for test isolation
  */
 
+// Helper function to create mock NextRequest with authorization header
+function createMockRequest(authHeader?: string): NextRequest {
+  const headers = new Headers();
+  if (authHeader) {
+    headers.set('authorization', authHeader);
+  }
+  return new NextRequest('http://localhost:3000/api/cron/janitors', {
+    headers,
+  });
+}
+
 // Mock the service factory to control Stakwork API responses
 let mockStakworkRequest: ReturnType<typeof vi.fn>;
 
@@ -34,6 +47,7 @@ vi.mock("@/lib/service-factory", () => ({
 
 describe("GET /api/cron/janitors", () => {
   let originalEnvValue: string | undefined;
+  let originalCronSecret: string | undefined;
 
   beforeEach(async () => {
     // Store original env value
@@ -51,13 +65,95 @@ describe("GET /api/cron/janitors", () => {
     });
   });
 
+  beforeEach(async () => {
+    // Store original env values
+    originalEnvValue = process.env.JANITOR_CRON_ENABLED;
+    originalCronSecret = process.env.CRON_SECRET;
+    
+    // Set default CRON_SECRET for tests
+    process.env.CRON_SECRET = "test-secret-123";
+    
+    // Clear all mocks
+    vi.clearAllMocks();
+    
+    // Reset database for test isolation
+    await resetDatabase();
+    
+    // Setup default mock for Stakwork service
+    mockStakworkRequest = vi.fn().mockResolvedValue({
+      data: { id: "proj-default-123" },
+    });
+  });
+
   afterEach(() => {
-    // Restore original env value
+    // Restore original env values
     if (originalEnvValue !== undefined) {
       process.env.JANITOR_CRON_ENABLED = originalEnvValue;
     } else {
       delete process.env.JANITOR_CRON_ENABLED;
     }
+    
+    if (originalCronSecret !== undefined) {
+      process.env.CRON_SECRET = originalCronSecret;
+    } else {
+      delete process.env.CRON_SECRET;
+    }
+  });
+
+  describe("Authentication", () => {
+    it("should return 401 when no authorization header is provided", async () => {
+      // Execute with no auth header
+      const request = createMockRequest();
+      const response = await GET(request);
+      const data = await response.json();
+
+      // Assert
+      expect(response.status).toBe(401);
+      expect(data).toMatchObject({
+        error: 'Unauthorized'
+      });
+    });
+
+    it("should return 401 when authorization header has invalid format", async () => {
+      // Execute with invalid format
+      const request = createMockRequest('InvalidFormat test-secret-123');
+      const response = await GET(request);
+      const data = await response.json();
+
+      // Assert
+      expect(response.status).toBe(401);
+      expect(data).toMatchObject({
+        error: 'Unauthorized'
+      });
+    });
+
+    it("should return 401 when authorization token is incorrect", async () => {
+      // Execute with wrong token
+      const request = createMockRequest('Bearer wrong-secret');
+      const response = await GET(request);
+      const data = await response.json();
+
+      // Assert
+      expect(response.status).toBe(401);
+      expect(data).toMatchObject({
+        error: 'Unauthorized'
+      });
+    });
+
+    it("should allow request with valid authorization token", async () => {
+      // Setup: Disable cron so we get quick response
+      process.env.JANITOR_CRON_ENABLED = "false";
+      
+      // Execute with correct token
+      const request = createMockRequest('Bearer test-secret-123');
+      const response = await GET(request);
+      const data = await response.json();
+
+      // Assert: Should not be unauthorized
+      expect(response.status).toBe(200);
+      expect(data).not.toHaveProperty('error');
+      expect(data).toHaveProperty('success');
+    });
   });
 
   describe("Feature Flag Behavior", () => {
