@@ -124,7 +124,6 @@ export async function getWorkspacesByUserId(
 
   return workspaces.map((workspace) => ({
     ...workspace,
-    nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
   }));
@@ -250,19 +249,7 @@ export async function getWorkspaceBySlug(
       slug,
       deleted: false,
     },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      slug: true,
-      ownerId: true,
-      stakworkApiKey: true,
-      repositoryDraft: true,
-      logoKey: true,
-      logoUrl: true,
-      nodeTypeOrder: true,
-      createdAt: true,
-      updatedAt: true,
+    include: {
       owner: {
         select: { id: true, name: true, email: true },
       },
@@ -430,7 +417,6 @@ export async function getUserWorkspaces(
       memberCount: memberCount + 1, // +1 for owner
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
-      nodeTypeOrder: workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
     });
   }
 
@@ -450,7 +436,6 @@ export async function getUserWorkspaces(
         memberCount: memberCount + 1, // +1 for owner
         logoKey: membership.workspace.logoKey,
         logoUrl: membership.workspace.logoUrl,
-        nodeTypeOrder: membership.workspace.nodeTypeOrder as Array<{ type: string; value: number }> | null,
       });
     }
   }
@@ -813,7 +798,6 @@ export async function recoverWorkspace(
 
   return {
     ...recoveredWorkspace,
-    nodeTypeOrder: (recoveredWorkspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
     createdAt: recoveredWorkspace.createdAt.toISOString(),
     updatedAt: recoveredWorkspace.updatedAt.toISOString(),
   };
