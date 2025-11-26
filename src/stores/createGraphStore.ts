@@ -203,12 +203,13 @@ export const createGraphStore = (
       highlightTimestamp: Date.now(),
       webhookHighlightDepth: depth
     }),
-    addHighlightChunk: (title: string, ref_ids: string[]) => {
+    addHighlightChunk: (title: string, ref_ids: string[], sourceNodeRefId?: string) => {
       const chunkId = crypto.randomUUID()
       const chunk: HighlightChunk = {
         chunkId,
         title,
         ref_ids,
+        sourceNodeRefId,
         timestamp: Date.now()
       }
       const { highlightChunks } = get()
