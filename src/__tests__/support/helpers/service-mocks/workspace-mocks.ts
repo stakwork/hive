@@ -12,6 +12,13 @@ export interface MockWorkspaceOptions {
   description?: string | null;
   stakworkApiKey?: string | null;
   deleted?: boolean;
+  nodeTypeOrder?: Array<{ type: string; value: number }> | null;
+  logoUrl?: string | null;
+  logoKey?: string | null;
+  repositoryDraft?: string | null;
+  mission?: string | null;
+  sourceControlOrgId?: string | null;
+  originalSlug?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -41,6 +48,13 @@ export const workspaceMocks = {
       stakworkApiKey: overrides.stakworkApiKey === undefined ? "api-key" : overrides.stakworkApiKey,
       deleted: overrides.deleted || false,
       deletedAt: null,
+      nodeTypeOrder: overrides.nodeTypeOrder === undefined ? null : overrides.nodeTypeOrder,
+      logoUrl: overrides.logoUrl === undefined ? null : overrides.logoUrl,
+      logoKey: overrides.logoKey === undefined ? null : overrides.logoKey,
+      repositoryDraft: overrides.repositoryDraft === undefined ? null : overrides.repositoryDraft,
+      mission: overrides.mission === undefined ? null : overrides.mission,
+      sourceControlOrgId: overrides.sourceControlOrgId === undefined ? null : overrides.sourceControlOrgId,
+      originalSlug: overrides.originalSlug === undefined ? null : overrides.originalSlug,
       createdAt: overrides.createdAt || TEST_DATE,
       updatedAt: overrides.updatedAt || TEST_DATE,
     };
