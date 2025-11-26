@@ -88,7 +88,7 @@ function SortableNodeTypeRow({ item, onValueChange, onRemove, canRemove = false 
               const clampedValue = Math.max(0, Math.min(999, isNaN(value) ? 0 : value));
               onValueChange(item.type, clampedValue);
             }}
-            className="w-20 text-center"
+            className="w-20 text-center hidden"
             placeholder="0"
           />
           {canRemove && onRemove && (
@@ -355,7 +355,7 @@ export function NodeTypeOrderSettings() {
                       max="999"
                       value={20}
                       readOnly
-                      className="w-20 text-center bg-muted"
+                      className="w-20 text-center bg-muted hidden"
                       placeholder="20"
                     />
                     <div className="flex items-center gap-1">
