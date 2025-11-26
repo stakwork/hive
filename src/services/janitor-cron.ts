@@ -33,6 +33,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
     integrationTestsEnabled: boolean;
     e2eTestsEnabled: boolean;
     securityReviewEnabled: boolean;
+    mockGenerationEnabled: boolean;
   } | null;
 }>> {
   return await db.workspace.findMany({
@@ -54,6 +55,7 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
           integrationTestsEnabled: true,
           e2eTestsEnabled: true,
           securityReviewEnabled: true,
+          mockGenerationEnabled: true,
         }
       }
     }
@@ -66,6 +68,7 @@ const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [
   JanitorType.INTEGRATION_TESTS,
   JanitorType.E2E_TESTS,
   JanitorType.SECURITY_REVIEW,
+  JanitorType.MOCK_GENERATION,
 ];
 
 /**
