@@ -81,9 +81,13 @@ export async function updateJanitorConfig(
  */
 export async function createJanitorRun(
   workspaceSlug: string,
-  userId: string,
+  userId: string | undefined,
   janitorTypeString: string,
-  triggeredBy: JanitorTrigger = "MANUAL"
+  triggeredBy: JanitorTrigger = "MANUAL",
+  systemContext?: {
+    isSystemInitiated: boolean;
+    source?: string;
+  }
 ) {
   // Parse janitor type first (needed regardless of auth path)
   const janitorTypeUpper = janitorTypeString.toUpperCase();
@@ -94,23 +98,61 @@ export async function createJanitorRun(
 
   let workspaceId: string;
 
-  // Skip auth validation for SCHEDULED (cron) runs - system-initiated and trusted
-  if (triggeredBy !== "SCHEDULED") {
-    const validation = await validateWorkspaceAccess(workspaceSlug, userId);
+  // Security validation based on trigger type
+  if (triggeredBy === "MANUAL") {
+    // MANUAL triggers require authenticated user with DEVELOPER+ role
+    if (!userId) {
+      throw new Error(JANITOR_ERRORS.AUTHENTICATION_REQUIRED);
+    }
+
+    // Validate user has access to workspace with write permissions
+    const validation = await validateWorkspaceAccess(workspaceSlug, userId as string);
+
     if (!validation.hasAccess || !validation.canWrite) {
       throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
     }
     workspaceId = validation.workspace!.id;
-  } else {
-    // For SCHEDULED runs, fetch workspace directly
+  } else if (triggeredBy === "SCHEDULED") {
+    // SCHEDULED triggers require system context validation
+    if (!systemContext?.isSystemInitiated) {
+      throw new Error(JANITOR_ERRORS.INVALID_SYSTEM_CONTEXT);
+    }
+
+    // For scheduled runs, userId should be the workspace owner
+    // Validate that the workspace exists and get owner
     const workspace = await db.workspace.findUnique({
       where: { slug: workspaceSlug },
-      select: { id: true }
+      include: {
+        members: {
+          where: { role: "OWNER" },
+          take: 1,
+        },
+      },
     });
+
     if (!workspace) {
-      throw new Error("Workspace not found");
+      throw new Error(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
     }
+
+    if (!workspace.members[0]?.userId) {
+      throw new Error(JANITOR_ERRORS.WORKSPACE_OWNER_NOT_FOUND);
+    }
+
+    // Override userId with workspace owner for scheduled runs
+    userId = workspace.members[0].userId;
     workspaceId = workspace.id;
+  } else {
+    // WEBHOOK and ON_COMMIT triggers still require user context
+    if (!userId) {
+      throw new Error(JANITOR_ERRORS.AUTHENTICATION_REQUIRED);
+    }
+
+    const validation = await validateWorkspaceAccess(workspaceSlug, userId as string);
+
+    if (!validation.hasAccess || !validation.canWrite) {
+      throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+    }
+    workspaceId = validation.workspace!.id;
   }
   let config = await db.janitorConfig.findUnique({
     where: { workspaceId }

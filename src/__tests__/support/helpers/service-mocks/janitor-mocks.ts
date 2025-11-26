@@ -12,6 +12,8 @@ export interface MockJanitorConfigOptions {
   e2eTestsEnabled?: boolean;
   securityReviewEnabled?: boolean;
   taskCoordinatorEnabled?: boolean;
+  recommendationSweepEnabled?: boolean;
+  ticketSweepEnabled?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -58,6 +60,8 @@ export const janitorMocks = {
       e2eTestsEnabled: overrides.e2eTestsEnabled ?? false,
       securityReviewEnabled: overrides.securityReviewEnabled ?? false,
       taskCoordinatorEnabled: overrides.taskCoordinatorEnabled ?? false,
+      recommendationSweepEnabled: overrides.recommendationSweepEnabled ?? false,
+      ticketSweepEnabled: overrides.ticketSweepEnabled ?? false,
       createdAt: overrides.createdAt || TEST_DATE,
       updatedAt: overrides.updatedAt || TEST_DATE,
     };

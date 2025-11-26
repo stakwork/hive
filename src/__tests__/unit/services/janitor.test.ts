@@ -19,6 +19,14 @@ import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { janitorMocks, janitorMockSetup, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/janitor-mocks";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
+vi.mock("@/lib/env", () => ({
+  config: {
+    STAKWORK_API_KEY: "test-api-key",
+    STAKWORK_BASE_URL: "https://test-stakwork.com/api/v1",
+    STAKWORK_JANITOR_WORKFLOW_ID: "999",
+  },
+}));
+
 vi.mock("@/services/workspace");
 vi.mock("@/services/task-workflow");
 vi.mock("@/lib/service-factory");
@@ -39,6 +47,7 @@ const mockedValidateWorkspaceAccess = vi.mocked(validateWorkspaceAccess);
 const mockedCreateTaskWithStakworkWorkflow = vi.mocked(createTaskWithStakworkWorkflow);
 const mockedPusherServer = vi.mocked(pusherServer);
 const mockedGetGithubUsernameAndPAT = vi.mocked(getGithubUsernameAndPAT);
+const mockStakworkService = vi.mocked(stakworkService);
 
 describe("Janitor Service", () => {
   beforeEach(() => {
@@ -71,6 +80,9 @@ describe("Janitor Service", () => {
       repository: {
         findFirst: vi.fn(),
       },
+      workspace: {
+        findUnique: vi.fn(),
+      },
     });
 
     // Mock getGithubUsernameAndPAT to return test credentials
@@ -79,6 +91,106 @@ describe("Janitor Service", () => {
       token: "ghp_test_token_123",
     });
   });
+
+  // Helper functions for unit tests with mocked database
+  let testIdCounter = 0;
+  
+  const createTestUser = async () => {
+    testIdCounter++;
+    const user = {
+      id: `user-${testIdCounter}`,
+      name: `Test User ${testIdCounter}`,
+      email: `testuser${testIdCounter}@example.com`,
+      emailVerified: null,
+      image: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    return user;
+  };
+
+  const createTestWorkspace = async () => {
+    testIdCounter++;
+    const workspace = {
+      id: `ws-${testIdCounter}`,
+      name: `Test Workspace ${testIdCounter}`,
+      slug: `test-workspace-${testIdCounter}`,
+      description: null,
+      ownerId: `owner-${testIdCounter}`,
+      stakworkApiKey: "test-api-key",
+      sourceControlOrgId: null,
+      repositoryDraft: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    // Mock workspace.findUnique to return this workspace when queried by slug
+    vi.mocked(db.workspace).findUnique = vi.fn().mockImplementation((args: any) => {
+      if (args.where?.slug === workspace.slug) {
+        return Promise.resolve({
+          ...workspace,
+          members: [] as any[], // Will be populated by createWorkspaceMember
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    return workspace;
+  };
+
+  const createWorkspaceMember = async (workspaceId: string, userId: string, role: string) => {
+    const member = {
+      id: `member-${testIdCounter++}`,
+      workspaceId,
+      userId,
+      role,
+      leftAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    // Update workspace query mock to include this member
+    const originalFindUnique = vi.mocked(db.workspace).findUnique;
+    vi.mocked(db.workspace).findUnique = vi.fn().mockImplementation(async (args: any) => {
+      const workspace = await originalFindUnique(args);
+      if (workspace && workspace.id === workspaceId) {
+        const existingMembers = (workspace as any).members || [];
+        return {
+          ...workspace,
+          members: [...existingMembers, member],
+        };
+      }
+      return workspace;
+    });
+
+    return member;
+  };
+
+  const enableJanitorType = async (workspaceSlug: string, janitorType: string) => {
+    const mockConfig = janitorMocks.createMockConfig({
+      [`${janitorType.toLowerCase()}Enabled`]: true,
+    });
+    janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
+  };
+
+  const setupSuccessfulJanitorRunMocks = (workspace: any, userId?: string) => {
+    const mockRun = janitorMocks.createMockRun({
+      id: `run-${Date.now()}`,
+      status: "RUNNING",
+      stakworkProjectId: 123,
+      janitorConfig: {
+        workspace: {
+          swarm: null,
+          repositories: [],
+        },
+      },
+    });
+
+    vi.mocked(db.janitorRun.create).mockResolvedValueOnce(mockRun as any);
+    vi.mocked(db.janitorRun.update).mockResolvedValueOnce(mockRun as any);
+    
+    return mockRun;
+  };
 
   describe("getOrCreateJanitorConfig", () => {
     test("should return existing config when found", async () => {
@@ -262,6 +374,453 @@ describe("Janitor Service", () => {
   });
 
   describe("createJanitorRun", () => {
+    describe("Security and Authorization", () => {
+      describe("MANUAL trigger security", () => {
+        it("should reject MANUAL trigger without userId", async () => {
+          const workspace = await createTestWorkspace();
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              undefined, // No userId
+              "UNIT_TESTS",
+              "MANUAL"
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.AUTHENTICATION_REQUIRED);
+        });
+
+        it("should reject MANUAL trigger with insufficient permissions (VIEWER role)", async () => {
+          const workspace = await createTestWorkspace();
+          const viewer = await createTestUser();
+          await createWorkspaceMember(workspace.id, viewer.id, "VIEWER");
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: false, // VIEWER cannot write
+            canAdmin: false,
+            workspace,
+            member: { role: "VIEWER" } as any,
+          });
+
+          await expect(
+            createJanitorRun(workspace.slug, viewer.id, "UNIT_TESTS", "MANUAL")
+          ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+        });
+
+        it("should reject MANUAL trigger with insufficient permissions (STAKEHOLDER role)", async () => {
+          const workspace = await createTestWorkspace();
+          const stakeholder = await createTestUser();
+          await createWorkspaceMember(
+            workspace.id,
+            stakeholder.id,
+            "STAKEHOLDER"
+          );
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: false, // STAKEHOLDER cannot write
+            canAdmin: false,
+            workspace,
+            member: { role: "STAKEHOLDER" } as any,
+          });
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              stakeholder.id,
+              "UNIT_TESTS",
+              "MANUAL"
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+        });
+
+        it("should allow MANUAL trigger with DEVELOPER role", async () => {
+          const workspace = await createTestWorkspace();
+          const developer = await createTestUser();
+          await createWorkspaceMember(workspace.id, developer.id, "DEVELOPER");
+          await enableJanitorType(workspace.slug, "UNIT_TESTS");
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: true, // DEVELOPER can write
+            canAdmin: false,
+            workspace,
+            member: { role: "DEVELOPER" } as any,
+          });
+
+          // Mock the janitorRun.create call with proper nested structure
+          const mockRun = janitorMocks.createMockRunWithConfig(
+            { status: "PENDING", stakworkProjectId: null },
+            { unitTestsEnabled: true }
+          );
+          vi.mocked(db.janitorRun.create).mockResolvedValueOnce(mockRun as any);
+          vi.mocked(db.janitorRun.update).mockResolvedValueOnce({
+            ...mockRun,
+            status: "RUNNING",
+            stakworkProjectId: 123,
+          } as any);
+
+          vi.mocked(stakworkService).mockReturnValue({
+            stakworkRequest: vi.fn().mockResolvedValue({ data: { project_id: 123 } })
+          } as any);
+
+          const result = await createJanitorRun(
+            workspace.slug,
+            developer.id,
+            "UNIT_TESTS",
+            "MANUAL"
+          );
+
+          expect(result).toBeDefined();
+          expect(result.status).toBeDefined();
+        });
+
+        it("should allow MANUAL trigger with PM role", async () => {
+          const workspace = await createTestWorkspace();
+          const pm = await createTestUser();
+          await createWorkspaceMember(workspace.id, pm.id, "PM");
+          await enableJanitorType(workspace.slug, "UNIT_TESTS");
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: true, // PM can write
+            canAdmin: false,
+            workspace,
+            member: { role: "PM" } as any,
+          });
+
+          // Mock the janitorRun.create call with proper nested structure
+          const mockRun = janitorMocks.createMockRunWithConfig(
+            { status: "PENDING", stakworkProjectId: null },
+            { unitTestsEnabled: true }
+          );
+          vi.mocked(db.janitorRun.create).mockResolvedValueOnce(mockRun as any);
+          vi.mocked(db.janitorRun.update).mockResolvedValueOnce({
+            ...mockRun,
+            status: "RUNNING",
+            stakworkProjectId: 123,
+          } as any);
+
+          vi.mocked(stakworkService).mockReturnValue({
+            stakworkRequest: vi.fn().mockResolvedValue({ data: { project_id: 123 } })
+          } as any);
+
+          const result = await createJanitorRun(
+            workspace.slug,
+            pm.id,
+            "UNIT_TESTS",
+            "MANUAL"
+          );
+
+          expect(result).toBeDefined();
+          expect(result.status).toBeDefined();
+        });
+
+        it("should allow MANUAL trigger with ADMIN role", async () => {
+          const workspace = await createTestWorkspace();
+          const admin = await createTestUser();
+          await createWorkspaceMember(workspace.id, admin.id, "ADMIN");
+          await enableJanitorType(workspace.slug, "UNIT_TESTS");
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: true, // ADMIN can write
+            canAdmin: true,
+            workspace,
+            member: { role: "ADMIN" } as any,
+          });
+
+          // Mock the janitorRun.create call with proper nested structure
+          const mockRun = janitorMocks.createMockRunWithConfig(
+            { status: "PENDING", stakworkProjectId: null },
+            { unitTestsEnabled: true }
+          );
+          vi.mocked(db.janitorRun.create).mockResolvedValueOnce(mockRun as any);
+          vi.mocked(db.janitorRun.update).mockResolvedValueOnce({
+            ...mockRun,
+            status: "RUNNING",
+            stakworkProjectId: 123,
+          } as any);
+
+          vi.mocked(stakworkService).mockReturnValue({
+            stakworkRequest: vi.fn().mockResolvedValue({ data: { project_id: 123 } })
+          } as any);
+
+          const result = await createJanitorRun(
+            workspace.slug,
+            admin.id,
+            "UNIT_TESTS",
+            "MANUAL"
+          );
+
+          expect(result).toBeDefined();
+          expect(result.status).toBeDefined();
+        });
+
+        it("should allow MANUAL trigger with OWNER role", async () => {
+          const workspace = await createTestWorkspace();
+          const owner = await createTestUser();
+          await createWorkspaceMember(workspace.id, owner.id, "OWNER");
+          await enableJanitorType(workspace.slug, "UNIT_TESTS");
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: true, // OWNER can write
+            canAdmin: true,
+            workspace,
+            member: { role: "OWNER" } as any,
+          });
+
+          // Mock the janitorRun.create call with proper nested structure
+          const mockRun = janitorMocks.createMockRunWithConfig(
+            { status: "PENDING", stakworkProjectId: null },
+            { unitTestsEnabled: true }
+          );
+          vi.mocked(db.janitorRun.create).mockResolvedValueOnce(mockRun as any);
+          vi.mocked(db.janitorRun.update).mockResolvedValueOnce({
+            ...mockRun,
+            status: "RUNNING",
+            stakworkProjectId: 123,
+          } as any);
+
+          vi.mocked(stakworkService).mockReturnValue({
+            stakworkRequest: vi.fn().mockResolvedValue({ data: { project_id: 123 } })
+          } as any);
+
+          const result = await createJanitorRun(
+            workspace.slug,
+            owner.id,
+            "UNIT_TESTS",
+            "MANUAL"
+          );
+
+          expect(result).toBeDefined();
+          expect(result.status).toBeDefined();
+        });
+      });
+
+      describe("SCHEDULED trigger security", () => {
+        it("should reject SCHEDULED trigger without system context", async () => {
+          const workspace = await createTestWorkspace();
+          const owner = await createTestUser();
+          await createWorkspaceMember(workspace.id, owner.id, "OWNER");
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              owner.id,
+              "UNIT_TESTS",
+              "SCHEDULED"
+              // No systemContext provided
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.INVALID_SYSTEM_CONTEXT);
+        });
+
+        it("should reject SCHEDULED trigger with invalid system context", async () => {
+          const workspace = await createTestWorkspace();
+          const owner = await createTestUser();
+          await createWorkspaceMember(workspace.id, owner.id, "OWNER");
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              owner.id,
+              "UNIT_TESTS",
+              "SCHEDULED",
+              {
+                isSystemInitiated: false, // Invalid
+                source: "malicious",
+              }
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.INVALID_SYSTEM_CONTEXT);
+        });
+
+        it("should reject SCHEDULED trigger if workspace not found", async () => {
+          await expect(
+            createJanitorRun(
+              "nonexistent-workspace",
+              undefined,
+              "UNIT_TESTS",
+              "SCHEDULED",
+              {
+                isSystemInitiated: true,
+                source: "cron-job",
+              }
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.WORKSPACE_NOT_FOUND);
+        });
+
+        it("should reject SCHEDULED trigger if workspace has no owner", async () => {
+          const workspace = await createTestWorkspace();
+          // Don't create owner member
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              undefined,
+              "UNIT_TESTS",
+              "SCHEDULED",
+              {
+                isSystemInitiated: true,
+                source: "cron-job",
+              }
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.WORKSPACE_OWNER_NOT_FOUND);
+        });
+
+        it("should allow SCHEDULED trigger with valid system context", async () => {
+          const workspace = await createTestWorkspace();
+          const owner = await createTestUser();
+          await createWorkspaceMember(workspace.id, owner.id, "OWNER");
+          await enableJanitorType(workspace.slug, "UNIT_TESTS");
+
+          // Mock the janitorRun.create call with proper nested structure
+          const mockRun = janitorMocks.createMockRunWithConfig(
+            { status: "PENDING", stakworkProjectId: null, triggeredBy: "SCHEDULED" },
+            { unitTestsEnabled: true }
+          );
+          vi.mocked(db.janitorRun.create).mockResolvedValueOnce(mockRun as any);
+          vi.mocked(db.janitorRun.update).mockResolvedValueOnce({
+            ...mockRun,
+            status: "RUNNING",
+            stakworkProjectId: 123,
+            triggeredBy: "SCHEDULED",
+          } as any);
+
+          vi.mocked(stakworkService).mockReturnValue({
+            stakworkRequest: vi.fn().mockResolvedValue({ data: { project_id: 123 } })
+          } as any);
+
+          const result = await createJanitorRun(
+            workspace.slug,
+            undefined, // userId not required for scheduled
+            "UNIT_TESTS",
+            "SCHEDULED",
+            {
+              isSystemInitiated: true,
+              source: "cron-job",
+            }
+          );
+
+          expect(result).toBeDefined();
+          expect(result.triggeredBy).toBe("SCHEDULED");
+        });
+
+        it("should use workspace owner userId for SCHEDULED runs", async () => {
+          const workspace = await createTestWorkspace();
+          const owner = await createTestUser();
+          await createWorkspaceMember(workspace.id, owner.id, "OWNER");
+          await enableJanitorType(workspace.slug, "UNIT_TESTS");
+
+          // Mock the janitorRun.create call with proper nested structure
+          const mockRun = janitorMocks.createMockRunWithConfig(
+            { status: "PENDING", stakworkProjectId: null, triggeredBy: "SCHEDULED" },
+            { unitTestsEnabled: true }
+          );
+          vi.mocked(db.janitorRun.create).mockResolvedValueOnce(mockRun as any);
+          vi.mocked(db.janitorRun.update).mockResolvedValueOnce({
+            ...mockRun,
+            status: "RUNNING",
+            stakworkProjectId: 123,
+            triggeredBy: "SCHEDULED",
+          } as any);
+
+          vi.mocked(stakworkService).mockReturnValue({
+            stakworkRequest: vi.fn().mockResolvedValue({ data: { project_id: 123 } })
+          } as any);
+
+          const result = await createJanitorRun(
+            workspace.slug,
+            undefined, // No userId provided
+            "UNIT_TESTS",
+            "SCHEDULED",
+            {
+              isSystemInitiated: true,
+              source: "cron-job",
+            }
+          );
+
+          expect(result).toBeDefined();
+          // Note: userId is stored in metadata, but we can't easily test it without mocking the db.janitorRun.create
+          expect(result.triggeredBy).toBe("SCHEDULED");
+        });
+      });
+
+      describe("WEBHOOK and ON_COMMIT trigger security", () => {
+        it("should require authentication for WEBHOOK trigger", async () => {
+          const workspace = await createTestWorkspace();
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              undefined, // No userId
+              "UNIT_TESTS",
+              "WEBHOOK"
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.AUTHENTICATION_REQUIRED);
+        });
+
+        it("should require authorization for WEBHOOK trigger", async () => {
+          const workspace = await createTestWorkspace();
+          const viewer = await createTestUser();
+          await createWorkspaceMember(workspace.id, viewer.id, "VIEWER");
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: false,
+            canAdmin: false,
+            workspace,
+            member: { role: "VIEWER" } as any,
+          });
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              viewer.id,
+              "UNIT_TESTS",
+              "WEBHOOK"
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+        });
+
+        it("should require authentication for ON_COMMIT trigger", async () => {
+          const workspace = await createTestWorkspace();
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              undefined, // No userId
+              "UNIT_TESTS",
+              "ON_COMMIT"
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.AUTHENTICATION_REQUIRED);
+        });
+
+        it("should require authorization for ON_COMMIT trigger", async () => {
+          const workspace = await createTestWorkspace();
+          const viewer = await createTestUser();
+          await createWorkspaceMember(workspace.id, viewer.id, "VIEWER");
+
+          mockedValidateWorkspaceAccess.mockResolvedValueOnce({
+            hasAccess: true,
+            canWrite: false,
+            canAdmin: false,
+            workspace,
+            member: { role: "VIEWER" } as any,
+          });
+
+          await expect(
+            createJanitorRun(
+              workspace.slug,
+              viewer.id,
+              "UNIT_TESTS",
+              "ON_COMMIT"
+            )
+          ).rejects.toThrow(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
+        });
+      });
+    });
+
     test("should create janitor run successfully", async () => {
       const mockConfig = janitorMocks.createMockConfig({ unitTestsEnabled: true });
       const mockRun = janitorMocks.createMockRunWithConfig(

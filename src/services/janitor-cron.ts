@@ -192,7 +192,16 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
 
           try {
             console.log(`[JanitorCron] Creating ${janitorType} run for workspace ${slug}`);
-            await createJanitorRun(slug, ownerId, janitorType.toLowerCase(), "SCHEDULED");
+            await createJanitorRun(
+              slug,
+              ownerId,
+              janitorType.toLowerCase(),
+              "SCHEDULED",
+              {
+                isSystemInitiated: true,
+                source: "cron-job",
+              }
+            );
             result.runsCreated++;
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);

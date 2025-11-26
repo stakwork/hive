@@ -14,6 +14,9 @@ export const JANITOR_ERRORS = {
   ASSIGNEE_NOT_MEMBER: "Assignee is not a member of this workspace",
   REPOSITORY_NOT_FOUND: "Repository not found in this workspace",
   INSUFFICIENT_PERMISSIONS: "Insufficient permissions to perform this action",
+  AUTHENTICATION_REQUIRED: "Authentication required to perform this action",
+  INVALID_SYSTEM_CONTEXT: "Invalid system context for scheduled operation",
+  WORKSPACE_OWNER_NOT_FOUND: "Workspace owner not found",
   WORKSPACE_NOT_FOUND: "Workspace not found or access denied",
 } as const;
 
