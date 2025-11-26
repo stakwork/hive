@@ -42,6 +42,7 @@ describe("Workspace CRUD Operations", () => {
       });
       expect(db.workspace.findUnique).toHaveBeenCalledWith({
         where: { slug: "test-workspace", deleted: false },
+        select: { id: true },
       });
       expect(db.workspace.create).toHaveBeenCalledWith({
         data: mockWorkspaceData,
@@ -176,6 +177,9 @@ describe("Workspace CRUD Operations", () => {
         swarmUrl: null,
         ingestRefId: "ingest-123",
         poolState: "STARTED",
+        logoKey: null,
+        logoUrl: null,
+        nodeTypeOrder: null,
         repositories: [],
       });
     });
