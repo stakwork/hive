@@ -202,6 +202,16 @@ describe("shouldSkipJanitorRun", () => {
       expect(result).toBe(false);
     });
 
+    it("should return false when task workflowStatus is HALTED (discarded)", async () => {
+      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
+        createMockTask({ workflowStatus: WorkflowStatus.HALTED }) as any,
+      );
+
+      const result = await shouldSkipJanitorRun("ws-1", JanitorType.UNIT_TESTS);
+
+      expect(result).toBe(false);
+    });
+
     it("should query for the most recent task of the specified janitor type", async () => {
       vi.mocked(mockedDb.task.findFirst).mockResolvedValue(null);
 
