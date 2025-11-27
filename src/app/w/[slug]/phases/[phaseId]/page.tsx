@@ -22,6 +22,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
+import { toast } from "sonner";
 import type { PhaseWithTickets, TicketListItem } from "@/types/roadmap";
 import type { PhaseStatus, TaskStatus, Priority } from "@prisma/client";
 
@@ -130,7 +131,11 @@ export default function PhaseDetailPage() {
         tasks: [...phase.tasks, ticket],
       });
 
-      if (newTicketAssigneeId === "system:bounty-hunter") {
+      if (newTicketAssigneeId === "system:task-coordinator") {
+        toast.info("Task queued for coordinator", {
+          description: "Processing begins when a machine is available",
+        });
+      } else if (newTicketAssigneeId === "system:bounty-hunter") {
         const bountyUrl = generateSphinxBountyUrl({
           id: ticket.id,
           title: ticket.title,
