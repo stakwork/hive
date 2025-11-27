@@ -81,12 +81,24 @@ vi.mock("@/lib/auth/workspace-resolver", () => ({
   }),
 }));
 
+// Helper to create authenticated request with CRON_SECRET
+function createAuthenticatedRequest(): NextRequest {
+  const headers = new Headers();
+  headers.set('authorization', 'Bearer test-cron-secret');
+  return new NextRequest('http://localhost:3000/api/cron/task-coordinator', { headers });
+}
+
 describe("Integration: /api/cron/task-coordinator", () => {
   let testWorkspace: any;
   let testUser: any;
   let testSwarm: any;
+  let originalCronSecret: string | undefined;
 
   beforeEach(async () => {
+    // Set up CRON_SECRET for authentication
+    originalCronSecret = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = "test-cron-secret";
+
     // Clean up test data
     await db.task.deleteMany({});
     await db.janitorRecommendation.deleteMany({});
@@ -158,6 +170,13 @@ describe("Integration: /api/cron/task-coordinator", () => {
   });
 
   afterEach(async () => {
+    // Restore CRON_SECRET
+    if (originalCronSecret !== undefined) {
+      process.env.CRON_SECRET = originalCronSecret;
+    } else {
+      delete process.env.CRON_SECRET;
+    }
+
     // Clean up test data
     await db.task.deleteMany({});
     await db.janitorRecommendation.deleteMany({});
@@ -192,7 +211,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -233,7 +252,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -274,7 +293,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -326,7 +345,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -375,7 +394,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -416,7 +435,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -490,7 +509,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -563,7 +582,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -610,7 +629,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -654,7 +673,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint twice
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       await GET(mockRequest);
@@ -718,7 +737,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
@@ -743,7 +762,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
   describe("Environment Configuration", () => {
     test("should skip execution when TASK_COORDINATOR_ENABLED is false", async () => {
       // Execute endpoint with disabled flag
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "false";
 
       const response = await GET(mockRequest);
@@ -783,7 +802,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
       });
 
       // Execute endpoint
-      const mockRequest = new NextRequest("http://localhost:3000/api/cron/task-coordinator");
+      const mockRequest = createAuthenticatedRequest();
       process.env.TASK_COORDINATOR_ENABLED = "true";
 
       const response = await GET(mockRequest);
