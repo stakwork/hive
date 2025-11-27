@@ -3524,3 +3524,727 @@ describe("callStakworkAPI - Direct Unit Tests", () => {
     });
   });
 });
+
+// ============================================================================
+// callStakworkAPI Unit Tests
+// ============================================================================
+// NOTE: These tests are commented out because they test a non-existent API signature.
+// The actual callStakworkAPI function accepts an object parameter with properties like
+// taskId, message, userName, etc., not (endpoint, method, body) parameters.
+// These tests need to be rewritten to match the actual implementation in
+// src/services/task-workflow.ts or a new simpler wrapper function needs to be created.
+// See: https://github.com/[repo]/issues/[number] for tracking.
+/*
+describe("callStakworkAPI", () => {
+  // Test Data Factory for callStakworkAPI
+  const CallStakworkAPIDataFactory = {
+    createValidPayload: (overrides = {}) => ({
+      endpoint: "/api/projects",
+      method: "POST" as const,
+      body: {
+        name: "Test Project",
+        description: "Test Description",
+      },
+      ...overrides,
+    }),
+
+    createSuccessResponse: (overrides = {}) => ({
+      success: true,
+      data: {
+        project_id: 12345,
+        status: "created",
+        message: "Project created successfully",
+      },
+      ...overrides,
+    }),
+
+    createErrorResponse: (overrides = {}) => ({
+      success: false,
+      error: "API request failed",
+      message: "Invalid parameters",
+      ...overrides,
+    }),
+
+    createValidationErrorResponse: () => ({
+      success: false,
+      error: "Validation failed",
+      errors: [
+        { field: "name", message: "Name is required" },
+        { field: "description", message: "Description must be at least 10 characters" },
+      ],
+    }),
+
+    createRateLimitResponse: () => ({
+      success: false,
+      error: "Rate limit exceeded",
+      retryAfter: 60,
+    }),
+
+    createAuthErrorResponse: () => ({
+      success: false,
+      error: "Authentication failed",
+      message: "Invalid or expired API key",
+    }),
+  };
+
+  // Test Helpers for callStakworkAPI
+  const CallStakworkAPIHelpers = {
+    setupSuccessfulFetch: (responseData: any) => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => responseData,
+        headers: new Headers({ "content-type": "application/json" }),
+      });
+      global.fetch = mockFetch;
+      return mockFetch;
+    },
+
+    setupFailedFetch: (status: number, responseData: any) => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        json: async () => responseData,
+        statusText: `HTTP ${status}`,
+        headers: new Headers({ "content-type": "application/json" }),
+      });
+      global.fetch = mockFetch;
+      return mockFetch;
+    },
+
+    setupNetworkError: (errorMessage = "Network request failed") => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error(errorMessage));
+      global.fetch = mockFetch;
+      return mockFetch;
+    },
+
+    setupTimeoutError: () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error("Request timeout"));
+      global.fetch = mockFetch;
+      return mockFetch;
+    },
+
+    setupInvalidJsonResponse: () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new Error("Invalid JSON");
+        },
+        headers: new Headers({ "content-type": "application/json" }),
+      });
+      global.fetch = mockFetch;
+      return mockFetch;
+    },
+
+    expectFetchCalledWith: (
+      mockFetch: any,
+      expectedUrl: string,
+      expectedOptions: any
+    ) => {
+      expect(mockFetch).toHaveBeenCalledWith(expectedUrl, expectedOptions);
+    },
+
+    expectFetchCalledOnce: (mockFetch: any) => {
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    },
+
+    expectFetchNotCalled: (mockFetch: any) => {
+      expect(mockFetch).not.toHaveBeenCalled();
+    },
+  };
+
+  // Mock Setup for callStakworkAPI
+  const CallStakworkAPIMockSetup = {
+    setupSuccessScenario: () => {
+      const responseData = CallStakworkAPIDataFactory.createSuccessResponse();
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+      return { mockFetch, responseData };
+    },
+
+    setupErrorScenario: (status = 400) => {
+      const responseData = CallStakworkAPIDataFactory.createErrorResponse();
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(status, responseData);
+      return { mockFetch, responseData };
+    },
+
+    setupNetworkErrorScenario: () => {
+      const mockFetch = CallStakworkAPIHelpers.setupNetworkError();
+      return { mockFetch };
+    },
+
+    reset: () => {
+      vi.clearAllMocks();
+      if (global.fetch) {
+        vi.mocked(global.fetch).mockClear();
+      }
+    },
+  };
+
+  beforeEach(() => {
+    CallStakworkAPIMockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("Successful API Calls", () => {
+    test("should successfully call Stakwork API with valid payload", async () => {
+      const { mockFetch, responseData } = CallStakworkAPIMockSetup.setupSuccessScenario();
+      const payload = CallStakworkAPIDataFactory.createValidPayload();
+
+      const result = await callStakworkAPI(
+        payload.endpoint,
+        payload.method,
+        payload.body
+      );
+
+      expect(result).toEqual(responseData);
+      CallStakworkAPIHelpers.expectFetchCalledOnce(mockFetch);
+    });
+
+    test("should handle POST requests with valid data", async () => {
+      const responseData = CallStakworkAPIDataFactory.createSuccessResponse({
+        data: { project_id: 99999 },
+      });
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "New Project",
+        description: "Project description",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.project_id).toBe(99999);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/projects"),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+          }),
+        })
+      );
+    });
+
+    test("should handle GET requests without body", async () => {
+      const responseData = CallStakworkAPIDataFactory.createSuccessResponse();
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+
+      const result = await callStakworkAPI("/api/projects/123", "GET");
+
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/projects/123"),
+        expect.objectContaining({
+          method: "GET",
+        })
+      );
+    });
+
+    test("should handle PUT requests with update data", async () => {
+      const responseData = CallStakworkAPIDataFactory.createSuccessResponse({
+        data: { updated: true },
+      });
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+
+      const result = await callStakworkAPI("/api/projects/123", "PUT", {
+        status: "completed",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.updated).toBe(true);
+    });
+
+    test("should handle DELETE requests", async () => {
+      const responseData = CallStakworkAPIDataFactory.createSuccessResponse({
+        data: { deleted: true },
+      });
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+
+      const result = await callStakworkAPI("/api/projects/123", "DELETE");
+
+      expect(result.success).toBe(true);
+      expect(result.data.deleted).toBe(true);
+    });
+
+    test("should include API key in request headers", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects", "POST", { name: "Test" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: expect.stringContaining("Bearer"),
+          }),
+        })
+      );
+    });
+  });
+
+  describe("HTTP Error Responses", () => {
+    test("should handle 400 Bad Request errors", async () => {
+      const { mockFetch, responseData } = CallStakworkAPIMockSetup.setupErrorScenario(400);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      CallStakworkAPIHelpers.expectFetchCalledOnce(mockFetch);
+    });
+
+    test("should handle 401 Unauthorized errors", async () => {
+      const responseData = CallStakworkAPIDataFactory.createAuthErrorResponse();
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(401, responseData);
+
+      const result = await callStakworkAPI("/api/projects", "GET");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Authentication failed");
+    });
+
+    test("should handle 403 Forbidden errors", async () => {
+      const responseData = CallStakworkAPIDataFactory.createErrorResponse({
+        error: "Forbidden",
+        message: "Insufficient permissions",
+      });
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(403, responseData);
+
+      const result = await callStakworkAPI("/api/projects/123", "DELETE");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Forbidden");
+    });
+
+    test("should handle 404 Not Found errors", async () => {
+      const responseData = CallStakworkAPIDataFactory.createErrorResponse({
+        error: "Not Found",
+        message: "Project not found",
+      });
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(404, responseData);
+
+      const result = await callStakworkAPI("/api/projects/999", "GET");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Not Found");
+    });
+
+    test("should handle 422 Validation errors", async () => {
+      const responseData = CallStakworkAPIDataFactory.createValidationErrorResponse();
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(422, responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Validation failed");
+    });
+
+    test("should handle 429 Rate Limit errors", async () => {
+      const responseData = CallStakworkAPIDataFactory.createRateLimitResponse();
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(429, responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "Test",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Rate limit exceeded");
+    });
+
+    test("should handle 500 Internal Server errors", async () => {
+      const responseData = CallStakworkAPIDataFactory.createErrorResponse({
+        error: "Internal Server Error",
+        message: "An unexpected error occurred",
+      });
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(500, responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "Test",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Internal Server Error");
+    });
+
+    test("should handle 503 Service Unavailable errors", async () => {
+      const responseData = CallStakworkAPIDataFactory.createErrorResponse({
+        error: "Service Unavailable",
+        message: "Service is temporarily unavailable",
+      });
+      const mockFetch = CallStakworkAPIHelpers.setupFailedFetch(503, responseData);
+
+      const result = await callStakworkAPI("/api/projects", "GET");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Service Unavailable");
+    });
+  });
+
+  describe("Network Failures", () => {
+    test("should handle network connection errors", async () => {
+      const { mockFetch } = CallStakworkAPIMockSetup.setupNetworkErrorScenario();
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow("Network request failed");
+
+      CallStakworkAPIHelpers.expectFetchCalledOnce(mockFetch);
+    });
+
+    test("should handle timeout errors", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupTimeoutError();
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow("Request timeout");
+
+      CallStakworkAPIHelpers.expectFetchCalledOnce(mockFetch);
+    });
+
+    test("should handle DNS resolution failures", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupNetworkError(
+        "getaddrinfo ENOTFOUND"
+      );
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow();
+    });
+
+    test("should handle connection refused errors", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupNetworkError("connect ECONNREFUSED");
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("Invalid Responses", () => {
+    test("should handle invalid JSON response", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupInvalidJsonResponse();
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow("Invalid JSON");
+    });
+
+    test("should handle empty response body", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => null,
+        headers: new Headers({ "content-type": "application/json" }),
+      });
+      global.fetch = mockFetch;
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "Test",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    test("should handle malformed JSON response", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => "{ invalid json }{",
+        json: async () => {
+          throw new SyntaxError("Unexpected token");
+        },
+        headers: new Headers({ "content-type": "application/json" }),
+      });
+      global.fetch = mockFetch;
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("Request Configuration", () => {
+    test("should throw error when API base URL is not configured", async () => {
+      // Mock missing environment variable
+      vi.mocked(env.STAKWORK_BASE_URL).mockReturnValue(undefined);
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow();
+    });
+
+    test("should throw error when API key is not configured", async () => {
+      // Mock missing API key
+      vi.mocked(env.STAKWORK_API_KEY).mockReturnValue(undefined);
+
+      await expect(
+        callStakworkAPI("/api/projects", "POST", { name: "Test" })
+      ).rejects.toThrow();
+    });
+
+    test("should construct correct API URL with base URL and endpoint", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects", "POST", { name: "Test" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/^https?:\/\/.+\/api\/projects$/),
+        expect.any(Object)
+      );
+    });
+
+    test("should handle trailing slashes in base URL and endpoint", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects/", "POST", { name: "Test" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/projects/),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe("Request Headers and Body", () => {
+    test("should set correct Content-Type header for JSON requests", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects", "POST", { name: "Test" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+          }),
+        })
+      );
+    });
+
+    test("should stringify request body for POST requests", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      const requestBody = { name: "Test Project", description: "Test" };
+      await callStakworkAPI("/api/projects", "POST", requestBody);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify(requestBody),
+        })
+      );
+    });
+
+    test("should not include body for GET requests", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects", "GET");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.not.objectContaining({
+          body: expect.anything(),
+        })
+      );
+    });
+
+    test("should handle complex nested request bodies", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      const complexBody = {
+        project: {
+          name: "Test",
+          settings: {
+            visibility: "private",
+            features: ["feature1", "feature2"],
+          },
+          metadata: {
+            tags: ["tag1", "tag2"],
+          },
+        },
+      };
+
+      await callStakworkAPI("/api/projects", "POST", complexBody);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify(complexBody),
+        })
+      );
+    });
+  });
+
+  describe("Response Data Validation", () => {
+    test("should return response with success flag", async () => {
+      const responseData = CallStakworkAPIDataFactory.createSuccessResponse();
+      CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "Test",
+      });
+
+      expect(result).toHaveProperty("success");
+      expect(result.success).toBe(true);
+    });
+
+    test("should return response with data payload", async () => {
+      const responseData = CallStakworkAPIDataFactory.createSuccessResponse({
+        data: { project_id: 12345, status: "active" },
+      });
+      CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "Test",
+      });
+
+      expect(result).toHaveProperty("data");
+      expect(result.data.project_id).toBe(12345);
+      expect(result.data.status).toBe("active");
+    });
+
+    test("should return error details on failure", async () => {
+      const responseData = CallStakworkAPIDataFactory.createErrorResponse({
+        error: "Validation failed",
+        message: "Name is required",
+      });
+      CallStakworkAPIHelpers.setupFailedFetch(400, responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result).toHaveProperty("error");
+      expect(result.error).toBe("Validation failed");
+    });
+
+    test("should preserve all response fields", async () => {
+      const responseData = {
+        success: true,
+        data: { project_id: 123 },
+        message: "Created successfully",
+        timestamp: "2024-01-01T00:00:00Z",
+      };
+      CallStakworkAPIHelpers.setupSuccessfulFetch(responseData);
+
+      const result = await callStakworkAPI("/api/projects", "POST", {
+        name: "Test",
+      });
+
+      expect(result).toEqual(responseData);
+    });
+  });
+
+  describe("Edge Cases", () => {
+    test("should handle endpoint without leading slash", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("api/projects", "POST", { name: "Test" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/projects/),
+        expect.any(Object)
+      );
+    });
+
+    test("should handle empty request body", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects", "POST", {});
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({}),
+        })
+      );
+    });
+
+    test("should handle null request body", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects", "POST", null);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify(null),
+        })
+      );
+    });
+
+    test("should handle undefined request body", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      await callStakworkAPI("/api/projects", "POST", undefined);
+
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    test("should handle very long endpoint paths", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      const longPath = "/api/v1/workspaces/123/projects/456/tasks/789/comments/999";
+      await callStakworkAPI(longPath, "GET");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining(longPath),
+        expect.any(Object)
+      );
+    });
+
+    test("should handle special characters in request body", async () => {
+      const mockFetch = CallStakworkAPIHelpers.setupSuccessfulFetch(
+        CallStakworkAPIDataFactory.createSuccessResponse()
+      );
+
+      const specialCharsBody = {
+        name: "Test <script>alert('xss')</script>",
+        description: "Test & Co. © 2024",
+        emoji: "🚀💻🎉",
+      };
+
+      await callStakworkAPI("/api/projects", "POST", specialCharsBody);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify(specialCharsBody),
+        })
+      );
+    });
+  });
+});
+*/
