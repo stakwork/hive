@@ -332,6 +332,58 @@ describe("Janitor Service", () => {
       expect(result.stakworkProjectId).toBe(12345);
     });
 
+    test("should create MOCK_GENERATION janitor run successfully", async () => {
+      const mockConfig = janitorMocks.createMockConfig({ mockGenerationEnabled: true });
+      const mockRun = janitorMocks.createMockRunWithConfig(
+        { status: "RUNNING", stakworkProjectId: 12345, janitorType: "MOCK_GENERATION" },
+        { mockGenerationEnabled: true }
+      );
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
+      vi.mocked(db.janitorRun.create)
+        .mockResolvedValueOnce({
+          ...mockRun,
+          status: "PENDING",
+          stakworkProjectId: null,
+        } as any)
+        .mockResolvedValueOnce(mockRun as any);
+      vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      vi.mocked(stakworkService).mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const result = await createJanitorRun("test-workspace", "user-1", "MOCK_GENERATION");
+
+      expect(result.status).toBe("RUNNING");
+      expect(result.stakworkProjectId).toBe(12345);
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  janitorType: "MOCK_GENERATION",
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
     test("should throw error for invalid janitor type", async () => {
       const mockValidation = {
         hasAccess: true,
@@ -686,7 +738,20 @@ describe("Janitor Service", () => {
         workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
       };
 
-      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      // First findUnique call returns PENDING recommendation, second returns ACCEPTED
+      const enrichedMockRecommendation = {
+        ...mockRecommendation,
+        workspace: mockRecommendation.janitorRun?.janitorConfig?.workspace,
+        workspaceId: "ws-1",
+      };
+      const enrichedUpdatedRecommendation = {
+        ...updatedRecommendation,
+        workspace: mockRecommendation.janitorRun?.janitorConfig?.workspace,
+        workspaceId: "ws-1",
+      };
+      vi.mocked(mockedDb.janitorRecommendation.findUnique)
+        .mockResolvedValueOnce(enrichedMockRecommendation)
+        .mockResolvedValueOnce(enrichedUpdatedRecommendation);
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockRecommendationUpdate(mockedDb, updatedRecommendation);
       mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
@@ -721,6 +786,8 @@ describe("Janitor Service", () => {
         sourceType: "JANITOR",
         userId: "user-1",
         mode: "live",
+        autoMergePr: undefined,
+        janitorType: "UNIT_TESTS",
       });
       expect(result.recommendation.status).toBe("ACCEPTED");
       expect(result.task).toEqual(mockTask);

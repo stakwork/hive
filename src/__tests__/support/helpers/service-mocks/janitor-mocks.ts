@@ -11,6 +11,7 @@ export interface MockJanitorConfigOptions {
   integrationTestsEnabled?: boolean;
   e2eTestsEnabled?: boolean;
   securityReviewEnabled?: boolean;
+  mockGenerationEnabled?: boolean;
   taskCoordinatorEnabled?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -57,6 +58,7 @@ export const janitorMocks = {
       integrationTestsEnabled: overrides.integrationTestsEnabled ?? false,
       e2eTestsEnabled: overrides.e2eTestsEnabled ?? false,
       securityReviewEnabled: overrides.securityReviewEnabled ?? false,
+      mockGenerationEnabled: overrides.mockGenerationEnabled ?? false,
       taskCoordinatorEnabled: overrides.taskCoordinatorEnabled ?? false,
       createdAt: overrides.createdAt || TEST_DATE,
       updatedAt: overrides.updatedAt || TEST_DATE,

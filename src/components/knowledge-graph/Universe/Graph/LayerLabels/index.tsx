@@ -3,16 +3,20 @@ import { Billboard, Text } from '@react-three/drei'
 import { useMemo } from 'react'
 
 export const LayerLabels = () => {
+  // Use sorted nodeTypes from the dataStore as the single source of truth
   const nodeTypes = useDataStore((s) => s.nodeTypes)
 
-  // Calculate Y positions for each node type using the same logic as grid calculation
+  // Calculate Y positions for each node type - ordered top to bottom
   const nodeTypeLabels = useMemo(() => {
+    const totalTypes = nodeTypes.length;
+    const layerSpacing = 500;
+    const startOffset = ((totalTypes - 1) / 2) * layerSpacing;
+
     return nodeTypes.map((nodeType) => {
-      const typeIndex = nodeTypes.indexOf(nodeType) + 1;
-      // Separate layers by 500 units on Y axis
-      const yLayer = Math.floor(typeIndex / 2) * 500;
-      const isEvenLayer = typeIndex % 2 === 0;
-      const yOffset = isEvenLayer ? yLayer : -yLayer;
+      const typeIndex = nodeTypes.indexOf(nodeType);
+
+      // Position layers from top to bottom, keeping (0,0,0) as center
+      const yOffset = startOffset - (typeIndex >= 0 ? typeIndex : 0) * layerSpacing;
 
       const name = nodeType.replace(/_/g, ' ');
 

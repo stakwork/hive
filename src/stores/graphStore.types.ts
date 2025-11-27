@@ -12,6 +12,7 @@ export type HighlightChunk = {
   chunkId: string
   title: string
   ref_ids: string[]
+  sourceNodeRefId?: string
   timestamp: number
 }
 
@@ -82,7 +83,7 @@ export type GraphStore = {
   setCameraTarget(target: CameraTarget | null): void
   saveCameraState(position: CameraPosition, target: CameraTarget): void
   setWebhookHighlightNodes(nodeIds: string[], depth?: number): void
-  addHighlightChunk(title: string, ref_ids: string[]): string
+  addHighlightChunk(title: string, ref_ids: string[], sourceNodeRefId?: string): string
   removeHighlightChunk(chunkId: string): void
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void

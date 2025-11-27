@@ -59,6 +59,44 @@ export async function deleteUsers(userIds: string[]) {
   });
 }
 
+/**
+ * Factory for creating test screenshots with sensible defaults
+ */
+export async function createScreenshot(
+  workspaceId: string,
+  overrides: Partial<{
+    taskId: string
+    s3Key: string
+    s3Url: string
+    urlExpiresAt: Date
+    hash: string
+    pageUrl: string
+    timestamp: bigint
+    actionIndex: number
+    width: number
+    height: number
+    createdAt: Date
+  }> = {}
+) {
+  const defaults = {
+    s3Key: `test-key-${Date.now()}`,
+    s3Url: 'https://example.com/test.jpg',
+    urlExpiresAt: new Date(Date.now() + 86400000), // 1 day from now
+    hash: `test-hash-${Date.now()}`,
+    pageUrl: 'https://example.com',
+    timestamp: BigInt(Date.now()),
+    actionIndex: 0,
+  }
+
+  return db.screenshot.create({
+    data: {
+      workspaceId,
+      ...defaults,
+      ...overrides,
+    },
+  })
+}
+
 export const cleanup = {
   deleteWorkspace,
   deleteWorkspaces,
@@ -69,6 +107,7 @@ export const cleanup = {
 
 export async function resetDatabase() {
   try {
+    await db.screenshot.deleteMany();
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
@@ -86,7 +125,7 @@ export async function resetDatabase() {
     await db.sourceControlToken.deleteMany();
     await db.sourceControlOrg.deleteMany();
     await db.user.deleteMany();
-  } catch (error) {
+  } catch {
     await aggressiveReset();
   }
 }
@@ -96,6 +135,7 @@ async function aggressiveReset() {
 
   try {
     const tables = [
+      "screenshots",
       "attachments",
       "artifacts",
       "chat_messages",
@@ -118,7 +158,7 @@ async function aggressiveReset() {
     for (const table of tables) {
       try {
         await db.$executeRawUnsafe(`TRUNCATE TABLE "${table}" CASCADE;`);
-      } catch (error) {
+      } catch {
         // Some tables may not exist in certain schemas; ignore.
       }
     }

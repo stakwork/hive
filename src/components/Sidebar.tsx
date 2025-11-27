@@ -21,12 +21,13 @@ import {
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { NavUser } from "./NavUser";
@@ -81,6 +82,7 @@ interface SidebarContentProps {
   pathname: string;
   handleNavigate: (href: string) => void;
   tasksWaitingForInputCount: number;
+  poolCapacityCount: string | null;
   user: SidebarProps['user'];
 }
 
@@ -122,6 +124,7 @@ function SidebarContent({
   pathname,
   handleNavigate,
   tasksWaitingForInputCount,
+  poolCapacityCount,
   user,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
@@ -161,6 +164,8 @@ function SidebarContent({
             const isActive = !hasChildren && isActiveTab(pathname, item.href);
             const isTasksItem = item.label === "Tasks";
             const showBadge = isTasksItem && tasksWaitingForInputCount > 0;
+            const isCapacityItem = item.label === "Capacity";
+            const showCapacityBadge = isCapacityItem && poolCapacityCount;
 
             return (
               <li key={item.href}>
@@ -185,6 +190,11 @@ function SidebarContent({
                   {showBadge && (
                     <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
                       {tasksWaitingForInputCount}
+                    </Badge>
+                  )}
+                  {showCapacityBadge && (
+                    <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 border-blue-200">
+                      {poolCapacityCount}
                     </Badge>
                   )}
                   {hasChildren && (
@@ -263,10 +273,22 @@ function SidebarContent({
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
+
+  // Fetch pool status for capacity count
+  const isPoolActive = workspace?.poolState === "COMPLETE";
+  const { poolStatus } = usePoolStatus(workspaceSlug || "", isPoolActive);
+
+  // Calculate pool capacity count (in use / total)
+  const poolCapacityCount = useMemo(() => {
+    if (!poolStatus) return null;
+    const inUse = poolStatus.usedVms || 0;
+    const total = (poolStatus.usedVms || 0) + (poolStatus.unusedVms || 0);
+    return total > 0 ? `${inUse}/${total}` : null;
+  }, [poolStatus]);
 
   const canAccessDefense = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
@@ -320,6 +342,7 @@ export function Sidebar({ user }: SidebarProps) {
               pathname={pathname}
               handleNavigate={handleNavigate}
               tasksWaitingForInputCount={tasksWaitingForInputCount}
+              poolCapacityCount={poolCapacityCount}
               user={user}
             />
           </SheetContent>
@@ -335,6 +358,7 @@ export function Sidebar({ user }: SidebarProps) {
             pathname={pathname}
             handleNavigate={handleNavigate}
             tasksWaitingForInputCount={tasksWaitingForInputCount}
+            poolCapacityCount={poolCapacityCount}
             user={user}
           />
         </div>

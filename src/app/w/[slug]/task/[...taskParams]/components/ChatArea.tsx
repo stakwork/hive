@@ -11,6 +11,8 @@ import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { cn } from "@/lib/utils";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -56,6 +58,7 @@ export function ChatArea({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const router = useRouter();
+  const isMobile = useIsMobile();
 
   // Check if any message has a PULL_REQUEST artifact
   const hasPrArtifact = messages.some((msg) => 
@@ -176,7 +179,10 @@ export function ChatArea({
       </AnimatePresence>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
+      <div ref={messagesContainerRef} className={cn(
+        "flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40",
+        isMobile && "pb-28"
+      )}>
         {messages
           .filter((msg) => !msg.replyId) // Hide messages that are replies
           .map((msg) => {

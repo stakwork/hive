@@ -310,6 +310,7 @@ export async function POST(request: NextRequest) {
         repoUrl,
         baseBranch,
         history,
+        webhook,
       });
 
       if (stakworkData.success) {

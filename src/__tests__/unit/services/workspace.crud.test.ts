@@ -42,6 +42,7 @@ describe("Workspace CRUD Operations", () => {
       });
       expect(db.workspace.findUnique).toHaveBeenCalledWith({
         where: { slug: "test-workspace", deleted: false },
+        select: { id: true },
       });
       expect(db.workspace.create).toHaveBeenCalledWith({
         data: mockWorkspaceData,
@@ -176,6 +177,9 @@ describe("Workspace CRUD Operations", () => {
         swarmUrl: null,
         ingestRefId: "ingest-123",
         poolState: "STARTED",
+        logoKey: null,
+        logoUrl: null,
+        nodeTypeOrder: null,
         repositories: [],
       });
     });
@@ -428,6 +432,13 @@ describe("Workspace CRUD Operations", () => {
         deletedAt: null,
         ownerId: "user1",
         stakworkApiKey: "api-key",
+        nodeTypeOrder: null,
+        logoUrl: null,
+        logoKey: null,
+        repositoryDraft: null,
+        mission: null,
+        sourceControlOrgId: null,
+        originalSlug: null,
         createdAt: "2023-01-01T00:00:00.000Z",
         updatedAt: "2023-01-02T00:00:00.000Z",
       });

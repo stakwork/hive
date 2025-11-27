@@ -69,6 +69,7 @@ export function AITextareaSection({
     featureId,
     workspaceId: workspace?.id || "",
     type: "ARCHITECTURE",
+    displayName: type, // Pass the actual type for correct toast messages
     enabled: true, // Enable for both requirements and architecture (accept/reject for quick generation)
   });
 
@@ -108,6 +109,10 @@ export function AITextareaSection({
 
   const handleReject = async () => {
     await aiGeneration.reject();
+  };
+
+  const handleProvideFeedback = async (feedback: string) => {
+    await aiGeneration.provideFeedback(feedback);
   };
 
   const handleGenerated = (results: GeneratedContent[]) => {
@@ -211,6 +216,7 @@ export function AITextareaSection({
           source={aiGeneration.source || "quick"}
           onAccept={handleAccept}
           onReject={handleReject}
+          onProvideFeedback={type === "architecture" ? handleProvideFeedback : undefined}
           isLoading={aiGeneration.isLoading}
         />
       ) : (

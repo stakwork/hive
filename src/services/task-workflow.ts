@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Priority, TaskStatus, TaskSourceType, WorkflowStatus } from "@prisma/client";
+import { Priority, TaskStatus, TaskSourceType, WorkflowStatus, JanitorType } from "@prisma/client";
 import { config } from "@/lib/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
@@ -23,6 +23,8 @@ export async function createTaskWithStakworkWorkflow(params: {
   mode?: string;
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMergePr?: boolean;
+  janitorType?: JanitorType;
 }) {
   const {
     title,
@@ -37,6 +39,8 @@ export async function createTaskWithStakworkWorkflow(params: {
     mode = "default",
     runBuild = true,
     runTestSuite = true,
+    autoMergePr,
+    janitorType,
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -54,6 +58,7 @@ export async function createTaskWithStakworkWorkflow(params: {
       runTestSuite,
       createdById: userId,
       updatedById: userId,
+      janitorType: janitorType || null,
     },
     include: {
       assignee: {
@@ -133,6 +138,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     mode,
     generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
+    autoMergePr,
   });
 
   return {
@@ -302,8 +308,9 @@ async function createChatMessageAndTriggerStakwork(params: {
   mode?: string;
   generateChatTitle?: boolean;
   featureContext?: object;
+  autoMergePr?: boolean;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext } = params;
+  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr } = params;
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
@@ -376,6 +383,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         runTestSuite: task.runTestSuite,
         repoUrl,
         baseBranch,
+        autoMergePr,
       });
 
       if (stakworkData.success) {
@@ -455,6 +463,8 @@ export async function callStakworkAPI(params: {
   repoUrl?: string | null;
   baseBranch?: string | null;
   history?: Record<string, unknown>[];
+  autoMergePr?: boolean;
+  webhook?: string;
 }) {
   const {
     taskId,
@@ -477,6 +487,8 @@ export async function callStakworkAPI(params: {
     repoUrl = null,
     baseBranch = null,
     history = [],
+    autoMergePr,
+    webhook,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -519,6 +531,9 @@ export async function callStakworkAPI(params: {
   if (generateChatTitle !== undefined) {
     vars.generateChatTitle = generateChatTitle;
   }
+  if (autoMergePr !== undefined) {
+    vars.autoMergePr = autoMergePr;
+  }
   if (featureContext !== undefined) {
     vars.featureContext = featureContext;
   }
@@ -552,8 +567,11 @@ export async function callStakworkAPI(params: {
   };
 
   // Make Stakwork API call (replicating fetch call from chat/message route)
+  // If webhook is provided, use it to continue existing workflow; otherwise start new project
+  const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
+
   try {
-    const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
+    const response = await fetch(stakworkURL, {
       method: "POST",
       body: JSON.stringify(stakworkPayload),
       headers: {

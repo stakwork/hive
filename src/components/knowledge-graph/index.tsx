@@ -70,7 +70,7 @@ const GraphComponentInner = ({
   height = "h-full",
   width = "w-full",
 }: Props) => {
-  const { id: workspaceId, slug } = useWorkspace();
+  const { id: workspaceId, slug, workspace } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
   const currentRequestRef = useRef<AbortController | null>(null);
 
@@ -79,7 +79,15 @@ const GraphComponentInner = ({
   const resetData = useDataStore((s) => s.resetData);
   const dataInitial = useDataStore((s) => s.dataInitial);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
+  const setNodeTypeOrder = useDataStore((s) => s.setNodeTypeOrder);
 
+
+  // Sync workspace nodeTypeOrder configuration to dataStore
+  useEffect(() => {
+    if (workspace?.nodeTypeOrder) {
+      setNodeTypeOrder(workspace.nodeTypeOrder);
+    }
+  }, [workspace?.nodeTypeOrder, setNodeTypeOrder]);
 
   useEffect(() => {
     const fetchSchema = async () => {

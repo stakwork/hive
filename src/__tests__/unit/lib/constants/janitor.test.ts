@@ -230,14 +230,15 @@ describe("constants/janitor", () => {
   });
 
   describe("getAllJanitorItems", () => {
-    it("should return items for all janitor types", () => {
+    it("should return items for all janitor types except E2E_TESTS", () => {
       const items = getAllJanitorItems();
 
       expect(items).toHaveLength(4);
       expect(items.some((item) => item.id === JanitorType.UNIT_TESTS)).toBe(true);
       expect(items.some((item) => item.id === JanitorType.INTEGRATION_TESTS)).toBe(true);
-      expect(items.some((item) => item.id === JanitorType.E2E_TESTS)).toBe(true);
+      expect(items.some((item) => item.id === JanitorType.E2E_TESTS)).toBe(false);
       expect(items.some((item) => item.id === JanitorType.SECURITY_REVIEW)).toBe(true);
+      expect(items.some((item) => item.id === JanitorType.MOCK_GENERATION)).toBe(true);
     });
 
     it("should return items with all required properties", () => {
@@ -257,11 +258,12 @@ describe("constants/janitor", () => {
     it("should create OR conditions for all janitor types", () => {
       const conditions = createEnabledJanitorWhereConditions();
 
-      expect(conditions).toHaveLength(4);
+      expect(conditions).toHaveLength(5);
       expect(conditions).toContainEqual({ unitTestsEnabled: true });
       expect(conditions).toContainEqual({ integrationTestsEnabled: true });
       expect(conditions).toContainEqual({ e2eTestsEnabled: true });
       expect(conditions).toContainEqual({ securityReviewEnabled: true });
+      expect(conditions).toContainEqual({ mockGenerationEnabled: true });
     });
   });
 

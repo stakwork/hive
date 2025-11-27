@@ -1,5 +1,5 @@
 import { JanitorType, Priority } from "@prisma/client";
-import { FlaskConical, Zap, Monitor, Shield, LucideIcon } from "lucide-react";
+import { FlaskConical, Zap, Monitor, Shield, Boxes, LucideIcon } from "lucide-react";
 
 /**
  * Janitor system error messages
@@ -26,6 +26,7 @@ export interface JanitorConfigFields {
   integrationTestsEnabled: boolean;
   e2eTestsEnabled: boolean;
   securityReviewEnabled: boolean;
+  mockGenerationEnabled: boolean;
 }
 
 /**
@@ -60,6 +61,12 @@ export const JANITOR_CONFIG: Record<JanitorType, {
     description: "Scan for security vulnerabilities and best practices.",
     icon: Shield,
     enabledField: "securityReviewEnabled",
+  },
+  MOCK_GENERATION: {
+    name: "Mock Generation",
+    description: "Generate mock data and fixtures for testing.",
+    icon: Boxes,
+    enabledField: "mockGenerationEnabled",
   },
 } as const;
 
@@ -106,9 +113,12 @@ export function createJanitorItem(janitorType: JanitorType) {
 
 /**
  * Get all available janitor items for UI
+ * Excludes E2E_TESTS from the list
  */
 export function getAllJanitorItems() {
-  return Object.values(JanitorType).map(createJanitorItem);
+  return Object.values(JanitorType)
+    .filter(type => type !== JanitorType.E2E_TESTS)
+    .map(createJanitorItem);
 }
 
 /**

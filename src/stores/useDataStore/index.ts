@@ -1,3 +1,4 @@
+import { NodeTypeOrderItem, sortNodeTypesByConfig } from '@/hooks/useSortedNodeTypes'
 import { FetchDataResponse, FilterParams, Link, Node, NodeExtended, NodeType, Sources, Trending, TStats } from '@Universe/types'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
@@ -43,6 +44,7 @@ export type DataStore = {
   nodesNormalized: Map<string, NodeExtended>
   linksNormalized: Map<string, Link>
   nodeLinksNormalized: Record<string, string[]>
+  nodeTypeOrder: NodeTypeOrderItem[] | null
 
   setTrendingTopics: (trendingTopics: Trending[]) => void
   resetDataNew: () => void
@@ -66,6 +68,7 @@ export type DataStore = {
   resetGraph: () => void
   resetData: () => void
   finishLoading: () => void
+  setNodeTypeOrder: (order: NodeTypeOrderItem[] | null) => void
 }
 
 const defaultData: Omit<
@@ -92,6 +95,7 @@ const defaultData: Omit<
   | 'resetGraph'
   | 'resetData'
   | 'finishLoading'
+  | 'setNodeTypeOrder'
 > = {
   categoryFilter: null,
   dataInitial: null,
@@ -116,7 +120,10 @@ const defaultData: Omit<
   nodesNormalized: new Map<string, NodeExtended>(),
   linksNormalized: new Map<string, Link>(),
   nodeLinksNormalized: {},
+  nodeTypeOrder: null,
 }
+
+const normalizeNodeType = (type?: string) => (type || 'Unknown').trim()
 
 export const useDataStore = create<DataStore>()(
   devtools((set, get) => ({
@@ -127,6 +134,7 @@ export const useDataStore = create<DataStore>()(
         dataInitial: existingData,
         nodesNormalized,
         linksNormalized,
+        nodeTypeOrder,
         nodeLinksNormalized: existingNodeLinksNormalized,
       } = get()
 
@@ -187,7 +195,8 @@ export const useDataStore = create<DataStore>()(
       const currentLinks = existingData?.links || []
       const updatedLinks = [...currentLinks, ...newLinks]
 
-      const nodeTypes = [...new Set(updatedNodes.map((node) => node.node_type))]
+      const rawNodeTypes = [...new Set(updatedNodes.map((node) => normalizeNodeType(node.node_type)))]
+      const nodeTypes = sortNodeTypesByConfig(rawNodeTypes, nodeTypeOrder)
       const linkTypes = [...new Set(updatedLinks.map((node) => node.edge_type))]
       const sidebarFilters = ['all', ...nodeTypes.map((type) => type.toLowerCase())]
 
@@ -271,6 +280,23 @@ export const useDataStore = create<DataStore>()(
     resetRunningProjectMessages: () => set({ runningProjectMessages: [] }),
     setAbortRequests: (abortRequest) => set({ abortRequest }),
     finishLoading: () => set({ splashDataLoading: false }),
+    setNodeTypeOrder: (nodeTypeOrder) => {
+      const { dataInitial } = get()
+
+      set({ nodeTypeOrder })
+
+      // Re-sort existing nodeTypes if we have data
+      if (dataInitial?.nodes) {
+        const rawNodeTypes = [...new Set(dataInitial.nodes.map((node) => normalizeNodeType(node.node_type)))]
+        const sortedNodeTypes = sortNodeTypesByConfig(rawNodeTypes, nodeTypeOrder)
+        const sidebarFilters = ['all', ...sortedNodeTypes.map((type) => type.toLowerCase())]
+
+        set({
+          nodeTypes: sortedNodeTypes,
+          sidebarFilters
+        })
+      }
+    },
   })),
 )
 

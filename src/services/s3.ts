@@ -14,6 +14,10 @@ const IMAGE_MAGIC_NUMBERS: Record<string, number[]> = {
   'image/webp': [0x52, 0x49, 0x46, 0x46],
 }
 
+const VIDEO_MAGIC_NUMBERS: Record<string, number[]> = {
+  'video/webm': [0x1a, 0x45, 0xdf, 0xa3],
+}
+
 export class S3Service {
   private client: S3Client
   private bucketName: string
@@ -93,6 +97,13 @@ export class S3Service {
     return `workspace-logos/${workspaceId}/${timestamp}.${extension}`
   }
 
+  generateVideoS3Path(workspaceId: string, swarmId: string, taskId: string): string {
+    const timestamp = Date.now()
+    const randomId = Math.random().toString(36).substring(2, 15)
+
+    return `recordings/${workspaceId}/${swarmId}/${taskId}/${timestamp}_${randomId}_recording.webm`
+  }
+
   async deleteObject(key: string): Promise<void> {
     const command = new DeleteObjectCommand({
       Bucket: this.bucketName,
@@ -156,6 +167,30 @@ export class S3Service {
   validateImageBuffer(buffer: Buffer, expectedType: string): boolean {
     try {
       const magicNumbers = IMAGE_MAGIC_NUMBERS[expectedType]
+
+      if (!magicNumbers) {
+        return false
+      }
+
+      if (buffer.length < magicNumbers.length) {
+        return false
+      }
+
+      for (let i = 0; i < magicNumbers.length; i++) {
+        if (buffer[i] !== magicNumbers[i]) {
+          return false
+        }
+      }
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  validateVideoBuffer(buffer: Buffer, expectedType: string): boolean {
+    try {
+      const magicNumbers = VIDEO_MAGIC_NUMBERS[expectedType]
 
       if (!magicNumbers) {
         return false

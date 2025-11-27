@@ -234,6 +234,9 @@ model Workspace {
   // Screenshots
   screenshots Screenshot[]
 
+  // Node type ordering for graph visualization
+  nodeTypeOrder Json @default("[{\"type\":\"Function\",\"value\":20},{\"type\":\"Feature\",\"value\":20},{\"type\":\"File\",\"value\":20},{\"type\":\"Endpoint\",\"value\":20},{\"type\":\"Person\",\"value\":20},{\"type\":\"Episode\",\"value\":20},{\"type\":\"Call\",\"value\":20},{\"type\":\"Message\",\"value\":20}]") @map("node_type_order")
+
   @@index([ownerId])
   @@index([deleted])
   @@index([sourceControlOrgId])
@@ -417,7 +420,11 @@ model Task {
   chatMessages ChatMessage[]
   screenshots  Screenshot[]
 
+  // Janitor type for tasks created from janitor recommendations
+  janitorType JanitorType? @map("janitor_type")
+
   @@index([workspaceId])
+  @@index([janitorType])
   @@index([assigneeId])
   @@index([status])
   @@index([deleted])
@@ -535,6 +542,7 @@ model JanitorConfig {
   integrationTestsEnabled Boolean @default(false) @map("integration_tests_enabled")
   e2eTestsEnabled         Boolean @default(false) @map("e2e_tests_enabled")
   securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
+  mockGenerationEnabled   Boolean @default(false) @map("mock_generation_enabled")
 
   // Task Coordinator automation
   taskCoordinatorEnabled     Boolean @default(false) @map("task_coordinator_enabled")
@@ -705,6 +713,7 @@ enum JanitorType {
   INTEGRATION_TESTS
   E2E_TESTS
   SECURITY_REVIEW
+  MOCK_GENERATION
 }
 
 enum JanitorStatus {

@@ -1,3 +1,4 @@
+import { Link, NodeExtended } from '@/components/knowledge-graph/Universe/types'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from '@/lib/pusher'
 import { useDataStore, useGraphStore } from '@/stores/useStores'
@@ -9,7 +10,11 @@ interface HighlightEvent {
   depth: number
   title: string
   timestamp: number
+  sourceNodeRefId: string
 }
+
+const dedupeIds = (ids: (string | undefined)[]) =>
+  Array.from(new Set(ids.filter((id): id is string => !!id)))
 
 export const useWebhookHighlights = () => {
   const { workspace } = useWorkspace()
@@ -37,8 +42,8 @@ export const useWebhookHighlights = () => {
     if (!workspace?.slug || nodeIds.length === 0) return []
 
     try {
-      const allNodes: any[] = []
-      const allEdges: any[] = []
+      const allNodes: NodeExtended[] = []
+      const allEdges: Link[] = []
       const allNodeIds = new Set<string>()
 
       for (const nodeId of nodeIds) {
@@ -56,14 +61,14 @@ export const useWebhookHighlights = () => {
         const edges = data?.data?.edges || []
 
         // Collect unique nodes and edges
-        nodes.forEach((node: any) => {
+        nodes.forEach((node: NodeExtended) => {
           if (!allNodeIds.has(node.ref_id)) {
             allNodeIds.add(node.ref_id)
             allNodes.push(node)
           }
         })
 
-        edges.forEach((edge: any) => {
+        edges.forEach((edge: Link) => {
           const edgeExists = allEdges.some(existingEdge =>
             existingEdge.ref_id === edge.ref_id ||
             (existingEdge.source === edge.source && existingEdge.target === edge.target)
@@ -89,6 +94,8 @@ export const useWebhookHighlights = () => {
     try {
       if (!workspace?.slug) return
 
+
+
       const pusher = getPusherClient()
       const channelName = getWorkspaceChannelName(workspace.slug)
       const channel = pusher.subscribe(channelName)
@@ -100,22 +107,45 @@ export const useWebhookHighlights = () => {
 
         let finalNodeIds: string[] = []
 
+        // Always include the source node (if present) when fetching/highlighting
+        const nodeIdsWithSource = dedupeIds([
+          ...(data.nodeIds || []),
+          data.sourceNodeRefId,
+        ])
+
         if (data.depth === 0) {
           // Depth 0: Just fetch the specific nodes
-          const nodes = await fetchNodes(data.nodeIds)
+          const nodes = await fetchNodes(nodeIdsWithSource)
+
+          console.log('add new nodes:', nodes)
           if (nodes.length > 0) {
             addNewNode({ nodes, edges: [] })
           }
-          finalNodeIds = data.nodeIds
+          finalNodeIds = nodeIdsWithSource
         } else {
-          // Depth > 0: Fetch subgraph
-          finalNodeIds = await fetchSubgraph(data.nodeIds, data.depth)
+          // Depth > 0: Fetch subgraph, and ensure source node is fetched explicitly
+          const fetchedIds = await fetchSubgraph(nodeIdsWithSource, data.depth)
+          const sourceNodes =
+            data.sourceNodeRefId && !fetchedIds.includes(data.sourceNodeRefId)
+              ? await fetchNodes([data.sourceNodeRefId])
+              : []
+
+          if (sourceNodes.length > 0) {
+            console.log('add new source nodes:', sourceNodes)
+            addNewNode({ nodes: sourceNodes, edges: [] })
+          }
+
+          finalNodeIds = dedupeIds([
+            ...fetchedIds,
+            ...sourceNodes.map((n: NodeExtended) => n.ref_id),
+            ...nodeIdsWithSource,
+          ])
         }
 
         // Create highlight chunk
         if (finalNodeIds.length > 0) {
           console.log('Creating highlight chunk with nodes:', finalNodeIds)
-          addHighlightChunk(data.title, finalNodeIds)
+          addHighlightChunk(data.title, finalNodeIds, data.sourceNodeRefId)
         }
       }
 

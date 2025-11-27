@@ -11,6 +11,12 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
@@ -67,6 +73,10 @@ export default function UserJourneys() {
   const [replayTestCode, setReplayTestCode] = useState<string | null>(null);
   const [replayTitle, setReplayTitle] = useState<string | null>(null);
   const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null);
+  const [videoPlayerData, setVideoPlayerData] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
   const open = useModal();
 
   const fetchUserJourneys = useCallback(async () => {
@@ -285,25 +295,47 @@ export default function UserJourneys() {
   };
 
   const handleReplay = async (row: UserJourneyRow) => {
-    if (workspace?.poolState !== "COMPLETE") {
-      open("ServicesWizard");
-      return;
-    }
-
     try {
       setIsReplayingTask(row.id);
 
-      // Get test code
-      const testCode = await fetchTestCode(row);
+      // First, check if video artifact already exists
+      const messagesResponse = await fetch(`/api/tasks/${row.id}/messages`);
+      if (messagesResponse.ok) {
+        const result = await messagesResponse.json();
+        const messages = result.data?.messages || [];
 
-      if (!testCode) {
-        toast.error("Test Code Not Found", { description: "Unable to retrieve test code for this journey." });
+        // Look for MEDIA artifact with video
+        for (const message of messages) {
+          if (message.artifacts) {
+            const videoArtifact = message.artifacts.find(
+              (artifact: any) =>
+                artifact.type === "MEDIA" &&
+                artifact.content?.mediaType === "video" &&
+                artifact.content?.url
+            );
+
+            if (videoArtifact) {
+              // Video already exists, show it
+              setVideoPlayerData({
+                url: videoArtifact.content.url,
+                title: row.title,
+              });
+              setIsReplayingTask(null);
+              return;
+            }
+          }
+        }
+      }
+
+      // No video found, check if pool is ready before executing new test
+      if (workspace?.poolState !== "COMPLETE") {
+        open("ServicesWizard");
         setIsReplayingTask(null);
         return;
       }
 
-      // Claim a pod
-      const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
+      // No existing video, trigger new test execution
+      const response = await fetch(`/api/user-journeys/${row.id}/execute`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -311,23 +343,33 @@ export default function UserJourneys() {
       });
 
       if (!response.ok) {
-        toast.error("Unable to Start Replay", { description: "No virtual machines are available right now. Please try again later." });
+        const error = await response.json();
+        toast.error(error.error || "Failed to start test", {
+          description: error.details || "Unable to start test execution. Please try again later.",
+        });
         setIsReplayingTask(null);
         return;
       }
 
       const data = await response.json();
 
-      // Set state to trigger replay
-      if (data.frontend) {
-        setReplayTestCode(testCode);
-        setReplayTitle(row.title);
-        setFrontend(data.frontend);
-        setClaimedPodId(data.podId);
+      if (data.success) {
+        toast.success("Test Execution Started", {
+          description: "The test is now running on a pod. You will be notified when it completes.",
+        });
+
+        // Optionally open pod frontend for monitoring
+        if (data.data.frontendUrl) {
+          window.open(data.data.frontendUrl, "_blank");
+        }
+
+        // Refresh the list to show updated status
+        await fetchUserJourneys();
       }
     } catch (error) {
-      console.error("Error starting replay:", error);
+      console.error("Error in handleReplay:", error);
       toast.error("Replay Error", { description: "An unexpected error occurred. Please try again." });
+    } finally {
       setIsReplayingTask(null);
     }
   };
@@ -561,6 +603,28 @@ export default function UserJourneys() {
           </CardContent>
         </Card>
       )}
+
+      {/* Video Player Dialog */}
+      <Dialog open={!!videoPlayerData} onOpenChange={() => setVideoPlayerData(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{videoPlayerData?.title || "Test Recording"}</DialogTitle>
+          </DialogHeader>
+          <div className="w-full">
+            {videoPlayerData && (
+              <video
+                key={videoPlayerData.url}
+                controls
+                autoPlay
+                className="w-full rounded-lg"
+                src={videoPlayerData.url}
+              >
+                Your browser does not support the video tag.
+              </video>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

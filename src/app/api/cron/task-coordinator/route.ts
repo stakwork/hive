@@ -6,10 +6,13 @@ import { NextRequest, NextResponse } from "next/server";
  * Vercel cron jobs trigger GET requests, not POST
  */
 export async function GET(request: NextRequest) {
-  console.log("Task Coordinator GET called");
-  console.log(request);
-
   try {
+    // Verify Vercel cron secret
+    const authHeader = request.headers.get('authorization');
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Check if task coordinator is enabled
     const taskCoordinatorEnabled = process.env.TASK_COORDINATOR_ENABLED === "true";
     if (!taskCoordinatorEnabled) {
