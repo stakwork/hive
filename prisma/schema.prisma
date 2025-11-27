@@ -900,6 +900,8 @@ model StakworkRun {
 enum StakworkRunType {
   ARCHITECTURE
   TASK_GENERATION
+  USER_STORIES
+  REQUIREMENTS
 }
 
 enum StakworkRunDecision {

@@ -328,6 +328,146 @@ describe("Stakwork Run Service", () => {
       expect(result.projectId).toBe(12345);
       expect(result.featureId).toBeNull();
     });
+
+    test("should create USER_STORIES run with correct feature context", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: "Test brief",
+        userStories: [],
+        workspace: { description: "Test workspace" },
+        phases: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.USER_STORIES,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        success: true,
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const result = await createStakworkRun(
+        {
+          type: StakworkRunType.USER_STORIES,
+          workspaceId: "ws-1",
+          featureId: "feature-1",
+        },
+        "user-1"
+      );
+
+      expect(result.type).toBe(StakworkRunType.USER_STORIES);
+      expect(result.featureId).toBe("feature-1");
+      expect(result.projectId).toBe(12345);
+    });
+
+    test("should create REQUIREMENTS run with correct feature context", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: "Test brief",
+        userStories: [],
+        workspace: { description: "Test workspace" },
+        phases: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.REQUIREMENTS,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        success: true,
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const result = await createStakworkRun(
+        {
+          type: StakworkRunType.REQUIREMENTS,
+          workspaceId: "ws-1",
+          featureId: "feature-1",
+        },
+        "user-1"
+      );
+
+      expect(result.type).toBe(StakworkRunType.REQUIREMENTS);
+      expect(result.featureId).toBe("feature-1");
+      expect(result.projectId).toBe(12345);
+    });
   });
 
   describe("processStakworkRunWebhook", () => {
