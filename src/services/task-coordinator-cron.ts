@@ -264,11 +264,7 @@ export async function haltStaleAgentTasks(): Promise<{
     for (const task of staleTasks) {
       try {
         await haltTask(task.id);
-
         tasksHalted++;
-        console.log(
-          `[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - created at ${task.createdAt}`
-        );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[HaltStaleAgentTasks] Error halting task ${task.id}:`, errorMessage);
