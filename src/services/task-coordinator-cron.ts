@@ -108,8 +108,7 @@ async function areDependenciesSatisfied(
  */
 async function processTicketSweep(
   workspaceId: string,
-  workspaceSlug: string,
-  ownerId: string
+  workspaceSlug: string
 ): Promise<boolean> {
   console.log(`[TaskCoordinator] Processing ticket sweep for workspace ${workspaceSlug}`);
 
@@ -127,6 +126,7 @@ async function processTicketSweep(
         select: {
           id: true,
           title: true,
+          createdById: true,
         },
       },
       phase: {
@@ -183,10 +183,13 @@ async function processTicketSweep(
   console.log(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
   try {
+    // Assign to task creator, fall back to feature creator if needed
+    const userId = task.createdById ?? task.feature?.createdById;
+
     // Start workflow for this task (automatically builds message and feature context)
     await startTaskWorkflow({
       taskId: task.id,
-      userId: ownerId,
+      userId,
       mode: "live", // Use production workflow for automated task coordinator
     });
 
@@ -392,8 +395,7 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
           try {
             itemProcessed = await processTicketSweep(
               workspace.id,
-              workspace.slug,
-              workspace.owner.id
+              workspace.slug
             );
             if (itemProcessed) {
               tasksCreated++;
