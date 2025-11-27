@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Users, Plus, MoreHorizontal, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { AddMemberModal } from "./AddMemberModal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -91,8 +92,11 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
       }
       // Refresh members list
       await fetchMembers();
+      toast.success("Member removed");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove member");
+      toast.error("Failed to remove member", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
@@ -108,8 +112,11 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
       }
       // Refresh members list
       await fetchMembers();
+      toast.success("Role updated");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update role");
+      toast.error("Failed to update role", {
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
