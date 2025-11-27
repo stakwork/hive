@@ -91,7 +91,7 @@ const CalloutLabel = ({
 const PULSE_SPEED = 3
 const BASE_SCALE = 0.8
 const PULSE_AMPLITUDE = 0.1
-const HIGHLIGHT_DURATION = 55000
+const HIGHLIGHT_DURATION = 25000
 
 // Edge animation speed controls
 const EDGE_ANIMATION_CONFIG = {
