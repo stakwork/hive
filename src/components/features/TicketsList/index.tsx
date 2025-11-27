@@ -26,6 +26,7 @@ import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
+import { toast } from "sonner";
 
 interface TicketsListProps {
   featureId: string;
@@ -160,7 +161,11 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
         phases: updatedPhases,
       });
 
-      if (newTicketAssigneeId === "system:bounty-hunter") {
+      if (newTicketAssigneeId === "system:task-coordinator") {
+        toast.info("Task queued for coordinator", {
+          description: "Processing begins when a machine is available",
+        });
+      } else if (newTicketAssigneeId === "system:bounty-hunter") {
         const bountyUrl = generateSphinxBountyUrl({
           id: ticket.id,
           title: ticket.title,
