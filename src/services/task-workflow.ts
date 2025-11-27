@@ -297,12 +297,13 @@ export async function startTaskWorkflow(params: {
 
 /**
  * Internal function to create chat message and trigger Stakwork workflow
+ * Exported for testing purposes
  */
-async function createChatMessageAndTriggerStakwork(params: {
+export async function createChatMessageAndTriggerStakwork(params: {
   taskId: string;
   message: string;
   userId: string;
-  task: any; // Task with workspace and swarm details
+  task?: any; // Task with workspace and swarm details (optional, will be fetched if not provided)
   contextTags?: any[];
   attachments?: string[];
   mode?: string;
@@ -310,7 +311,27 @@ async function createChatMessageAndTriggerStakwork(params: {
   featureContext?: object;
   autoMergePr?: boolean;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr } = params;
+  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr } = params;
+
+  // Fetch task if not provided
+  let task = providedTask;
+  if (!task) {
+    task = await db.task.findUnique({
+      where: { id: taskId },
+      include: {
+        workspace: {
+          include: {
+            swarm: true,
+            repositories: true,
+          },
+        },
+      },
+    });
+    
+    if (!task) {
+      throw new Error("Task not found");
+    }
+  }
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
