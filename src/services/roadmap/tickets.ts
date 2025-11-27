@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { TaskStatus, Priority, SystemAssigneeType } from "@prisma/client";
+import { TaskStatus, Priority } from "@prisma/client";
 import type {
   CreateRoadmapTaskRequest,
   UpdateRoadmapTaskRequest,
@@ -7,10 +7,10 @@ import type {
   RoadmapTaskDetail,
 } from "@/types/roadmap";
 import { validateFeatureAccess, validateRoadmapTaskAccess, calculateNextOrder } from "./utils";
-import { USER_SELECT } from "@/lib/db/selects";
+import { TASK_DETAIL_SELECT, TASK_LIST_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
-import { getSystemAssigneeEnum, getSystemAssigneeUser, isSystemAssigneeId } from "@/lib/system-assignees";
+import { getSystemAssigneeUser } from "@/lib/system-assignees";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
@@ -26,44 +26,7 @@ export async function getTicket(
 
   const taskDetail = await db.task.findUnique({
     where: { id: taskId },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      status: true,
-      priority: true,
-      order: true,
-      featureId: true,
-      phaseId: true,
-      bountyCode: true,
-      dependsOnTaskIds: true,
-      createdAt: true,
-      updatedAt: true,
-      systemAssigneeType: true,
-      assignee: {
-        select: USER_SELECT,
-      },
-      phase: {
-        select: {
-          id: true,
-          name: true,
-          status: true,
-        },
-      },
-      feature: {
-        select: {
-          id: true,
-          title: true,
-          workspaceId: true,
-        },
-      },
-      createdBy: {
-        select: USER_SELECT,
-      },
-      updatedBy: {
-        select: USER_SELECT,
-      },
-    },
+    select: TASK_DETAIL_SELECT,
   });
 
   if (!taskDetail) {
@@ -173,30 +136,7 @@ export async function createTicket(
       createdById: userId,
       updatedById: userId,
     },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      status: true,
-      priority: true,
-      order: true,
-      featureId: true,
-      phaseId: true,
-      bountyCode: true,
-      dependsOnTaskIds: true,
-      createdAt: true,
-      updatedAt: true,
-      systemAssigneeType: true,
-      assignee: {
-        select: USER_SELECT,
-      },
-      phase: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
+    select: TASK_LIST_SELECT,
   });
 
   // Convert system assignee type to virtual user object
@@ -370,30 +310,7 @@ export async function updateTicket(
   const updatedTask = await db.task.update({
     where: { id: taskId },
     data: updateData,
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      status: true,
-      priority: true,
-      order: true,
-      featureId: true,
-      phaseId: true,
-      bountyCode: true,
-      dependsOnTaskIds: true,
-      createdAt: true,
-      updatedAt: true,
-      systemAssigneeType: true,
-      assignee: {
-        select: USER_SELECT,
-      },
-      phase: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
+    select: TASK_LIST_SELECT,
   });
 
   // Convert system assignee type to virtual user object
@@ -497,30 +414,7 @@ export async function reorderTickets(
 
   const updatedTasks = await db.task.findMany({
     where: { featureId: firstTask.featureId, deleted: false },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      status: true,
-      priority: true,
-      order: true,
-      featureId: true,
-      phaseId: true,
-      bountyCode: true,
-      dependsOnTaskIds: true,
-      createdAt: true,
-      updatedAt: true,
-      systemAssigneeType: true,
-      assignee: {
-        select: USER_SELECT,
-      },
-      phase: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
+    select: TASK_LIST_SELECT,
     orderBy: { order: "asc" },
   });
 

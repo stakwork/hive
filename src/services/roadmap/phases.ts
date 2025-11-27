@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import type { CreatePhaseRequest, UpdatePhaseRequest, PhaseListItem, PhaseWithTasks } from "@/types/roadmap";
 import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
-import { ensureUniqueBountyCode } from "@/lib/bounty-code";
+import { TASK_LIST_SELECT } from "@/lib/db/selects";
 
 /**
  * Gets a phase with its tasks and feature context
@@ -34,35 +34,7 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
         where: {
           deleted: false,
         },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          status: true,
-          priority: true,
-          order: true,
-          featureId: true,
-          phaseId: true,
-          bountyCode: true,
-          dependsOnTaskIds: true,
-          createdAt: true,
-          updatedAt: true,
-          systemAssigneeType: true,
-          assignee: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              image: true,
-            },
-          },
-          phase: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
+        select: TASK_LIST_SELECT,
         orderBy: {
           order: "asc",
         },
