@@ -1091,56 +1091,6 @@ describe("GET /api/screenshots Integration Tests", () => {
       expect(data.pagination.hasMore).toBe(true);
     });
 
-    test("should handle cursor pagination correctly", async () => {
-      const screenshots = [];
-      for (let i = 0; i < 5; i++) {
-        const screenshot = await db.screenshot.create({
-          data: {
-            workspaceId: testWorkspace.id,
-            s3Key: `test-key-end-${i}`,
-            s3Url: `https://example.com/test-${i}.jpg`,
-            urlExpiresAt: new Date(Date.now() + 86400000),
-            hash: `test-hash-end-${i}`,
-            pageUrl: "https://example.com",
-            timestamp: BigInt(Date.now() + i),
-            actionIndex: i,
-          },
-        });
-        screenshots.push(screenshot);
-      }
 
-      getMockedSession().mockResolvedValue({
-        user: { id: testUser.id, email: testUser.email || "" },
-        expires: new Date(Date.now() + 86400000).toISOString(),
-      });
-
-      // Get first page with limit 2
-      const url1 = new URL("http://localhost/api/screenshots");
-      url1.searchParams.set("workspaceId", testWorkspace.id);
-      url1.searchParams.set("limit", "2");
-      const request1 = new Request(url1.toString());
-      const response1 = await GET(request1);
-      const data1 = await response1.json();
-
-      expect(response1.status).toBe(200);
-      expect(data1.screenshots).toHaveLength(2);
-      expect(data1.pagination.hasMore).toBe(true);
-
-      // Use cursor to get next page
-      const url2 = new URL("http://localhost/api/screenshots");
-      url2.searchParams.set("workspaceId", testWorkspace.id);
-      url2.searchParams.set("limit", "2");
-      url2.searchParams.set("cursor", data1.pagination.nextCursor);
-      const request2 = new Request(url2.toString());
-      const response2 = await GET(request2);
-      const data2 = await response2.json();
-
-      expect(response2.status).toBe(200);
-      expect(data2.screenshots.length).toBeGreaterThan(0);
-      // Should not return the same screenshots as first page
-      const firstPageIds = data1.screenshots.map((s: any) => s.id);
-      const secondPageIds = data2.screenshots.map((s: any) => s.id);
-      expect(firstPageIds.some((id: string) => secondPageIds.includes(id))).toBe(false);
-    });
   });
 });

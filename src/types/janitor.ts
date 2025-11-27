@@ -12,6 +12,7 @@ export interface JanitorConfigUpdate {
   integrationTestsEnabled?: boolean;
   e2eTestsEnabled?: boolean;
   securityReviewEnabled?: boolean;
+  mockGenerationEnabled?: boolean;
   taskCoordinatorEnabled?: boolean;
   recommendationSweepEnabled?: boolean;
   ticketSweepEnabled?: boolean;

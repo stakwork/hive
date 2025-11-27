@@ -169,9 +169,16 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         )}
 
         {/* Workflow Status - hidden when PR artifact exists */}
+        {/* Agent tasks show "Running" instead of "Pending" since they're active until completion */}
         {!hideWorkflowStatus && !task.prArtifact && (
           <div className="px-2 py-0.5 rounded-full border bg-background text-xs">
-            <WorkflowStatusBadge status={task.workflowStatus} />
+            <WorkflowStatusBadge
+              status={
+                task.mode === "agent" && task.workflowStatus === "PENDING"
+                  ? "IN_PROGRESS"
+                  : task.workflowStatus
+              }
+            />
           </div>
         )}
 

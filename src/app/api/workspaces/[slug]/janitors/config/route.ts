@@ -9,6 +9,7 @@ const updateJanitorConfigSchema = z.object({
   integrationTestsEnabled: z.boolean().optional(),
   e2eTestsEnabled: z.boolean().optional(),
   securityReviewEnabled: z.boolean().optional(),
+  mockGenerationEnabled: z.boolean().optional(),
   taskCoordinatorEnabled: z.boolean().optional(),
   recommendationSweepEnabled: z.boolean().optional(),
   ticketSweepEnabled: z.boolean().optional(),
