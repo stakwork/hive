@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSession } from "next-auth/react";
+import { toast } from "sonner";
 import type { WorkspaceResponse } from "@/types/workspace";
 import { ErrorDisplay } from "@/components/ui/error-display";
 
@@ -66,11 +67,16 @@ export function CreateWorkspaceDialog({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create workspace");
       onCreated?.(data.workspace);
+      toast.success("Workspace created");
       setFormData({ name: "", description: "", slug: "" });
       setErrors({});
       onOpenChange(false);
     } catch (err: unknown) {
-      setApiError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setApiError(message);
+      toast.error("Failed to create workspace", {
+        description: message,
+      });
     } finally {
       setLoading(false);
     }
