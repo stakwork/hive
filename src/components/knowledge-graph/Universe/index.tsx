@@ -37,10 +37,11 @@ const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 let wheelEventTimeout: ReturnType<typeof setTimeout> | null = null
 
 const UniverseComponent = ({ enableRotation = false }: { enableRotation?: boolean }) => {
-  const [setIsUserScrollingOnHtmlPanel, setIsUserScrolling, setUserMovedCamera] = [
+  const [setIsUserScrollingOnHtmlPanel, setIsUserScrolling, setUserMovedCamera, setUserInteraction] = [
     useControlStore((s) => s.setIsUserScrollingOnHtmlPanel),
     useControlStore((s) => s.setIsUserScrolling),
     useControlStore((s) => s.setUserMovedCamera),
+    useControlStore((s) => s.setUserInteraction),
   ]
 
   // Initialize webhook highlights listener
@@ -76,13 +77,14 @@ const UniverseComponent = ({ enableRotation = false }: { enableRotation?: boolea
 
       setIsUserScrolling(true)
       setUserMovedCamera(true)
+      setUserInteraction() // Track user interaction for 30-second timeout
 
       wheelEventTimeout = setTimeout(() => {
         setIsUserScrolling(false)
         setIsUserScrollingOnHtmlPanel(false)
       }, 200)
     },
-    [setIsUserScrolling, setIsUserScrollingOnHtmlPanel, setUserMovedCamera],
+    [setIsUserScrolling, setIsUserScrollingOnHtmlPanel, setUserMovedCamera, setUserInteraction],
   )
 
 

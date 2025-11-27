@@ -72,7 +72,7 @@ const CalloutLabel = ({
           </defs>
 
           {/* Outer Ring / Octagon */}
-          <path
+          {/* <path
             d="M7,2 L17,2 L22,7 L22,17 L17,22 L7,22 L2,17 L2,7 Z"
             fill="#000000"
             fillOpacity="0.6"
@@ -80,15 +80,15 @@ const CalloutLabel = ({
             strokeWidth={hovered ? 2 : 1.5}
             filter={`url(#glow-marker-${nodeId})`}
             className="transition-colors duration-300"
-          />
+          /> */}
 
           {/* Inner Graphic (Square) */}
-          <rect
+          {/* <rect
             x="8" y="8" width="8" height="8"
             fill={baseColor}
             className={`transition-all duration-300 ${hovered ? 'opacity-100 scale-75' : 'opacity-60 scale-100'}`}
             style={{ transformOrigin: 'center' }}
-          />
+          /> */}
         </svg>
       </div>
 
@@ -181,10 +181,7 @@ const CalloutLabel = ({
 const PULSE_SPEED = 3
 const BASE_SCALE = 0.8
 const PULSE_AMPLITUDE = 0.1
-const HIGHLIGHT_DURATION = 35000
-
-const particleRadius = 4
-const particleSpeed = 0.8
+const HIGHLIGHT_DURATION = 25000
 
 // Edge animation speed controls
 const EDGE_ANIMATION_CONFIG = {
@@ -244,7 +241,6 @@ const animateCamera = {
 
   arc: (cameraControls: any, target: Vector3, radius: number, arcHeight: number = 0.3) => {
     const currentPos = cameraControls.getPosition(new Vector3())
-    const currentTarget = cameraControls.getTarget(new Vector3())
 
     // Calculate arc midpoint
     const midPoint = new Vector3()
@@ -312,11 +308,14 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
   const timeRef = useRef(0)
 
 
-  const { simulation } = useSimulationStore((s) => s)
-  const { removeHighlightChunk } = useGraphStore((s) => s)
+
+
+  const simulation = useSimulationStore((s) => s.simulation)
+  const removeHighlightChunk = useGraphStore((s) => s.removeHighlightChunk)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
   const linksNormalized = useDataStore((s) => s.linksNormalized)
   const cameraControlsRef = useControlStore((s) => s.cameraControlsRef)
+  const automaticAnimationsDisabled = useControlStore((s) => s.automaticAnimationsDisabled)
 
   // Auto-remove this chunk after duration
   useEffect(() => {
@@ -441,11 +440,13 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
     }
 
     // Move camera to fit all chunk nodes once when positions are available
-    if (cameraControlsRef && !hasCameraMoved.current && chunkNodes.length > 0) {
+    // Skip if automatic animations are disabled due to user interaction
+    if (cameraControlsRef && !hasCameraMoved.current && chunkNodes.length > 0 && !automaticAnimationsDisabled) {
       console.log('Camera debug - checking chunk nodes:', {
         chunkNodesCount: chunkNodes.length,
         hasCameraMoved: hasCameraMoved.current,
-        cameraControlsRef: !!cameraControlsRef
+        cameraControlsRef: !!cameraControlsRef,
+        automaticAnimationsDisabled
       })
 
       // Check if all nodes have valid positions
@@ -522,6 +523,8 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
         cameraAnimationRef.current = { isAnimating: true, startTime: Date.now() }
         console.log('Camera debug - movement triggered successfully')
       }
+    } else if (cameraControlsRef && !hasCameraMoved.current && chunkNodes.length > 0 && automaticAnimationsDisabled) {
+      console.log('🚫 Camera animation skipped - automatic animations disabled due to user interaction')
     }
 
     // Animate edge growth
@@ -766,7 +769,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
 
           const otherNodes = chunkNodes.filter(node => node.ref_id !== chunk.sourceNodeRefId)
           const connectedNodes = getConnectedNodes(chunk.ref_ids)
-          const allEdges = []
+          const allEdges: React.JSX.Element[] = []
 
           // Chunk edges (bright green)
           otherNodes.forEach((targetNode, nodeIndex) => {
