@@ -45,40 +45,29 @@ vi.mock("@/lib/service-factory", () => ({
   }),
 }));
 
+// Helper to create authenticated request for tests
+function createAuthenticatedRequest(): NextRequest {
+  return createMockRequest('Bearer test-secret-123');
+}
+
 describe("GET /api/cron/janitors", () => {
   let originalEnvValue: string | undefined;
   let originalCronSecret: string | undefined;
 
   beforeEach(async () => {
-    // Store original env value
-    originalEnvValue = process.env.JANITOR_CRON_ENABLED;
-    
-    // Clear all mocks
-    vi.clearAllMocks();
-    
-    // Reset database for test isolation
-    await resetDatabase();
-    
-    // Setup default mock for Stakwork service
-    mockStakworkRequest = vi.fn().mockResolvedValue({
-      data: { id: "proj-default-123" },
-    });
-  });
-
-  beforeEach(async () => {
     // Store original env values
     originalEnvValue = process.env.JANITOR_CRON_ENABLED;
     originalCronSecret = process.env.CRON_SECRET;
-    
+
     // Set default CRON_SECRET for tests
     process.env.CRON_SECRET = "test-secret-123";
-    
+
     // Clear all mocks
     vi.clearAllMocks();
-    
+
     // Reset database for test isolation
     await resetDatabase();
-    
+
     // Setup default mock for Stakwork service
     mockStakworkRequest = vi.fn().mockResolvedValue({
       data: { id: "proj-default-123" },
@@ -162,7 +151,7 @@ describe("GET /api/cron/janitors", () => {
       process.env.JANITOR_CRON_ENABLED = "false";
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Early return with appropriate message
@@ -185,7 +174,7 @@ describe("GET /api/cron/janitors", () => {
       delete process.env.JANITOR_CRON_ENABLED;
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert
@@ -224,7 +213,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Orchestration executed
@@ -306,7 +295,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: All workspaces processed
@@ -408,7 +397,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Only workspace with enabled janitors processed
@@ -476,7 +465,7 @@ describe("GET /api/cron/janitors", () => {
         .mockResolvedValueOnce({ data: { id: "proj-success-456" } });
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Partial success (graceful degradation)
@@ -568,7 +557,7 @@ describe("GET /api/cron/janitors", () => {
         .mockRejectedValueOnce(new Error("API rate limit exceeded"));
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: All errors collected
@@ -618,7 +607,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Complete response structure
@@ -652,7 +641,7 @@ describe("GET /api/cron/janitors", () => {
       vi.spyOn(db.workspace, "findMany").mockRejectedValueOnce(dbError);
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Error response structure
@@ -703,7 +692,7 @@ describe("GET /api/cron/janitors", () => {
         .mockRejectedValueOnce(new Error("Specific API error message"));
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Error details included
@@ -755,7 +744,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      await GET();
+      await GET(createAuthenticatedRequest());
 
       // Assert: Database state with complete metadata
       const runs = await db.janitorRun.findMany({
@@ -815,7 +804,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      await GET();
+      await GET(createAuthenticatedRequest());
 
       // Assert: Project ID backfilled correctly
       const run = await db.janitorRun.findFirst({
@@ -864,7 +853,7 @@ describe("GET /api/cron/janitors", () => {
       mockStakworkRequest = vi.fn().mockRejectedValue(stakworkError);
 
       // Execute
-      await GET();
+      await GET(createAuthenticatedRequest());
 
       // Assert: Run created but marked as FAILED
       const run = await db.janitorRun.findFirst({
@@ -902,8 +891,8 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute twice
-      await GET();
-      await GET();
+      await GET(createAuthenticatedRequest());
+      await GET(createAuthenticatedRequest());
 
       // Assert: Multiple runs created (cron allows this - each execution creates new run)
       const runs = await db.janitorRun.findMany({
@@ -953,7 +942,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      await GET();
+      await GET(createAuthenticatedRequest());
 
       // Assert: Only enabled types created
       const runs = await db.janitorRun.findMany({
@@ -999,7 +988,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      await GET();
+      await GET(createAuthenticatedRequest());
 
       // Assert: All janitor types created
       const runs = await db.janitorRun.findMany({
@@ -1045,7 +1034,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      await GET();
+      await GET(createAuthenticatedRequest());
 
       // Assert: No runs created
       const runs = await db.janitorRun.findMany({
@@ -1099,7 +1088,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Only active workspace processed
@@ -1154,7 +1143,7 @@ describe("GET /api/cron/janitors", () => {
       });
 
       // Execute
-      const response = await GET();
+      const response = await GET(createAuthenticatedRequest());
       const data = await response.json();
 
       // Assert: Only workspace with config processed
