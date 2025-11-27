@@ -7,7 +7,7 @@ import { useFrame } from '@react-three/fiber'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Mesh, MeshBasicMaterial, Sphere, Vector3 } from 'three'
 
-// Reusable CalloutLabel component from HtmlNodesLayer
+// Simplified CalloutLabel component - clean box design
 const CalloutLabel = ({
   node,
   title,
@@ -25,15 +25,12 @@ const CalloutLabel = ({
 }) => {
   const [hovered, setHovered] = useState(false);
 
-  // Geometry Settings for the Callout Line
-  const elbowX = 35;
-  const elbowY = -35;
-  const collapsedWidth = 120;
-  const expandedWidth = 160;
-  const currentWidth = hovered ? expandedWidth : collapsedWidth;
+  const labelHeight = 32;
+  const lineLength = 60;
+  const maxWidth = 250;
+  const minWidth = 80;
 
-  const displayTitle = title.slice(0, 54);
-  const nodeId = node?.ref_id || 'chunk-label';
+  const displayTitle = title.slice(0, 60);
 
   const onPointerOver = () => {
     setHovered(true);
@@ -51,127 +48,40 @@ const CalloutLabel = ({
 
   return (
     <div
-      className="relative pointer-events-auto select-none group"
+      className="relative pointer-events-auto select-none"
       onMouseEnter={onPointerOver}
       onMouseLeave={onPointerOut}
       onClick={onPointerClick}
     >
-      {/* --- MARKER (Center 0,0) --- */}
-      <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer z-10">
-        {/* Tech Octagon Marker */}
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          className={`overflow-visible transition-all duration-500 ease-out origin-center ${hovered ? 'scale-110 rotate-180' : 'scale-100'}`}
-        >
-          <defs>
-            <filter id={`glow-marker-${nodeId}`}>
-              <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={baseColor} floodOpacity="0.6" />
-            </filter>
-          </defs>
-
-          {/* Outer Ring / Octagon */}
-          {/* <path
-            d="M7,2 L17,2 L22,7 L22,17 L17,22 L7,22 L2,17 L2,7 Z"
-            fill="#000000"
-            fillOpacity="0.6"
-            stroke={baseColor}
-            strokeWidth={hovered ? 2 : 1.5}
-            filter={`url(#glow-marker-${nodeId})`}
-            className="transition-colors duration-300"
-          /> */}
-
-          {/* Inner Graphic (Square) */}
-          {/* <rect
-            x="8" y="8" width="8" height="8"
-            fill={baseColor}
-            className={`transition-all duration-300 ${hovered ? 'opacity-100 scale-75' : 'opacity-60 scale-100'}`}
-            style={{ transformOrigin: 'center' }}
-          /> */}
-        </svg>
-      </div>
-
-      {/* --- CONNECTOR LINE (SVG) --- */}
-      <svg className="absolute top-0 left-0 overflow-visible pointer-events-none" style={{ zIndex: -1 }}>
-        {/* The Leader Line Path */}
-        <path
-          d={`M 0,0 L ${elbowX},${elbowY} L ${elbowX + currentWidth},${elbowY}`}
-          fill="none"
-          stroke={baseColor}
-          strokeWidth={hovered ? 2 : 1}
-          strokeOpacity={hovered ? 1 : 0.5}
-          className="transition-all duration-300 ease-out"
+      {/* Simple line from center (node) to center-left of label */}
+      <svg
+        className="absolute top-0 left-0 overflow-visible pointer-events-none"
+        style={{ zIndex: -1 }}
+      >
+        <line
+          x1="0"
+          y1="0"
+          x2={lineLength}
+          y2={-labelHeight / 2}
+          stroke="#666"
+          strokeWidth="1"
+          opacity="0.6"
         />
-
-        {/* Joint Decoration at Elbow */}
-        <circle
-          cx={elbowX} cy={elbowY} r={hovered ? 2 : 1.5}
-          fill={baseColor}
-          className="transition-all duration-300"
-        />
-
-        {/* Animated "Data Packet" moving along the line */}
-        {hovered && (
-          <circle r="2" fill="white" filter={`url(#glow-marker-${nodeId})`}>
-            <animateMotion
-              dur="1s"
-              repeatCount="indefinite"
-              path={`M 0,0 L ${elbowX},${elbowY} L ${elbowX + currentWidth},${elbowY}`}
-              keyPoints="0;1"
-              keyTimes="0;1"
-              calcMode="linear"
-            />
-          </circle>
-        )}
       </svg>
 
-      {/* --- LABEL CONTENT --- */}
+      {/* Label box */}
       <div
-        className="absolute transition-all duration-300 ease-out z-20"
+        className="absolute bg-gray-900/20 rounded px-3 py-2 backdrop-blur-sm"
         style={{
-          left: `${elbowX}px`,
-          top: `${elbowY}px`,
-          transform: 'translate(0, -100%)' // Align bottom of box to the line
+          left: `${lineLength}px`,
+          top: `${-labelHeight}px`,
+          minWidth: `${minWidth}px`,
+          maxWidth: `${maxWidth}px`,
+          minHeight: `${labelHeight}px`,
         }}
       >
-        <div
-          className="flex flex-col pl-3 pb-1.5"
-          style={{ width: `${currentWidth + 20}px` }}
-        >
-          {/* Main Title */}
-          <div
-            className="text-[8px] font-bold text-white whitespace-nowrap overflow-hidden transition-all duration-300"
-            style={{
-              textShadow: hovered ? `0 0 10px ${baseColor}` : 'none',
-            }}
-          >
-            {displayTitle}
-          </div>
-
-          {/* Collapsible Detail View */}
-          {node && (
-            <div
-              className={`
-                      mt-1 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]
-                      ${hovered ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}
-                  `}
-            >
-              {/* Decorative Separator */}
-              <div
-                className="h-0.5 w-full my-1.5 origin-left"
-                style={{ background: `linear-gradient(90deg, ${baseColor}, transparent)` }}
-              />
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 gap-1 bg-black/80 backdrop-blur-md p-2 rounded border border-white/10 shadow-xl">
-                <div className="flex justify-between items-center text-[10px] font-mono text-gray-300">
-                  <span className="text-gray-500">TYPE</span>
-                  <span style={{ color: baseColor }}>{node.node_type || 'Unknown'}</span>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="text-white text-xs font-medium whitespace-nowrap">
+          {displayTitle}
         </div>
       </div>
     </div>
@@ -181,7 +91,7 @@ const CalloutLabel = ({
 const PULSE_SPEED = 3
 const BASE_SCALE = 0.8
 const PULSE_AMPLITUDE = 0.1
-const HIGHLIGHT_DURATION = 25000
+const HIGHLIGHT_DURATION = 55000
 
 // Edge animation speed controls
 const EDGE_ANIMATION_CONFIG = {
