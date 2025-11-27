@@ -21,6 +21,14 @@ vi.mock("@/hooks/useControlKeyHold", () => ({
   useControlKeyHold: vi.fn(),
 }));
 
+vi.mock("@/hooks/useIsMobile", () => ({
+  useIsMobile: () => false, // Mock as desktop for tests
+}));
+
+vi.mock("@/lib/utils", () => ({
+  cn: (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(" "),
+}));
+
 vi.mock("@/components/ui/textarea", () => ({
   Textarea: React.forwardRef<HTMLTextAreaElement, any>(({ onKeyDown, ...props }, ref) => (
     <textarea ref={ref} onKeyDown={onKeyDown} {...props} />

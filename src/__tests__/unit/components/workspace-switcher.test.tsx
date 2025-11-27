@@ -1,6 +1,9 @@
 import { describe, test, expect, vi } from "vitest";
 import { WORKSPACE_LIMITS } from "@/lib/constants";
 
+// Get the actual limit from constants (may vary by environment)
+const MAX_LIMIT = WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER;
+
 // Mock the useWorkspace hook
 const mockUseWorkspace = vi.fn();
 vi.mock("@/hooks/useWorkspace", () => ({
@@ -48,13 +51,13 @@ const isUserAtWorkspaceLimit = (workspaces: Array<{userRole: string}>) =>
 describe("WorkspaceSwitcher Logic", () => {
   describe("workspace limit detection", () => {
     test("should identify when user is under workspace limit", () => {
-      const workspaces = createWorkspaceSet(2, ["DEVELOPER"]);
+      const workspaces = createWorkspaceSet(MAX_LIMIT - 1, ["DEVELOPER"]);
 
       const ownedWorkspaces = getOwnedWorkspaces(workspaces);
       const isAtLimit = isUserAtWorkspaceLimit(workspaces);
 
-      expect(ownedWorkspaces).toHaveLength(2);
-      expect(isAtLimit).toBe(false); // 2 < 3 (default limit)
+      expect(ownedWorkspaces).toHaveLength(MAX_LIMIT - 1);
+      expect(isAtLimit).toBe(false);
     });
 
     test("should allow creation when well under limit", () => {
@@ -68,24 +71,24 @@ describe("WorkspaceSwitcher Logic", () => {
     });
 
     test("should count only owned workspaces toward limit", () => {
-      const workspaces = createWorkspaceSet(2, ["ADMIN", "DEVELOPER", "VIEWER"]);
+      const workspaces = createWorkspaceSet(MAX_LIMIT - 1, ["ADMIN", "DEVELOPER", "VIEWER"]);
 
       const ownedWorkspaces = getOwnedWorkspaces(workspaces);
       const isAtLimit = isUserAtWorkspaceLimit(workspaces);
 
-      expect(ownedWorkspaces).toHaveLength(2);
-      expect(workspaces).toHaveLength(5); // Total workspaces user can access
-      expect(isAtLimit).toBe(false); // 2 < 3 (default limit)
+      expect(ownedWorkspaces).toHaveLength(MAX_LIMIT - 1);
+      expect(workspaces).toHaveLength(MAX_LIMIT - 1 + 3); // owned + non-owned
+      expect(isAtLimit).toBe(false);
     });
 
     test("should be at limit when user owns maximum workspaces", () => {
-      const workspaces = createWorkspaceSet(3, ["DEVELOPER"]);
+      const workspaces = createWorkspaceSet(MAX_LIMIT, ["DEVELOPER"]);
 
       const ownedWorkspaces = getOwnedWorkspaces(workspaces);
       const isAtLimit = isUserAtWorkspaceLimit(workspaces);
 
-      expect(ownedWorkspaces).toHaveLength(3);
-      expect(isAtLimit).toBe(true); // 3 >= 3 (default limit)
+      expect(ownedWorkspaces).toHaveLength(MAX_LIMIT);
+      expect(isAtLimit).toBe(true);
     });
   });
 

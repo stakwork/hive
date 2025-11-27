@@ -100,6 +100,17 @@ vi.mock("next/link", () => ({
 vi.mock("lucide-react", () => ({
   ArrowLeft: () => <span data-testid="arrow-left-icon">←</span>,
   ExternalLink: () => <span data-testid="external-link-icon">↗</span>,
+  Monitor: () => <span data-testid="monitor-icon">🖥</span>,
+}));
+
+// Mock useIsMobile hook
+vi.mock("@/hooks/useIsMobile", () => ({
+  useIsMobile: () => false,
+}));
+
+// Mock cn utility
+vi.mock("@/lib/utils", () => ({
+  cn: (...args: any[]) => args.filter(Boolean).join(" "),
 }));
 
 vi.mock("@/lib/icons", () => ({
