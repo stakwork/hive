@@ -24,6 +24,7 @@ export const Controls = ({ disableAnimations, enableRotation = false }: Props) =
   const isUserScrollingOnHtmlPanel = useControlStore((s) => s.isUserScrollingOnHtmlPanel)
   const setCameraControlsRef = useControlStore((s) => s.setCameraControlsRef)
   const setIsUserDragging = useControlStore((s) => s.setIsUserDragging)
+  const setUserInteraction = useControlStore((s) => s.setUserInteraction)
 
   useCameraAnimations({ enabled: !disableAnimations && !isUserScrolling && !isUserDragging, enableRotation })
 
@@ -57,7 +58,10 @@ export const Controls = ({ disableAnimations, enableRotation = false }: Props) =
       onEnd={() => {
         setIsUserDragging(false)
       }}
-      onStart={() => setIsUserDragging(true)}
+      onStart={() => {
+        setIsUserDragging(true)
+        setUserInteraction() // Track user interaction for 30-second timeout
+      }}
       smoothTime={smoothTime}
     />
   )
