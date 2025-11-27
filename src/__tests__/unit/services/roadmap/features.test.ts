@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, test, expect, vi, beforeEach, afterEach, it } from "vitest";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
 
 // Mock dependencies before imports
@@ -10,6 +10,7 @@ vi.mock("@/lib/db", () => ({
     },
     feature: {
       create: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -21,7 +22,7 @@ vi.mock("@/services/workspace", () => ({
 // Import after mocks
 import { db } from "@/lib/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { createFeature } from "@/services/roadmap/features";
+import { createFeature, findSimilarFeatures } from "@/services/roadmap/features";
 
 describe("createFeature", () => {
   const mockUserId = "user-123";
@@ -791,5 +792,251 @@ describe("createFeature", () => {
         })
       );
     });
+  });
+});
+
+describe('findSimilarFeatures', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should find features matching title case-insensitively', async () => {
+    const mockFeatures = [
+      {
+        id: '1',
+        title: 'User Authentication',
+        brief: 'Add login functionality',
+        status: 'BACKLOG',
+        createdAt: new Date('2024-01-01'),
+      },
+      {
+        id: '2',
+        title: 'user authentication flow',
+        brief: 'Implement OAuth',
+        status: 'TODO',
+        createdAt: new Date('2024-01-02'),
+      },
+    ];
+
+    vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
+
+    const result = await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: 'authentication',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: 'workspace-1',
+        deleted: false,
+        OR: [
+          {
+            title: {
+              contains: 'authentication',
+              mode: 'insensitive',
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        title: true,
+        brief: true,
+        status: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 5,
+    });
+
+    expect(result).toEqual(mockFeatures);
+  });
+
+  it('should search in title, brief, and requirements when brief is provided', async () => {
+    vi.mocked(db.feature.findMany).mockResolvedValue([]);
+
+    await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: 'User Login',
+      brief: 'OAuth implementation',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              title: {
+                contains: 'User Login',
+                mode: 'insensitive',
+              },
+            },
+            {
+              brief: {
+                contains: 'OAuth implementation',
+                mode: 'insensitive',
+              },
+            },
+            {
+              requirements: {
+                contains: 'OAuth implementation',
+                mode: 'insensitive',
+              },
+            },
+          ],
+        }),
+      })
+    );
+  });
+
+  it('should filter by workspaceId and non-deleted features', async () => {
+    vi.mocked(db.feature.findMany).mockResolvedValue([]);
+
+    await findSimilarFeatures({
+      workspaceId: 'workspace-123',
+      title: 'test feature',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          workspaceId: 'workspace-123',
+          deleted: false,
+        }),
+      })
+    );
+  });
+
+  it('should limit results to top 5 matches', async () => {
+    vi.mocked(db.feature.findMany).mockResolvedValue([]);
+
+    await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: 'feature',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 5,
+      })
+    );
+  });
+
+  it('should order results by createdAt descending', async () => {
+    vi.mocked(db.feature.findMany).mockResolvedValue([]);
+
+    await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: 'feature',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: {
+          createdAt: 'desc',
+        },
+      })
+    );
+  });
+
+  it('should return empty array when title is empty', async () => {
+    const result = await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: '   ',
+    });
+
+    expect(db.feature.findMany).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  });
+
+  it('should trim whitespace from search terms', async () => {
+    vi.mocked(db.feature.findMany).mockResolvedValue([]);
+
+    await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: '  User Login  ',
+      brief: '  OAuth  ',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            {
+              title: {
+                contains: 'User Login',
+                mode: 'insensitive',
+              },
+            },
+            {
+              brief: {
+                contains: 'OAuth',
+                mode: 'insensitive',
+              },
+            },
+          ]),
+        }),
+      })
+    );
+  });
+
+  it('should return selected fields only', async () => {
+    const mockFeatures = [
+      {
+        id: '1',
+        title: 'Feature',
+        brief: 'Description',
+        status: 'BACKLOG',
+        createdAt: new Date(),
+      },
+    ];
+
+    vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures as any);
+
+    const result = await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: 'feature',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          title: true,
+          brief: true,
+          status: true,
+          createdAt: true,
+        },
+      })
+    );
+
+    expect(result).toEqual(mockFeatures);
+  });
+
+  it('should handle empty brief as undefined', async () => {
+    vi.mocked(db.feature.findMany).mockResolvedValue([]);
+
+    await findSimilarFeatures({
+      workspaceId: 'workspace-1',
+      title: 'feature',
+      brief: '   ',
+    });
+
+    expect(db.feature.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              title: {
+                contains: 'feature',
+                mode: 'insensitive',
+              },
+            },
+          ],
+        }),
+      })
+    );
   });
 });

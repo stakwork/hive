@@ -6,6 +6,86 @@ import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
 
+export interface SimilarFeature {
+  id: string;
+  title: string;
+  brief: string | null;
+  status: FeatureStatus;
+  createdAt: Date;
+}
+
+export interface FindSimilarFeaturesParams {
+  workspaceId: string;
+  title: string;
+  brief?: string;
+}
+
+/**
+ * Find similar features based on title and brief using case-insensitive substring matching.
+ * Returns top 5 matches ordered by creation date (most recent first).
+ */
+export async function findSimilarFeatures({
+  workspaceId,
+  title,
+  brief,
+}: FindSimilarFeaturesParams): Promise<SimilarFeature[]> {
+  // Build search conditions
+  const searchConditions = [];
+
+  // Always search by title
+  if (title.trim()) {
+    searchConditions.push({
+      title: {
+        contains: title.trim(),
+        mode: 'insensitive' as const,
+      },
+    });
+  }
+
+  // Search by brief if provided
+  if (brief?.trim()) {
+    searchConditions.push({
+      brief: {
+        contains: brief.trim(),
+        mode: 'insensitive' as const,
+      },
+    });
+    searchConditions.push({
+      requirements: {
+        contains: brief.trim(),
+        mode: 'insensitive' as const,
+      },
+    });
+  }
+
+  // If no valid search conditions, return empty array
+  if (searchConditions.length === 0) {
+    return [];
+  }
+
+  // Query database with OR conditions
+  const features = await db.feature.findMany({
+    where: {
+      workspaceId,
+      deleted: false,
+      OR: searchConditions,
+    },
+    select: {
+      id: true,
+      title: true,
+      brief: true,
+      status: true,
+      createdAt: true,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: 5,
+  });
+
+  return features;
+}
+
 /**
  * Lists features for a workspace with pagination, filtering, and sorting
  */
