@@ -240,12 +240,13 @@ export async function haltStaleAgentTasks(): Promise<{
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-    // Find agent tasks that have been in IN_PROGRESS status for more than 24 hours
+    // Find agent tasks that have been in IN_PROGRESS status with no activity for more than 24 hours
     const staleTasks = await db.task.findMany({
       where: {
         mode: "agent",
         status: "IN_PROGRESS",
-        createdAt: {
+        workflowStatus: { not: "HALTED" },
+        updatedAt: {
           lt: twentyFourHoursAgo,
         },
         deleted: false,
@@ -254,7 +255,7 @@ export async function haltStaleAgentTasks(): Promise<{
         id: true,
         title: true,
         workspaceId: true,
-        createdAt: true,
+        updatedAt: true,
       },
     });
 
