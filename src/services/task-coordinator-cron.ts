@@ -182,6 +182,12 @@ async function processTicketSweep(
   }
   console.log(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
+  // Touch updatedAt so task bubbles to top of "recently active" sorted list
+  await db.task.update({
+    where: { id: task.id },
+    data: { updatedAt: new Date() },
+  });
+
   try {
     // Assign to task creator, fall back to feature creator if needed
     const userId = task.createdById ?? task.feature?.createdById;
