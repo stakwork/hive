@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import {
   ChatMessage,
   ChatRole,
@@ -23,6 +25,7 @@ import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal } from "./components";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { Button } from "@/components/ui/button";
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
@@ -750,8 +753,18 @@ export default function TaskChatPage() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.4, ease: [0.4, 0.0, 0.2, 1] }}
-          className="h-[92vh] md:h-[97vh] flex overflow-hidden"
+          className="h-[92vh] md:h-[97vh] flex flex-col overflow-hidden"
         >
+          {isNewTask && (
+            <div className="flex items-center gap-2 p-4 border-b">
+              <Link href={`/w/${slug}/tasks`}>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to Tasks
+                </Button>
+              </Link>
+            </div>
+          )}
           {taskMode === "agent" && hasNonFormArtifacts ? (
             isMobile ? (
               <div className="flex-1 min-w-0 flex flex-col">
