@@ -25,7 +25,6 @@ type TextWithBackgroundProps = {
 
 const TextWithBackgroundComponent = ({ text, id }: TextWithBackgroundProps, ref: React.Ref<Group>) => {
   const textRef = useRef<Mesh>(null)
-  const cubeRef = useRef<Mesh>(null)
 
   const bgWidth = nodeSize * 2
   const bgHeight = nodeSize
@@ -47,7 +46,6 @@ const TextWithBackgroundComponent = ({ text, id }: TextWithBackgroundProps, ref:
           <boxGeometry args={[bgWidth, bgHeight, 1]} />
           <meshBasicMaterial color="yellow" depthWrite={false} opacity={0} transparent />
         </mesh>
-        <RoundedRect ref={cubeRef} color="#23252F" />
       </mesh>
       <Text
         ref={textRef}

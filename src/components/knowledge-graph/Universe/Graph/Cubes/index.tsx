@@ -22,7 +22,7 @@ export const Cubes = memo(() => {
   const instancesRef = useRef<Group | null>(null)
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const frameIndex = useRef(0)
-  const chunkSize = 50
+  const chunkSize = 450
   const storeId = useStoreId()
 
   const downPosition = useRef<{ x: number; y: number } | null>(null)
