@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeHmacSha256Hex } from '@/lib/encryption';
+import { computeHmacSha256Hex, timingSafeEqual } from '@/lib/encryption';
 import crypto from 'node:crypto';
 
 describe('computeHmacSha256Hex', () => {
@@ -178,5 +178,112 @@ describe('computeHmacSha256Hex', () => {
     expect(result1).not.toBe(result2);
     expect(result1).not.toBe(result3);
     expect(result2).not.toBe(result3);
+  });
+});
+
+describe('timingSafeEqual', () => {
+  it('should return true for identical strings', () => {
+    const result = timingSafeEqual('test-string', 'test-string');
+    expect(result).toBe(true);
+  });
+
+  it('should return false for different strings', () => {
+    const result = timingSafeEqual('test-string-1', 'test-string-2');
+    expect(result).toBe(false);
+  });
+
+  it('should return false for strings of different lengths', () => {
+    const result = timingSafeEqual('short', 'much-longer-string');
+    expect(result).toBe(false);
+  });
+
+  it('should return true for empty strings', () => {
+    const result = timingSafeEqual('', '');
+    expect(result).toBe(true);
+  });
+
+  it('should return false when one string is empty', () => {
+    const result1 = timingSafeEqual('test', '');
+    const result2 = timingSafeEqual('', 'test');
+    
+    expect(result1).toBe(false);
+    expect(result2).toBe(false);
+  });
+
+  it('should be case sensitive', () => {
+    const result = timingSafeEqual('TestString', 'teststring');
+    expect(result).toBe(false);
+  });
+
+  it('should handle special characters', () => {
+    const str = 'test-@#$%^&*()_+-={}[]|\\:";\'<>?,./';
+    const result = timingSafeEqual(str, str);
+    expect(result).toBe(true);
+  });
+
+  it('should handle Unicode characters', () => {
+    const str = 'test-🔐-émojis-🚀✨';
+    const result = timingSafeEqual(str, str);
+    expect(result).toBe(true);
+  });
+
+  it('should handle webhook signature comparison', () => {
+    const signature1 = 'sha256=abcdef1234567890';
+    const signature2 = 'sha256=abcdef1234567890';
+    const signature3 = 'sha256=fedcba0987654321';
+    
+    expect(timingSafeEqual(signature1, signature2)).toBe(true);
+    expect(timingSafeEqual(signature1, signature3)).toBe(false);
+  });
+
+  it('should handle API key comparison', () => {
+    const apiKey = 'sk-test-key-12345-abcde';
+    
+    expect(timingSafeEqual(apiKey, apiKey)).toBe(true);
+    expect(timingSafeEqual(apiKey, 'sk-test-key-12345-abcdf')).toBe(false);
+  });
+
+  it('should handle long strings', () => {
+    const longStr = 'a'.repeat(10000);
+    
+    expect(timingSafeEqual(longStr, longStr)).toBe(true);
+    expect(timingSafeEqual(longStr, longStr + 'b')).toBe(false);
+  });
+
+  it('should match crypto.timingSafeEqual behavior for equal buffers', () => {
+    const str1 = 'test-string-for-comparison';
+    const str2 = 'test-string-for-comparison';
+    
+    const buf1 = Buffer.from(str1);
+    const buf2 = Buffer.from(str2);
+    
+    const cryptoResult = crypto.timingSafeEqual(buf1, buf2);
+    const ourResult = timingSafeEqual(str1, str2);
+    
+    expect(ourResult).toBe(cryptoResult);
+  });
+
+  it('should detect single character difference', () => {
+    const result = timingSafeEqual('abcdefgh', 'abcdefgi');
+    expect(result).toBe(false);
+  });
+
+  it('should detect difference at start of string', () => {
+    const result = timingSafeEqual('Xbcdefgh', 'abcdefgh');
+    expect(result).toBe(false);
+  });
+
+  it('should detect difference at end of string', () => {
+    const result = timingSafeEqual('abcdefgh', 'abcdefgX');
+    expect(result).toBe(false);
+  });
+
+  it('should handle hex-encoded strings', () => {
+    const hex1 = 'a1b2c3d4e5f6';
+    const hex2 = 'a1b2c3d4e5f6';
+    const hex3 = 'a1b2c3d4e5f7';
+    
+    expect(timingSafeEqual(hex1, hex2)).toBe(true);
+    expect(timingSafeEqual(hex1, hex3)).toBe(false);
   });
 });

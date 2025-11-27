@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { timingSafeEqual } from "@/lib/encryption";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
     const hmac = crypto.createHmac("sha256", secret);
     const digest = `sha256=${hmac.update(body).digest("hex")}`;
 
-    if (signature !== digest) {
+    if (!timingSafeEqual(signature, digest)) {
         return NextResponse.json({ message: "Invalid signature" }, { status: 401 });
     }
 

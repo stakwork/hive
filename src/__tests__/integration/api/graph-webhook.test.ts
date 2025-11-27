@@ -19,10 +19,9 @@ import {
  * 
  * SECURITY NOTE: This endpoint has several security gaps:
  * 1. No HMAC signature verification (unlike GitHub webhook)
- * 2. API key comparison uses direct === (timing attack vulnerable, should use crypto.timingSafeEqual())
- * 3. No rate limiting
- * 4. No request size limits
- * 5. Soft-deleted workspaces not filtered in lookup
+ * 2. No rate limiting
+ * 3. No request size limits
+ * 4. Soft-deleted workspaces not filtered in lookup
  * 
  * These gaps should be addressed in future security hardening.
  * 
@@ -140,7 +139,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
     });
 
     // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should proceed with valid API key (SECURITY GAP: uses timing-vulnerable === comparison)", async () => {
+    test.skip("should proceed with valid API key", async () => {
       const request = new Request(webhookUrl, {
         method: "POST",
         headers: {
