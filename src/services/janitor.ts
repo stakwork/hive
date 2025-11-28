@@ -656,7 +656,7 @@ export async function dismissJanitorRecommendation(
  * Process Stakwork webhook for janitor run completion
  */
 export async function processJanitorWebhook(webhookData: StakworkWebhookPayload) {
-  const { projectId, status, results, error, workspaceId, autoCreateTasks } = webhookData;
+  const { projectId, status, results, error, workspaceId, autoCreateTasks, autoMergePr } = webhookData;
 
   const isCompleted = status.toLowerCase() === "completed" || status.toLowerCase() === "success";
   const isFailed = status.toLowerCase() === "failed" || status.toLowerCase() === "error";
@@ -827,7 +827,7 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
           const result = await acceptJanitorRecommendation(
             createdRec.id,
             janitorRun.janitorConfig.workspace.ownerId,
-            { autoMergePr: true },
+            { autoMergePr: autoMergePr ?? false },
             "JANITOR"
           );
           autoCreatedTaskId = result.task.id;
