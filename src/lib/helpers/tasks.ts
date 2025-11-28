@@ -138,3 +138,27 @@ export async function extractPrArtifact(
 
   return null;
 }
+
+/**
+ * Update task status to DONE when a PULL_REQUEST artifact is present
+ *
+ * This function checks if any artifact is a PULL_REQUEST and automatically
+ * sets the task status to DONE. This matches agent mode behavior where
+ * tasks are marked complete as soon as a PR is created (not when merged).
+ *
+ * @param taskId - Task ID to update
+ * @param artifacts - Array of artifacts to check
+ */
+export async function updateTaskStatusForPullRequest(
+  taskId: string,
+  artifacts: Array<{ type: string }>,
+): Promise<void> {
+  const hasPullRequest = artifacts.some((artifact) => artifact.type === "PULL_REQUEST");
+
+  if (hasPullRequest) {
+    await db.task.update({
+      where: { id: taskId },
+      data: { status: TaskStatus.DONE },
+    });
+  }
+}

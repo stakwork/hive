@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
+import { updateTaskStatusForPullRequest } from "@/lib/helpers/tasks";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
@@ -88,18 +89,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     // Check if artifacts contain PULL_REQUEST to auto-complete task
-    const hasPullRequest = artifacts?.some(
-      (artifact: { type: ArtifactType }) => artifact.type === ArtifactType.PULL_REQUEST,
-    );
-
-    if (hasPullRequest) {
-      await db.task.update({
-        where: { id: taskId },
-        data: {
-          status: "DONE",
-          workflowStatus: "COMPLETED",
-        },
-      });
+    if (artifacts && artifacts.length > 0) {
+      await updateTaskStatusForPullRequest(taskId, artifacts);
     }
 
     return NextResponse.json(
