@@ -4,16 +4,30 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Check for API token authentication
+    const apiToken = request.headers.get("x-api-token");
+    let userId: string | undefined;
+    let isApiKeyAuth = false;
 
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+    if (apiToken && process.env.API_TOKEN && apiToken === process.env.API_TOKEN) {
+      // Valid API token authentication
+      isApiKeyAuth = true;
+    } else if (apiToken) {
+      // Invalid API token provided
+      return NextResponse.json({ error: "Unauthorized - Invalid API token" }, { status: 401 });
+    } else {
+      // Fall back to session authentication
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      }
     }
 
     const { taskId } = await params;
@@ -87,11 +101,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             slug: true,
             ownerId: true,
             members: {
-              where: {
-                userId: userId,
-              },
+              // For API key auth: fetch all members
+              // For session auth: fetch only the current user's membership
+              ...(isApiKeyAuth 
+                ? {} 
+                : { where: { userId: userId } }
+              ),
               select: {
                 role: true,
+                userId: true,
               },
             },
           },
@@ -136,13 +154,25 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       name: string;
       slug: string;
       ownerId: string;
-      members: Array<{ role: string }>;
+      members: Array<{ role: string; userId: string }>;
     };
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
 
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    if (isApiKeyAuth) {
+      // For API key auth, extract userId from workspace owner or any member
+      userId = workspace.ownerId;
+    } else {
+      // For session auth, verify access
+      const isOwner = workspace.ownerId === userId;
+      const isMember = workspace.members.length > 0;
+
+      if (!isOwner && !isMember) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+    }
+
+    // Ensure userId is defined at this point
+    if (!userId) {
+      return NextResponse.json({ error: "Unable to determine user context" }, { status: 500 });
     }
 
     // Extract PR artifact if it exists
