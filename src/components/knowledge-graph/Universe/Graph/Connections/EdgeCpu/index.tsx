@@ -6,6 +6,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { LinkPosition } from "../..";
+import { Link } from '../../../types';
 
 const edgeSettings = {
     color: "#9194A4",
@@ -218,8 +219,8 @@ export function EdgesGPU({
             let highlightState = 0; // 0 = normal, 1 = hovered, 2 = selected
 
             if (linkData) {
-                const sourceId = typeof linkData.source === 'string' ? linkData.source : linkData.source?.ref_id;
-                const targetId = typeof linkData.target === 'string' ? linkData.target : linkData.target?.ref_id;
+                const sourceId = typeof linkData.source === 'string' ? linkData.source : (linkData.source as Link)?.ref_id;
+                const targetId = typeof linkData.target === 'string' ? linkData.target : (linkData.target as Link)?.ref_id;
 
                 const sourceNode = nodesNormalized.get(sourceId);
                 const targetNode = nodesNormalized.get(targetId);
