@@ -240,6 +240,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
   const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
   const hasCameraMoved = useRef(false)
   const cameraAnimationRef = useRef<{ isAnimating: boolean; startTime?: number }>({ isAnimating: false })
+  const lastValidPositionsTime = useRef<number | null>(null)
 
   // Edge animation state
   const [edgeAnimations, setEdgeAnimations] = useState<Map<string, { progress: number; delay: number }>>(new Map())
@@ -347,6 +348,8 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
 
     if (positionsChanged) {
       setChunkNodes(updatedNodes)
+      // Update timestamp for valid positions
+      lastValidPositionsTime.current = Date.now()
     }
 
     // Move camera to fit all chunk nodes once when positions are available
@@ -361,7 +364,9 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
 
       // Check if all nodes have valid positions
       const nodesWithPositions = chunkNodes.filter(node =>
-        node.x !== undefined && node.y !== undefined && node.z !== undefined
+        typeof node.x === 'number' && !isNaN(node.x) &&
+        typeof node.y === 'number' && !isNaN(node.y) &&
+        typeof node.z === 'number' && !isNaN(node.z)
       )
 
       console.log('Camera debug - positions:', {
@@ -370,7 +375,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
         positions: nodesWithPositions.map(n => ({ id: n.ref_id, x: n.x, y: n.y, z: n.z }))
       })
 
-      if (nodesWithPositions.length === chunkNodes.length) {
+      if (nodesWithPositions.length > 0 && nodesWithPositions.length >= Math.min(chunkNodes.length, 1)) {
         const config: CameraConfig = {
           ...CAMERA_CONFIG,
           ...customConfig,
@@ -395,8 +400,16 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
           maxDistance = Math.max(maxDistance, distance)
         })
 
-        // Add padding to the radius (at least the configured radius, or larger if needed)
-        const radius = Math.max(config.radius, maxDistance + 100)
+        // Ensure minimum radius for very close nodes or single nodes
+        const minRadius = 150 // Minimum radius for good visibility
+        const padding = Math.max(100, maxDistance * 0.3) // Dynamic padding based on spread
+        const radius = Math.max(config.radius, maxDistance + padding, minRadius)
+
+        // Validate center and radius before proceeding
+        if (isNaN(center.x) || isNaN(center.y) || isNaN(center.z) || isNaN(radius)) {
+          console.warn('Camera debug - invalid center or radius calculated, skipping camera movement', { center, radius })
+          return
+        }
         const boundingSphere = new Sphere(center, radius)
 
         console.log('Camera debug - moving camera:', {
