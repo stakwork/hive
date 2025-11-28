@@ -2,11 +2,12 @@
 import { useStoreId } from '@/stores/StoreProvider';
 import { getStoreBundle } from '@/stores/createStoreFactory';
 import { useDataStore } from '@/stores/useStores';
+import { Link } from '@Universe/types';
 import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { LinkPosition } from "../..";
-import { Link } from '../../../types';
+
 
 const edgeSettings = {
     color: "#9194A4",
