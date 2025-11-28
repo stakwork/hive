@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useMemo, useEffect, useState } from "react";
-import { Loader2, Check, X, Sparkles } from "lucide-react";
+import { Loader2, Check, X, Sparkles, Brain } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -22,6 +22,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SortableUserStory } from "./SortableUserStory";
 import { AIButton } from "@/components/ui/ai-button";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { useAIGeneration } from "@/hooks/useAIGeneration";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { GenerationControls } from "@/components/features/GenerationControls";
+import { GenerationPreview } from "@/components/features/GenerationPreview";
 import type { FeatureDetail } from "@/types/roadmap";
 
 interface GeneratedStory {
@@ -61,6 +66,23 @@ export function UserStoriesSection({
   const [saving, setSaving] = useState(false);
   const [savedStoryId, setSavedStoryId] = useState<string | null>(null);
 
+  const { workspace } = useWorkspace();
+  const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
+
+  const { latestRun, refetch } = useStakworkGeneration({
+    featureId,
+    type: "USER_STORIES",
+    enabled: true,
+  });
+
+  const deepResearch = useAIGeneration({
+    featureId,
+    workspaceId: workspace?.id || "",
+    type: "USER_STORIES",
+    displayName: "user stories",
+    enabled: true,
+  });
+
   // Drag and drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -82,6 +104,13 @@ export function UserStoriesSection({
     () => userStories.map((story) => story.id),
     [userStories]
   );
+
+  // Populate deep research content when completed run is available
+  useEffect(() => {
+    if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
+      deepResearch.setContent(latestRun.result, "deep", latestRun.id);
+    }
+  }, [latestRun, deepResearch]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -143,23 +172,91 @@ export function UserStoriesSection({
     }
   };
 
+  const handleDeepThink = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await deepResearch.regenerate(false);
+      await refetch();
+    } catch (error) {
+      console.error("Deep think failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await deepResearch.regenerate(true);
+      await refetch();
+    } catch (error) {
+      console.error("Retry failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
+
+  const handleAcceptDeepResearch = async () => {
+    if (!deepResearch.content) return;
+
+    try {
+      // Parse the result as array of story objects
+      const stories = JSON.parse(deepResearch.content) as Array<{ title: string }>;
+
+      // Accept the run first
+      await deepResearch.accept();
+
+      // Stories are already created by backend, just refresh the page data
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to accept stories:", error);
+    }
+  };
+
+  const handleProvideFeedback = async (feedback: string) => {
+    await deepResearch.provideFeedback(feedback);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">User Stories</Label>
-        <AIButton<GeneratedStory>
-          endpoint={`/api/features/${featureId}/generate`}
-          params={{
-            type: "userStories",
-            existingStories: [
-              ...userStories.map((s) => s.title),
-              ...aiSuggestions.map((s) => s.title),
-            ],
-          }}
-          onGenerated={handleAiGenerated}
-          label="Generate"
-        />
+        <div className="flex items-center gap-2">
+          <GenerationControls
+            onQuickGenerate={() => {}}
+            onDeepThink={handleDeepThink}
+            onRetry={handleRetry}
+            status={latestRun?.status}
+            isLoading={deepResearch.isLoading}
+            isQuickGenerating={false}
+            disabled={false}
+            showDeepThink={true}
+          />
+          <AIButton<GeneratedStory>
+            endpoint={`/api/features/${featureId}/generate`}
+            params={{
+              type: "userStories",
+              existingStories: [
+                ...userStories.map((s) => s.title),
+                ...aiSuggestions.map((s) => s.title),
+              ],
+            }}
+            onGenerated={handleAiGenerated}
+            label="Generate"
+          />
+        </div>
       </div>
+
+      {deepResearch.content && (
+        <GenerationPreview
+          content={deepResearch.content}
+          source={deepResearch.source || "deep"}
+          onAccept={handleAcceptDeepResearch}
+          onReject={deepResearch.reject}
+          onProvideFeedback={handleProvideFeedback}
+          isLoading={deepResearch.isLoading}
+        />
+      )}
 
       <div className="rounded-lg border bg-muted/30">
         <div className="flex gap-2 p-4">
