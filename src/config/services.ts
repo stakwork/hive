@@ -15,7 +15,11 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
   },
   poolManager: {
     baseURL:
-      process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
+      process.env.POOL_MANAGER_API_KEY
+        ? process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api"
+        : process.env.NEXT_PUBLIC_API_BASE_URL
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/mock/pool-manager`
+          : "http://localhost:3000/api/mock/pool-manager",
     apiKey: process.env.POOL_MANAGER_API_KEY || "",
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
     headers: {
@@ -68,7 +72,7 @@ export const endpoints = {
 export function validateServiceConfigs(): void {
   const requiredVars = {
     STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
-    POOL_MANAGER_API_KEY: process.env.POOL_MANAGER_API_KEY,
+    // POOL_MANAGER_API_KEY is optional - falls back to mock endpoints when not provided
   };
 
   for (const [key, value] of Object.entries(requiredVars)) {

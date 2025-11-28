@@ -1,6 +1,5 @@
 const requiredEnvVars = {
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
-  POOL_MANAGER_API_KEY: process.env.POOL_MANAGER_API_KEY,
   POOL_MANAGER_API_USERNAME: process.env.POOL_MANAGER_API_USERNAME,
   POOL_MANAGER_API_PASSWORD: process.env.POOL_MANAGER_API_PASSWORD,
   SWARM_SUPERADMIN_API_KEY: process.env.SWARM_SUPERADMIN_API_KEY,
@@ -21,6 +20,7 @@ export const env = requiredEnvVars;
 
 // Optional environment variables with defaults
 export const optionalEnvVars = {
+  POOL_MANAGER_API_KEY: process.env.POOL_MANAGER_API_KEY,
   STAKWORK_BASE_URL: process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
   STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
