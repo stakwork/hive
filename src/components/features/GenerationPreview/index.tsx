@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Check, X, Sparkles, Brain, ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +40,7 @@ export function GenerationPreview({
   };
 
   return (
-    <div className="relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300 pb-[72px]">
+    <div className="relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300 pb-[112px]">
       <div className="p-4">
         <div className="flex items-start gap-3">
           <Icon className={`h-4 w-4 ${iconColor} flex-shrink-0 mt-1`} />
@@ -48,47 +48,38 @@ export function GenerationPreview({
         </div>
       </div>
 
-      {/* Buttons - absolute at component bottom, sticky to viewport when scrolling */}
+      {/* Action Bar */}
       <div className="absolute bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border/50 rounded-b-md">
-        {/* Buttons row */}
-        <div className={`relative flex items-center gap-3 p-4 ${!onProvideFeedback ? 'justify-end' : ''}`}>
-          {/* Feedback Input - inline with buttons */}
+        <div className="flex flex-col gap-3 p-4">
+          {/* Row 1: Feedback Input + Submit Button */}
           {onProvideFeedback && (
-            <>
-              <div className="flex-1 relative">
-                <Input
-                  type="text"
-                  placeholder="Provide feedback..."
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  disabled={isLoading}
-                  className="pr-10 shadow-sm bg-background/95"
-                />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleProvideFeedback}
-                  disabled={isLoading || !feedback.trim()}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 rounded-full"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Vertical divider */}
-              <div className="h-8 w-px bg-border" />
-            </>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Provide feedback..."
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                onKeyPress={handleKeyPress}
+                disabled={isLoading}
+                className="flex-1"
+              />
+              <Button
+                size="sm"
+                onClick={handleProvideFeedback}
+                disabled={isLoading || !feedback.trim()}
+              >
+                <ArrowUp className="h-4 w-4 mr-2" />
+                Submit Feedback
+              </Button>
+            </div>
           )}
-
-          {/* Accept/Reject buttons */}
-          <div className="flex gap-2 shrink-0">
+          
+          {/* Row 2: Accept/Reject Buttons */}
+          <div className="flex gap-2 justify-end">
             <Button
               size="sm"
               variant="outline"
               onClick={onAccept}
               disabled={isLoading}
-              className="shadow-md border-green-600/30 bg-background hover:bg-green-50 hover:border-green-600/50"
             >
               <Check className="h-4 w-4 mr-2 text-green-600" />
               Accept
@@ -98,7 +89,6 @@ export function GenerationPreview({
               variant="ghost"
               onClick={onReject}
               disabled={isLoading}
-              className="shadow-md hover:bg-red-50"
             >
               <X className="h-4 w-4 mr-2 text-red-600" />
               Reject
@@ -109,3 +99,5 @@ export function GenerationPreview({
     </div>
   );
 }
+
+export default GenerationPreview;
