@@ -46,6 +46,10 @@ vi.mock("@/lib/encryption", () => ({
 vi.mock("@/lib/env", () => ({
   config: {
     STAKWORK_AI_GENERATION_WORKFLOW_ID: "123",
+    STAKWORK_API_KEY: "test-stakwork-key",
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+    POOL_MANAGER_API_KEY: "test-pool-key",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
   },
 }));
 

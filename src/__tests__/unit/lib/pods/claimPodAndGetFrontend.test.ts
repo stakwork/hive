@@ -16,6 +16,7 @@ interface ProcessInfo {
 vi.mock('@/lib/env', () => ({
   config: {
     POOL_MANAGER_BASE_URL: 'https://pool-manager.example.com',
+    USE_MOCKS: false,
   },
 }));
 
