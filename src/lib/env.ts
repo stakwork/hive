@@ -39,4 +39,5 @@ export const optionalEnvVars = {
 export const config = {
   ...requiredEnvVars,
   ...optionalEnvVars,
+  USE_MOCKS: process.env.USE_MOCKS === "true",
 } as const;

@@ -15,7 +15,7 @@ describe("getServiceConfig", () => {
         headers: expect.any(Object),
       });
       expect(config.baseURL).toBe(
-        process.env.STAKWORK_BASE_URL || "https://jobs.stakwork.com/api/v1"
+        process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1"
       );
       expect(config.headers).toHaveProperty("Content-Type", "application/json");
       expect(config.headers).toHaveProperty("X-User-Email");
