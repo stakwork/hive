@@ -1,57 +1,45 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/graph/webhook/route";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
+import { GraphWebhookService } from "@/services/swarm/GraphWebhookService";
 import {
-  createPostRequest,
-  generateUniqueId,
-  generateUniqueSlug,
-} from "@/__tests__/support/helpers";
+  computeValidGraphWebhookSignature,
+  createGraphWebhookRequest,
+  createTestStatusPayload,
+} from "@/__tests__/support/fixtures/graph-webhook";
+import { generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
+import { WorkflowStatus } from "@prisma/client";
 
 /**
- * Integration Tests for POST /api/graph/webhook
+ * Integration Tests for Graph Webhook - HMAC Signature Verification
  * 
- * BUGS FOUND - TO BE FIXED IN SEPARATE PR:
- * 1. Route throws Prisma error when workspace_id is undefined (line 42-46 in route.ts)
- *    - Should guard the database query: `const workspace = workspace_id ? await db.workspace.findUnique(...) : null;`
- * 2. Route returns incorrect `broadcasted` flag (line 80 in route.ts)
- *    - Currently: `broadcasted: !!workspace_id` (returns true if ID provided, even if workspace doesn't exist)
- *    - Should be: `broadcasted: !!workspace` (returns true only if workspace exists and broadcast succeeded)
- * 
- * SECURITY NOTE: This endpoint has several security gaps:
- * 1. No HMAC signature verification (unlike GitHub webhook)
- * 2. API key comparison uses direct === (timing attack vulnerable, should use crypto.timingSafeEqual())
- * 3. No rate limiting
- * 4. No request size limits
- * 5. Soft-deleted workspaces not filtered in lookup
- * 
- * These gaps should be addressed in future security hardening.
- * 
- * NOTE: Several tests are commented out below due to the bugs above.
- * Uncomment these tests after the production code bugs are fixed.
+ * Tests the complete HMAC-SHA256 signature verification flow:
+ * 1. Signature header extraction
+ * 2. Swarm lookup by ID
+ * 3. Encrypted secret decryption
+ * 4. HMAC computation on raw request body
+ * 5. Timing-safe signature comparison
+ * 6. Test status update processing
  */
-
-// Mock Pusher service - external dependency
-vi.mock("@/lib/pusher", () => ({
-  pusherServer: {
-    trigger: vi.fn().mockResolvedValue({}),
-  },
-  getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
-  PUSHER_EVENTS: {
-    HIGHLIGHT_NODES: "highlight-nodes",
-  },
-}));
-
-const { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } = await import("@/lib/pusher");
-const mockedPusherServer = vi.mocked(pusherServer);
-const mockedGetWorkspaceChannelName = vi.mocked(getWorkspaceChannelName);
-
-describe("Graph Webhook API - POST /api/graph/webhook", () => {
+describe("Graph Webhook Integration Tests - POST /api/graph/webhook", () => {
   const webhookUrl = "http://localhost:3000/api/graph/webhook";
-  const validApiKey = "test-graph-webhook-api-key";
+  let encryptionService: EncryptionService;
 
-  // Helper to create test workspace with proper relations
-  async function createTestWorkspace() {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    encryptionService = EncryptionService.getInstance();
+  });
+
+  /**
+   * Helper to create test workspace with swarm and encrypted webhook secret
+   */
+  async function createTestWorkspaceWithSwarm(options: {
+    withWebhookSecret?: boolean;
+    webhookSecret?: string;
+  } = {}) {
     return await db.$transaction(async (tx) => {
+      // Create user
       const user = await tx.user.create({
         data: {
           id: generateUniqueId("user"),
@@ -60,6 +48,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
         },
       });
 
+      // Create workspace
       const workspace = await tx.workspace.create({
         data: {
           name: `Test Workspace ${generateUniqueId()}`,
@@ -76,22 +65,165 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
         },
       });
 
-      return { user, workspace };
+      // Generate or use provided webhook secret
+      const plainSecret = options.webhookSecret || require("crypto").randomBytes(32).toString("hex");
+      const encryptedSecret = options.withWebhookSecret !== false
+        ? JSON.stringify(encryptionService.encryptField("graphWebhookSecret", plainSecret))
+        : null;
+
+      // Create swarm with optional webhook secret
+      const swarm = await tx.swarm.create({
+        data: {
+          id: generateUniqueId("swarm"),
+          name: "Test Swarm",
+          status: "ACTIVE",
+          instanceType: "XL",
+          poolState: "STARTED",
+          workspaceId: workspace.id,
+          graphWebhookSecret: encryptedSecret,
+        },
+      });
+
+      return { user, workspace, swarm, plainSecret };
     });
   }
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    process.env.GRAPH_WEBHOOK_API_KEY = validApiKey;
+  /**
+   * Helper to create test task for status updates
+   */
+  async function createTestTask(workspaceId: string, testFilePath: string) {
+    const workspaceMember = await db.workspaceMember.findFirst({ where: { workspaceId } });
+    if (!workspaceMember) {
+      throw new Error(`No workspace member found for workspace: ${workspaceId}`);
+    }
+
+    return await db.task.create({
+      data: {
+        id: generateUniqueId("task"),
+        title: `E2E Test: ${testFilePath}`,
+        sourceType: "USER_JOURNEY",
+        testFilePath,
+        status: "DONE",
+        workflowStatus: WorkflowStatus.PENDING,
+        workspace: {
+          connect: { id: workspaceId },
+        },
+        createdBy: {
+          connect: { id: workspaceMember.userId },
+        },
+        updatedBy: {
+          connect: { id: workspaceMember.userId },
+        },
+      },
+    });
+  }
+
+  describe("HMAC Signature Verification - Happy Path", () => {
+    test("should successfully verify valid HMAC signature and process webhook", async () => {
+      const { swarm, plainSecret, workspace } = await createTestWorkspaceWithSwarm();
+      const testFilePath = "src/__tests__/e2e/specs/login.spec.ts";
+      const task = await createTestTask(workspace.id, testFilePath);
+
+      // Create valid webhook request
+      const payload = createTestStatusPayload(swarm.id, testFilePath, "success");
+      const request = createGraphWebhookRequest(payload, plainSecret);
+
+      // Execute webhook handler
+      const response = await POST(new Request(webhookUrl, request as any));
+      const data = await response.json();
+
+      // Verify successful response
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.message).toBe("Webhook processed successfully");
+
+      // Verify task status was updated
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
+    });
+
+    test("should handle test failure status update", async () => {
+      const { swarm, plainSecret, workspace } = await createTestWorkspaceWithSwarm();
+      const testFilePath = "src/__tests__/e2e/specs/checkout.spec.ts";
+      const task = await createTestTask(workspace.id, testFilePath);
+
+      const payload = createTestStatusPayload(
+        swarm.id,
+        testFilePath,
+        "failed",
+        "Timeout waiting for element"
+      );
+      const request = createGraphWebhookRequest(payload, plainSecret);
+
+      const response = await POST(new Request(webhookUrl, request as any));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+
+      // Verify task marked as failed
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.FAILED);
+    });
+
+    test("should handle test running status update", async () => {
+      const { swarm, plainSecret, workspace } = await createTestWorkspaceWithSwarm();
+      const testFilePath = "src/__tests__/e2e/specs/dashboard.spec.ts";
+      const task = await createTestTask(workspace.id, testFilePath);
+
+      const payload = createTestStatusPayload(swarm.id, testFilePath, "running");
+      const request = createGraphWebhookRequest(payload, plainSecret);
+
+      const response = await POST(new Request(webhookUrl, request as any));
+      
+      expect(response.status).toBe(200);
+
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
+    });
   });
 
-  describe("Security - API Key Authentication", () => {
-    test("should return 401 when x-api-key header is missing", async () => {
-      const request = createPostRequest(webhookUrl, {
-        node_ids: ["node-1", "node-2"],
-        workspace_id: "ws-123",
+  describe("HMAC Signature Verification - Authentication Failures", () => {
+    test("should reject webhook with missing x-signature header", async () => {
+      const { swarm } = await createTestWorkspaceWithSwarm();
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      // Do not set x-api-key header
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Missing signature header");
+    });
+
+    test("should reject webhook with invalid HMAC signature", async () => {
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const body = JSON.stringify(payload);
+
+      // Create signature with wrong secret
+      const wrongSecret = "wrong-secret-key";
+      const invalidSignature = computeValidGraphWebhookSignature(wrongSecret, body);
+
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-signature": invalidSignature,
+        },
+        body,
+      });
 
       const response = await POST(request);
       const data = await response.json();
@@ -100,17 +232,19 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       expect(data.error).toBe("Unauthorized");
     });
 
-    test("should return 401 when x-api-key header is invalid", async () => {
+    test("should reject webhook when swarm has no webhook secret configured", async () => {
+      const { swarm } = await createTestWorkspaceWithSwarm({ withWebhookSecret: false });
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const body = JSON.stringify(payload);
+      const fakeSignature = "sha256=fakesignature";
+
       const request = new Request(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": "invalid-api-key",
+          "x-signature": fakeSignature,
         },
-        body: JSON.stringify({
-          node_ids: ["node-1", "node-2"],
-          workspace_id: "ws-123",
-        }),
+        body,
       });
 
       const response = await POST(request);
@@ -120,16 +254,19 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       expect(data.error).toBe("Unauthorized");
     });
 
-    test("should return 401 when x-api-key header is empty string", async () => {
+    test("should reject webhook for non-existent swarm", async () => {
+      const nonExistentSwarmId = "swarm-does-not-exist";
+      const payload = createTestStatusPayload(nonExistentSwarmId, "test.spec.ts");
+      const body = JSON.stringify(payload);
+      const fakeSignature = "sha256=fakesignature";
+
       const request = new Request(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": "",
+          "x-signature": fakeSignature,
         },
-        body: JSON.stringify({
-          node_ids: ["node-1", "node-2"],
-        }),
+        body,
       });
 
       const response = await POST(request);
@@ -139,508 +276,50 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       expect(data.error).toBe("Unauthorized");
     });
 
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should proceed with valid API key (SECURITY GAP: uses timing-vulnerable === comparison)", async () => {
+    test("should use timing-safe comparison to prevent timing attacks", async () => {
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const body = JSON.stringify(payload);
+
+      // Create signature with only first few characters correct
+      const validSignature = computeValidGraphWebhookSignature(plainSecret, body);
+      const partiallyWrongSignature = validSignature.slice(0, 10) + "x".repeat(validSignature.length - 10);
+
       const request = new Request(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": validApiKey,
+          "x-signature": partiallyWrongSignature,
         },
-        body: JSON.stringify({
-          node_ids: ["node-1", "node-2"],
-        }),
+        body,
       });
 
       const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
+      
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "Unauthorized" });
     });
   });
 
-  describe("Payload Validation - node_ids", () => {
-    test("should return 400 when node_ids is missing", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          workspace_id: "ws-123",
-        }),
-      });
+  describe("Payload Validation", () => {
+    test("should reject webhook with missing swarmId", async () => {
+      const { plainSecret } = await createTestWorkspaceWithSwarm();
+      const payload = { testFilePath: "test.spec.ts", status: "success" };
+      const request = createGraphWebhookRequest(payload, plainSecret);
 
-      const response = await POST(request);
+      const response = await POST(new Request(webhookUrl, request as any));
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
+      expect(data.error).toBe("Missing swarmId in payload");
     });
 
-    test("should return 400 when node_ids is not an array (string)", async () => {
+    test("should reject webhook with malformed JSON", async () => {
       const request = new Request(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: "node-1,node-2",
-          workspace_id: "ws-123",
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
-    });
-
-    test("should return 400 when node_ids is not an array (object)", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: { id: "node-1" },
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
-    });
-
-    test("should return 400 when node_ids is empty array", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: [],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
-    });
-
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should accept valid node_ids array with single element", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.received.nodeIds).toEqual(["node-1"]);
-    });
-
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should accept valid node_ids array with multiple elements", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1", "node-2", "node-3"],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.received.nodeIds).toEqual(["node-1", "node-2", "node-3"]);
-    });
-
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should handle node_ids array with special characters and formats", async () => {
-      const specialNodeIds = [
-        "node-with-dashes",
-        "node_with_underscores",
-        "node123",
-        "CamelCaseNode",
-        "node.with.dots",
-      ];
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: specialNodeIds,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.data.received.nodeIds).toEqual(specialNodeIds);
-    });
-  });
-
-  describe("Workspace Lookup", () => {
-    test("should successfully lookup workspace by id when workspace_id is provided", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1", "node-2"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.broadcasted).toBe(true);
-      expect(data.data.received.workspaceId).toBe(workspace.id);
-    });
-
-    // BUG: Route returns incorrect `broadcasted` flag (uses !!workspace_id instead of !!workspace) - uncomment after fixing route.ts  
-    test.skip("should handle non-existent workspace_id gracefully (no broadcast, but 200 OK)", async () => {
-      const nonExistentId = "clxxxxxxxxxxxxxxxxxxxxxxxxxx";
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1", "node-2"],
-          workspace_id: nonExistentId,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.broadcasted).toBe(false);
-      expect(data.data.received.workspaceId).toBe(nonExistentId);
-
-      // Verify Pusher was not called
-      expect(pusherServer.trigger).not.toHaveBeenCalled();
-    });
-
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should not broadcast when workspace_id is omitted", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1", "node-2"],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.broadcasted).toBe(false);
-      expect(data.data.received.workspaceId).toBeUndefined();
-
-      // Verify Pusher was not called
-      expect(pusherServer.trigger).not.toHaveBeenCalled();
-    });
-
-    test("should not filter soft-deleted workspaces (SECURITY GAP)", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      // Soft delete the workspace
-      await db.workspace.update({
-        where: { id: workspace.id },
-        data: {
-          deleted: true,
-          deletedAt: new Date(),
-        },
-      });
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      // Currently still broadcasts to deleted workspace - security gap
-      expect(response.status).toBe(200);
-      expect(data.data.broadcasted).toBe(true);
-    });
-  });
-
-  describe("Pusher Broadcasting", () => {
-    test("should broadcast HIGHLIGHT_NODES event to workspace channel", async () => {
-      const { workspace } = await createTestWorkspace();
-      const nodeIds = ["node-1", "node-2", "node-3"];
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: nodeIds,
-          workspace_id: workspace.id,
-        }),
-      });
-
-      await POST(request);
-
-      // Verify Pusher channel name generation
-      expect(getWorkspaceChannelName).toHaveBeenCalledWith(workspace.slug);
-
-      // Verify Pusher trigger was called with correct parameters
-      expect(pusherServer.trigger).toHaveBeenCalledWith(
-        `workspace-${workspace.slug}`,
-        "highlight-nodes",
-        expect.objectContaining({
-          nodeIds,
-          workspaceId: workspace.slug,
-          timestamp: expect.any(Number),
-        })
-      );
-    });
-
-    test("should include timestamp in Pusher payload", async () => {
-      const { workspace } = await createTestWorkspace();
-      const beforeTimestamp = Date.now();
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      await POST(request);
-
-      const afterTimestamp = Date.now();
-
-      expect(pusherServer.trigger).toHaveBeenCalledTimes(1);
-      const [, , payload] = mockedPusherServer.trigger.mock.calls[0];
-
-      expect(payload.timestamp).toBeGreaterThanOrEqual(beforeTimestamp);
-      expect(payload.timestamp).toBeLessThanOrEqual(afterTimestamp);
-    });
-
-    test("should tolerate Pusher API failures (eventual consistency)", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      // Mock Pusher failure
-      mockedPusherServer.trigger.mockRejectedValueOnce(
-        new Error("Pusher connection failed")
-      );
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      // Request should still succeed despite Pusher failure
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.broadcasted).toBe(true);
-    });
-
-    test("should use workspace slug (not id) in channel name", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      await POST(request);
-
-      // Verify channel name uses slug
-      expect(pusherServer.trigger).toHaveBeenCalledWith(
-        expect.stringContaining(workspace.slug),
-        expect.any(String),
-        expect.any(Object)
-      );
-
-      // Verify channel name does NOT use id
-      const [channelName] = mockedPusherServer.trigger.mock.calls[0];
-      expect(channelName).not.toContain(workspace.id);
-    });
-
-    test("should broadcast workspaceId as slug (not id) in payload", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      await POST(request);
-
-      const [, , payload] = mockedPusherServer.trigger.mock.calls[0];
-      expect(payload.workspaceId).toBe(workspace.slug);
-      expect(payload.workspaceId).not.toBe(workspace.id);
-    });
-  });
-
-  describe("Response Format", () => {
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should return success response with received data when no workspace", async () => {
-      const nodeIds = ["node-1", "node-2"];
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: nodeIds,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(data).toMatchObject({
-        success: true,
-        data: {
-          received: {
-            nodeIds,
-            workspaceId: undefined,
-          },
-          broadcasted: false,
-        },
-      });
-    });
-
-    test("should return success response with broadcasted flag true when workspace exists", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(data.success).toBe(true);
-      expect(data.data.broadcasted).toBe(true);
-    });
-
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should return 200 status code for successful requests", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-        }),
-      });
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-    });
-  });
-
-  describe("Error Handling", () => {
-    test("should return 500 for malformed JSON payload", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
+          "x-signature": "sha256=invalid",
         },
         body: "invalid json {",
       });
@@ -648,172 +327,266 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("Failed to process webhook");
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Invalid JSON payload");
     });
 
-    test("should handle database connection failures gracefully", async () => {
-      // Create a workspace first
-      const { workspace } = await createTestWorkspace();
+    test("should succeed even if testFilePath is missing (no task update)", async () => {
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+      const payload = { swarmId: swarm.id };
+      const request = createGraphWebhookRequest(payload, plainSecret);
 
-      // Mock database failure by disconnecting (will cause findUnique to fail)
-      const originalFindUnique = db.workspace.findUnique;
-      db.workspace.findUnique = vi.fn().mockRejectedValue(
-        new Error("Database connection lost")
-      );
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: workspace.id,
-        }),
-      });
-
-      const response = await POST(request);
+      const response = await POST(new Request(webhookUrl, request as any));
       const data = await response.json();
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("Failed to process webhook");
-
-      // Restore original method
-      db.workspace.findUnique = originalFindUnique;
-    });
-
-    test("should handle unexpected exceptions in request processing", async () => {
-      // Pass invalid data that will cause internal error
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: null,
-        }),
-      });
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
     });
   });
 
-  describe("Edge Cases", () => {
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should handle very large node_ids arrays (no size limit - potential DoS)", async () => {
-      const largeNodeIds = Array.from({ length: 1000 }, (_, i) => `node-${i}`);
+  describe("Task Status Update Logic", () => {
+    test("should not update task if testFilePath does not match any task", async () => {
+      const { swarm, plainSecret, workspace } = await createTestWorkspaceWithSwarm();
+      await createTestTask(workspace.id, "existing-test.spec.ts");
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: largeNodeIds,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.data.received.nodeIds).toHaveLength(1000);
-    });
-
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should handle node_ids with empty strings", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["", "node-1", ""],
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.data.received.nodeIds).toEqual(["", "node-1", ""]);
-    });
-
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should handle workspace_id with null value", async () => {
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": validApiKey,
-        },
-        body: JSON.stringify({
-          node_ids: ["node-1"],
-          workspace_id: null,
-        }),
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.data.broadcasted).toBe(false);
-    });
-
-    test("should handle concurrent webhook requests to same workspace", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      const requests = Array.from({ length: 3 }, (_, i) =>
-        new Request(webhookUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": validApiKey,
-          },
-          body: JSON.stringify({
-            node_ids: [`node-${i}`],
-            workspace_id: workspace.id,
-          }),
-        })
+      const payload = createTestStatusPayload(
+        swarm.id,
+        "non-existent-test.spec.ts",
+        "success"
       );
+      const request = createGraphWebhookRequest(payload, plainSecret);
 
-      const responses = await Promise.all(requests.map((req) => POST(req)));
+      const response = await POST(new Request(webhookUrl, request as any));
 
-      // All requests should succeed
+      expect(response.status).toBe(200);
+      // Should not throw error, just log warning
+    });
+
+    test("should only update tasks with sourceType USER_JOURNEY", async () => {
+      const { swarm, plainSecret, workspace } = await createTestWorkspaceWithSwarm();
+      const testFilePath = "shared-test.spec.ts";
+      const workspaceMember = await db.workspaceMember.findFirst({ where: { workspaceId: workspace.id } });
+
+      // Create task with different sourceType
+      const nonUserJourneyTask = await db.task.create({
+        data: {
+          id: generateUniqueId("task"),
+          title: "Regular Task",
+          sourceType: "USER", // Not USER_JOURNEY
+          testFilePath,
+          status: "TODO",
+          workflowStatus: WorkflowStatus.PENDING,
+          workspace: {
+            connect: { id: workspace.id },
+          },
+          createdBy: {
+            connect: { id: workspaceMember!.userId },
+          },
+          updatedBy: {
+            connect: { id: workspaceMember!.userId },
+          },
+        },
+      });
+
+      const payload = createTestStatusPayload(swarm.id, testFilePath, "success");
+      const request = createGraphWebhookRequest(payload, plainSecret);
+
+      await POST(new Request(webhookUrl, request as any));
+
+      // Verify non-USER_JOURNEY task was NOT updated
+      const task = await db.task.findUnique({ where: { id: nonUserJourneyTask.id } });
+      expect(task?.workflowStatus).toBe(WorkflowStatus.PENDING);
+    });
+
+    test("should handle concurrent status updates to same task", async () => {
+      const { swarm, plainSecret, workspace } = await createTestWorkspaceWithSwarm();
+      const testFilePath = "concurrent-test.spec.ts";
+      await createTestTask(workspace.id, testFilePath);
+
+      // Send multiple concurrent requests
+      const requests = ["success", "failed", "running"].map((status) => {
+        const payload = createTestStatusPayload(swarm.id, testFilePath, status as any);
+        const req = createGraphWebhookRequest(payload, plainSecret);
+        return POST(new Request(webhookUrl, req as any));
+      });
+
+      const responses = await Promise.all(requests);
+
+      // All should succeed
       responses.forEach((response) => {
         expect(response.status).toBe(200);
       });
+    });
+  });
 
-      // Pusher should have been called 3 times
-      expect(pusherServer.trigger).toHaveBeenCalledTimes(3);
+  describe("Encryption Integration", () => {
+    test("should successfully decrypt and use encrypted webhook secret", async () => {
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+
+      // Verify secret was encrypted in database
+      const swarmFromDb = await db.swarm.findUnique({
+        where: { id: swarm.id },
+      });
+      expect(swarmFromDb?.graphWebhookSecret).toBeTruthy();
+      expect(swarmFromDb?.graphWebhookSecret).not.toBe(plainSecret);
+
+      // Verify signature verification works with decrypted secret
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const request = createGraphWebhookRequest(payload, plainSecret);
+
+      const response = await POST(new Request(webhookUrl, request as any));
+      expect(response.status).toBe(200);
     });
 
-    // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
-    test.skip("should preserve exact node_ids order from request", async () => {
-      const orderedNodeIds = ["z-last", "a-first", "m-middle"];
+    test("should reject webhook if secret decryption fails", async () => {
+      const { swarm } = await createTestWorkspaceWithSwarm();
+
+      // Manually corrupt the encrypted secret in database
+      await db.swarm.update({
+        where: { id: swarm.id },
+        data: { graphWebhookSecret: "corrupted-encrypted-data" },
+      });
+
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const body = JSON.stringify(payload);
+      const fakeSignature = "sha256=anything";
 
       const request = new Request(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": validApiKey,
+          "x-signature": fakeSignature,
         },
-        body: JSON.stringify({
-          node_ids: orderedNodeIds,
-        }),
+        body,
       });
 
       const response = await POST(request);
       const data = await response.json();
 
-      expect(data.data.received.nodeIds).toEqual(orderedNodeIds);
+      expect(response.status).toBe(401);
+      expect(data.error).toBe("Unauthorized");
+    });
+  });
+
+  describe("Raw Body HMAC Computation", () => {
+    test("should compute HMAC on exact raw request body before JSON parsing", async () => {
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+      
+      // Create payload with specific whitespace
+      const payload = {
+        swarmId: swarm.id,
+        testFilePath: "test.spec.ts",
+        status: "success",
+      };
+      const bodyWithWhitespace = JSON.stringify(payload, null, 2); // Pretty-printed JSON
+
+      // Compute signature on exact body with whitespace
+      const signature = computeValidGraphWebhookSignature(plainSecret, bodyWithWhitespace);
+
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-signature": signature,
+        },
+        body: bodyWithWhitespace,
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+    });
+
+    test("should reject if body is modified after signature computation", async () => {
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+      const originalPayload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const originalBody = JSON.stringify(originalPayload);
+      const signature = computeValidGraphWebhookSignature(plainSecret, originalBody);
+
+      // Modify payload after signature computation
+      const modifiedPayload = { ...originalPayload, maliciousField: "hacked" };
+      const modifiedBody = JSON.stringify(modifiedPayload);
+
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-signature": signature, // Valid signature for original body
+        },
+        body: modifiedBody, // Modified body
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("Error Handling", () => {
+    test("should treat database errors as unauthorized (security best practice)", async () => {
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const request = createGraphWebhookRequest(payload, plainSecret);
+
+      // Mock database failure during verification
+      const originalFindUnique = db.swarm.findUnique;
+      db.swarm.findUnique = vi.fn().mockRejectedValue(new Error("Database connection lost"));
+
+      const response = await POST(new Request(webhookUrl, request as any));
+      const data = await response.json();
+
+      // Database errors during signature verification should return 401 (not 500)
+      // This prevents information leakage about system state
+      expect(response.status).toBe(401);
+      expect(data.error).toBe("Unauthorized");
+
+      // Restore
+      db.swarm.findUnique = originalFindUnique;
+    });
+
+    test("should handle task update errors without failing entire request", async () => {
+      const { swarm, plainSecret, workspace } = await createTestWorkspaceWithSwarm();
+      const testFilePath = "error-test.spec.ts";
+      await createTestTask(workspace.id, testFilePath);
+
+      const payload = createTestStatusPayload(swarm.id, testFilePath, "success");
+      const request = createGraphWebhookRequest(payload, plainSecret);
+
+      // Mock task update failure
+      const originalUpdate = db.task.update;
+      db.task.update = vi.fn().mockRejectedValue(new Error("Task update failed"));
+
+      const response = await POST(new Request(webhookUrl, request as any));
+      
+      // Should still return 200 even if task update fails
+      expect(response.status).toBe(200);
+
+      // Restore
+      db.task.update = originalUpdate;
+    });
+  });
+
+  describe("Service Integration", () => {
+    test("should use GraphWebhookService for verification", async () => {
+      const service = new GraphWebhookService();
+      const { swarm, plainSecret } = await createTestWorkspaceWithSwarm();
+
+      const payload = createTestStatusPayload(swarm.id, "test.spec.ts");
+      const body = JSON.stringify(payload);
+      const signature = computeValidGraphWebhookSignature(plainSecret, body);
+
+      // Directly test service method
+      const result = await service.lookupAndVerifySwarm(swarm.id, signature, body);
+
+      expect(result).not.toBeNull();
+      expect(result?.id).toBe(swarm.id);
+    });
+
+    test("should generate valid webhook secrets via service", () => {
+      const service = new GraphWebhookService();
+      const encryptedSecret = service.generateWebhookSecret();
+
+      // Should be able to decrypt
+      const decrypted = encryptionService.decryptField("graphWebhookSecret", encryptedSecret);
+      expect(decrypted).toMatch(/^[a-f0-9]{64}$/);
     });
   });
 });

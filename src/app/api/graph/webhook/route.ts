@@ -1,100 +1,156 @@
-import { db } from "@/lib/db";
-import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { NextRequest, NextResponse } from "next/server";
+import { GraphWebhookService } from "@/services/swarm/GraphWebhookService";
+import { db } from "@/lib/db";
+import { WorkflowStatus } from "@prisma/client";
 
-export const fetchCache = "force-no-store";
-
-interface GraphWebhookPayload {
-  node_ids: string[];
-  workspace_id?: string;
-  depth?: number;
-  title?: string;
-  source_node_ref_id?: string;
-}
+const webhookService = new GraphWebhookService();
 
 export async function POST(request: NextRequest) {
   try {
+    // Step 1: Extract signature header and raw body
+    const signature = request.headers.get("x-signature");
+    
+    if (!signature) {
+      console.error("[GraphWebhook] Missing x-signature header");
+      return NextResponse.json(
+        { error: "Missing signature header" },
+        { status: 400 }
+      );
+    }
 
-    console.log("Graph webhook received");
-    // API Key authentication
-    const apiKey = request.headers.get('x-api-key');
-    console.log("apiKey:", apiKey);
-    console.log("process.env.GRAPH_WEBHOOK_API_KEY:", process.env.GRAPH_WEBHOOK_API_KEY);
-    if (!apiKey || apiKey !== process.env.GRAPH_WEBHOOK_API_KEY) {
-      console.error("Invalid or missing API key for graph webhook");
+    // CRITICAL: Get raw body BEFORE any JSON parsing for accurate HMAC computation
+    const rawBody = await request.text();
+    
+    // Parse payload after capturing raw body
+    let payload: {
+      swarmId?: string;
+      testFilePath?: string;
+      status?: string;
+      error?: string;
+      [key: string]: unknown;
+    };
+    
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (error) {
+      console.error("[GraphWebhook] Invalid JSON payload:", error);
+      return NextResponse.json(
+        { error: "Invalid JSON payload" },
+        { status: 400 }
+      );
+    }
+
+    // Step 2: Validate required payload fields
+    if (!payload.swarmId) {
+      console.error("[GraphWebhook] Missing swarmId in payload");
+      return NextResponse.json(
+        { error: "Missing swarmId in payload" },
+        { status: 400 }
+      );
+    }
+
+    // Step 3: Lookup swarm and verify HMAC signature
+    const swarm = await webhookService.lookupAndVerifySwarm(
+      payload.swarmId,
+      signature,
+      rawBody
+    );
+
+    if (!swarm) {
+      // Verification failed - could be invalid signature, missing secret, or swarm not found
+      console.error(
+        `[GraphWebhook] Signature verification failed for swarm: ${payload.swarmId}`
+      );
       return NextResponse.json(
         { error: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
-    const body = (await request.json()) as GraphWebhookPayload;
-    const { node_ids, workspace_id, depth, title, source_node_ref_id } = body;
+    // Signature verified successfully - process webhook event
+    console.log(`[GraphWebhook] Verified webhook for swarm: ${swarm.id}`);
 
-    console.log(body)
-
-    console.log("node_ids:", node_ids);
-    console.log("workspace_id:", workspace_id);
-
-    if (!node_ids || !Array.isArray(node_ids) || node_ids.length === 0) {
-      console.error("No node_ids provided in webhook or invalid format");
-      return NextResponse.json(
-        { error: "node_ids array is required" },
-        { status: 400 },
-      );
+    // Process the webhook payload based on event type
+    if (payload.testFilePath) {
+      // Handle test execution status update
+      await handleTestStatusUpdate(payload, swarm.workspaceId);
     }
 
-    const workspace = await db.workspace.findUnique({
+    return NextResponse.json({
+      success: true,
+      message: "Webhook processed successfully",
+    });
+  } catch (error) {
+    console.error("[GraphWebhook] Error processing webhook:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Handle test execution status updates from Graph webhook.
+ * Updates task workflowStatus based on test results.
+ */
+async function handleTestStatusUpdate(
+  payload: {
+    testFilePath?: string;
+    status?: string;
+    error?: string;
+    [key: string]: unknown;
+  },
+  workspaceId: string
+) {
+  const { testFilePath, status, error } = payload;
+
+  if (!testFilePath) {
+    return;
+  }
+
+  try {
+    // Find task by testFilePath
+    const task = await db.task.findFirst({
       where: {
-        id: workspace_id,
+        workspaceId,
+        testFilePath,
+        sourceType: "USER_JOURNEY",
       },
     });
 
-    console.log("workspace:", workspace);
-
-    // Broadcast highlight event to workspace if workspace_id is provided
-    if (workspace) {
-      try {
-        const channelName = getWorkspaceChannelName(workspace.slug);
-        const eventPayload = {
-          nodeIds: node_ids,
-          workspaceId: workspace.slug,
-          depth: depth || 0,
-          title: title || "",
-          timestamp: Date.now(),
-          sourceNodeRefId: source_node_ref_id || "",
-        };
-
-        await pusherServer.trigger(
-          channelName,
-          PUSHER_EVENTS.HIGHLIGHT_NODES,
-          eventPayload,
-        );
-
-        console.log(`Broadcasted highlight event to workspace: ${workspace_id}`);
-      } catch (error) {
-        console.error("Error broadcasting highlight event:", error);
-      }
+    if (!task) {
+      console.warn(
+        `[GraphWebhook] No task found for testFilePath: ${testFilePath}`
+      );
+      return;
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: {
-          received: {
-            nodeIds: node_ids,
-            workspaceId: workspace_id,
-          },
-          broadcasted: !!workspace_id,
-        },
+    // Map test status to workflowStatus
+    let workflowStatus: WorkflowStatus = WorkflowStatus.PENDING;
+    
+    if (status === "success" || status === "passed") {
+      workflowStatus = WorkflowStatus.COMPLETED;
+    } else if (status === "failed" || status === "error") {
+      workflowStatus = WorkflowStatus.FAILED;
+    } else if (status === "running" || status === "in_progress") {
+      workflowStatus = WorkflowStatus.IN_PROGRESS;
+    }
+
+    // Update task workflowStatus
+    await db.task.update({
+      where: { id: task.id },
+      data: {
+        workflowStatus,
       },
-      { status: 200 },
+    });
+
+    console.log(
+      `[GraphWebhook] Updated task ${task.id} workflowStatus to ${workflowStatus}`
     );
   } catch (error) {
-    console.error("Error processing Graph webhook:", error);
-    return NextResponse.json(
-      { error: "Failed to process webhook" },
-      { status: 500 },
+    console.error(
+      `[GraphWebhook] Error updating task status for ${testFilePath}:`,
+      error
     );
   }
 }
