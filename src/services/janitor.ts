@@ -19,7 +19,7 @@ import { JANITOR_ERRORS, getEnabledFieldName } from "@/lib/constants/janitor";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
-import { config as envConfig } from "@/lib/env";
+import { config as envConfig, getServiceUrl } from "@/lib/env";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
@@ -186,7 +186,7 @@ export async function createJanitorRun(
     const workflowId = envConfig.STAKWORK_JANITOR_WORKFLOW_ID;
 
     // Build webhook URL for janitor completion (recommendations endpoint)
-    const baseUrl = envConfig.STAKWORK_BASE_URL;
+    const baseUrl = getServiceUrl("STAKWORK");
     const webhookUrl = `${baseUrl.replace('/api/v1', '')}/api/janitors/webhook`;
 
     // Get swarm data from workspace
@@ -519,10 +519,6 @@ export async function acceptJanitorRecommendation(
     throw new Error(JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS);
   }
 
-  if (recommendation.status !== "PENDING") {
-    throw new Error(JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED);
-  }
-
   // Validate assignee if provided
   if (options.assigneeId) {
     const assigneeExists = await db.workspaceMember.findFirst({
@@ -551,34 +547,51 @@ export async function acceptJanitorRecommendation(
     }
   }
 
-  // Update recommendation status
-  await db.janitorRecommendation.update({
-    where: { id: recommendationId },
-    data: {
-      status: "ACCEPTED",
-      acceptedAt: new Date(),
-      acceptedById: userId,
-      metadata: {
-        ...recommendation.metadata as object,
-        assigneeId: options.assigneeId,
-        repositoryId: options.repositoryId,
-      }
-    }
-  });
+  // Use transaction to ensure atomicity of recommendation update + task creation
+  const result = await db.$transaction(async (tx) => {
+    // Atomic update: only update if status is still PENDING
+    // This prevents race conditions from concurrent acceptance attempts
+    const updateResult = await tx.janitorRecommendation.updateMany({
+      where: {
+        id: recommendationId,
+        status: "PENDING",
+      },
+      data: {
+        status: "ACCEPTED",
+        acceptedAt: new Date(),
+        acceptedById: userId,
+        metadata: {
+          ...recommendation.metadata as object,
+          assigneeId: options.assigneeId,
+          repositoryId: options.repositoryId,
+        }
+      },
+    });
 
-  // Create task and trigger Stakwork workflow using shared service
-  const taskResult = await createTaskWithStakworkWorkflow({
-    title: recommendation.title,
-    description: recommendation.description,
-    workspaceId: recommendation.workspaceId,
-    assigneeId: options.assigneeId,
-    repositoryId: options.repositoryId,
-    priority: recommendation.priority,
-    sourceType: sourceType,
-    userId: userId,
-    mode: "live",  // Use production workflow for janitor-created tasks
-    autoMergePr: options.autoMergePr,
-    janitorType: recommendation.janitorRun?.janitorType,
+    // If no rows were updated, recommendation was already processed
+    if (updateResult.count === 0) {
+      console.log(
+        `[Janitor] Recommendation already processed: ${recommendationId} by user: ${userId} at ${new Date().toISOString()}`
+      );
+      throw new Error(JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED);
+    }
+
+    // Create task and trigger Stakwork workflow using shared service
+    const taskResult = await createTaskWithStakworkWorkflow({
+      title: recommendation.title,
+      description: recommendation.description,
+      workspaceId: recommendation.workspaceId,
+      assigneeId: options.assigneeId,
+      repositoryId: options.repositoryId,
+      priority: recommendation.priority,
+      sourceType: sourceType,
+      userId: userId,
+      mode: "live",  // Use production workflow for janitor-created tasks
+      autoMergePr: options.autoMergePr,
+      janitorType: recommendation.janitorRun?.janitorType,
+    });
+
+    return taskResult;
   });
 
   // Refetch updated recommendation (we just updated it, so it must exist)
@@ -588,8 +601,8 @@ export async function acceptJanitorRecommendation(
 
   return {
     recommendation: updatedRecommendation!,
-    task: taskResult.task,
-    workflow: taskResult.stakworkResult
+    task: result.task,
+    workflow: result.stakworkResult
   };
 }
 

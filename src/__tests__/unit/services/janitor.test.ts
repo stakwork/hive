@@ -64,6 +64,7 @@ describe("Janitor Service", () => {
         count: vi.fn(),
         findUnique: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn(),
       },
       workspaceMember: {
         findFirst: vi.fn(),
@@ -975,6 +976,174 @@ describe("Janitor Service", () => {
       await expect(
         acceptJanitorRecommendation("rec-1", "user-1", { repositoryId: "non-existent" })
       ).rejects.toThrow(JANITOR_ERRORS.REPOSITORY_NOT_FOUND);
+    });
+
+    describe("race condition prevention", () => {
+      test("should prevent duplicate task creation from concurrent accepts using atomic updateMany", async () => {
+        const mockRecommendation = {
+          ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+          janitorRun: {
+            id: "run-1",
+            janitorType: "UNIT_TESTS",
+            status: "COMPLETED",
+            janitorConfig: {
+              id: "config-1",
+              workspace: {
+                id: "ws-1",
+                slug: "test-workspace",
+              },
+            },
+          },
+        };
+        const mockValidation = {
+          hasAccess: true,
+          canRead: true,
+          canWrite: true,
+          canAdmin: false,
+          workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        };
+
+        // Setup: First call succeeds, second call fails due to atomic updateMany
+        janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+        mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+
+        // Mock transaction behavior
+        let callCount = 0;
+        vi.mocked(db.$transaction).mockImplementation(async (callback: any) => {
+          callCount++;
+          if (callCount === 1) {
+            // First call: updateMany succeeds (count = 1)
+            vi.mocked(mockedDb.janitorRecommendation.updateMany).mockResolvedValueOnce({ count: 1 });
+            mockedCreateTaskWithStakworkWorkflow.mockResolvedValueOnce({
+              task: { id: "task-1", title: "Test Task" },
+              stakworkResult: {},
+              chatMessage: {},
+            } as any);
+            return callback(mockedDb);
+          } else {
+            // Second call: updateMany fails (count = 0) - recommendation already ACCEPTED
+            vi.mocked(mockedDb.janitorRecommendation.updateMany).mockResolvedValueOnce({ count: 0 });
+            return callback(mockedDb);
+          }
+        });
+
+        // Simulate concurrent calls
+        const [result1, result2] = await Promise.allSettled([
+          acceptJanitorRecommendation("rec-1", "user-1"),
+          acceptJanitorRecommendation("rec-1", "user-2"),
+        ]);
+
+        // First call should succeed
+        expect(result1.status).toBe("fulfilled");
+        if (result1.status === "fulfilled") {
+          expect(result1.value.task.id).toBe("task-1");
+        }
+
+        // Second call should fail with RECOMMENDATION_ALREADY_PROCESSED
+        expect(result2.status).toBe("rejected");
+        if (result2.status === "rejected") {
+          expect(result2.reason.message).toContain(JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED);
+        }
+
+        // Verify updateMany was called with correct WHERE clause
+        expect(mockedDb.janitorRecommendation.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              id: "rec-1",
+              status: "PENDING",
+            },
+          })
+        );
+      });
+
+      test("should log when concurrent access attempt is detected", async () => {
+        const consoleSpy = vi.spyOn(console, "log");
+        const mockRecommendation = {
+          ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+          janitorRun: {
+            id: "run-1",
+            janitorType: "UNIT_TESTS",
+            status: "COMPLETED",
+            janitorConfig: {
+              id: "config-1",
+              workspace: {
+                id: "ws-1",
+                slug: "test-workspace",
+              },
+            },
+          },
+        };
+        const mockValidation = {
+          hasAccess: true,
+          canRead: true,
+          canWrite: true,
+          canAdmin: false,
+          workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        };
+
+        janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+        mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+
+        // Mock transaction to return count = 0 (already processed)
+        vi.mocked(db.$transaction).mockImplementation(async (callback: any) => {
+          vi.mocked(mockedDb.janitorRecommendation.updateMany).mockResolvedValueOnce({ count: 0 });
+          return callback(mockedDb);
+        });
+
+        await expect(acceptJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
+          JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED
+        );
+
+        // Verify logging occurred
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[Janitor] Recommendation already processed: rec-1")
+        );
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("user: user-1")
+        );
+
+        consoleSpy.mockRestore();
+      });
+
+      test("should rollback recommendation status if task creation fails within transaction", async () => {
+        const mockRecommendation = {
+          ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+          janitorRun: {
+            id: "run-1",
+            janitorType: "UNIT_TESTS",
+            status: "COMPLETED",
+            janitorConfig: {
+              id: "config-1",
+              workspace: {
+                id: "ws-1",
+                slug: "test-workspace",
+              },
+            },
+          },
+        };
+        const mockValidation = {
+          hasAccess: true,
+          canRead: true,
+          canWrite: true,
+          canAdmin: false,
+          workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+        };
+
+        janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+        mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+
+        // Mock transaction to succeed updateMany but fail task creation
+        vi.mocked(db.$transaction).mockImplementation(async (callback: any) => {
+          vi.mocked(mockedDb.janitorRecommendation.updateMany).mockResolvedValueOnce({ count: 1 });
+          mockedCreateTaskWithStakworkWorkflow.mockRejectedValueOnce(new Error("Task creation failed"));
+          return callback(mockedDb);
+        });
+
+        await expect(acceptJanitorRecommendation("rec-1", "user-1")).rejects.toThrow("Task creation failed");
+
+        // Verify transaction was called (and would have rolled back automatically)
+        expect(db.$transaction).toHaveBeenCalled();
+      });
     });
   });
 

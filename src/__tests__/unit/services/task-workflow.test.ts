@@ -963,6 +963,173 @@ describe("createChatMessageAndTriggerStakwork (via createTaskWithStakworkWorkflo
     });
   });
 
+  describe("Duplicate Task Prevention", () => {
+    test("should return existing task when duplicate detected within 5 minutes", async () => {
+      const existingTask = TestDataFactory.createValidTask({
+        id: "existing-task-id",
+        title: "Duplicate Task",
+        status: "IN_PROGRESS" as TaskStatus,
+        createdAt: new Date(Date.now() - 2 * 60 * 1000), // 2 minutes ago
+      });
+
+      // Mock findFirst to return existing task
+      vi.mocked(mockDb.task.findFirst).mockResolvedValueOnce(existingTask as any);
+
+      const result = await createTaskWithStakworkWorkflow({
+        title: "Duplicate Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Should return existing task without creating new one
+      expect(result.task.id).toBe("existing-task-id");
+      expect(result.stakworkResult).toBeNull();
+      expect(result.chatMessage).toBeNull();
+      expect(mockDb.task.create).not.toHaveBeenCalled();
+
+      // Verify findFirst was called with correct query
+      expect(mockDb.task.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            title: "Duplicate Task",
+            workspaceId: "test-workspace-id",
+            status: "IN_PROGRESS",
+            createdAt: expect.objectContaining({
+              gte: expect.any(Date),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should log when duplicate task is detected", async () => {
+      const consoleSpy = vi.spyOn(console, "log");
+      const existingTask = TestDataFactory.createValidTask({
+        id: "existing-task-id",
+        title: "Duplicate Task",
+        status: "IN_PROGRESS" as TaskStatus,
+      });
+
+      vi.mocked(mockDb.task.findFirst).mockResolvedValueOnce(existingTask as any);
+
+      await createTaskWithStakworkWorkflow({
+        title: "Duplicate Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Verify logging occurred
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[Task Workflow] Duplicate task detected")
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("existing-task-id")
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('title: "Duplicate Task"')
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    test("should create new task when no duplicate found", async () => {
+      MockSetup.setupTaskCreationWorkflow();
+      
+      // Mock findFirst to return null (no duplicate)
+      vi.mocked(mockDb.task.findFirst).mockResolvedValueOnce(null);
+
+      const result = await createTaskWithStakworkWorkflow({
+        title: "Unique Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Should create new task
+      expect(mockDb.task.create).toHaveBeenCalled();
+      expect(result.stakworkResult).toBeDefined();
+      expect(result.chatMessage).toBeDefined();
+    });
+
+    test("should create new task when existing task is older than 5 minutes", async () => {
+      MockSetup.setupTaskCreationWorkflow();
+
+      // Mock findFirst to return null (task too old, not within 5 minute window)
+      vi.mocked(mockDb.task.findFirst).mockResolvedValueOnce(null);
+
+      const result = await createTaskWithStakworkWorkflow({
+        title: "Old Duplicate Task",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Should create new task since existing one is too old
+      expect(mockDb.task.create).toHaveBeenCalled();
+      expect(result.stakworkResult).toBeDefined();
+    });
+
+    test("should trim task title when checking for duplicates", async () => {
+      const existingTask = TestDataFactory.createValidTask({
+        id: "existing-task-id",
+        title: "Task Title",
+        status: "IN_PROGRESS" as TaskStatus,
+      });
+
+      vi.mocked(mockDb.task.findFirst).mockResolvedValueOnce(existingTask as any);
+
+      await createTaskWithStakworkWorkflow({
+        title: "  Task Title  ", // Title with leading/trailing spaces
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Should search for trimmed title
+      expect(mockDb.task.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            title: "Task Title",
+          }),
+        })
+      );
+    });
+
+    test("should only check IN_PROGRESS tasks for duplicates", async () => {
+      const existingTask = TestDataFactory.createValidTask({
+        id: "existing-task-id",
+        title: "Task Title",
+        status: "IN_PROGRESS" as TaskStatus,
+      });
+
+      vi.mocked(mockDb.task.findFirst).mockResolvedValueOnce(existingTask as any);
+
+      await createTaskWithStakworkWorkflow({
+        title: "Task Title",
+        description: "Task Description",
+        workspaceId: "test-workspace-id",
+        priority: "MEDIUM" as Priority,
+        userId: "test-user-id",
+      });
+
+      // Should only check for IN_PROGRESS status
+      expect(mockDb.task.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: "IN_PROGRESS",
+          }),
+        })
+      );
+    });
+  });
+
   describe("Mode Parameter Handling", () => {
     test("should pass mode to Stakwork workflow", async () => {
       MockSetup.setupTaskCreationWorkflow();

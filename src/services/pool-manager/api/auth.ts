@@ -1,9 +1,9 @@
-import { config } from "@/lib/env";
+import { config, getServiceUrl } from "@/lib/env";
 import { AuthBody, PoolManagerAuthResponse } from "@/types/pool-manager";
 import { EncryptionService } from "@/lib/encryption";
 
 export async function getPoolManagerApiKey(): Promise<string> {
-  const url = `${config.POOL_MANAGER_BASE_URL}/auth/login`;
+  const url = `${getServiceUrl("POOL_MANAGER")}/auth/login`;
   const body: AuthBody = {
     username: config.POOL_MANAGER_API_USERNAME!,
     password: config.POOL_MANAGER_API_PASSWORD!,

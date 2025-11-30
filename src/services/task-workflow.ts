@@ -43,6 +43,89 @@ export async function createTaskWithStakworkWorkflow(params: {
     janitorType,
   } = params;
 
+  // Check for duplicate tasks created within the last 5 minutes
+  // This prevents race conditions where multiple processes try to create the same task
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const existingTask = await db.task.findFirst({
+    where: {
+      title: title.trim(),
+      workspaceId,
+      status: TaskStatus.IN_PROGRESS,
+      createdAt: {
+        gte: fiveMinutesAgo,
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    include: {
+      assignee: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+        },
+      },
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          githubAuth: {
+            select: {
+              githubUsername: true,
+            },
+          },
+        },
+      },
+      workspace: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          swarm: {
+            select: {
+              swarmUrl: true,
+              swarmSecretAlias: true,
+              poolName: true,
+              name: true,
+              id: true,
+            },
+          },
+          repositories: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              repositoryUrl: true,
+              branch: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (existingTask) {
+    console.log(
+      `[Task Workflow] Duplicate task detected, returning existing task: ${existingTask.id} for title: "${title.trim()}" in workspace: ${workspaceId}`
+    );
+    // Return the existing task without creating stakwork workflow again
+    return {
+      task: existingTask,
+      stakworkResult: null,
+      chatMessage: null,
+    };
+  }
+
   // Step 1: Create task (replicating POST /api/tasks logic)
   const task = await db.task.create({
     data: {
