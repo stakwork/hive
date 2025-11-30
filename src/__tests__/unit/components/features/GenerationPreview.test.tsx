@@ -410,7 +410,7 @@ describe('GenerationPreview Component', () => {
       );
 
       // Verify flex column with gap exists
-      const buttonContainer = container.querySelector('.flex.flex-col.gap-3');
+      const buttonContainer = container.querySelector('.flex.flex-col.gap-4');
       expect(buttonContainer).toBeInTheDocument();
     });
 

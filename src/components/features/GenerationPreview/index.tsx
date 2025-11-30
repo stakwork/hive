@@ -50,7 +50,7 @@ export function GenerationPreview({
 
       {/* Action Bar */}
       <div className="absolute bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border/50 rounded-b-md">
-        <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-col gap-4 p-4">
           {/* Row 1: Feedback Input + Submit Button */}
           {onProvideFeedback && (
             <div className="flex items-center gap-2">
@@ -64,6 +64,7 @@ export function GenerationPreview({
               />
               <Button
                 size="sm"
+                variant="default"
                 onClick={handleProvideFeedback}
                 disabled={isLoading || !feedback.trim()}
               >
@@ -80,8 +81,9 @@ export function GenerationPreview({
               variant="outline"
               onClick={onAccept}
               disabled={isLoading}
+              className="hover:bg-green-50 dark:hover:bg-green-950/20"
             >
-              <Check className="h-4 w-4 mr-2 text-green-600" />
+              <Check className="h-4 w-4 mr-2 text-green-600 dark:text-green-500" />
               Accept
             </Button>
             <Button
@@ -89,8 +91,9 @@ export function GenerationPreview({
               variant="ghost"
               onClick={onReject}
               disabled={isLoading}
+              className="hover:bg-red-50 dark:hover:bg-red-950/20"
             >
-              <X className="h-4 w-4 mr-2 text-red-600" />
+              <X className="h-4 w-4 mr-2 text-red-600 dark:text-red-500" />
               Reject
             </Button>
           </div>
