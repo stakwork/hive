@@ -4,7 +4,7 @@ import { ServiceConfig } from "@/types";
 export const serviceConfigs: Record<string, ServiceConfig> = {
   stakwork: {
     baseURL:
-      process.env.STAKWORK_BASE_URL || "https://jobs.stakwork.com/api/v1",
+      process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
     apiKey: process.env.STAKWORK_API_KEY || "",
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
     headers: {
