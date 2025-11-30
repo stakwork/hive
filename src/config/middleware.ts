@@ -18,6 +18,17 @@ export interface RoutePolicy {
   access: Exclude<RouteAccess, "protected">;
 }
 
+/**
+ * Route access policies configuration
+ * Defines which routes require authentication and which are public
+ * 
+ * Rate Limiting:
+ * - Webhook routes: Protected by rate limiting at middleware level
+ * - Default limits: 100 requests per minute per IP for webhooks
+ * - Configure via environment variables:
+ *   - RATE_LIMIT_WEBHOOK_REQUESTS (default: 100)
+ *   - RATE_LIMIT_WEBHOOK_WINDOW (default: "1 m")
+ */
 export const ROUTE_POLICIES: ReadonlyArray<RoutePolicy> = [
   { path: "/", strategy: "exact", access: "public" },
   { path: "/auth", strategy: "prefix", access: "public" },
