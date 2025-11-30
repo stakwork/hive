@@ -1,11 +1,11 @@
 import { ServiceConfig } from "@/types";
+import { getServiceUrl, getServiceApiKey } from "@/lib/service-config";
 
 // Service endpoint configurations
 export const serviceConfigs: Record<string, ServiceConfig> = {
   stakwork: {
-    baseURL:
-      process.env.STAKWORK_BASE_URL || "https://jobs.stakwork.com/api/v1",
-    apiKey: process.env.STAKWORK_API_KEY || "",
+    baseURL: getServiceUrl("stakwork"),
+    apiKey: getServiceApiKey("stakwork"),
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
     headers: {
       "Content-Type": "application/json",
@@ -14,9 +14,8 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     },
   },
   poolManager: {
-    baseURL:
-      process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
-    apiKey: process.env.POOL_MANAGER_API_KEY || "",
+    baseURL: getServiceUrl("poolManager"),
+    apiKey: getServiceApiKey("poolManager"),
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
     headers: {
       "Content-Type": "application/json",

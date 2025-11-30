@@ -278,6 +278,29 @@ Priority: `data-testid` > semantic selectors > text selectors
 **Anti-Patterns**:
 ❌ Hardcoded selectors | ❌ Direct `page.locator()` in tests | ❌ Duplicate setup code | ❌ Real GitHub auth | ❌ Missing `waitForLoad()` | ❌ No `data-testid`
 
+### Mock Services
+
+The application supports mock implementations of external services for local development without requiring real credentials.
+
+**Enable Mock Mode:**
+```bash
+# .env.local
+USE_MOCKS="true"
+```
+
+**Supported Mock Services:**
+- **Pool Manager**: VM/pod management operations
+- **Chat/AI**: Stakwork AI responses (existing)
+- **Jarvis**: Dashboard graph data (existing)
+
+**Benefits:**
+- Instant pod claiming without real infrastructure
+- Predictable responses for testing
+- No external service credentials needed
+- Auto-creation of pools and pods on-demand
+
+**See:** `docs/POOL_MANAGER_MOCK.md` for detailed documentation
+
 ### Environment Setup
 Required environment variables (see `env.example` for complete list):
 - `DATABASE_URL` - PostgreSQL connection string
