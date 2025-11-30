@@ -26,6 +26,7 @@ if (
 // Set environment variables for integration tests using shared helper
 ensureTestEnv();
 process.env.DATABASE_URL = TEST_DATABASE_URL;
+process.env.API_TOKEN = "test-integration-token";
 
 const initialFetch = globalThis.fetch;
 const fetchState: Array<typeof globalThis.fetch> = [];
