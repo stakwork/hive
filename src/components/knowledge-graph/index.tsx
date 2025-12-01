@@ -74,6 +74,7 @@ const GraphComponentInner = ({
   const [nodesLoading, setNodesLoading] = useState(false);
   const currentRequestRef = useRef<AbortController | null>(null);
   const isInitialMountRef = useRef(true);
+  const repositoryNodes = useDataStore((s) => s.repositoryNodes);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
@@ -257,7 +258,7 @@ const GraphComponentInner = ({
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">Loading...</div>
           </div>
-        ) : (!dataInitial?.nodes || dataInitial.nodes.length === 0) ? (
+        ) : ((!dataInitial?.nodes || dataInitial.nodes.length === 0) && !repositoryNodes.length) ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">No data found</div>
           </div>

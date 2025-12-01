@@ -366,9 +366,9 @@ export const Graph = () => {
     setSimulationInProgress,
   ])
 
-  if (!simulation) {
-    return null
-  }
+  // if (!simulation) {
+  //   return null
+  // }
 
 
   console.log('activeFilterTab', activeFilterTab)

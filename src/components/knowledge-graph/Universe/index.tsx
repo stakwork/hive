@@ -29,7 +29,7 @@ const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 
       <Controls enableRotation={enableRotation} />
 
-      <>{dataInitial?.nodes?.length ? <Graph /> : null}</>
+      <Graph />
     </>
   )
 }
