@@ -78,33 +78,65 @@ export function createMockStakworkResponse(overrides = {}) {
  */
 export function setupTaskWorkflowMocks(mocks: {
   mockDb: any;
-  mockGetGithubUsernameAndPAT: any;
-  mockGetBaseUrl: any;
-  mockConfig: any;
+  mockGetGithubUsernameAndPAT?: any;
+  mockGetBaseUrl?: any;
+  mockConfig?: any;
   mockFetch: any;
 }) {
   const { mockDb, mockGetGithubUsernameAndPAT, mockGetBaseUrl, mockConfig, mockFetch } = mocks;
 
-  mockDb.chatMessage.create.mockResolvedValue(createMockChatMessage() as any);
-  mockDb.user.findUnique.mockResolvedValue(createMockUser() as any);
-  mockDb.task.create.mockResolvedValue(createMockTask() as any);
-  mockDb.task.update.mockResolvedValue({} as any);
-  mockDb.task.findFirst.mockResolvedValue(createMockTask() as any);
-  mockDb.task.findUnique.mockResolvedValue({ status: TaskStatus.TODO } as any);
+  // Only setup mocks that are provided
+  if (mockDb) {
+    if (mockDb.chatMessage?.create) {
+      mockDb.chatMessage.create.mockResolvedValue?.(createMockChatMessage() as any);
+    }
+    if (mockDb.user?.findUnique) {
+      mockDb.user.findUnique.mockResolvedValue?.(createMockUser() as any);
+    }
+    if (mockDb.task?.create) {
+      mockDb.task.create.mockResolvedValue?.(createMockTask() as any);
+    }
+    if (mockDb.task?.update) {
+      mockDb.task.update.mockResolvedValue?.({} as any);
+    }
+    if (mockDb.task?.findFirst) {
+      mockDb.task.findFirst.mockResolvedValue?.(createMockTask() as any);
+    }
+    if (mockDb.task?.findUnique) {
+      mockDb.task.findUnique.mockResolvedValue?.({ status: TaskStatus.TODO } as any);
+    }
+  }
 
-  mockGetGithubUsernameAndPAT.mockResolvedValue({
-    username: "testuser",
-    token: "github-token-123",
-  });
+  if (mockGetGithubUsernameAndPAT) {
+    mockGetGithubUsernameAndPAT.mockResolvedValue?.({
+      username: "testuser",
+      token: "github-token-123",
+    });
+  }
 
-  mockGetBaseUrl.mockReturnValue("http://localhost:3000");
+  if (mockGetBaseUrl) {
+    mockGetBaseUrl.mockReturnValue?.("http://localhost:3000");
+  }
 
-  mockConfig.STAKWORK_API_KEY = "test-stakwork-key";
-  mockConfig.STAKWORK_BASE_URL = "https://stakwork.example.com";
-  mockConfig.STAKWORK_WORKFLOW_ID = "123,456,789";
+  if (mockConfig) {
+    mockConfig.STAKWORK_API_KEY = "test-stakwork-key";
+    mockConfig.STAKWORK_BASE_URL = "https://stakwork.example.com";
+    mockConfig.STAKWORK_WORKFLOW_ID = "123,456,789";
+  }
 
-  mockFetch.mockResolvedValue({
-    ok: true,
-    json: async () => createMockStakworkResponse(),
-  } as Response);
+  if (mockFetch) {
+    mockFetch.mockResolvedValue?.({
+      ok: true,
+      json: async () => createMockStakworkResponse(),
+    } as Response);
+  }
+
+  // Return the mocks so they can be used in tests
+  return {
+    mockDb,
+    mockGetGithubUsernameAndPAT,
+    mockGetBaseUrl,
+    mockConfig,
+    mockFetch,
+  };
 }
