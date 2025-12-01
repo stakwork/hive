@@ -23,8 +23,13 @@ export async function GET(
 ) {
   try {
     const { poolName } = await context.params;
-    const { searchParams } = new URL(request.url);
+    const requestUrl = new URL(request.url);
+    const { searchParams } = requestUrl;
     const workspaceId = searchParams.get("workspaceId") || "unknown-workspace";
+
+    // Construct absolute URL for mock browser frame
+    const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    const mockBrowserFrameUrl = `${baseUrl}/api/mock/browser-frame`;
 
     // Auto-create pool if it doesn't exist - makes mock work with any workspace config
     mockPoolState.getOrCreatePool(poolName);
@@ -38,6 +43,7 @@ export async function GET(
     }
 
     // Response format matches PodWorkspace interface expected by claimPodAndGetFrontend
+    // Use absolute URL for mock browser frame so check-url can fetch it
     return NextResponse.json({
       workspace: {
         id: pod.id,
@@ -49,13 +55,18 @@ export async function GET(
         image: "mock-image",
         marked_at: "",
         password: pod.password,
-        portMappings: pod.portMappings,
+        portMappings: {
+          "3000": mockBrowserFrameUrl,
+          "3001": mockBrowserFrameUrl,
+          "5173": mockBrowserFrameUrl,
+          "8080": mockBrowserFrameUrl,
+        },
         primaryRepo: pod.repositories[0] || "",
         repoName: pod.repositories[0]?.split("/").pop() || "",
         repositories: pod.repositories,
         state: pod.state,
         subdomain: pod.id,
-        url: pod.url,
+        url: mockBrowserFrameUrl,
         usage_status: pod.usage_status,
         useDevContainer: false,
       },

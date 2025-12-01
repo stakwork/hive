@@ -19,6 +19,12 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { poolName } = await context.params;
+    const requestUrl = new URL(request.url);
+
+    // Construct absolute URL for mock browser frame
+    const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    const mockBrowserFrameUrl = `${baseUrl}/api/mock/browser-frame`;
+
     // Auto-create pool if it doesn't exist - makes mock work with any workspace config
     const pool = mockPoolState.getOrCreatePool(poolName);
 
@@ -43,7 +49,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           },
         },
         marked_at: null,
-        url: pod.url,
+        url: mockBrowserFrameUrl,
         created: pod.claimedAt?.toISOString() || new Date().toISOString(),
         repoName: pod.repositories[0] || null,
         primaryRepo: pod.repositories[0] || null,
