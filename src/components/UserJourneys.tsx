@@ -14,7 +14,6 @@ import {
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye, ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
@@ -417,24 +416,16 @@ export default function UserJourneys() {
           </div>
 
           {/* Main content area */}
-          <div className="flex" style={{ height: "calc(100vh - 250px)" }}>
-            {/* Left sidebar - placeholder for actions list */}
-            <div className={`${SIDEBAR_WIDTH} border-r bg-muted/20 p-4`}>
-              <div className="text-sm text-muted-foreground">Actions list coming soon...</div>
-            </div>
-
-            {/* Right side - video player */}
-            <div className="flex-1 flex items-center justify-center bg-black">
-              <video
-                key={activeVideoData.url}
-                controls
-                autoPlay
-                className="max-w-full max-h-full"
-                src={activeVideoData.url}
-              >
-                Your browser does not support the video tag.
-              </video>
-            </div>
+          <div className="flex items-center justify-center bg-black" style={{ height: "calc(100vh - 250px)" }}>
+            <video
+              key={activeVideoData.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-full"
+              src={activeVideoData.url}
+            >
+              Your browser does not support the video tag.
+            </video>
           </div>
         </CardContent>
       </Card>
