@@ -333,7 +333,9 @@ export function BrowserArtifactPanel({
                     </form>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {isSetup &&
+                    {/* Actions list button - only in user journey view */}
+                    {onUserJourneySave &&
+                      isSetup &&
                       isRecorderReady &&
                       (isRecording || isPlaywrightReplaying || capturedActions.length > 0) && (
                         <TooltipProvider>
@@ -358,7 +360,8 @@ export function BrowserArtifactPanel({
                           </Tooltip>
                         </TooltipProvider>
                       )}
-                    {isSetup && isRecorderReady && isRecording && (
+                    {/* Assertion mode button - only in user journey view when recording */}
+                    {onUserJourneySave && isSetup && isRecorderReady && isRecording && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -377,6 +380,30 @@ export function BrowserArtifactPanel({
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
                             {isAssertionMode ? "Disable assertion mode" : "Enable assertion mode"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {/* Record/Stop button - only in user journey view */}
+                    {onUserJourneySave && isSetup && isRecorderReady && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleRecordToggle}
+                              className={`h-8 w-8 p-0 ${
+                                isRecording
+                                  ? "bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
+                                  : "hover:bg-accent hover:text-accent-foreground"
+                              }`}
+                            >
+                              {isRecording ? <Square className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {isRecording ? "Stop recording" : "Start recording"}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
