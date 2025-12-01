@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, Mock } from "vitest";
 import { getPoolManagerApiKey } from "@/services/pool-manager/api/auth";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
 
 // Mock the config module

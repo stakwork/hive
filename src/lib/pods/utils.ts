@@ -1,4 +1,4 @@
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { parsePM2Content } from "@/utils/devContainerUtils";
 
 // Re-export constants for external use

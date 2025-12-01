@@ -23,7 +23,7 @@ vi.mock("@/lib/utils", () => ({
 }));
 
 // Import after mocks are set up
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { getS3Service } from "@/services/s3";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getBaseUrl } from "@/lib/utils";

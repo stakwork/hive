@@ -14,7 +14,7 @@ import {
 } from "@/types/stakwork";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { stakworkService } from "@/lib/service-factory";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
 import {
   pusherServer,
