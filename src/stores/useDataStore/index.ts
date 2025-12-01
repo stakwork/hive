@@ -70,6 +70,7 @@ export type DataStore = {
   resetData: () => void
   finishLoading: () => void
   setNodeTypeOrder: (order: NodeTypeOrderItem[] | null) => void
+  setRepositoryNodes: (nodes: Node[]) => void
 }
 
 const defaultData: Omit<
@@ -133,13 +134,17 @@ export const useDataStore = create<DataStore>()(
     ...defaultData,
 
     addNewNode: (data) => {
+      const repositoryNodeTypes = ['GitHubRepo', 'Commits', 'Stars', 'Issues', 'Age', 'Contributor'];
+
       const {
         dataInitial: existingData,
         nodesNormalized,
         linksNormalized,
         nodeTypeOrder,
         nodeLinksNormalized: existingNodeLinksNormalized,
+        repositoryNodes: existingRepositoryNodes,
       } = get()
+
 
       if (!data?.nodes) {
         return
@@ -149,8 +154,13 @@ export const useDataStore = create<DataStore>()(
       const normalizedLinksMap = linksNormalized || new Map()
       const nodeLinksNormalized: Record<string, string[]> = existingNodeLinksNormalized || {}
 
-      const nodesFilteredByFilters = data.nodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
+      const repositoryNodes = data.nodes.filter((node) => repositoryNodeTypes.includes(node.node_type));
+      const graphNodes = data.nodes.filter((node) => !repositoryNodeTypes.includes(node.node_type));
+
+      const nodesFilteredByFilters = graphNodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
       const newNodes: Node[] = []
+
+
 
       nodesFilteredByFilters.forEach((node) => {
         if (!normalizedNodesMap.has(node.ref_id)) {
@@ -209,6 +219,22 @@ export const useDataStore = create<DataStore>()(
       }))
 
       if (!newNodes.length && !newLinks.length) {
+        return
+      }
+
+      // Merge repository nodes (avoid duplicates)
+      const updatedRepositoryNodes = [...existingRepositoryNodes];
+      repositoryNodes.forEach((repoNode) => {
+        if (!updatedRepositoryNodes.find(existing => existing.ref_id === repoNode.ref_id)) {
+          updatedRepositoryNodes.push(repoNode);
+        }
+      });
+
+      // Check if we have any updates (graph nodes/links OR repository nodes)
+      const hasGraphUpdates = newNodes.length > 0 || newLinks.length > 0;
+      const hasRepositoryUpdates = updatedRepositoryNodes.length !== existingRepositoryNodes.length;
+
+      if (!hasGraphUpdates && !hasRepositoryUpdates) {
         return
       }
 
