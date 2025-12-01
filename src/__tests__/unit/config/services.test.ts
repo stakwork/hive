@@ -6,6 +6,10 @@ vi.mock("@/config/env", () => ({
     POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
     API_TIMEOUT: 10000,
   },
+  config: {
+    USE_MOCKS: false,
+    MOCK_BASE: "http://localhost:3000",
+  },
 }));
 
 import { getServiceConfig, serviceConfigs } from "@/config/services";
