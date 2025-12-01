@@ -16,7 +16,7 @@ import {
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock environment config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-stakwork-key",
     STAKWORK_BASE_URL: "https://test-stakwork.com",

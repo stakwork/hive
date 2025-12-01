@@ -18,7 +18,7 @@ import {
 import { db } from "@/lib/db";
 
 // Mock environment config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     POOL_MANAGER_BASE_URL: "https://pool-manager.test.com",
   },

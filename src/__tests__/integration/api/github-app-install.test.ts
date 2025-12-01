@@ -18,7 +18,7 @@ import {
 vi.mock("next-auth/next");
 
 // Mock env module with GITHUB_APP config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     GITHUB_APP_SLUG: "test-hive-app",
     GITHUB_APP_CLIENT_ID: "test_client_id_123",
@@ -603,7 +603,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
     describe("Error handling scenarios", () => {
       test.skip("should return 500 when GITHUB_APP_SLUG is not configured", async () => {
-        // This test is skipped because we're mocking @/lib/env module with GITHUB_APP_SLUG
+        // This test is skipped because we're mocking @/config/env module with GITHUB_APP_SLUG
         // In production, missing GITHUB_APP_SLUG is validated by the env.ts file
         delete process.env.GITHUB_APP_SLUG;
 

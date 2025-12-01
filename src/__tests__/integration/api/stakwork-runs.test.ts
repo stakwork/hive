@@ -27,7 +27,7 @@ vi.mock("@/lib/service-factory", () => ({
   })),
 }));
 
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_AI_GENERATION_WORKFLOW_ID: "123",
   },

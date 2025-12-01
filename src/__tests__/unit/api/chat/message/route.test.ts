@@ -29,7 +29,7 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-vi.mock("@/lib/env");
+vi.mock("@/config/env");
 vi.mock("@/services/s3");
 vi.mock("@/lib/utils", async () => {
   const actual = await vi.importActual("@/lib/utils");

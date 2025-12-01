@@ -3,7 +3,7 @@ import { POST } from "@/app/api/transcript/chunk/route";
 import { createPostRequest } from "@/__tests__/support/helpers";
 
 // Mock environment config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-stakwork-key",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
@@ -218,7 +218,7 @@ describe("POST /api/transcript/chunk - Integration Tests", () => {
   describe("Environment Variable Validation", () => {
     test("should return 500 when STAKWORK_API_KEY is missing", async () => {
       // Temporarily remove API key by mocking the config import
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalApiKey = config.STAKWORK_API_KEY;
       (config as any).STAKWORK_API_KEY = undefined;
 
@@ -242,7 +242,7 @@ describe("POST /api/transcript/chunk - Integration Tests", () => {
     });
 
     test("should return 500 when STAKWORK_TRANSCRIPT_WORKFLOW_ID is missing", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalWorkflowId = config.STAKWORK_TRANSCRIPT_WORKFLOW_ID;
       (config as any).STAKWORK_TRANSCRIPT_WORKFLOW_ID = undefined;
 
@@ -266,7 +266,7 @@ describe("POST /api/transcript/chunk - Integration Tests", () => {
     });
 
     test("should return 500 when STAKWORK_TRANSCRIPT_WORKFLOW_ID is empty string", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalWorkflowId = config.STAKWORK_TRANSCRIPT_WORKFLOW_ID;
       (config as any).STAKWORK_TRANSCRIPT_WORKFLOW_ID = "";
 
