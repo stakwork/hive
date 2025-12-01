@@ -1,9 +1,11 @@
 'use client';
 
-import { useDataStore, useRepositoryNodes } from '@/stores/useDataStore';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { useControlStore } from '@/stores/useControlStore';
+import { useDataStore } from '@/stores/useStores';
 import { Billboard, Html, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 // --------------------------------------------------------
@@ -75,6 +77,7 @@ export function RepositoryScene() {
   const contributorRefs = useRef<(THREE.Mesh | null)[]>([]);
   const fileRefs = useRef<(THREE.Mesh | null)[]>([]);
   const startTimeRef = useRef<number | null>(null);
+  const hasNavigatedRef = useRef(false);
 
   // lighting refs
   const lightRefTopLeft = useRef<THREE.DirectionalLight>(null);
@@ -83,17 +86,42 @@ export function RepositoryScene() {
 
   const [showOuterNodes, setShowOuterNodes] = useState(false);
 
-  const repositoryNodes = useRepositoryNodes();
+  const { workspace } = useWorkspace();
   const dataInitial = useDataStore((s) => s.dataInitial);
+  const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const hasGraphNodes = dataInitial?.nodes && dataInitial.nodes.length > 0;
+  const cameraControlsRef = useControlStore((s) => s.cameraControlsRef);
 
-  // position GitSee vs main graph
+
+  console.log('GitSee Debug:', {
+    repositoryNodesCount: repositoryNodes.length,
+    hasGraphNodes,
+    repositoryNodeTypes: repositoryNodes.map(n => n.node_type),
+    allDataNodes: dataInitial?.nodes?.length || 0
+  });
+
+  // position GitSee vs main graph - closer to main view
   const gitseePosition = useMemo(() => {
     if (hasGraphNodes) {
-      return new THREE.Vector3(150, 100, 0);
+      return new THREE.Vector3(80, 50, 0);
     }
     return new THREE.Vector3(0, 0, 0);
   }, [hasGraphNodes]);
+
+  // Auto-navigate to GitSee scene on initialization
+  useEffect(() => {
+    if (repositoryNodes.length > 0 && cameraControlsRef && !hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
+
+      const center = new THREE.Vector3(gitseePosition.x, gitseePosition.y, gitseePosition.z);
+      const radius = hasGraphNodes ? 120 : 80; // Larger radius if main graph exists
+
+      const sphere = new THREE.Sphere(center, radius);
+
+      // Navigate to the GitSee scene with smooth transition
+      cameraControlsRef.fitToSphere(sphere, true);
+    }
+  }, [repositoryNodes.length, cameraControlsRef, gitseePosition, hasGraphNodes]);
 
   // --------------------------------------------------------
   // DATA
@@ -116,12 +144,12 @@ export function RepositoryScene() {
       );
 
       return {
-        name: n.properties.name,
-        contributions: n.properties.contributions,
-        avatar_url: n.properties.avatar_url,
+        name: n.properties?.name || 'Unknown Contributor',
+        contributions: n.properties?.contributions || 0,
+        avatar_url: n.properties?.avatar_url,
         color: 0x6366f1,
         target,
-        texture: getAvatarTexture(0x6366f1, n.properties.avatar_url),
+        texture: getAvatarTexture(0x6366f1, n.properties?.avatar_url),
       };
     });
   }, [repositoryNodes]);
@@ -237,13 +265,22 @@ export function RepositoryScene() {
     });
   });
 
-  if (repositoryNodes.length === 0) return null;
+  // Don't render if no repository nodes available
+  if (repositoryNodes.length === 0) {
+    console.log('GitSee: No repository nodes found, not rendering repository scene');
+    return null;
+  }
 
-  const repoNode = repositoryNodes.find((n) => n.node_type === 'GitHubRepo');
-  const repoLabel =
-    typeof repoNode?.properties?.name === 'string'
-      ? repoNode.properties.name
-      : 'Repository';
+  // Get repository name from workspace data (more accurate than node properties)
+  const repoLabel = useMemo(() => {
+    if (workspace?.repositories?.[0]?.name) {
+      return workspace.repositories[0].name;
+    }
+
+    // Fallback to node properties if workspace doesn't have repository data
+    const repoNode = repositoryNodes.find((n) => n.node_type === 'GitHubRepo');
+    return repoNode?.properties?.name || 'Repository';
+  }, [workspace, repositoryNodes]);
 
   // --------------------------------------------------------
   // RENDER
@@ -251,21 +288,53 @@ export function RepositoryScene() {
 
   return (
     <group position={[gitseePosition.x, gitseePosition.y, gitseePosition.z]}>
-      {/* CENTRAL NODE */}
+      {/* CENTRAL GITHUB NODE */}
       <group ref={repoRef}>
-        <mesh scale={[0.5, 0.5, 0.5]}>
-          <icosahedronGeometry args={[1.6, 3]} />
+        {/* Background circle */}
+        <mesh scale={[1, 1, 1]}>
+          <circleGeometry args={[2.5, 64]} />
           <meshStandardMaterial
-            color={0x45c66e}
-            emissive={0x2e8b4b}
-            emissiveIntensity={0.9}
-            metalness={0.9}
-            roughness={0.2}
+            color={0x24292e}
+            emissive={0x161b22}
+            emissiveIntensity={0.3}
           />
         </mesh>
+
+        {/* GitHub icon using HTML/CSS */}
+        <Html
+          center
+          occlude={false}
+          sprite
+          transform
+          zIndexRange={[100, 101]}
+          position={[0, 0, 0.1]}
+        >
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="white"
+              style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.3))' }}
+            >
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+            </svg>
+          </div>
+        </Html>
+
+        {/* Subtle border ring */}
         <lineSegments>
-          <edgesGeometry args={[new THREE.IcosahedronGeometry(1.6, 2)]} />
-          <lineBasicMaterial color={0xffffff} transparent opacity={0.3} />
+          <edgesGeometry args={[new THREE.RingGeometry(2.4, 2.6, 64)]} />
+          <lineBasicMaterial color={0xffffff} transparent opacity={0.2} />
         </lineSegments>
       </group>
 
@@ -333,16 +402,6 @@ export function RepositoryScene() {
               maxWidth={12}
             >
               {c.name}
-            </Text>
-            <Text
-              position={[c.target.x, c.target.y - 3.1, c.target.z]}
-              fontSize={0.7}
-              color="#9ca3af"
-              anchorX="center"
-              anchorY="middle"
-              maxWidth={12}
-            >
-              {c.contributions} contributions
             </Text>
           </Billboard>
         ))

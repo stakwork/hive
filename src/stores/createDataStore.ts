@@ -161,7 +161,7 @@ export const createDataStore = () =>
           count: updatedNodes.filter((node) => filter === 'all' || node.node_type?.toLowerCase() === filter).length,
         }))
 
-        if (repositoryNodes.length) {
+        if (updatedRepositoryNodes.length) {
           set({ repositoryNodes: updatedRepositoryNodes })
         }
 
@@ -264,4 +264,3 @@ export const createDataStore = () =>
   );
 
 
-export const useRepositoryNodes = () => useDataStore((s) => s.repositoryNodes)
