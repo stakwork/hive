@@ -4,23 +4,32 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   BarChart3,
+  Blocks,
   BookOpen,
+  Bot,
+  Brain,
   CheckSquare,
+  ChevronDown,
+  ChevronRight,
   Map,
   Menu,
   Phone,
+  Server,
   Settings,
-  Users,
+  ShieldCheck,
+  TestTube2,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
@@ -44,6 +53,17 @@ export function isActiveTab(pathname: string, href: string): boolean {
   return cleanRel === cleanHref || cleanRel.startsWith(`${cleanHref}/`);
 }
 
+export function isParentActive(pathname: string, children: NavigationItem[]): boolean {
+  return children.some((child) => isActiveTab(pathname, child.href));
+}
+
+interface NavigationItem {
+  icon: any;
+  label: string;
+  href: string;
+  children?: NavigationItem[];
+}
+
 interface SidebarProps {
   user: {
     name?: string | null;
@@ -58,22 +78,45 @@ interface SidebarProps {
 }
 
 interface SidebarContentProps {
-  navigationItems: typeof baseNavigationItems;
+  navigationItems: NavigationItem[];
   pathname: string;
   handleNavigate: (href: string) => void;
   tasksWaitingForInputCount: number;
+  poolCapacityCount: string | null;
   user: SidebarProps['user'];
 }
 
-const baseNavigationItems = [
+const baseNavigationItems: NavigationItem[] = [
   { icon: PiGraphFill, label: "Graph", href: "/" },
-  { icon: CheckSquare, label: "Tasks", href: "/tasks" },
-  { icon: Map, label: "Roadmap", href: "/roadmap" },
-  { icon: BarChart3, label: "Insights", href: "/insights" },
-  { icon: Users, label: "User Journeys", href: "/user-journeys" },
-  { icon: BookOpen, label: "Learn", href: "/learn" },
-  { icon: Phone, label: "Calls", href: "/calls" },
-  // { icon: Settings, label: "Settings", href: "/settings" },
+  { icon: Server, label: "Capacity", href: "/capacity" },
+  {
+    icon: Blocks,
+    label: "Build",
+    href: "/build",
+    children: [
+      { icon: CheckSquare, label: "Tasks", href: "/tasks" },
+      { icon: Map, label: "Plan", href: "/plan" },
+    ],
+  },
+  {
+    icon: ShieldCheck,
+    label: "Protect",
+    href: "/protect",
+    children: [
+      { icon: BarChart3, label: "Recommendations", href: "/recommendations" },
+      { icon: TestTube2, label: "Testing", href: "/testing" },
+      { icon: Bot, label: "Janitors", href: "/janitors" },
+    ],
+  },
+  {
+    icon: Brain,
+    label: "Context",
+    href: "/context",
+    children: [
+      { icon: BookOpen, label: "Learn", href: "/learn" },
+      { icon: Phone, label: "Calls", href: "/calls" },
+    ],
+  },
 ];
 
 function SidebarContent({
@@ -81,8 +124,32 @@ function SidebarContent({
   pathname,
   handleNavigate,
   tasksWaitingForInputCount,
+  poolCapacityCount,
   user,
 }: SidebarContentProps) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    // Auto-expand Protect if any child route is active
+    const initialExpanded = new Set<string>();
+    navigationItems.forEach((item) => {
+      if (item.children && isParentActive(pathname, item.children)) {
+        initialExpanded.add(item.label);
+      }
+    });
+    return initialExpanded;
+  });
+
+  const toggleSection = (label: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Workspace Switcher */}
@@ -91,20 +158,32 @@ function SidebarContent({
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
           {navigationItems.map((item) => {
-            const isActive = isActiveTab(pathname, item.href);
+            const hasChildren = item.children && item.children.length > 0;
+            const isExpanded = expandedSections.has(item.label);
+            // Parent is only active if directly on parent page, not when child is active
+            const isActive = !hasChildren && isActiveTab(pathname, item.href);
             const isTasksItem = item.label === "Tasks";
             const showBadge = isTasksItem && tasksWaitingForInputCount > 0;
+            const isCapacityItem = item.label === "Capacity";
+            const showCapacityBadge = isCapacityItem && poolCapacityCount;
 
             return (
               <li key={item.href}>
                 <Button
                   data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                   variant={isActive ? "secondary" : "ghost"}
-                  className={`w-full justify-start ${isActive
-                    ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
-                    : "hover:bg-primary/5 dark:hover:bg-primary/10"
-                    }`}
-                  onClick={() => handleNavigate(item.href)}
+                  className={`w-full justify-start ${
+                    isActive
+                      ? "bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30"
+                      : "hover:bg-primary/5 dark:hover:bg-primary/10"
+                  }`}
+                  onClick={() => {
+                    if (hasChildren) {
+                      toggleSection(item.label);
+                    } else {
+                      handleNavigate(item.href);
+                    }
+                  }}
                 >
                   <item.icon className="w-4 h-4 mr-2" />
                   {item.label}
@@ -113,7 +192,51 @@ function SidebarContent({
                       {tasksWaitingForInputCount}
                     </Badge>
                   )}
+                  {showCapacityBadge && (
+                    <Badge className="ml-auto px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 border-blue-200">
+                      {poolCapacityCount}
+                    </Badge>
+                  )}
+                  {hasChildren && (
+                    <span className="ml-auto">
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                    </span>
+                  )}
                 </Button>
+                {/* Render children if expanded */}
+                {hasChildren && (
+                  <ul className={`relative mt-1 space-y-0 border-l-2 border-muted-foreground/20 ml-[19px] pl-4 ${!isExpanded ? 'hidden' : ''}`}>
+                    {item.children!.map((child) => {
+                      const isChildActive = isActiveTab(pathname, child.href);
+                      const isChildTasksItem = child.label === "Tasks";
+                      const showChildBadge = isChildTasksItem && tasksWaitingForInputCount > 0;
+                      return (
+                        <li key={child.href} className="py-1">
+                          <button
+                            data-testid={`nav-${child.label.toLowerCase().replace(/\s+/g, '-')}`}
+                            className={`w-full text-left text-sm py-1 px-2 rounded-md transition-colors flex items-center ${
+                              isChildActive
+                                ? "text-foreground font-medium bg-primary/10 dark:bg-primary/20"
+                                : "text-foreground hover:bg-primary/5 dark:hover:bg-primary/10"
+                            }`}
+                            onClick={() => handleNavigate(child.href)}
+                          >
+                            <span className="flex-1">{child.label}</span>
+                            {showChildBadge && (
+                              <Badge className="ml-2 px-1.5 py-0.5 text-xs bg-amber-100 text-amber-800 border-amber-200">
+                                {tasksWaitingForInputCount}
+                              </Badge>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </li>
             );
           })}
@@ -150,17 +273,29 @@ function SidebarContent({
 
 export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
-  const { slug: workspaceSlug, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
+  const { slug: workspaceSlug, workspace, waitingForInputCount, refreshTaskNotifications } = useWorkspace();
 
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
-  const canAccessInsights = useFeatureFlag(
+  // Fetch pool status for capacity count
+  const isPoolActive = workspace?.poolState === "COMPLETE";
+  const { poolStatus } = usePoolStatus(workspaceSlug || "", isPoolActive);
+
+  // Calculate pool capacity count (in use / total)
+  const poolCapacityCount = useMemo(() => {
+    if (!poolStatus) return null;
+    const inUse = poolStatus.usedVms || 0;
+    const total = (poolStatus.usedVms || 0) + (poolStatus.unusedVms || 0);
+    return total > 0 ? `${inUse}/${total}` : null;
+  }, [poolStatus]);
+
+  const canAccessDefense = useFeatureFlag(
     FEATURE_FLAGS.CODEBASE_RECOMMENDATION,
   );
 
   const excludeLabels: string[] = [];
-  if (!canAccessInsights) excludeLabels.push("Insights");
+  if (!canAccessDefense) excludeLabels.push("Protect");
 
   const navigationItems = baseNavigationItems.filter(
     (item) => !excludeLabels.includes(item.label),
@@ -207,6 +342,7 @@ export function Sidebar({ user }: SidebarProps) {
               pathname={pathname}
               handleNavigate={handleNavigate}
               tasksWaitingForInputCount={tasksWaitingForInputCount}
+              poolCapacityCount={poolCapacityCount}
               user={user}
             />
           </SheetContent>
@@ -214,7 +350,7 @@ export function Sidebar({ user }: SidebarProps) {
       )}
       {/* Desktop Sidebar */}
       <div
-        className={`${isTaskPage ? "hidden" : "hidden md:flex"} md:w-64 md:flex-col md:fixed md:inset-y-0 md:z-0`}
+        className={`${isTaskPage ? "hidden" : "hidden md:flex"} ${SIDEBAR_WIDTH} md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
           <SidebarContent
@@ -222,6 +358,7 @@ export function Sidebar({ user }: SidebarProps) {
             pathname={pathname}
             handleNavigate={handleNavigate}
             tasksWaitingForInputCount={tasksWaitingForInputCount}
+            poolCapacityCount={poolCapacityCount}
             user={user}
           />
         </div>

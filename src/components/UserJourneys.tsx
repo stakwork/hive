@@ -2,121 +2,129 @@
 
 import { BrowserArtifactPanel } from "@/app/w/[slug]/task/[...taskParams]/artifacts/browser";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { useToast } from "@/components/ui/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Check, Copy, ExternalLink, Loader2, Plus, Play } from "lucide-react";
+import { Archive, ExternalLink, Loader2, Plus, Play, Eye } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
+import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 
-interface UserJourneyTask {
-  id: string;
-  title: string;
-  description: string | null;
-  status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "BLOCKED";
-  workflowStatus: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ERROR" | "HALTED" | "FAILED" | null;
-  testFilePath: string | null;
-  testFileUrl: string | null;
-  stakworkProjectId: number | null;
-  createdAt: string;
-  repository?: {
-    id: string;
-    name: string;
-    repositoryUrl: string;
-    branch: string;
-  };
+interface BadgeMetadata {
+  type: "PR" | "WORKFLOW" | "LIVE";
+  text: string;
+  url?: string;
+  color: string;
+  borderColor: string;
+  icon?: "GitPullRequest" | "GitMerge" | "GitPullRequestClosed" | null;
+  hasExternalLink?: boolean;
 }
 
-interface E2eTestNode {
-  node_type: string;
-  ref_id: string;
-  properties: {
-    name: string;
-    file: string;
-    body: string;
-    test_kind: string;
-    node_key: string;
-    start: number;
-    end: number;
-    token_count: number;
+interface UserJourneyRow {
+  id: string;
+  title: string;
+  testFilePath: string | null;
+  testFileUrl: string | null;
+  createdAt: string;
+  badge: BadgeMetadata;
+  task: {
+    description: string | null;
+    status: string;
+    workflowStatus: string | null;
+    stakworkProjectId: number | null;
+    repository?: {
+      id: string;
+      name: string;
+      repositoryUrl: string;
+      branch: string;
+    };
   };
 }
 
 export default function UserJourneys() {
   const { id, slug, workspace } = useWorkspace();
-  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
-  const [userJourneyTasks, setUserJourneyTasks] = useState<UserJourneyTask[]>([]);
-  const [e2eTestsGraph, setE2eTestsGraph] = useState<E2eTestNode[]>([]);
-  const [fetchingTasks, setFetchingTasks] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [userJourneys, setUserJourneys] = useState<UserJourneyRow[]>([]);
+  const [fetchingJourneys, setFetchingJourneys] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
-  const [hidePending, setHidePending] = useState(false);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+
+  // Filter state (defaults: show pending, hide failed)
+  const [showPendingTasks, setShowPendingTasks] = useState(true);
+  const [showFailedTasks, setShowFailedTasks] = useState(false);
+
   // Replay-related state
-  const [replayTestCode, setReplayTestCode] = useState<string | null>(null); // Test code to replay
-  const [replayTitle, setReplayTitle] = useState<string | null>(null); // Title of test being replayed
-  const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null); // ID of task being replayed (for loading state)
+  const [replayTestCode, setReplayTestCode] = useState<string | null>(null);
+  const [replayTitle, setReplayTitle] = useState<string | null>(null);
+  const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null);
+  const [videoPlayerData, setVideoPlayerData] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
   const open = useModal();
 
-  const fetchUserJourneyTasks = useCallback(async () => {
-    if (!id) return;
+  const fetchUserJourneys = useCallback(async () => {
+    if (!slug) return;
 
     try {
-      setFetchingTasks(true);
-      const response = await fetch(`/api/tasks?workspaceId=${id}&sourceType=USER_JOURNEY&limit=100`);
+      setFetchingJourneys(true);
+      const response = await fetch(`/api/workspaces/${slug}/user-journeys`);
 
       if (!response.ok) {
-        console.error("Failed to fetch user journey tasks");
+        console.error("Failed to fetch user journeys");
         return;
       }
 
       const result = await response.json();
       if (result.success && result.data) {
-        setUserJourneyTasks(result.data);
+        setUserJourneys(result.data);
       }
     } catch (error) {
-      console.error("Error fetching user journey tasks:", error);
+      console.error("Error fetching user journeys:", error);
     } finally {
-      setFetchingTasks(false);
-    }
-  }, [id]);
-
-  const fetchE2eTestsFromGraph = useCallback(async () => {
-    if (!slug) return;
-
-    try {
-      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
-
-      if (!response.ok) {
-        console.error("Failed to fetch E2E tests from graph");
-        return;
-      }
-
-      const result = await response.json();
-      if (result.success && result.data && Array.isArray(result.data)) {
-        setE2eTestsGraph(result.data);
-      }
-    } catch (error) {
-      console.error("Error fetching E2E tests from graph:", error);
+      setFetchingJourneys(false);
     }
   }, [slug]);
 
   useEffect(() => {
     if (!frontend) {
-      fetchUserJourneyTasks();
-      fetchE2eTestsFromGraph();
+      fetchUserJourneys();
     }
-  }, [frontend, fetchUserJourneyTasks, fetchE2eTestsFromGraph]);
+  }, [frontend, fetchUserJourneys]);
 
-  // Filter tasks based on hidePending toggle
-  const filteredTasks = hidePending
-    ? userJourneyTasks.filter(task => task.status === "DONE")
-    : userJourneyTasks;
+  // Updated filter logic
+  const filteredRows = userJourneys.filter((row) => {
+    // Filter out pending tasks if toggled off
+    if (!showPendingTasks) {
+      const isPending = row.task.status === "IN_PROGRESS" && !row.badge.url;
+      if (isPending) return false;
+    }
+
+    // Filter out failed workflows without PR if toggled off (default)
+    if (!showFailedTasks) {
+      const isFailed = ["FAILED", "ERROR", "HALTED"].includes(row.task.workflowStatus || "");
+      const hasNoPR = !row.badge.url;
+      if (isFailed && hasNoPR) return false;
+    }
+
+    return true;
+  });
 
   // Shared function to drop the pod
   const dropPod = useCallback(
@@ -127,11 +135,9 @@ export default function UserJourneys() {
 
       try {
         if (useBeacon) {
-          // Use sendBeacon for reliable delivery when page is closing
           const blob = new Blob([JSON.stringify({})], { type: "application/json" });
           navigator.sendBeacon(dropUrl, blob);
         } else {
-          // Use regular fetch for normal scenarios
           await fetch(dropUrl, {
             method: "POST",
             headers: {
@@ -170,100 +176,81 @@ export default function UserJourneys() {
     };
   }, [frontend, dropPod]);
 
-  const handleCopyCode = async (task: UserJourneyTask) => {
-    // Find matching test in graph by file path
-    const graphTest = e2eTestsGraph.find(
-      (t) =>
-        t.properties.file === task.testFilePath ||
-        t.properties.file.endsWith(task.testFilePath || "")
-    );
-
-    // Copy test body if found, otherwise fall back to title
-    const code = graphTest?.properties.body || task.title;
-    await navigator.clipboard.writeText(code);
-    setCopiedId(task.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const getTestFileUrl = (task: UserJourneyTask): string | null => {
-    // Prefer constructing URL dynamically from repository data (source of truth)
-    if (task.repository?.repositoryUrl && task.testFilePath) {
-      const branch = task.repository.branch || 'main';
-
-      // Remove owner/repo prefix from path if present (e.g., "stakwork/hive/src/..." -> "src/...")
-      let path = task.testFilePath;
-      const pathParts = path.split('/');
-
-      // If path starts with owner/repo that matches the repository URL, strip it
-      if (pathParts.length >= 3 &&
-          task.repository.repositoryUrl.toLowerCase().includes(`/${pathParts[0]}/${pathParts[1]}`.toLowerCase())) {
-        path = pathParts.slice(2).join('/');
-      }
-
-      return `${task.repository.repositoryUrl}/blob/${branch}/${path}`;
-    }
-
-    // Fallback to stored URL only if we can't construct it
-    return task.testFileUrl;
-  };
-
-  // Fetch test code from ChatMessages (fast) or Graph API (fallback for old migrated tests)
-  const fetchTestCode = async (task: UserJourneyTask): Promise<string | null> => {
+  // Simplified test code fetching (ChatMessage first, then graph fallback)
+  const fetchTestCode = async (row: UserJourneyRow): Promise<string | null> => {
+    // Try ChatMessage first (pending tasks)
     try {
-      // Path 1: Try ChatMessages first (works for newly recorded tests)
-      // This is fast and works immediately after recording
-      const messagesResponse = await fetch(`/api/tasks/${task.id}/messages`);
-
+      const messagesResponse = await fetch(`/api/tasks/${row.id}/messages`);
       if (messagesResponse.ok) {
         const result = await messagesResponse.json();
-        if (result.success && result.data?.messages && result.data.messages.length > 0) {
-          // First message contains the test code
-          const testCode = result.data.messages[0].message;
-          if (testCode && testCode.trim().length > 0) {
-            return testCode;
+        const testCode = result.data?.messages?.[0]?.message;
+        if (testCode && testCode.trim().length > 0) {
+          console.log("[testCode] from task message", testCode);
+          return testCode;
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching from ChatMessage:", error);
+    }
+
+    // Fallback to graph (deployed tasks)
+    if (row.title) {
+      try {
+        const graphResponse = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
+        if (graphResponse.ok) {
+          const result = await graphResponse.json();
+          if (result.success && Array.isArray(result.data)) {
+            // Match by test name (properties.name)
+            const node = result.data.find((n: { properties: { name: string } }) => {
+              return n.properties.name === row.title;
+            });
+            if (node?.properties.body) {
+              console.log("[testCode] from graph", node.properties.body);
+              return node.properties.body;
+            }
           }
         }
+      } catch (error) {
+        console.error("Error fetching from graph:", error);
+      }
+    }
+
+    return null;
+  };
+
+  const handleArchive = async (row: UserJourneyRow) => {
+    try {
+      setArchivingId(row.id);
+
+      const response = await fetch(`/api/tasks/${row.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          archived: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to archive task");
       }
 
-      // Path 2: Fallback to Graph API (for old migrated tests that don't have ChatMessages)
-      // This works for tests that were created before we added ChatMessage storage
-      const graphResponse = await fetch(
-        `/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`
-      );
+      toast("Test Archived", { description: "The test has been archived successfully." });
 
-      if (!graphResponse.ok) {
-        console.error("Failed to fetch E2E tests from graph");
-        return null;
-      }
-
-      const graphResult = await graphResponse.json();
-      if (graphResult.success && graphResult.data && Array.isArray(graphResult.data)) {
-        // Find the matching test by comparing task.testFilePath with node.properties.file
-        const matchingTest = graphResult.data.find(
-          (node: any) => node.properties?.file === task.testFilePath
-        );
-
-        if (matchingTest && matchingTest.properties?.body) {
-          return matchingTest.properties.body;
-        }
-
-        console.error("No matching test found in graph for testFilePath:", task.testFilePath);
-        console.error("Available test files:", graphResult.data.map((n: any) => n.properties?.file));
-      }
-
-      return null;
+      // Refresh the list
+      await fetchUserJourneys();
     } catch (error) {
-      console.error("Error fetching test code:", error);
-      return null;
+      console.error("Error archiving test:", error);
+      toast.error("Archive Failed", { description: "Unable to archive the test. Please try again." });
+    } finally {
+      setArchivingId(null);
     }
   };
 
   const handleCloseBrowser = () => {
-    // Close iframe immediately for better UX
     setFrontend(null);
-    // Drop pod in background (no await)
     dropPod();
-    // Clear podId and replay state
     setClaimedPodId(null);
     setReplayTestCode(null);
     setReplayTitle(null);
@@ -289,12 +276,7 @@ export default function UserJourneys() {
         const errorData = await response.json();
         console.error("Failed to claim pod:", errorData);
 
-        // Show error message to user
-        toast({
-          variant: "destructive",
-          title: "Unable to Create User Journey",
-          description: "No virtual machines are available right now. Please try again later.",
-        });
+        toast.error("Unable to Create User Journey", { description: "No virtual machines are available right now. Please try again later." });
         return;
       }
 
@@ -306,40 +288,64 @@ export default function UserJourneys() {
       }
     } catch (error) {
       console.error("Error claiming pod:", error);
-      toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: "Unable to connect to the service. Please try again later.",
-      });
+      toast.error("Connection Error", { description: "Unable to connect to the service. Please try again later." });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleReplay = async (task: UserJourneyTask) => {
-    // Check if services are set up
-    if (workspace?.poolState !== "COMPLETE") {
-      open("ServicesWizard");
-      return;
-    }
-
+  const handleReplay = async (row: UserJourneyRow) => {
     try {
-      setIsReplayingTask(task.id);
+      setIsReplayingTask(row.id);
 
-      // Step 1: Fetch test code
-      const testCode = await fetchTestCode(task);
-      if (!testCode) {
-        toast({
-          variant: "destructive",
-          title: "Test Code Not Found",
-          description: "Unable to retrieve test code for this journey.",
-        });
+      // First, check if video artifact already exists
+      const messagesResponse = await fetch(`/api/tasks/${row.id}/messages`);
+      if (messagesResponse.ok) {
+        const result = await messagesResponse.json();
+        const messages = result.data?.messages || [];
+
+        // Look for MEDIA artifact with video
+        for (const message of messages) {
+          if (message.artifacts) {
+            const videoArtifact = message.artifacts.find(
+              (artifact: any) =>
+                artifact.type === "MEDIA" &&
+                artifact.content?.mediaType === "video" &&
+                artifact.content?.s3Key
+            );
+
+            if (videoArtifact) {
+              // Video artifact exists, fetch fresh presigned URL
+              try {
+                const urlResponse = await fetch(`/api/tasks/${row.id}/artifacts/${videoArtifact.id}/url`);
+                if (urlResponse.ok) {
+                  const urlData = await urlResponse.json();
+                  setVideoPlayerData({
+                    url: urlData.url,
+                    title: row.title,
+                  });
+                  setIsReplayingTask(null);
+                  return;
+                } else {
+                  console.error("Failed to fetch fresh video URL");
+                }
+              } catch (error) {
+                console.error("Error fetching fresh video URL:", error);
+              }
+            }
+          }
+        }
+      }
+
+      // No video found, check if pool is ready before executing new test
+      if (workspace?.poolState !== "COMPLETE") {
+        open("ServicesWizard");
         setIsReplayingTask(null);
         return;
       }
 
-      // Step 2: Claim a pod
-      const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
+      // No existing video, trigger new test execution
+      const response = await fetch(`/api/user-journeys/${row.id}/execute`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -347,10 +353,9 @@ export default function UserJourneys() {
       });
 
       if (!response.ok) {
-        toast({
-          variant: "destructive",
-          title: "Unable to Start Replay",
-          description: "No virtual machines are available right now. Please try again later.",
+        const error = await response.json();
+        toast.error(error.error || "Failed to start test", {
+          description: error.details || "Unable to start test execution. Please try again later.",
         });
         setIsReplayingTask(null);
         return;
@@ -358,34 +363,36 @@ export default function UserJourneys() {
 
       const data = await response.json();
 
-      // Step 3: Set state to trigger replay
-      if (data.frontend) {
-        setReplayTestCode(testCode);
-        setReplayTitle(task.title);
-        setFrontend(data.frontend);
-        setClaimedPodId(data.podId);
+      if (data.success) {
+        toast.success("Test Execution Started", {
+          description: "The test is now running on a pod. You will be notified when it completes.",
+        });
+
+        // Optionally open pod frontend for monitoring
+        if (data.data.frontendUrl) {
+          window.open(data.data.frontendUrl, "_blank");
+        }
+
+        // Refresh the list to show updated status
+        await fetchUserJourneys();
       }
     } catch (error) {
-      console.error("Error starting replay:", error);
-      toast({
-        variant: "destructive",
-        title: "Replay Error",
-        description: "An unexpected error occurred. Please try again.",
-      });
+      console.error("Error in handleReplay:", error);
+      toast.error("Replay Error", { description: "An unexpected error occurred. Please try again." });
+    } finally {
       setIsReplayingTask(null);
     }
   };
 
-  const saveUserJourneyTest = async (filename: string, generatedCode: string) => {
+  const saveUserJourneyTest = async (testName: string, generatedCode: string) => {
     try {
-      // Use filename directly as title for predictability and consistency
-      const title = filename || "User Journey Test";
+      const title = testName || "User Journey Test";
 
       const payload = {
         message: generatedCode,
         workspaceId: id,
         title: title,
-        testName: filename,
+        testName: testName,
       };
 
       const response = await fetch("/api/stakwork/user-journey", {
@@ -399,60 +406,59 @@ export default function UserJourneys() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Failed to save user journey:", errorData);
-        toast({
-          variant: "destructive",
-          title: "Failed to Save",
-          description: errorData.error || "Unable to save user journey test. Please try again.",
-        });
+        toast.error("Failed to Save", { description: errorData.error || "Unable to save user journey test. Please try again." });
         return;
       }
 
       const data = await response.json();
 
       if (data.task) {
-        toast({
-          title: "User Journey Created",
+        toast.success("User Journey Created", {
           description: `Task "${title}" has been created and is now in progress.`,
         });
 
-        // Refetch tasks to show the new one
-        await fetchUserJourneyTasks();
+        await fetchUserJourneys();
+        handleCloseBrowser();
       } else {
-        toast({
-          title: "Test Saved",
-          description: "Test was saved but task creation may have failed.",
-        });
+        toast("Test Saved", { description: "Test was saved but task creation may have failed." });
+
+        handleCloseBrowser();
       }
     } catch (error) {
       console.error("Error saving user journey:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
-      });
+      toast.error("Error", { description: "An unexpected error occurred. Please try again." });
     }
   };
 
-  const getStatusBadge = (status: string, workflowStatus: string | null) => {
-    // Use workflowStatus to show automatic updates from Stakwork webhooks
+  const renderBadge = (badge: BadgeMetadata) => {
+    // Use PRStatusBadge component for PR badges
+    if (badge.type === "PR" && badge.url) {
+      const status =
+        badge.text === "Open"
+          ? "IN_PROGRESS"
+          : badge.text === "Merged"
+            ? "DONE"
+            : badge.text === "Closed"
+              ? "CANCELLED"
+              : "IN_PROGRESS";
 
-    // Green: Workflow completed successfully (test deployed to graph)
-    if (workflowStatus === "COMPLETED") {
-      return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Merged</Badge>;
+      return <PRStatusBadge url={badge.url} status={status as "IN_PROGRESS" | "DONE" | "CANCELLED"} />;
     }
 
-    // Red: Workflow failed (permanent failure, error, or halted)
-    if (workflowStatus === "FAILED" || workflowStatus === "HALTED" || workflowStatus === "ERROR") {
-      return <Badge variant="default" className="bg-red-600 hover:bg-red-700">Failed</Badge>;
-    }
-
-    // Yellow: Workflow in progress (pending or actively running)
-    if (workflowStatus === "IN_PROGRESS" || workflowStatus === "PENDING") {
-      return <Badge variant="default" className="bg-yellow-600 hover:bg-yellow-700">In Progress</Badge>;
-    }
-
-    // Default: No workflow status yet (shouldn't happen with new code)
-    return <Badge variant="secondary">Pending</Badge>;
+    // Render other badge types (LIVE, WORKFLOW)
+    return (
+      <Badge
+        variant="secondary"
+        className="h-5"
+        style={{
+          backgroundColor: badge.color,
+          color: "white",
+          borderColor: badge.borderColor,
+        }}
+      >
+        {badge.text}
+      </Badge>
+    );
   };
 
   // Create artifacts array for BrowserArtifactPanel when frontend is defined
@@ -471,61 +477,54 @@ export default function UserJourneys() {
     : [];
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">User Journeys</h1>
-        </div>
-        {frontend ? (
-          <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
-            ✕
-          </Button>
-        ) : (
-          <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
-            <Plus className="w-4 h-4" />
-            Create User Journey
-          </Button>
-        )}
-      </div>
-
+    <div className="space-y-6">
       {frontend ? (
-        <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel
-            artifacts={browserArtifacts}
-            ide={false}
-            workspaceId={id || workspace?.id}
-            onUserJourneySave={saveUserJourneyTest}
-            externalTestCode={replayTestCode}
-            externalTestTitle={replayTitle}
-          />
+        <div className="space-y-4">
+          <div className="flex items-center justify-end">
+            <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
+              ✕
+            </Button>
+          </div>
+          <div className="h-[600px] border rounded-lg overflow-hidden">
+            <BrowserArtifactPanel
+              artifacts={browserArtifacts}
+              ide={false}
+              workspaceId={id || workspace?.id}
+              onUserJourneySave={saveUserJourneyTest}
+              externalTestCode={replayTestCode}
+              externalTestTitle={replayTitle}
+            />
+          </div>
         </div>
       ) : (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>E2E Tests</CardTitle>
-                  <CardDescription>End-to-end tests from your codebase</CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label htmlFor="hide-pending" className="text-sm text-muted-foreground cursor-pointer">
-                    Hide pending recordings
-                  </label>
-                  <Switch
-                    id="hide-pending"
-                    checked={hidePending}
-                    onCheckedChange={setHidePending}
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {fetchingTasks ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-end gap-4 mb-6">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuCheckboxItem checked={showPendingTasks} onCheckedChange={setShowPendingTasks}>
+                    Pending Tasks
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={showFailedTasks} onCheckedChange={setShowFailedTasks}>
+                    Failed Tasks
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
+                <Plus className="w-4 h-4" />
+                Create User Journey
+              </Button>
+            </div>
+              {fetchingJourneys ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : filteredTasks.length > 0 ? (
+              ) : filteredRows.length > 0 ? (
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader className="bg-muted/50">
@@ -535,66 +534,63 @@ export default function UserJourneys() {
                         <TableHead>Status</TableHead>
                         <TableHead>Test File</TableHead>
                         <TableHead>Created</TableHead>
-                        <TableHead className="w-[100px]">Actions</TableHead>
+                        <TableHead className="w-[100px]">Archive</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredTasks.map((task) => (
-                        <TableRow key={task.id}>
-                          <TableCell className="font-medium">{task.title}</TableCell>
+                      {filteredRows.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-medium">{row.title}</TableCell>
                           <TableCell>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleReplay(task)}
-                              disabled={isReplayingTask === task.id}
+                              onClick={() => handleReplay(row)}
+                              disabled={isReplayingTask === row.id}
                               className="h-8 w-8 p-0"
                               title="Replay test"
                             >
-                              {isReplayingTask === task.id ? (
+                              {isReplayingTask === row.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <Play className="h-4 w-4" />
                               )}
                             </Button>
                           </TableCell>
-                          <TableCell>{getStatusBadge(task.status, task.workflowStatus)}</TableCell>
+                          <TableCell>{renderBadge(row.badge)}</TableCell>
                           <TableCell>
-                            {task.workflowStatus === "COMPLETED" && task.testFileUrl ? (
+                            {row.testFileUrl ? (
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
+                                <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => window.open(task.testFileUrl!, "_blank")}
+                                  onClick={() => window.open(row.testFileUrl!, "_blank")}
                                   className="h-6 w-6 p-0"
                                 >
                                   <ExternalLink className="h-3 w-3" />
                                 </Button>
                               </div>
-                            ) : task.testFileUrl ? (
-                              <span className="text-sm text-muted-foreground italic">
-                                Pending merge - link not available
-                              </span>
                             ) : (
-                              <span className="text-sm text-muted-foreground">{task.testFilePath || "N/A"}</span>
+                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {new Date(task.createdAt).toLocaleDateString()}
+                            {new Date(row.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleCopyCode(task)}
+                              onClick={() => handleArchive(row)}
+                              disabled={archivingId === row.id}
                               className="h-8 w-8 p-0"
-                              title="Copy test code"
+                              title="Archive test"
                             >
-                              {copiedId === task.id ? (
-                                <Check className="h-4 w-4 text-green-500" />
+                              {archivingId === row.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                <Copy className="h-4 w-4" />
+                                <Archive className="h-4 w-4" />
                               )}
                             </Button>
                           </TableCell>
@@ -606,16 +602,39 @@ export default function UserJourneys() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">
-                    {hidePending && userJourneyTasks.length > 0
-                      ? "No merged tests to display. Toggle off to see pending recordings."
-                      : "No user journey tests yet. Create one to get started!"}
+                    {!showPendingTasks && userJourneys.length > 0
+                      ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
+                      : !showFailedTasks && userJourneys.length > 0
+                        ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
+                        : "No E2E tests yet. Create a user journey to get started!"}
                   </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
+          </CardContent>
+        </Card>
       )}
+
+      {/* Video Player Dialog */}
+      <Dialog open={!!videoPlayerData} onOpenChange={() => setVideoPlayerData(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{videoPlayerData?.title || "Test Recording"}</DialogTitle>
+          </DialogHeader>
+          <div className="w-full">
+            {videoPlayerData && (
+              <video
+                key={videoPlayerData.url}
+                controls
+                autoPlay
+                className="w-full rounded-lg"
+                src={videoPlayerData.url}
+              >
+                Your browser does not support the video tag.
+              </video>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

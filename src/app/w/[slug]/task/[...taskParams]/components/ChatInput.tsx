@@ -4,7 +4,9 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff } from "lucide-react";
+import { Mic, MicOff, Bot, Workflow, ArrowUp } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
@@ -36,6 +38,7 @@ export function ChatInput({
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isMobile = useIsMobile();
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
 
@@ -88,18 +91,38 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Allow Shift+Enter for new lines, Enter alone submits
-    if (e.key === "Enter" && !e.shiftKey) {
+    // On mobile, return key adds line breaks (user taps send button to submit)
+    // On desktop, Enter submits, Shift+Enter for new lines
+    if (e.key === "Enter" && !e.shiftKey && !isMobile) {
       e.preventDefault();
       handleSubmit(e);
     }
-    // Shift+Enter will naturally insert a new line (no preventDefault)
   };
 
+  const getModeConfig = (mode: string) => {
+    switch (mode) {
+      case "live":
+        return { icon: Workflow, label: "Workflow" };
+      case "agent":
+        return { icon: Bot, label: "Agent" };
+      default:
+        return { icon: Workflow, label: "Workflow" };
+    }
+  };
+
+  const modeConfig = getModeConfig(mode);
+  const ModeIcon = modeConfig.icon;
+
   return (
-    <div>
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>{mode}</span>
+    <div className={cn(
+      isMobile && "fixed bottom-0 left-0 right-0 z-10 bg-background border-t pt-2 pb-[env(safe-area-inset-bottom)]"
+    )}>
+      <div className={cn(
+        "flex items-center gap-2 text-sm text-muted-foreground",
+        isMobile && "px-4"
+      )}>
+        <ModeIcon className="h-4 w-4" />
+        <span>{modeConfig.label}</span>
         {!hasPrArtifact && (
           <>
             <span>|</span>
@@ -120,7 +143,10 @@ export function ChatInput({
 
       <form
         onSubmit={handleSubmit}
-        className="flex gap-2 px-6 py-4 border-t bg-background sticky bottom-0 z-10"
+        className={cn(
+          "flex items-end gap-2 px-4 py-3 md:px-6 md:py-4 border-t bg-background",
+          !isMobile && "sticky bottom-0 z-10"
+        )}
       >
         <Textarea
           ref={textareaRef}
@@ -128,7 +154,7 @@ export function ChatInput({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-1 resize-none min-h-[40px]"
+          className="flex-1 resize-none min-h-[56px] md:min-h-[40px]"
           style={{
             maxHeight: "8em", // About 5 lines
             overflowY: "auto",
@@ -138,36 +164,44 @@ export function ChatInput({
           rows={1}
           data-testid="chat-message-input"
         />
-        {isSupported && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={isListening ? "default" : "outline"}
-                  onClick={toggleListening}
-                  disabled={disabled}
-                  className="px-3"
-                >
-                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{isListening ? "Stop recording" : "Start voice input"}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        <Button
-          type="submit"
-          disabled={
-            (!input.trim() && !pendingDebugAttachment) || isLoading || disabled
-          }
-          data-testid="chat-message-submit"
-        >
-          {isLoading ? "Sending..." : "Send"}
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          {isSupported && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={isListening ? "default" : "outline"}
+                    onClick={toggleListening}
+                    disabled={disabled}
+                    className="h-11 w-11 rounded-full shrink-0"
+                  >
+                    {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isListening ? "Stop recording" : "Start voice input"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button
+            type="submit"
+            size={isMobile ? "icon" : "default"}
+            disabled={
+              (!input.trim() && !pendingDebugAttachment) || isLoading || disabled
+            }
+            className={isMobile ? "h-11 w-11 rounded-full shrink-0" : ""}
+            data-testid="chat-message-submit"
+          >
+            {isMobile ? (
+              <ArrowUp className="w-5 h-5" />
+            ) : (
+              isLoading ? "Sending..." : "Send"
+            )}
+          </Button>
+        </div>
       </form>
     </div>
   );

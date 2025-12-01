@@ -27,7 +27,7 @@ vi.mock("@/lib/service-factory", () => ({
   })),
 }));
 
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_AI_GENERATION_WORKFLOW_ID: "123",
   },
@@ -308,6 +308,388 @@ describe("Stakwork Runs API Integration Tests", () => {
       const response = await GetRuns(request);
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  describe("POST /api/stakwork/ai/generate - REQUIREMENTS", () => {
+    test("should create REQUIREMENTS run and trigger Stakwork", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/stakwork/ai/generate",
+        {
+          type: "REQUIREMENTS",
+          workspaceId: workspace.id,
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await GenerateAI(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(responseData.run).toBeDefined();
+      expect(responseData.run.type).toBe(StakworkRunType.REQUIREMENTS);
+      expect(responseData.run.status).toBe("IN_PROGRESS");
+      expect(responseData.run.featureId).toBe(feature.id);
+      expect(responseData.run.workspaceId).toBe(workspace.id);
+    });
+
+    test("should reject REQUIREMENTS run creation without feature access", async () => {
+      const { user: userA, workspace: workspaceA, feature: featureA } = 
+        await createTestWorkspaceWithFeature("ADMIN");
+      const { user: userB } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/stakwork/ai/generate",
+        {
+          type: "REQUIREMENTS",
+          workspaceId: workspaceA.id,
+          featureId: featureA.id,
+        },
+        userB
+      );
+
+      const response = await GenerateAI(request);
+
+      // Returns 500 with "Feature not found" when feature doesn't exist in user's workspace
+      expect(response.status).toBe(500);
+    });
+  });
+
+  describe("POST /api/stakwork/ai/generate - USER_STORIES", () => {
+    test("should create USER_STORIES run and trigger Stakwork", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/stakwork/ai/generate",
+        {
+          type: "USER_STORIES",
+          workspaceId: workspace.id,
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await GenerateAI(request);
+      const responseData = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(responseData.run).toBeDefined();
+      expect(responseData.run.type).toBe(StakworkRunType.USER_STORIES);
+      expect(responseData.run.status).toBe("IN_PROGRESS");
+      expect(responseData.run.featureId).toBe(feature.id);
+      expect(responseData.run.workspaceId).toBe(workspace.id);
+    });
+
+    test("should reject USER_STORIES run creation without feature access", async () => {
+      const { user: userA, workspace: workspaceA, feature: featureA } = 
+        await createTestWorkspaceWithFeature("ADMIN");
+      const { user: userB } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const request = createAuthenticatedPostRequest(
+        "http://localhost/api/stakwork/ai/generate",
+        {
+          type: "USER_STORIES",
+          workspaceId: workspaceA.id,
+          featureId: featureA.id,
+        },
+        userB
+      );
+
+      const response = await GenerateAI(request);
+
+      // Returns 500 with "Feature not found" when feature doesn't exist in user's workspace
+      expect(response.status).toBe(500);
+    });
+  });
+
+  describe("PATCH /api/stakwork/runs/[runId]/decision - REQUIREMENTS", () => {
+    test("should accept REQUIREMENTS run and update feature.requirements", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.REQUIREMENTS,
+          status: "COMPLETED",
+          result: "Generated requirements:\\n1. Security\\n2. Performance\\n3. Scalability",
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          dataType: "string",
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        {
+          decision: "ACCEPTED",
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const updatedFeature = await db.feature.findUnique({
+        where: { id: feature.id },
+      });
+
+      expect(updatedFeature?.requirements).toBe(run.result);
+    });
+
+    test("should reject REQUIREMENTS run without updating feature", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.REQUIREMENTS,
+          status: "COMPLETED",
+          result: "Generated requirements",
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          dataType: "string",
+        },
+      });
+
+      const originalRequirements = feature.requirements;
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        {
+          decision: "REJECTED",
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const updatedFeature = await db.feature.findUnique({
+        where: { id: feature.id },
+      });
+
+      expect(updatedFeature?.requirements).toBe(originalRequirements);
+    });
+
+    test("should create new run when providing feedback on REQUIREMENTS", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.REQUIREMENTS,
+          status: "COMPLETED",
+          result: "Initial requirements",
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          dataType: "string",
+        },
+      });
+
+      const feedback = "Please add more detail about security requirements";
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        {
+          decision: "FEEDBACK",
+          feedback,
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const updatedRun = await db.stakworkRun.findUnique({
+        where: { id: run.id },
+      });
+
+      expect(updatedRun?.decision).toBe(StakworkRunDecision.FEEDBACK);
+      expect(updatedRun?.feedback).toBe(feedback);
+    });
+  });
+
+  describe("PATCH /api/stakwork/runs/[runId]/decision - USER_STORIES", () => {
+    test("should accept USER_STORIES run and create user stories", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const userStories = [
+        { title: "As a user, I want to login" },
+        { title: "As a user, I want to view my profile" },
+        { title: "As a user, I want to edit my settings" },
+      ];
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.USER_STORIES,
+          status: "COMPLETED",
+          result: JSON.stringify(userStories),
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          dataType: "json",
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        {
+          decision: "ACCEPTED",
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const createdStories = await db.userStory.findMany({
+        where: { featureId: feature.id },
+        orderBy: { createdAt: "asc" },
+      });
+
+      expect(createdStories).toHaveLength(userStories.length);
+      userStories.forEach((story, index) => {
+        expect(createdStories[index].title).toBe(story.title);
+      });
+    });
+
+    test("should reject USER_STORIES run without creating stories", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const userStories = [
+        { title: "As a user, I want to login" },
+      ];
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.USER_STORIES,
+          status: "COMPLETED",
+          result: JSON.stringify(userStories),
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          dataType: "json",
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        {
+          decision: "REJECTED",
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const createdStories = await db.userStory.findMany({
+        where: { featureId: feature.id },
+      });
+
+      expect(createdStories).toHaveLength(0);
+    });
+
+    test("should create new run when providing feedback on USER_STORIES", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.USER_STORIES,
+          status: "COMPLETED",
+          result: JSON.stringify([{ title: "As a user, I want to login" }]),
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          dataType: "json",
+        },
+      });
+
+      const feedback = "Please add user stories for admin users";
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        {
+          decision: "FEEDBACK",
+          feedback,
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(200);
+
+      const updatedRun = await db.stakworkRun.findUnique({
+        where: { id: run.id },
+      });
+
+      expect(updatedRun?.decision).toBe(StakworkRunDecision.FEEDBACK);
+      expect(updatedRun?.feedback).toBe(feedback);
+    });
+
+    test("should handle invalid USER_STORIES JSON gracefully", async () => {
+      const { user, workspace, feature } = await createTestWorkspaceWithFeature("ADMIN");
+
+      const run = await db.stakworkRun.create({
+        data: {
+          type: StakworkRunType.USER_STORIES,
+          status: "COMPLETED",
+          result: "invalid json",
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          dataType: "string",
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost/api/stakwork/runs/${run.id}/decision`,
+        {
+          decision: "ACCEPTED",
+          featureId: feature.id,
+        },
+        user
+      );
+
+      const response = await UpdateDecision(request, {
+        params: Promise.resolve({ runId: run.id }),
+      });
+
+      expect(response.status).toBe(500);
     });
   });
 

@@ -2,13 +2,15 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, GitCommit, Monitor } from "lucide-react";
+import { ArrowLeft, Save, Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { cn } from "@/lib/utils";
 import type { WorkflowStatus, Artifact, ChatMessage } from "@/lib/chat";
 
 interface AgentChatAreaProps {
@@ -50,6 +52,7 @@ export function AgentChatArea({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const router = useRouter();
+  const isMobile = useIsMobile();
 
   // Check if any message has a PULL_REQUEST artifact
   const hasPrArtifact = messages.some((msg) => 
@@ -149,7 +152,7 @@ export function AgentChatArea({
                 </Button>
               )}
 
-              {/* Commit Button */}
+              {/* Save Button */}
               {onCommit && (
                 <Button
                   variant="outline"
@@ -158,8 +161,8 @@ export function AgentChatArea({
                   disabled={isCommitting}
                   className="flex-shrink-0 gap-1"
                 >
-                  <GitCommit className="w-3 h-3" />
-                  {isCommitting ? "Generating..." : "Commit"}
+                  <Save className="w-3 h-3" />
+                  {isCommitting ? "Saving..." : "Save"}
                 </Button>
               )}
             </div>
@@ -168,7 +171,10 @@ export function AgentChatArea({
       </AnimatePresence>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40">
+      <div ref={messagesContainerRef} className={cn(
+        "flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40",
+        isMobile && "pb-28"
+      )}>
         {messages.map((msg) => (
           <AgentChatMessage key={msg.id} message={msg} />
         ))}

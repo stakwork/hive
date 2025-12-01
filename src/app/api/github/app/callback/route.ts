@@ -1,80 +1,13 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
+import { checkRepositoryAccess } from "@/lib/github-oauth-repository-access";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-
-async function checkRepositoryAccess(
-  accessToken: string,
-  repoUrl: string,
-): Promise<{
-  hasAccess: boolean;
-  canPush: boolean;
-  repositoryData?: {
-    name: string;
-    full_name: string;
-    private: boolean;
-    default_branch: string;
-    permissions?: Record<string, boolean>;
-  };
-  error?: string;
-}> {
-  try {
-    // Extract owner/repo from URL
-    const githubMatch = repoUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
-    if (!githubMatch) {
-      return { hasAccess: false, canPush: false, error: "invalid_repository_url" };
-    }
-
-    const [, owner, repo] = githubMatch;
-
-    // Check if we can access the repository
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    });
-
-    if (response.ok) {
-      const repositoryData = await response.json();
-
-      // Check push permissions
-      const canPush =
-        repositoryData.permissions?.push === true ||
-        repositoryData.permissions?.admin === true ||
-        repositoryData.permissions?.maintain === true;
-
-      console.log(`Repository permissions for ${owner}/${repo}:`, repositoryData.permissions);
-      console.log(`Can push: ${canPush}`);
-
-      return {
-        hasAccess: true,
-        canPush: canPush,
-        repositoryData: {
-          name: repositoryData.name,
-          full_name: repositoryData.full_name,
-          private: repositoryData.private,
-          default_branch: repositoryData.default_branch,
-          permissions: repositoryData.permissions,
-        },
-      };
-    } else if (response.status === 404) {
-      return { hasAccess: false, canPush: false, error: "repository_not_found_or_no_access" };
-    } else if (response.status === 403) {
-      return { hasAccess: false, canPush: false, error: "access_forbidden" };
-    } else {
-      return { hasAccess: false, canPush: false, error: `http_error_${response.status}` };
-    }
-  } catch (error) {
-    console.error("Error checking repository access:", error);
-    return { hasAccess: false, canPush: false, error: "network_error" };
-  }
-}
 
 async function getAccessToken(code: string, state: string) {
   // console.log("getAccessToken", code, state);

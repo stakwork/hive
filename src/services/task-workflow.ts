@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { Priority, TaskStatus, TaskSourceType, WorkflowStatus } from "@prisma/client";
-import { config } from "@/lib/env";
+import { Priority, TaskStatus, TaskSourceType, WorkflowStatus, JanitorType } from "@prisma/client";
+import { config } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
@@ -23,6 +23,8 @@ export async function createTaskWithStakworkWorkflow(params: {
   mode?: string;
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMergePr?: boolean;
+  janitorType?: JanitorType;
 }) {
   const {
     title,
@@ -37,6 +39,8 @@ export async function createTaskWithStakworkWorkflow(params: {
     mode = "default",
     runBuild = true,
     runTestSuite = true,
+    autoMergePr,
+    janitorType,
   } = params;
 
   // Step 1: Create task (replicating POST /api/tasks logic)
@@ -54,6 +58,7 @@ export async function createTaskWithStakworkWorkflow(params: {
       runTestSuite,
       createdById: userId,
       updatedById: userId,
+      janitorType: janitorType || null,
     },
     include: {
       assignee: {
@@ -133,6 +138,7 @@ export async function createTaskWithStakworkWorkflow(params: {
     mode,
     generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
+    autoMergePr,
   });
 
   return {
@@ -291,19 +297,41 @@ export async function startTaskWorkflow(params: {
 
 /**
  * Internal function to create chat message and trigger Stakwork workflow
+ * Exported for testing purposes
  */
-async function createChatMessageAndTriggerStakwork(params: {
+export async function createChatMessageAndTriggerStakwork(params: {
   taskId: string;
   message: string;
   userId: string;
-  task: any; // Task with workspace and swarm details
+  task?: any; // Task with workspace and swarm details (optional, will be fetched if not provided)
   contextTags?: any[];
   attachments?: string[];
   mode?: string;
   generateChatTitle?: boolean;
   featureContext?: object;
+  autoMergePr?: boolean;
 }) {
-  const { taskId, message, userId, task, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext } = params;
+  const { taskId, message, userId, task: providedTask, contextTags = [], attachments = [], mode = "default", generateChatTitle, featureContext, autoMergePr } = params;
+
+  // Fetch task if not provided
+  let task = providedTask;
+  if (!task) {
+    task = await db.task.findUnique({
+      where: { id: taskId },
+      include: {
+        workspace: {
+          include: {
+            swarm: true,
+            repositories: true,
+          },
+        },
+      },
+    });
+    
+    if (!task) {
+      throw new Error("Task not found");
+    }
+  }
 
   // Create the chat message (replicating chat message creation logic)
   const chatMessage = await db.chatMessage.create({
@@ -376,6 +404,7 @@ async function createChatMessageAndTriggerStakwork(params: {
         runTestSuite: task.runTestSuite,
         repoUrl,
         baseBranch,
+        autoMergePr,
       });
 
       if (stakworkData.success) {
@@ -454,6 +483,9 @@ export async function callStakworkAPI(params: {
   runTestSuite?: boolean;
   repoUrl?: string | null;
   baseBranch?: string | null;
+  history?: Record<string, unknown>[];
+  autoMergePr?: boolean;
+  webhook?: string;
 }) {
   const {
     taskId,
@@ -475,6 +507,9 @@ export async function callStakworkAPI(params: {
     runTestSuite = true,
     repoUrl = null,
     baseBranch = null,
+    history = [],
+    autoMergePr,
+    webhook,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -483,7 +518,10 @@ export async function callStakworkAPI(params: {
 
   // Build webhook URLs (replicating the webhook URL logic)
   const appBaseUrl = getBaseUrl();
-  const webhookUrl = `${appBaseUrl}/api/chat/response`;
+  let webhookUrl = `${appBaseUrl}/api/chat/response`;
+  if (process.env.CUSTOM_WEBHOOK_URL) {
+    webhookUrl = process.env.CUSTOM_WEBHOOK_URL;
+  }
   const workflowWebhookUrl = `${appBaseUrl}/api/stakwork/webhook?task_id=${taskId}`;
 
   // Build vars object (replicating the vars structure from chat/message route)
@@ -507,11 +545,15 @@ export async function callStakworkAPI(params: {
     runTestSuite,
     repo_url: repoUrl,
     base_branch: baseBranch,
+    history,
   };
 
   // Add optional parameters if provided
   if (generateChatTitle !== undefined) {
     vars.generateChatTitle = generateChatTitle;
+  }
+  if (autoMergePr !== undefined) {
+    vars.autoMergePr = autoMergePr;
   }
   if (featureContext !== undefined) {
     vars.featureContext = featureContext;
@@ -546,20 +588,28 @@ export async function callStakworkAPI(params: {
   };
 
   // Make Stakwork API call (replicating fetch call from chat/message route)
-  const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
-    method: "POST",
-    body: JSON.stringify(stakworkPayload),
-    headers: {
-      Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
+  // If webhook is provided, use it to continue existing workflow; otherwise start new project
+  const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
 
-  if (!response.ok) {
-    console.error(`Failed to send message to Stakwork: ${response.statusText}`);
-    return { success: false, error: response.statusText };
+  try {
+    const response = await fetch(stakworkURL, {
+      method: "POST",
+      body: JSON.stringify(stakworkPayload),
+      headers: {
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`Failed to send message to Stakwork: ${response.statusText}`);
+      return { success: false, error: response.statusText };
+    }
+
+    const result = await response.json();
+    return { success: result.success, data: result.data };
+  } catch (error) {
+    console.error("Error calling Stakwork:", error);
+    return { success: false, error: String(error) };
   }
-
-  const result = await response.json();
-  return { success: result.success, data: result.data };
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
 import { updateFeature, deleteFeature } from "@/services/roadmap";
+import { getSystemAssigneeUser } from "@/lib/system-assignees";
 
 export async function GET(
   request: NextRequest,
@@ -95,7 +96,20 @@ export async function GET(
               orderBy: {
                 order: "asc",
               },
-              include: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                status: true,
+                priority: true,
+                order: true,
+                featureId: true,
+                phaseId: true,
+                deleted: true,
+                createdAt: true,
+                updatedAt: true,
+                systemAssigneeType: true,
+                dependsOnTaskIds: true,
                 assignee: {
                   select: {
                     id: true,
@@ -116,7 +130,20 @@ export async function GET(
           orderBy: {
             order: "asc",
           },
-          include: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            priority: true,
+            order: true,
+            featureId: true,
+            phaseId: true,
+            deleted: true,
+            createdAt: true,
+            updatedAt: true,
+            systemAssigneeType: true,
+            dependsOnTaskIds: true,
             assignee: {
               select: {
                 id: true,
@@ -145,10 +172,36 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // Transform system assignees to virtual user objects
+    const transformedFeature = {
+      ...feature,
+      phases: feature.phases.map(phase => ({
+        ...phase,
+        tasks: phase.tasks.map(task => {
+          if (task.systemAssigneeType && !task.assignee) {
+            return {
+              ...task,
+              assignee: getSystemAssigneeUser(task.systemAssigneeType),
+            };
+          }
+          return task;
+        }),
+      })),
+      tasks: feature.tasks.map(task => {
+        if (task.systemAssigneeType && !task.assignee) {
+          return {
+            ...task,
+            assignee: getSystemAssigneeUser(task.systemAssigneeType),
+          };
+        }
+        return task;
+      }),
+    };
+
     return NextResponse.json(
       {
         success: true,
-        data: feature,
+        data: transformedFeature,
       },
       { status: 200 }
     );

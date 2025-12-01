@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PresignedImage } from "@/components/ui/presigned-image";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceLogos } from "@/hooks/useWorkspaceLogos";
 import type { WorkspaceWithRole } from "@/types/workspace";
@@ -40,7 +41,7 @@ export function WorkspaceSwitcher({
   } = useWorkspace();
   const router = useRouter();
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
-  const { logoUrls } = useWorkspaceLogos(workspaces);
+  const { logoUrls, refetchLogo } = useWorkspaceLogos(workspaces);
 
   // Handle workspace selection with navigation
   const handleWorkspaceSelect = (targetWorkspace: WorkspaceWithRole) => {
@@ -121,10 +122,12 @@ export function WorkspaceSwitcher({
                 {loading ? (
                   <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 ) : canAccessWorkspaceLogo && logoUrls[activeWorkspace.id] ? (
-                  <img
+                  <PresignedImage
                     src={logoUrls[activeWorkspace.id]}
                     alt={activeWorkspace.name}
                     className="w-full h-full object-cover"
+                    onRefetchUrl={() => refetchLogo(activeWorkspace.id)}
+                    fallback={<Building2 className="w-4 h-4" />}
                   />
                 ) : (
                   <Building2 className="w-4 h-4" />
@@ -154,10 +157,12 @@ export function WorkspaceSwitcher({
           <DropdownMenuItem className="flex items-center gap-2 p-2 bg-accent/50">
             <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary text-primary-foreground overflow-hidden">
               {canAccessWorkspaceLogo && logoUrls[activeWorkspace.id] ? (
-                <img
+                <PresignedImage
                   src={logoUrls[activeWorkspace.id]}
                   alt={activeWorkspace.name}
                   className="w-full h-full object-cover"
+                  onRefetchUrl={() => refetchLogo(activeWorkspace.id)}
+                  fallback={<Building2 className="w-3.5 h-3.5" />}
                 />
               ) : (
                 <Building2 className="w-3.5 h-3.5" />
@@ -184,10 +189,12 @@ export function WorkspaceSwitcher({
                     >
                       <div className="flex items-center justify-center w-6 h-6 rounded-md bg-muted overflow-hidden">
                         {canAccessWorkspaceLogo && logoUrls[workspace.id] ? (
-                          <img
+                          <PresignedImage
                             src={logoUrls[workspace.id]}
                             alt={workspace.name}
                             className="w-full h-full object-cover"
+                            onRefetchUrl={() => refetchLogo(workspace.id)}
+                            fallback={<Building2 className="w-3.5 h-3.5" />}
                           />
                         ) : (
                           <Building2 className="w-3.5 h-3.5" />

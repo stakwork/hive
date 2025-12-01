@@ -31,11 +31,16 @@ vi.mock("@/lib/service-factory", () => ({
 }));
 
 // Mock environment config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_JANITOR_WORKFLOW_ID: "123",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
   },
 }));
 
@@ -325,6 +330,48 @@ describe("Janitor API Integration Tests", () => {
       const responseData = await response.json();
       expect(responseData.success).toBe(true);
       expect(responseData.run.janitorType).toBe("UNIT_TESTS");
+    });
+
+    test("POST /api/workspaces/[slug]/janitors/[type]/run - should trigger MOCK_GENERATION run when enabled", async () => {
+      const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
+
+      await db.janitorConfig.create({
+        data: {
+          workspaceId: workspace.id,
+          mockGenerationEnabled: true,
+        },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
+
+      const request = createPostRequest("http://localhost/api/test", {});
+
+      const response = await TriggerRun(request, {
+        params: Promise.resolve({
+          slug: workspace.slug,
+          type: "mock_generation"
+        }),
+      });
+
+      const responseData = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(responseData.success).toBe(true);
+      expect(responseData.run).toMatchObject({
+        janitorType: "MOCK_GENERATION",
+        status: "RUNNING",
+        triggeredBy: "MANUAL",
+      });
+
+      const runs = await db.janitorRun.findMany({
+        where: {
+          janitorConfig: {
+            workspaceId: workspace.id,
+          },
+        },
+      });
+      expect(runs).toHaveLength(1);
+      expect(runs[0].janitorType).toBe("MOCK_GENERATION");
     });
   });
 

@@ -30,9 +30,9 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-muted-foreground">Loading workspace...</p>
+        <div className="w-full h-full flex flex-col items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+          <div className="text-lg text-muted-foreground">Loading workspace...</div>
         </div>
       </div>
     );

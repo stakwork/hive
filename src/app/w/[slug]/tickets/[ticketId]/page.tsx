@@ -75,12 +75,10 @@ export default function TicketDetailPage() {
   });
 
   const handleBackClick = () => {
-    if (ticket?.phase) {
-      router.push(`/w/${workspaceSlug}/phases/${ticket.phase.id}`);
-    } else if (ticket?.feature) {
-      router.push(`/w/${workspaceSlug}/roadmap/${ticket.feature.id}`);
+    if (ticket?.feature) {
+      router.push(`/w/${workspaceSlug}/plan/${ticket.feature.id}?tab=tasks`);
     } else {
-      router.push(`/w/${workspaceSlug}/roadmap`);
+      router.push(`/w/${workspaceSlug}/plan`);
     }
   };
 
@@ -173,20 +171,9 @@ export default function TicketDetailPage() {
             <>
               <span
                 className="hover:underline cursor-pointer"
-                onClick={() => router.push(`/w/${workspaceSlug}/roadmap/${ticket.feature!.id}`)}
+                onClick={() => router.push(`/w/${workspaceSlug}/plan/${ticket.feature!.id}?tab=tasks`)}
               >
                 {ticket.feature!.title}
-              </span>
-              <span className="mx-2">›</span>
-            </>
-          )}
-          {ticket.phase && (
-            <>
-              <span
-                className="hover:underline cursor-pointer"
-                onClick={() => router.push(`/w/${workspaceSlug}/phases/${ticket.phase?.id}`)}
-              >
-                {ticket.phase?.name}
               </span>
               <span className="mx-2">›</span>
             </>

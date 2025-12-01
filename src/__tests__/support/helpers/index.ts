@@ -15,3 +15,6 @@ export * from "./request-builders";
 
 // Transaction helpers
 export * from "./transactions";
+
+// Chat message mock helpers
+export * from "./chat-message-mocks";

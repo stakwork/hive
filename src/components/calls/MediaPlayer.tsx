@@ -12,6 +12,7 @@ interface MediaPlayerProps {
   onTimeUpdate?: (currentTime: number) => void
   seekToTime?: number
   className?: string
+  showExpandButton?: boolean
 }
 
 const isVideoFile = (url: string) => /\.(mp4|webm|mov|mkv|avi)(\?.*)?$/i.test(url)
@@ -22,7 +23,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   imageUrl,
   onTimeUpdate,
   seekToTime,
-  className
+  className,
+  showExpandButton = true
 }) => {
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -244,7 +246,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
 
           {/* Fullscreen Toggle for Video */}
-          {isVideo && (
+          {isVideo && showExpandButton && (
             <Button
               variant="ghost"
               size="sm"

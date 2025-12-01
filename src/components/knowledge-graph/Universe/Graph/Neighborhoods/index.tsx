@@ -1,7 +1,5 @@
 import { useControlStore } from '@/stores/useControlStore'
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore } from '@/stores/useGraphStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { distributeNodesOnSphere } from '@/stores/useSimulationStore/utils/distributeNodesOnSphere'
 import { Billboard, Edges, Html } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'

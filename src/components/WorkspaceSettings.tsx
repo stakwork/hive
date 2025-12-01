@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -30,11 +30,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { PresignedImage } from "@/components/ui/presigned-image";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { updateWorkspaceSchema, UpdateWorkspaceInput } from "@/lib/schemas/workspace";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 
@@ -43,7 +44,6 @@ export function WorkspaceSettings() {
   const { canAdmin } = useWorkspaceAccess();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { toast } = useToast();
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -73,6 +73,24 @@ export function WorkspaceSettings() {
     fetchLogoUrl();
   }, [workspace?.logoKey, workspace?.slug]);
 
+  // Function to refetch the logo URL when the presigned URL expires
+  const refetchLogoUrl = useCallback(async (): Promise<string | null> => {
+    if (!workspace?.slug) return null;
+
+    try {
+      const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
+      if (response.ok) {
+        const data = await response.json();
+        setLogoUrl(data.presignedUrl);
+        return data.presignedUrl;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error refetching logo URL:", error);
+      return null;
+    }
+  }, [workspace?.slug]);
+
   const form = useForm<UpdateWorkspaceInput>({
     resolver: zodResolver(updateWorkspaceSchema),
     defaultValues: {
@@ -88,21 +106,13 @@ export function WorkspaceSettings() {
 
     const maxSize = 1024 * 1024;
     if (file.size > maxSize) {
-      toast({
-        variant: "destructive",
-        title: "File too large",
-        description: "Logo must be less than 1MB",
-      });
+      toast.error("File too large", { description: "Logo must be less than 1MB" });
       return;
     }
 
     const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
-      toast({
-        variant: "destructive",
-        title: "Invalid file type",
-        description: "Only JPEG, PNG, GIF, and WebP images are allowed",
-      });
+      toast.error("Invalid file type", { description: "Only JPEG, PNG, GIF, and WebP images are allowed" });
       return;
     }
 
@@ -166,20 +176,13 @@ export function WorkspaceSettings() {
         setLogoUrl(imageData.presignedUrl);
       }
 
-      toast({
-        title: "Success",
-        description: "Workspace logo updated successfully",
-      });
+      toast("Success", { description: "Workspace logo updated successfully" });
 
       // Refresh workspace data in background (no await to prevent page flash)
       refreshCurrentWorkspace();
     } catch (error) {
       console.error("Error uploading logo:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to upload logo",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to upload logo" });
     } finally {
       setIsUploadingLogo(false);
       if (fileInputRef.current) {
@@ -210,20 +213,13 @@ export function WorkspaceSettings() {
       setLogoPreview(null);
       setLogoUrl(null);
 
-      toast({
-        title: "Success",
-        description: "Workspace logo removed successfully",
-      });
+      toast("Success", { description: "Workspace logo removed successfully" });
 
       // Refresh workspace data in background (no await to prevent page flash)
       refreshCurrentWorkspace();
     } catch (error) {
       console.error("Error deleting logo:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete logo",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to delete logo" });
     } finally {
       setIsDeletingLogo(false);
     }
@@ -247,10 +243,7 @@ export function WorkspaceSettings() {
         throw new Error(result.error || "Failed to update workspace");
       }
 
-      toast({
-        title: "Success",
-        description: "Workspace updated successfully",
-      });
+      toast("Success", { description: "Workspace updated successfully" });
 
       // If slug changed, redirect to new URL
       if (result.slugChanged) {
@@ -262,11 +255,7 @@ export function WorkspaceSettings() {
       }
     } catch (error) {
       console.error("Error updating workspace:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update workspace",
-      });
+      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to update workspace" });
     } finally {
       setIsSubmitting(false);
     }
@@ -307,10 +296,10 @@ export function WorkspaceSettings() {
                                     <div className="w-full h-full flex items-center justify-center bg-muted">
                                       <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
                                     </div>
-                                  ) : (
+                                  ) : logoPreview ? (
                                     <>
                                       <img
-                                        src={logoPreview || logoUrl || ""}
+                                        src={logoPreview}
                                         alt="Logo"
                                         className="w-full h-full object-cover"
                                       />
@@ -318,7 +307,19 @@ export function WorkspaceSettings() {
                                         <Edit className="w-4 h-4 text-white" />
                                       </div>
                                     </>
-                                  )}
+                                  ) : logoUrl ? (
+                                    <>
+                                      <PresignedImage
+                                        src={logoUrl}
+                                        alt="Logo"
+                                        className="w-full h-full object-cover"
+                                        onRefetchUrl={refetchLogoUrl}
+                                      />
+                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <Edit className="w-4 h-4 text-white" />
+                                      </div>
+                                    </>
+                                  ) : null}
                                 </div>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="start">

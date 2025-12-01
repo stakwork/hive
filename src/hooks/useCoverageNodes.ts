@@ -14,15 +14,15 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob } = useCoverageStore();
+  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob, setSearch } = useCoverageStore();
   const hasInitializedIgnoreDirs = useRef(false);
   const hasInitializedUnitGlob = useRef(false);
   const hasInitializedIntegrationGlob = useRef(false);
   const hasInitializedE2eGlob = useRef(false);
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob],
-    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
+    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({
@@ -50,6 +50,7 @@ export function useCoverageNodes() {
       if (hasInitializedUnitGlob.current && unitGlob) qp.set("unitGlob", unitGlob);
       if (hasInitializedIntegrationGlob.current && integrationGlob) qp.set("integrationGlob", integrationGlob);
       if (hasInitializedE2eGlob.current && e2eGlob) qp.set("e2eGlob", e2eGlob);
+      if (search) qp.set("search", search);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
       if (!res.ok || !json.success) {
@@ -110,6 +111,7 @@ export function useCoverageNodes() {
       unitGlob,
       integrationGlob,
       e2eGlob,
+      search,
     ];
     await queryClient.prefetchQuery({
       queryKey: prefetchKey,
@@ -133,6 +135,7 @@ export function useCoverageNodes() {
         if (hasInitializedUnitGlob.current && unitGlob) qp.set("unitGlob", unitGlob);
         if (hasInitializedIntegrationGlob.current && integrationGlob) qp.set("integrationGlob", integrationGlob);
         if (hasInitializedE2eGlob.current && e2eGlob) qp.set("e2eGlob", e2eGlob);
+        if (search) qp.set("search", search);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
         if (!res.ok || !json.success) {
@@ -174,6 +177,8 @@ export function useCoverageNodes() {
     setIntegrationGlob,
     e2eGlob,
     setE2eGlob,
+    search,
+    setSearch,
     setRoot: () => {},
     setConcise: () => {},
     setStatus: () => {},

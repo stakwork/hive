@@ -18,10 +18,15 @@ import {
 } from "@/__tests__/support/helpers/stakwork-workflow-helpers";
 
 // Mock config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-stakwork-api-key",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
   },
 }));
 

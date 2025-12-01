@@ -7,6 +7,7 @@ const encryptionService = EncryptionService.getInstance();
 export interface CreateTestSwarmOptions {
   name?: string;
   swarmId?: string;
+  swarmUrl?: string;
   workspaceId: string;
   status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
@@ -20,9 +21,11 @@ export async function createTestSwarm(
   options: CreateTestSwarmOptions,
 ): Promise<Swarm> {
   const timestamp = Date.now();
+  const name = options.name || `test-swarm-${timestamp}`;
 
   const baseData = {
-    name: options.name || `test-swarm-${timestamp}`,
+    name,
+    swarmUrl: options.swarmUrl || `https://${name}.test.sphinxlabs.ai/api`,
     workspaceId: options.workspaceId,
     status: options.status || "ACTIVE",
     instanceType: options.instanceType || "XL",
@@ -47,4 +50,33 @@ export async function createTestSwarm(
   }
 
   return db.swarm.create({ data: createData });
+}
+
+/**
+ * Creates a test swarm with encrypted API key for learnings API tests
+ * This is a convenience wrapper around createTestSwarm with common defaults
+ * 
+ * @param workspaceId - The workspace ID to associate the swarm with
+ * @param options - Optional overrides for swarm configuration
+ * @returns The created swarm with encrypted API key
+ */
+export async function createTestSwarmWithEncryptedApiKey(
+  workspaceId: string,
+  options?: {
+    name?: string;
+    swarmUrl?: string;
+    apiKey?: string;
+    status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
+  }
+): Promise<Swarm> {
+  const timestamp = Date.now();
+  const uniqueId = Math.random().toString(36).substring(7);
+  
+  return createTestSwarm({
+    workspaceId,
+    name: options?.name || `test-swarm-${timestamp}-${uniqueId}`,
+    swarmUrl: options?.swarmUrl || "https://test-swarm.sphinx.chat",
+    swarmApiKey: options?.apiKey || "test-swarm-api-key",
+    status: options?.status || "ACTIVE",
+  });
 }

@@ -2,8 +2,9 @@
 
 import { Universe } from "@/components/knowledge-graph/Universe";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDataStore } from "@/stores/useDataStore";
 import { SchemaExtended, useSchemaStore } from "@/stores/useSchemaStore";
+import { useGraphStore as useGraphStoreStandalone, FilterTab } from "@/stores/useGraphStore";
+import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -80,6 +81,29 @@ export const SynchronizedGraphComponent = ({
   currentTime = 0,
   onTimeMarkerClick
 }: SynchronizedGraphComponentProps) => {
+
+  return (
+    <SynchronizedGraphComponentInner
+      endpoint={propEndpoint}
+      title={title}
+      className={className}
+      height={height}
+      width={width}
+      currentTime={currentTime}
+      onTimeMarkerClick={onTimeMarkerClick}
+    />
+  );
+};
+
+const SynchronizedGraphComponentInner = ({
+  endpoint: propEndpoint,
+  title = "Synchronized Knowledge Graph",
+  className,
+  height = "h-full",
+  width = "w-full",
+  currentTime = 0,
+  onTimeMarkerClick
+}: SynchronizedGraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
   const [markers, setMarkers] = useState<NodeWithTimestamp[]>([]);
@@ -93,6 +117,10 @@ export const SynchronizedGraphComponent = ({
   const setSchemas = useSchemaStore((s) => s.setSchemas);
   const resetData = useDataStore((s) => s.resetData);
   const dataInitial = useDataStore((s) => s.dataInitial);
+
+  // Graph filter state
+  const activeFilterTab = useGraphStoreStandalone((s) => s.activeFilterTab);
+  const setActiveFilterTab = useGraphStoreStandalone((s) => s.setActiveFilterTab);
 
   // Calculate markers from data
   const calculateMarkers = useCallback((data: { nodes: Node[], edges: Link[] }): NodeWithTimestamp[] => {
@@ -110,7 +138,7 @@ export const SynchronizedGraphComponent = ({
         const matchingEdge = edgesWithStart.find((ed) => node.ref_id === ed.source || node.ref_id === ed.target);
         return { ...node, start: matchingEdge?.start || 0 } as NodeWithTimestamp;
       })
-      .filter((node) => node && node.node_type !== 'Clip' && node.node_type !== 'Episode' && node.node_type !== 'Show');
+      .filter((node) => node && node.node_type !== 'Clip' && node.node_type !== 'Episode' && node.node_type !== 'Call' && node.node_type !== 'Show');
 
     return markers;
   }, []);
@@ -271,6 +299,112 @@ export const SynchronizedGraphComponent = ({
 
     fetchNodes();
   }, [workspaceId, addNewNode, resetData, propEndpoint, calculateMarkers]);
+
+  // Fetch data based on active filter tab
+  const fetchFilteredData = useCallback(async (tab: FilterTab) => {
+    if (!workspaceId) return;
+
+    resetData();
+    setNodesLoading(true);
+
+    try {
+      let requestUrl: string;
+
+      switch (tab) {
+        case 'all':
+          // Use existing graph/search/latest endpoint
+          requestUrl = propEndpoint
+            ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}`
+            : `/api/swarm/jarvis/nodes?id=${workspaceId}`;
+          break;
+
+        case 'code':
+          // Filter for code-related nodes
+          const codeNodeTypes = JSON.stringify(['Function', 'Endpoint', 'Page', 'Datamodel']);
+          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search`)}&node_type=${encodeURIComponent(codeNodeTypes)}`;
+          break;
+
+        case 'comms':
+          // Filter for communication nodes
+          const commsNodeTypes = JSON.stringify(['Episode', 'Call', 'Message']);
+          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`graph/search`)}&node_type=${encodeURIComponent(commsNodeTypes)}`;
+          break;
+
+        case 'tasks':
+          // Fetch latest 10 tasks from tasks API
+          requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=10`;
+          const tasksResponse = await fetch(requestUrl);
+          const tasksData = await tasksResponse.json();
+
+          if (tasksData.success && Array.isArray(tasksData.data)) {
+            // Transform tasks to graph nodes
+            const taskNodes = tasksData.data.map((task: any) => ({
+              ref_id: task.id,
+              node_type: 'Task',
+              name: task.title,
+              label: task.title,
+              properties: {
+                name: task.title,
+                description: task.description,
+                status: task.status,
+                priority: task.priority,
+              } as any,
+              x: 0,
+              y: 0,
+              z: 0,
+              edge_count: 0,
+            }));
+
+            addNewNode({
+              nodes: taskNodes,
+              edges: [],
+            });
+          }
+          setNodesLoading(false);
+          return;
+
+        default:
+          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}`;
+      }
+
+      const response = await fetch(requestUrl);
+      const data: ApiResponse = await response.json();
+
+      if (!data.success) throw new Error("Failed to fetch filtered data");
+
+      if (data.data?.nodes && data.data.nodes.length > 0) {
+        const nodesWithPosition = data.data.nodes.map((node: Node) => ({
+          ...node,
+          x: 0,
+          y: 0,
+          z: 0,
+          edge_count: 0,
+        }));
+
+        addNewNode({
+          nodes: nodesWithPosition,
+          edges: data.data.edges || [],
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load filtered data:", err);
+    } finally {
+      setNodesLoading(false);
+    }
+  }, [workspaceId, resetData, addNewNode, propEndpoint]);
+
+  // Handle filter tab changes
+  const handleTabChange = useCallback((tab: FilterTab) => {
+    setActiveFilterTab(tab);
+    fetchFilteredData(tab);
+  }, [setActiveFilterTab, fetchFilteredData]);
+
+  // Load initial data when filter tab changes
+  useEffect(() => {
+    if (activeFilterTab) {
+      fetchFilteredData(activeFilterTab);
+    }
+  }, []);
 
   return (
     <div

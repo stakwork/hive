@@ -227,7 +227,7 @@ function Navigation() {
       )}
 
       {permissions.canManageProducts && (
-        <Link href={`/w/${slug}/roadmap`}>Roadmap</Link>
+        <Link href={`/w/${slug}/plan`}>Plan</Link>
       )}
 
       {canAdmin && (

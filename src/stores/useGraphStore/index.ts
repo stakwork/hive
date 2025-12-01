@@ -18,6 +18,28 @@ export type GraphStyle = 'sphere' | 'force' | 'split'
 
 export const graphStyles: GraphStyle[] = ['sphere', 'force', 'split']
 
+export type CameraPosition = {
+  x: number
+  y: number
+  z: number
+}
+
+export type CameraTarget = {
+  x: number
+  y: number
+  z: number
+}
+
+export type FilterTab = 'all' | 'code' | 'comms' | 'tasks' | 'concepts'
+
+export type HighlightChunk = {
+  chunkId: string
+  title: string
+  ref_ids: string[]
+  timestamp: number
+  sourceNodeRefId?: string
+}
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -45,6 +67,13 @@ export type GraphStore = {
   followersFilter: string
   isolatedView: string
   dateRangeFilter: string
+  cameraPosition: CameraPosition | null
+  cameraTarget: CameraTarget | null
+  webhookHighlightNodes: string[]
+  highlightChunks: HighlightChunk[]
+  highlightTimestamp: number | null
+  activeFilterTab: FilterTab
+  webhookHighlightDepth: number
   setDisableCameraRotation: (rotation: boolean) => void
   setScrollEventsDisabled: (rotation: boolean) => void
   setData: (data: GraphData) => void
@@ -72,6 +101,14 @@ export type GraphStore = {
   setDateRangeFilter: (filter: string) => void
   setIsolatedView: (isolatedView: string) => void
   setNeighbourhoods: (neighbourhoods: Neighbourhood[]) => void
+  setCameraPosition: (position: CameraPosition | null) => void
+  setCameraTarget: (target: CameraTarget | null) => void
+  saveCameraState: (position: CameraPosition, target: CameraTarget) => void
+  setWebhookHighlightNodes: (nodeIds: string[], depth?: number) => void
+  addHighlightChunk: (title: string, ref_ids: string[], sourceNodeRefId?: string) => string
+  removeHighlightChunk: (chunkId: string) => void
+  clearWebhookHighlights: () => void
+  setActiveFilterTab: (tab: FilterTab) => void
 }
 
 const defaultData: Omit<
@@ -106,6 +143,14 @@ const defaultData: Omit<
   | 'setDateRangeFilter'
   | 'setIsolatedView'
   | 'setNeighbourhoods'
+  | 'setCameraPosition'
+  | 'setCameraTarget'
+  | 'saveCameraState'
+  | 'setWebhookHighlightNodes'
+  | 'addHighlightChunk'
+  | 'removeHighlightChunk'
+  | 'clearWebhookHighlights'
+  | 'setActiveFilterTab'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -133,6 +178,13 @@ const defaultData: Omit<
   isolatedView: '',
   neighbourhoods: [],
   selectedNodeType: '',
+  cameraPosition: null,
+  cameraTarget: null,
+  webhookHighlightNodes: [],
+  highlightChunks: [],
+  highlightTimestamp: null,
+  activeFilterTab: 'all',
+  webhookHighlightDepth: 0,
 }
 
 export const useGraphStore = create<GraphStore>()((set, get) => ({
@@ -239,6 +291,47 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
   setDateRangeFilter: (filter) => set({ dateRangeFilter: filter }),
   setIsolatedView: (isolatedView) => set({ isolatedView }),
   setNeighbourhoods: (neighbourhoods) => set({ neighbourhoods }),
+  setCameraPosition: (cameraPosition) => set({ cameraPosition }),
+  setCameraTarget: (cameraTarget) => set({ cameraTarget }),
+  saveCameraState: (position, target) => set({
+    cameraPosition: position,
+    cameraTarget: target
+  }),
+  setWebhookHighlightNodes: (nodeIds: string[], depth = 1) => set({
+    webhookHighlightNodes: nodeIds,
+    highlightTimestamp: Date.now(),
+    webhookHighlightDepth: depth
+  }),
+  addHighlightChunk: (title: string, ref_ids: string[], sourceNodeRefId?: string) => {
+    const chunkId = crypto.randomUUID()
+    const chunk: HighlightChunk = {
+      chunkId,
+      title,
+      ref_ids,
+      sourceNodeRefId,
+      timestamp: Date.now()
+    }
+    const { highlightChunks } = get()
+    set({
+      highlightChunks: [...highlightChunks, chunk],
+      highlightTimestamp: Date.now()
+    })
+    return chunkId
+  },
+  removeHighlightChunk: (chunkId: string) => {
+    const { highlightChunks } = get()
+    const updatedChunks = highlightChunks.filter(chunk => chunk.chunkId !== chunkId)
+    set({
+      highlightChunks: updatedChunks,
+      highlightTimestamp: updatedChunks.length > 0 ? Date.now() : null
+    })
+  },
+  clearWebhookHighlights: () => set({
+    webhookHighlightNodes: [],
+    highlightChunks: [],
+    highlightTimestamp: null
+  }),
+  setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
 }))
 
 export const useSelectedNode = () => useGraphStore((s) => s.selectedNode)

@@ -25,7 +25,7 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {},
 }));
 vi.mock("@/lib/auth/nextauth", () => ({
@@ -48,7 +48,7 @@ global.fetch = vi.fn();
 // Import mocked modules
 const { getServerSession: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
-const { config: mockConfig } = await import("@/lib/env");
+const { config: mockConfig } = await import("@/config/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
 const { getS3Service: mockGetS3Service } = await import("@/services/s3");
 const { transformSwarmUrlToRepo2Graph: mockTransformSwarmUrlToRepo2Graph } = await import("@/lib/utils/swarm");
@@ -112,7 +112,7 @@ describe("POST /api/chat/message", () => {
     mockDb.chatMessage.create.mockResolvedValue(mockChatMessage as any);
     mockDb.chatMessage.findMany.mockResolvedValue([]);
     mockDb.task.update.mockResolvedValue({} as any);
-    mockDb.workspace.findUnique.mockResolvedValue({ slug: 'test-workspace' } as any);
+    mockDb.workspace.findUnique.mockResolvedValue({ slug: "test-workspace" } as any);
 
     mockGetGithubUsernameAndPAT.mockResolvedValue({
       username: "testuser",
@@ -206,17 +206,19 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should accept empty message if there are artifacts", async () => {
-      const artifacts = [{
-        type: ArtifactType.CODE,
-        content: { code: "console.log('test')" },
-      }];
+      const artifacts = [
+        {
+          type: ArtifactType.CODE,
+          content: { code: "console.log('test')" },
+        },
+      ];
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
-        body: JSON.stringify({ 
-          taskId: mockTaskId, 
-          message: "", 
-          artifacts 
+        body: JSON.stringify({
+          taskId: mockTaskId,
+          message: "",
+          artifacts,
         }),
       });
 
@@ -342,17 +344,19 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should create message with artifacts", async () => {
-      const artifacts = [{
-        type: ArtifactType.CODE,
-        content: { code: "console.log('test')" },
-      }];
+      const artifacts = [
+        {
+          type: ArtifactType.CODE,
+          content: { code: "console.log('test')" },
+        },
+      ];
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
-        body: JSON.stringify({ 
-          taskId: mockTaskId, 
-          message: mockMessage, 
-          artifacts 
+        body: JSON.stringify({
+          taskId: mockTaskId,
+          message: mockMessage,
+          artifacts,
         }),
       });
 
@@ -368,7 +372,7 @@ describe("POST /api/chat/message", () => {
           sourceWebsocketID: undefined,
           replyId: undefined,
           artifacts: {
-            create: artifacts.map(artifact => ({
+            create: artifacts.map((artifact) => ({
               type: artifact.type,
               content: artifact.content,
             })),
@@ -384,19 +388,21 @@ describe("POST /api/chat/message", () => {
     });
 
     it("should create message with attachments", async () => {
-      const attachments = [{
-        path: "/uploads/test.pdf",
-        filename: "test.pdf",
-        mimeType: "application/pdf",
-        size: 1024,
-      }];
+      const attachments = [
+        {
+          path: "/uploads/test.pdf",
+          filename: "test.pdf",
+          mimeType: "application/pdf",
+          size: 1024,
+        },
+      ];
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
-        body: JSON.stringify({ 
-          taskId: mockTaskId, 
-          message: mockMessage, 
-          attachments 
+        body: JSON.stringify({
+          taskId: mockTaskId,
+          message: mockMessage,
+          attachments,
         }),
       });
 
@@ -413,7 +419,7 @@ describe("POST /api/chat/message", () => {
           replyId: undefined,
           artifacts: { create: [] },
           attachments: {
-            create: attachments.map(attachment => ({
+            create: attachments.map((attachment) => ({
               path: attachment.path,
               filename: attachment.filename,
               mimeType: attachment.mimeType,
@@ -456,7 +462,7 @@ describe("POST /api/chat/message", () => {
             Authorization: "Token token=test-api-key",
             "Content-Type": "application/json",
           },
-        })
+        }),
       );
     });
 
@@ -520,10 +526,10 @@ describe("POST /api/chat/message", () => {
       await POST(request);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock",
+        "http://localhost:3000/api/mock/chat",
         expect.objectContaining({
           method: "POST",
-        })
+        }),
       );
     });
   });
@@ -576,12 +582,10 @@ describe("POST /api/chat/message", () => {
 
       await POST(request);
 
-      const fetchCall = mockFetch.mock.calls.find(call => 
-        call[0].toString().includes('stakwork')
-      );
-      
+      const fetchCall = mockFetch.mock.calls.find((call) => call[0].toString().includes("stakwork"));
+
       expect(fetchCall).toBeTruthy();
-      
+
       const body = JSON.parse(fetchCall![1]!.body as string);
       expect(body.workflow_params.set_var.attributes.vars).toMatchObject({
         alias: "testuser",
@@ -608,19 +612,17 @@ describe("POST /api/chat/message", () => {
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
-        body: JSON.stringify({ 
-          taskId: mockTaskId, 
+        body: JSON.stringify({
+          taskId: mockTaskId,
           message: mockMessage,
-          mode 
+          mode,
         }),
       });
 
       await POST(request);
 
-      const fetchCall = mockFetch.mock.calls.find(call => 
-        call[0].toString().includes('stakwork')
-      );
-      
+      const fetchCall = mockFetch.mock.calls.find((call) => call[0].toString().includes("stakwork"));
+
       const body = JSON.parse(fetchCall![1]!.body as string);
       expect(body.workflow_id).toBe(parseInt(expectedWorkflowId));
     });

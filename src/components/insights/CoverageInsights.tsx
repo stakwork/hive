@@ -6,8 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { useMemo } from "react";
+import { Input } from "@/components/ui/input";
+import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CoverageSortOption } from "@/stores/useCoverageStore";
@@ -80,7 +81,22 @@ export function CoverageInsights() {
     setIntegrationGlob,
     e2eGlob,
     setE2eGlob,
+    search,
+    setSearch,
   } = useCoverageNodes();
+
+  const [searchInput, setSearchInput] = useState(search);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput, setSearch]);
 
   const hasItems = items && items.length > 0;
 
@@ -155,6 +171,17 @@ export function CoverageInsights() {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search nodes..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="h-8 w-[200px] pl-8 text-xs"
+              />
             </div>
 
             <AdvancedFiltersPopover

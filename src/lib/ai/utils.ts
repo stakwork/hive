@@ -42,6 +42,14 @@ type FeatureData = {
   workspace: {
     description: string | null;
   };
+  phases?: {
+    tasks: {
+      title: string;
+      description: string | null;
+      status: string;
+      priority: string;
+    }[];
+  }[];
 };
 
 export type FeatureContext = {
@@ -52,6 +60,7 @@ export type FeatureContext = {
   userStoriesText: string;
   requirementsText: string;
   architectureText: string;
+  tasksText: string | null;
 };
 
 export function buildFeatureContext(feature: FeatureData): FeatureContext {
@@ -70,6 +79,20 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
   const requirementsText = feature.requirements || '';
   const architectureText = feature.architecture || '';
 
+  // Extract existing tasks from all phases
+  const existingTasks = feature.phases
+    ?.flatMap(phase => phase.tasks || []) || [];
+
+  const tasksText = existingTasks.length > 0
+    ? `\n\nExisting Tasks:\n${existingTasks.map(t => {
+        let taskLine = `- ${t.title} (${t.status}, ${t.priority})`;
+        if (t.description) {
+          taskLine += `\n  Description: ${t.description}`;
+        }
+        return taskLine;
+      }).join('\n')}`
+    : null;
+
   return {
     title: feature.title,
     brief: feature.brief,
@@ -78,6 +101,7 @@ export function buildFeatureContext(feature: FeatureData): FeatureContext {
     userStoriesText,
     requirementsText,
     architectureText,
+    tasksText,
   };
 }
 

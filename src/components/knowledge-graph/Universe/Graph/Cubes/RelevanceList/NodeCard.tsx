@@ -1,3 +1,4 @@
+import { MediaPlayer } from '@/components/calls/MediaPlayer'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { NodeExtended } from '@Universe/types'
 import { NodeDetail } from './NodeDetail'
@@ -30,13 +31,19 @@ export const NodeCard = ({ node, compact = false, onClick }: NodeCardProps) => {
     return node.properties?.source_link as string | undefined
   }
 
+  const getMediaUrl = (node: NodeExtended) => {
+    return node.properties?.media_url as string | undefined
+  }
+
   const hasImage = !!getImageUrl(node)
+  const mediaUrl = getMediaUrl(node)
   const sourceLink = getSourceLink(node)
   const properties = node.properties || {}
 
-  // Filter out certain system properties that shouldn't be displayed
-  const filteredProperties = Object.entries(properties).filter(([key]) =>
-    !['image_url', 'source_link', 'media_url', 'audio_EN'].includes(key)
+  // Filter out certain system properties and object properties that shouldn't be displayed
+  const filteredProperties = Object.entries(properties).filter(([key, value]) =>
+    !['image_url', 'source_link', 'media_url', 'audio_EN'].includes(key) &&
+    typeof value !== 'object'
   )
 
   if (compact) {
@@ -85,8 +92,18 @@ export const NodeCard = ({ node, compact = false, onClick }: NodeCardProps) => {
 
   return (
     <div className="text-white bg-black/95 backdrop-blur-sm rounded-lg border border-gray-700 overflow-hidden flex flex-col">
-      {/* Image Section */}
-      {hasImage && (
+      {/* Media Section - MediaPlayer takes priority over regular image */}
+      {mediaUrl ? (
+        <div className="w-full p-4 bg-gray-900/50">
+          <MediaPlayer
+            src={mediaUrl}
+            title={getDisplayName(node)}
+            imageUrl={getImageUrl(node)}
+            className="w-full"
+            showExpandButton={false}
+          />
+        </div>
+      ) : hasImage && (
         <div className="w-full h-48 p-4 flex justify-center items-center bg-gray-900/50">
           <img
             src={getImageUrl(node)}

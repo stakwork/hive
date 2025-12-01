@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
@@ -10,12 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string })?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { slug } = await params;
 
@@ -26,7 +22,7 @@ export async function GET(
       );
     }
 
-    const workspace = await getWorkspaceBySlug(slug, userId);
+    const workspace = await getWorkspaceBySlug(slug, userOrResponse.id);
 
     if (!workspace) {
       return NextResponse.json(

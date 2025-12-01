@@ -2,7 +2,7 @@
 
 import { Flex } from '@/components/common/Flex'
 import { useControlStore } from '@/stores/useControlStore'
-import { useDataStore } from '@/stores/useDataStore'
+import { useDataStore, useGraphStore } from '@/stores/useStores'
 import { AdaptiveDpr, AdaptiveEvents, Html, Loader, Preload } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Suspense, memo, useCallback } from 'react'
@@ -36,18 +36,27 @@ const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 
 let wheelEventTimeout: ReturnType<typeof setTimeout> | null = null
 
-const cameraProps = {
-  far: 30000,
-  near: 1,
-  position: [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z],
-} as const
-
-const _Universe = ({ enableRotation = false }: { enableRotation?: boolean }) => {
-  const [setIsUserScrollingOnHtmlPanel, setIsUserScrolling, setUserMovedCamera] = [
+const UniverseComponent = ({ enableRotation = false }: { enableRotation?: boolean }) => {
+  const [setIsUserScrollingOnHtmlPanel, setIsUserScrolling, setUserMovedCamera, setUserInteraction] = [
     useControlStore((s) => s.setIsUserScrollingOnHtmlPanel),
     useControlStore((s) => s.setIsUserScrolling),
     useControlStore((s) => s.setUserMovedCamera),
+    useControlStore((s) => s.setUserInteraction),
   ]
+
+  // Initialize webhook highlights listener
+  // useWebhookHighlights()
+
+  // Get saved camera position for initial canvas setup
+  const { cameraPosition } = useGraphStore((s) => s)
+
+  const cameraProps = {
+    far: 30000,
+    near: 1,
+    position: cameraPosition ?
+      [cameraPosition?.x, cameraPosition?.y, cameraPosition?.z] as [number, number, number] :
+      [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z] as [number, number, number],
+  } as const
 
 
   const onWheelHandler = useCallback(
@@ -68,13 +77,14 @@ const _Universe = ({ enableRotation = false }: { enableRotation?: boolean }) => 
 
       setIsUserScrolling(true)
       setUserMovedCamera(true)
+      setUserInteraction() // Track user interaction for 30-second timeout
 
       wheelEventTimeout = setTimeout(() => {
         setIsUserScrolling(false)
         setIsUserScrollingOnHtmlPanel(false)
       }, 200)
     },
-    [setIsUserScrolling, setIsUserScrollingOnHtmlPanel, setUserMovedCamera],
+    [setIsUserScrolling, setIsUserScrollingOnHtmlPanel, setUserMovedCamera, setUserInteraction],
   )
 
 
@@ -108,4 +118,4 @@ const _Universe = ({ enableRotation = false }: { enableRotation?: boolean }) => 
 }
 
 
-export const Universe = memo(_Universe)
+export const Universe = memo(UniverseComponent)

@@ -9,14 +9,14 @@ export default function DashboardPage() {
   const { workspace } = useWorkspace();
   const [servicesStarted, setServicesStarted] = useState(false);
 
-  console.log('here=====>');
-  console.log(workspace?.containerFilesSetUp);
-  console.log(workspace?.swarmId);
-  console.log(workspace?.swarmStatus);
-  console.log(workspace?.ingestRefId);
-  console.log(workspace?.poolState);
-  console.log(workspace?.repositories);
-  console.log('here=====>');
+  console.log("/w/[slug]/page =====>", {
+    containerFilesSetUp: workspace?.containerFilesSetUp,
+    swarmId: workspace?.swarmId,
+    swarmStatus: workspace?.swarmStatus,
+    ingestRefId: workspace?.ingestRefId,
+    poolState: workspace?.poolState,
+    repositories: workspace?.repositories,
+  });
 
   const setupCompleted = workspace?.containerFilesSetUp;
   const hasSwarmId = !!workspace?.swarmId;
@@ -24,7 +24,7 @@ export default function DashboardPage() {
   const showDashboard = setupCompleted || (hasSwarmId && servicesStarted);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full relative flex flex-col">
       <SwarmSetupHandler onServicesStarted={setServicesStarted} />
 
       {showDashboard && <Dashboard />}

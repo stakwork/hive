@@ -145,26 +145,20 @@ export function UserStoriesSection({
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="flex items-center gap-2">
-          <Label className="text-sm font-medium">User Stories</Label>
-          <AIButton<GeneratedStory>
-            endpoint={`/api/features/${featureId}/generate`}
-            params={{
-              type: "userStories",
-              existingStories: [
-                ...userStories.map((s) => s.title),
-                ...aiSuggestions.map((s) => s.title),
-              ],
-            }}
-            onGenerated={handleAiGenerated}
-            tooltip="Generate with AI"
-            iconOnly
-          />
-        </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          Define the user stories and acceptance criteria for this feature.
-        </p>
+      <div className="flex items-center justify-between">
+        <Label className="text-base font-semibold">User Stories</Label>
+        <AIButton<GeneratedStory>
+          endpoint={`/api/features/${featureId}/generate`}
+          params={{
+            type: "userStories",
+            existingStories: [
+              ...userStories.map((s) => s.title),
+              ...aiSuggestions.map((s) => s.title),
+            ],
+          }}
+          onGenerated={handleAiGenerated}
+          label="Generate"
+        />
       </div>
 
       <div className="rounded-lg border bg-muted/30">
@@ -229,6 +223,7 @@ export function UserStoriesSection({
                         variant="outline"
                         onClick={() => handleAcceptAi(story, index)}
                         disabled={accepting !== null}
+                        className="border-green-600/30 hover:bg-green-50 hover:border-green-600/50"
                       >
                         <Check className="h-4 w-4 mr-2 text-green-600" />
                         Accept
@@ -238,6 +233,7 @@ export function UserStoriesSection({
                         variant="ghost"
                         onClick={() => handleRejectAi(index)}
                         disabled={accepting !== null}
+                        className="hover:bg-red-50"
                       >
                         <X className="h-4 w-4 mr-2 text-red-600" />
                         Reject

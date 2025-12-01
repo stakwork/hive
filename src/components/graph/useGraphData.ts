@@ -33,7 +33,7 @@ interface UseGraphDataReturn {
   refetch: () => void;
 }
 
-const DEFAULT_TRANSFORM = (data: any): GraphData => {
+export const DEFAULT_TRANSFORM = (data: any): GraphData => {
   // Handle API response that returns {nodes, edges}
   if (data.nodes && data.edges) {
     return {

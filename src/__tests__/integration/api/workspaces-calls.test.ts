@@ -3,6 +3,7 @@ import { GET } from "@/app/api/workspaces/[slug]/calls/route";
 import {
   createTestUser,
   createTestWorkspaceScenario,
+  mockData,
 } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
@@ -11,38 +12,15 @@ import {
   createGetRequest,
   createAuthenticatedGetRequest,
 } from "@/__tests__/support/helpers";
-
-// Mock Jarvis API response
-const mockJarvisResponse = {
-  nodes: [
-    {
-      ref_id: "call-1",
-      node_type: "Episode",
-      date_added_to_graph: 1750694095.264704,
-      properties: {
-        episode_title: "Meeting recording 2025-06-23T14:42:41",
-        media_url: "https://example.com/recording1.mp4",
-        source_link: "https://example.com/recording1.mp4",
-      },
-    },
-    {
-      ref_id: "call-2",
-      node_type: "Episode",
-      date_added_to_graph: 1750699175.5493836,
-      properties: {
-        episode_title: "Meeting recording 2025-06-23T16:51:27",
-        media_url: "https://example.com/recording2.mp4",
-        source_link: "https://example.com/recording2.mp4",
-      },
-    },
-  ],
-  edges: [],
-};
+import {
+  callMockSetup,
+  resetCallMocks,
+  createMockCallBatch,
+} from "@/__tests__/support/call-mocks";
 
 describe("Calls API - Integration Tests", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    global.fetch = vi.fn();
+    resetCallMocks();
   });
 
   describe("GET /api/workspaces/[slug]/calls", () => {
@@ -90,10 +68,8 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => mockJarvisResponse,
-      });
+      const calls = createMockCallBatch(2);
+      callMockSetup.mockGetCallsSuccess(calls);
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
@@ -116,10 +92,8 @@ describe("Calls API - Integration Tests", () => {
 
       const member = members[0];
 
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => mockJarvisResponse,
-      });
+      const calls = createMockCallBatch(2);
+      callMockSetup.mockGetCallsSuccess(calls);
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
@@ -199,11 +173,10 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => mockJarvisResponse,
-      });
-      global.fetch = mockFetch;
+      const calls = createMockCallBatch(2);
+      const mockFetch = vi.fn();
+      callMockSetup.mockGetCallsSuccess(calls);
+      global.fetch = mockFetch.mockImplementation(global.fetch);
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
@@ -215,7 +188,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%2C%22Call%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -231,10 +204,21 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => mockJarvisResponse,
-      });
+      const calls = [
+        mockData.call({
+          ref_id: "call-1",
+          episode_title: "Meeting recording 2025-06-23T14:42:41",
+          date_added_to_graph: 1750694095.264704,
+          description: "Team sync meeting discussion",
+        }),
+        mockData.call({
+          ref_id: "call-2",
+          episode_title: "Meeting recording 2025-06-23T16:51:27",
+          date_added_to_graph: 1750699175.5493836,
+          description: "Team sync meeting discussion",
+        }),
+      ];
+      callMockSetup.mockGetCallsSuccess(calls);
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
@@ -252,11 +236,13 @@ describe("Calls API - Integration Tests", () => {
         ref_id: "call-1",
         episode_title: "Meeting recording 2025-06-23T14:42:41",
         date_added_to_graph: 1750694095.264704,
+        description: "Team sync meeting discussion",
       });
       expect(data.calls[1]).toEqual({
         ref_id: "call-2",
         episode_title: "Meeting recording 2025-06-23T16:51:27",
         date_added_to_graph: 1750699175.5493836,
+        description: "Team sync meeting discussion",
       });
       expect(data.total).toBe(2);
       expect(data.hasMore).toBe(false);
@@ -268,11 +254,7 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      (global.fetch as any).mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: "Internal Server Error",
-      });
+      callMockSetup.mockGetCallsError(500, "Internal Server Error");
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
@@ -296,10 +278,8 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ nodes: [], edges: [] }),
-      });
+      callMockSetup.mockEmptyCallList();
+      const mockFetch = vi.fn().mockImplementation(global.fetch);
       global.fetch = mockFetch;
 
       const request = createAuthenticatedGetRequest(
@@ -313,7 +293,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=21&skip=10",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%2C%22Call%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=21&skip=10",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -329,10 +309,8 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ nodes: [], edges: [] }),
-      });
+      callMockSetup.mockEmptyCallList();
+      const mockFetch = vi.fn().mockImplementation(global.fetch);
       global.fetch = mockFetch;
 
       const request = createAuthenticatedGetRequest(
@@ -345,7 +323,7 @@ describe("Calls API - Integration Tests", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
+        "https://swarm38.sphinx.chat:8444/graph/nodes/list?node_type=%5B%22Episode%22%2C%22Call%22%5D&sort_by=date_added_to_graph&order_by=desc&limit=11&skip=0",
         expect.objectContaining({
           method: "GET",
           headers: {
@@ -361,22 +339,9 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      // Mock response with 11 items (limit+1), hasMore should be true and only 10 returned
-      const elevenItems = Array.from({ length: 11 }, (_, i) => ({
-        ref_id: `call-${i}`,
-        node_type: "Episode",
-        date_added_to_graph: 1750694095 + i,
-        properties: {
-          episode_title: `Meeting ${i}`,
-          media_url: `https://example.com/${i}.mp4`,
-          source_link: `https://example.com/${i}.mp4`,
-        },
-      }));
-
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => ({ nodes: elevenItems, edges: [] }),
-      });
+      // Use helper to mock 10 calls with hasMore=true
+      const calls = createMockCallBatch(10, 1750694095);
+      callMockSetup.mockGetCallsSuccess(calls, true);
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
@@ -400,22 +365,9 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      // Mock response with less than 10 items
-      const fiveItems = Array.from({ length: 5 }, (_, i) => ({
-        ref_id: `call-${i}`,
-        node_type: "Episode",
-        date_added_to_graph: 1750694095 + i,
-        properties: {
-          episode_title: `Meeting ${i}`,
-          media_url: `https://example.com/${i}.mp4`,
-          source_link: `https://example.com/${i}.mp4`,
-        },
-      }));
-
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => ({ nodes: fiveItems, edges: [] }),
-      });
+      // Use helper to mock 5 calls
+      const calls = createMockCallBatch(5, 1750694095);
+      callMockSetup.mockGetCallsSuccess(calls, false);
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,
@@ -439,22 +391,9 @@ describe("Calls API - Integration Tests", () => {
         swarm: { status: "ACTIVE", name: "swarm38" },
       });
 
-      // Mock response with exactly 10 items (not limit+1), hasMore should be false
-      const tenItems = Array.from({ length: 10 }, (_, i) => ({
-        ref_id: `call-${i}`,
-        node_type: "Episode",
-        date_added_to_graph: 1750694095 + i,
-        properties: {
-          episode_title: `Meeting ${i}`,
-          media_url: `https://example.com/${i}.mp4`,
-          source_link: `https://example.com/${i}.mp4`,
-        },
-      }));
-
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        json: async () => ({ nodes: tenItems, edges: [] }),
-      });
+      // Use helper to mock exactly 10 calls without hasMore
+      const calls = createMockCallBatch(10, 1750694095);
+      callMockSetup.mockGetCallsSuccess(calls, false);
 
       const request = createAuthenticatedGetRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/calls`,

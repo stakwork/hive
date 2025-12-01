@@ -22,6 +22,8 @@ export interface CreateTestWorkspaceOptions {
   slug?: string;
   ownerId: string;
   stakworkApiKey?: string | null;
+  sourceControlOrgId?: string | null;
+  repositoryDraft?: string | null;
 }
 
 export interface CreateTestMembershipOptions {
@@ -45,6 +47,10 @@ export async function createTestWorkspace(
       ownerId: options.ownerId,
       stakworkApiKey:
         options.stakworkApiKey === undefined ? null : options.stakworkApiKey,
+      sourceControlOrgId:
+        options.sourceControlOrgId === undefined ? null : options.sourceControlOrgId,
+      repositoryDraft:
+        options.repositoryDraft === undefined ? null : options.repositoryDraft,
     },
   });
 }
@@ -102,6 +108,8 @@ export async function createTestWorkspaceScenario(
     name: ownerOverrides?.name || "Workspace Owner",
     email: ownerOverrides?.email,
     role: ownerOverrides?.role,
+    withGitHubAuth: ownerOverrides?.withGitHubAuth,
+    githubUsername: ownerOverrides?.githubUsername,
   });
 
   const workspace = await createTestWorkspace({
@@ -157,6 +165,7 @@ export async function createTestWorkspaceScenario(
     swarm = await createTestSwarm({
       workspaceId: workspace.id,
       name: swarmOverrides.name,
+      swarmUrl: swarmOverrides.swarmUrl,
       status: swarmOverrides.status,
       instanceType: swarmOverrides.instanceType,
       swarmApiKey: swarmOverrides.swarmApiKey ?? (process.env.TOKEN_ENCRYPTION_KEY ? "test-swarm-api-key" : undefined),

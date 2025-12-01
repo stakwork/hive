@@ -16,10 +16,11 @@ export const selectors = {
     settingsButton: '[data-testid="settings-button"]',
     tasksLink: '[data-testid="nav-tasks"]',
     dashboardLink: '[data-testid="nav-dashboard"]',
-    insightsLink: '[data-testid="nav-insights"]',
+    capacityLink: '[data-testid="nav-capacity"]',
+    recommendationsLink: '[data-testid="nav-recommendations"]',
     learnLink: '[data-testid="nav-learn"]',
     userJourneysLink: '[data-testid="nav-user-journeys"]',
-    roadmapLink: '[data-testid="nav-roadmap"]',
+    roadmapLink: '[data-testid="nav-plan"]',
     callsLink: '[data-testid="nav-calls"]',
   },
 
@@ -28,9 +29,10 @@ export const selectors = {
     element: '[data-testid="page-title"]',
     dashboard: '[data-testid="page-title"]:has-text("Dashboard")',
     tasks: '[data-testid="page-title"]:has-text("Tasks")',
-    insights: '[data-testid="page-title"]:has-text("Insights")',
+    recommendations: '[data-testid="page-title"]:has-text("Recommendations")',
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
     calls: '[data-testid="page-title"]:has-text("Calls")',
+    capacity: '[data-testid="page-title"]:has-text("Capacity")',
   },
 
   // Page descriptions
@@ -53,6 +55,15 @@ export const selectors = {
     slugInput: '[data-testid="workspace-settings-slug-input"]',
     descriptionInput: '[data-testid="workspace-settings-description-input"]',
     saveButton: '[data-testid="workspace-settings-save-button"]',
+  },
+
+  workspaceDeletion: {
+    card: '[data-testid="delete-workspace-card"]',
+    deleteButton: '[data-testid="delete-workspace-button"]',
+    dialog: '[data-testid="delete-workspace-dialog"]',
+    confirmationInput: '[data-testid="delete-workspace-confirmation-input"]',
+    cancelButton: '[data-testid="delete-workspace-cancel-button"]',
+    confirmButton: '[data-testid="delete-workspace-confirm-button"]',
   },
 
   workspaceMembers: {

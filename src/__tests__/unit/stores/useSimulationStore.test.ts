@@ -1,674 +1,469 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useSimulationStore } from '@/stores/useSimulationStore'
-import { useGraphStore } from '@/stores/useGraphStore'
-import { distributeNodesOnSphere } from '@/stores/useSimulationStore/utils/distributeNodesOnSphere'
-import * as d3Force from 'd3-force-3d'
+import { describe, test, expect, beforeEach } from 'vitest';
+import { calculateGridMap } from '@/stores/createSimulationStore';
 
-// Mock the dependencies
-vi.mock('@/stores/useGraphStore')
-vi.mock('@/stores/useSimulationStore/utils/distributeNodesOnSphere')
-vi.mock('d3-force-3d', () => ({
-  forceManyBody: vi.fn(),
-  forceX: vi.fn(),
-  forceY: vi.fn(),
-  forceZ: vi.fn(),
-  forceLink: vi.fn(),
-  forceCollide: vi.fn(),
-  forceSimulation: vi.fn(),
-  forceCenter: vi.fn(),
-  forceRadial: vi.fn(),
-}))
+/**
+ * Test utilities and mock data factories
+ */
 
-describe('useSimulationStore - addClusterForce', () => {
-  let mockSimulation: any
-  let mockForces: any
-  
-  beforeEach(() => {
-    // Reset all mocks
-    vi.clearAllMocks()
-    
-    // Create mock force functions
-    mockForces = {
-      charge: vi.fn().mockReturnThis(),
-      x: vi.fn().mockReturnThis(),
-      y: vi.fn().mockReturnThis(),
-      z: vi.fn().mockReturnThis(),
-      link: vi.fn().mockReturnThis(),
-      collide: vi.fn().mockReturnThis(),
+interface TestNode {
+  ref_id: string;
+  node_type: string;
+  x?: number;
+  y?: number;
+  z?: number;
+}
+
+// Factory for creating mock nodes with node_type
+const createMockNode = (overrides: Partial<TestNode> = {}): TestNode => ({
+  ref_id: `node-${Math.random().toString(36).substr(2, 9)}`,
+  node_type: 'DefaultType',
+  x: 0,
+  y: 0,
+  z: 0,
+  ...overrides,
+});
+
+// Factory for creating multiple nodes of specific types
+const createMockNodesWithTypes = (
+  counts: Record<string, number>
+): { nodes: TestNode[]; nodeTypes: string[] } => {
+  const nodes: TestNode[] = [];
+  const nodeTypes: string[] = Object.keys(counts);
+
+  nodeTypes.forEach((type) => {
+    const count = counts[type];
+    for (let i = 0; i < count; i++) {
+      nodes.push(
+        createMockNode({
+          ref_id: `${type.toLowerCase()}-${i}`,
+          node_type: type,
+        })
+      );
     }
-    
-    // Mock nodes array
-    const mockNodes = [
-      { ref_id: 'node1', x: 100, y: 200, z: 300, fx: 10, fy: 20, fz: 30, vx: 5, vy: 10, vz: 15 },
-      { ref_id: 'node2', x: 400, y: 500, z: 600, fx: 40, fy: 50, fz: 60, vx: 25, vy: 30, vz: 35 },
-    ]
-    
-    // Mock link force that returns existing links
-    const mockLinkForce = {
-      links: vi.fn().mockReturnValue([
-        { source: { ref_id: 'node1' }, target: { ref_id: 'node2' } },
-      ]),
-    }
-    
-    // Create mock simulation with chained methods
-    mockSimulation = {
-      nodes: vi.fn().mockImplementation(function(nodes?: any) {
-        // When called with argument, set nodes and return simulation (chaining)
-        // When called without argument, return the current nodes array
-        if (arguments.length === 0) {
-          return mockNodes
-        }
-        return mockSimulation
-      }),
-      force: vi.fn().mockImplementation(function(name: string, forceValue?: any) {
-        // If called with 2 arguments, it's a setter - return simulation for chaining
-        if (arguments.length === 2) {
-          return mockSimulation
-        }
-        // If called with 1 argument, it's a getter - return the force
-        if (name === 'link') {
-          return mockLinkForce
-        }
-        return null
-      }),
-      on: vi.fn().mockReturnThis(),
-      alpha: vi.fn().mockReturnThis(),
-      restart: vi.fn().mockReturnThis(),
-    }
-    
-    // Setup D3 force mocks with proper chaining
-    vi.mocked(d3Force.forceManyBody).mockReturnValue({
-      strength: vi.fn().mockReturnValue(mockForces.charge),
-    } as any)
-    
-    vi.mocked(d3Force.forceX).mockReturnValue({
-      strength: vi.fn().mockReturnValue(mockForces.x),
-    } as any)
-    
-    vi.mocked(d3Force.forceY).mockReturnValue({
-      strength: vi.fn().mockReturnValue(mockForces.y),
-    } as any)
-    
-    vi.mocked(d3Force.forceZ).mockReturnValue({
-      strength: vi.fn().mockReturnValue(mockForces.z),
-    } as any)
-    
-    const mockLinkForceInstance = {
-      links: vi.fn().mockReturnThis(),
-      strength: vi.fn().mockReturnThis(),
-      distance: vi.fn().mockReturnThis(),
-      id: vi.fn().mockReturnThis(),
-    }
-    
-    vi.mocked(d3Force.forceLink).mockReturnValue(mockLinkForceInstance as any)
-    
-    vi.mocked(d3Force.forceCollide).mockReturnValue({
-      radius: vi.fn().mockReturnThis(),
-      strength: vi.fn().mockReturnThis(),
-      iterations: vi.fn().mockReturnValue(mockForces.collide),
-    } as any)
-    
-    vi.mocked(d3Force.forceRadial).mockReturnValue({
-      strength: vi.fn().mockReturnThis(),
-    } as any)
-    
-    vi.mocked(d3Force.forceCenter).mockReturnValue({
-      strength: vi.fn().mockReturnThis(),
-    } as any)
-    
-    // Mock distributeNodesOnSphere with golden ratio distributed positions
-    vi.mocked(distributeNodesOnSphere).mockReturnValue({
-      'hood1': { x: 1000, y: 2000, z: 3000 },
-      'hood2': { x: -1000, y: -2000, z: -3000 },
-    })
-    
-    // Mock useGraphStore.getState
-    vi.mocked(useGraphStore.getState).mockReturnValue({
-      neighbourhoods: [
-        { ref_id: 'hood1', name: 'Neighborhood 1' },
-        { ref_id: 'hood2', name: 'Neighborhood 2' },
-      ],
-      graphStyle: 'force',
-      setGraphRadius: vi.fn(),
-      setGraphStyle: vi.fn(),
-      highlightNodes: [],
-    } as any)
-  })
-  
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-  
-  describe('Cluster Center Distribution', () => {
-    test('should call distributeNodesOnSphere with neighbourhoods and radius 3000', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(distributeNodesOnSphere).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ ref_id: 'hood1' }),
-          expect.objectContaining({ ref_id: 'hood2' }),
-        ]),
-        3000
-      )
-      expect(distributeNodesOnSphere).toHaveBeenCalledTimes(1)
-    })
-    
-    test('should handle empty neighbourhoods array', () => {
-      vi.mocked(useGraphStore.getState).mockReturnValue({
-        neighbourhoods: [],
-        graphStyle: 'force',
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      expect(() => store.addClusterForce()).not.toThrow()
-      expect(distributeNodesOnSphere).not.toHaveBeenCalled()
-    })
-    
-    test('should handle undefined neighbourhoods', () => {
-      vi.mocked(useGraphStore.getState).mockReturnValue({
-        neighbourhoods: undefined,
-        graphStyle: 'force',
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      expect(() => store.addClusterForce()).not.toThrow()
-      expect(distributeNodesOnSphere).not.toHaveBeenCalled()
-    })
-    
-    test('should use golden ratio distribution at fixed radius', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      // Verify radius parameter is exactly 3000
-      const [, radius] = vi.mocked(distributeNodesOnSphere).mock.calls[0]
-      expect(radius).toBe(3000)
-    })
-  })
-  
-  describe('Node Position Reset', () => {
-    test('should reset all node positions to null before applying forces', () => {
-      const mockNodes = [
-        { 
-          ref_id: 'node1', 
-          x: 100, y: 200, z: 300, 
-          fx: 10, fy: 20, fz: 30, 
-          vx: 5, vy: 10, vz: 15 
-        },
-        { 
-          ref_id: 'node2', 
-          x: 400, y: 500, z: 600, 
-          fx: 40, fy: 50, fz: 60, 
-          vx: 25, vy: 30, vz: 35 
-        },
-      ]
-      
-      let capturedNodes: any[] = []
-      
-      mockSimulation.nodes = vi.fn().mockImplementation((nodes) => {
-        if (nodes) {
-          capturedNodes = nodes
-          return mockSimulation
-        }
-        return mockNodes
-      })
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      // Verify all position properties are reset
-      capturedNodes.forEach((node: any) => {
-        expect(node.fx).toBeNull()
-        expect(node.fy).toBeNull()
-        expect(node.fz).toBeNull()
-        expect(node.x).toBeNull()
-        expect(node.y).toBeNull()
-        expect(node.z).toBeNull()
-        expect(node.vx).toBeNull()
-        expect(node.vy).toBeNull()
-        expect(node.vz).toBeNull()
-      })
-    })
-    
-    test('should preserve node ref_id and other properties during reset', () => {
-      const mockNodes = [
-        { 
-          ref_id: 'node1', 
-          scale: 2,
-          neighbourHood: 'hood1',
-          x: 100, y: 200, z: 300 
-        },
-      ]
-      
-      let capturedNodes: any[] = []
-      
-      mockSimulation.nodes = vi.fn().mockImplementation((nodes) => {
-        if (nodes) {
-          capturedNodes = nodes
-          return mockSimulation
-        }
-        return mockNodes
-      })
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(capturedNodes[0].ref_id).toBe('node1')
-      expect(capturedNodes[0].scale).toBe(2)
-      expect(capturedNodes[0].neighbourHood).toBe('hood1')
-    })
-  })
-  
-  describe('D3 Force Configuration', () => {
-    test('should configure charge force with strength 0', () => {
-      const mockStrength = vi.fn().mockReturnValue(mockForces.charge)
-      vi.mocked(d3Force.forceManyBody).mockReturnValue({
-        strength: mockStrength,
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(d3Force.forceManyBody).toHaveBeenCalled()
-      expect(mockSimulation.force).toHaveBeenCalledWith('charge', mockForces.charge)
-    })
-    
-    test('should configure forceX with strength 0.1', () => {
-      const mockStrength = vi.fn().mockReturnValue(mockForces.x)
-      vi.mocked(d3Force.forceX).mockReturnValue({
-        strength: mockStrength,
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(mockStrength).toHaveBeenCalledWith(0.1)
-      expect(mockSimulation.force).toHaveBeenCalledWith('x', mockForces.x)
-    })
-    
-    test('should configure forceY with strength 0.1', () => {
-      const mockStrength = vi.fn().mockReturnValue(mockForces.y)
-      vi.mocked(d3Force.forceY).mockReturnValue({
-        strength: mockStrength,
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(mockStrength).toHaveBeenCalledWith(0.1)
-      expect(mockSimulation.force).toHaveBeenCalledWith('y', mockForces.y)
-    })
-    
-    test('should configure forceZ with strength 0.1', () => {
-      const mockStrength = vi.fn().mockReturnValue(mockForces.z)
-      vi.mocked(d3Force.forceZ).mockReturnValue({
-        strength: mockStrength,
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(mockStrength).toHaveBeenCalledWith(0.1)
-      expect(mockSimulation.force).toHaveBeenCalledWith('z', mockForces.z)
-    })
-    
-    test('should configure link force with strength 0 and distance 400', () => {
-      const mockStrength = vi.fn().mockReturnThis()
-      const mockDistance = vi.fn().mockReturnThis()
-      const mockId = vi.fn().mockReturnValue(mockForces.link)
-      
-      vi.mocked(d3Force.forceLink).mockReturnValue({
-        links: vi.fn().mockReturnThis(),
-        strength: mockStrength,
-        distance: mockDistance,
-        id: mockId,
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(mockStrength).toHaveBeenCalledWith(0)
-      expect(mockDistance).toHaveBeenCalledWith(400)
-      expect(mockSimulation.force).toHaveBeenCalledWith('link', mockForces.link)
-    })
-    
-    test('should configure collide force with proper parameters', () => {
-      const mockRadius = vi.fn().mockReturnThis()
-      const mockStrength = vi.fn().mockReturnThis()
-      const mockIterations = vi.fn().mockReturnValue(mockForces.collide)
-      
-      vi.mocked(d3Force.forceCollide).mockReturnValue({
-        radius: mockRadius,
-        strength: mockStrength,
-        iterations: mockIterations,
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(mockStrength).toHaveBeenCalledWith(0.5)
-      expect(mockIterations).toHaveBeenCalledWith(1)
-      expect(mockSimulation.force).toHaveBeenCalledWith('collide', mockForces.collide)
-    })
-    
-    test('should set all forces in correct order', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      // Filter out only the setter calls (2 arguments) to check order
-      const forceSetterCalls = mockSimulation.force.mock.calls
-        .filter((call: any) => call.length === 2)
-        .map((call: any) => call[0])
-      
-      expect(forceSetterCalls).toEqual(['charge', 'x', 'y', 'z', 'link', 'collide'])
-    })
-  })
-  
-  describe('Neighbourhood Integration', () => {
-    test('should pull nodes towards their neighbourhood centers', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      let forceXCallback: any
-      let forceYCallback: any
-      let forceZCallback: any
-      
-      vi.mocked(d3Force.forceX).mockImplementation((fn: any) => {
-        forceXCallback = fn
-        return {
-          strength: vi.fn().mockReturnValue(mockForces.x),
-        } as any
-      })
-      
-      vi.mocked(d3Force.forceY).mockImplementation((fn: any) => {
-        forceYCallback = fn
-        return {
-          strength: vi.fn().mockReturnValue(mockForces.y),
-        } as any
-      })
-      
-      vi.mocked(d3Force.forceZ).mockImplementation((fn: any) => {
-        forceZCallback = fn
-        return {
-          strength: vi.fn().mockReturnValue(mockForces.z),
-        } as any
-      })
-      
-      store.addClusterForce()
-      
-      // Test node with neighbourhood - should use distributed positions
-      const nodeWithHood = { ref_id: 'test', neighbourHood: 'hood1' }
-      expect(forceXCallback(nodeWithHood)).toBe(1000)
-      expect(forceYCallback(nodeWithHood)).toBe(2000)
-      expect(forceZCallback(nodeWithHood)).toBe(3000)
-      
-      // Test node without neighbourhood - should default to origin
-      const nodeWithoutHood = { ref_id: 'test2' }
-      expect(forceXCallback(nodeWithoutHood)).toBe(0)
-      expect(forceYCallback(nodeWithoutHood)).toBe(0)
-      expect(forceZCallback(nodeWithoutHood)).toBe(0)
-    })
-    
-    test('should access neighbourhoods from useGraphStore', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      expect(useGraphStore.getState).toHaveBeenCalled()
-    })
-    
-    test('should handle nodes with invalid neighbourhood references', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      let forceXCallback: any
-      
-      vi.mocked(d3Force.forceX).mockImplementation((fn: any) => {
-        forceXCallback = fn
-        return {
-          strength: vi.fn().mockReturnValue(mockForces.x),
-        } as any
-      })
-      
-      store.addClusterForce()
-      
-      // Node with non-existent neighbourhood
-      const nodeWithInvalidHood = { ref_id: 'test', neighbourHood: 'nonexistent' }
-      expect(forceXCallback(nodeWithInvalidHood)).toBe(0)
-    })
-  })
-  
-  describe('Collision Detection', () => {
-    test('should calculate collide radius based on node scale', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      let radiusCallback: any
-      
-      vi.mocked(d3Force.forceCollide).mockReturnValue({
-        radius: vi.fn().mockImplementation((fn: any) => {
-          radiusCallback = fn
-          return {
-            strength: vi.fn().mockReturnThis(),
-            iterations: vi.fn().mockReturnValue(mockForces.collide),
-          }
-        }),
-      } as any)
-      
-      store.addClusterForce()
-      
-      // Test node with scale
-      const nodeWithScale = { ref_id: 'test', scale: 2 }
-      expect(radiusCallback(nodeWithScale)).toBe(190) // 2 * 95
-      
-      // Test node without scale (defaults to 1)
-      const nodeWithoutScale = { ref_id: 'test2' }
-      expect(radiusCallback(nodeWithoutScale)).toBe(95) // 1 * 95
-    })
-    
-    test('should use scale of 1 for nodes without scale property', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      let radiusCallback: any
-      
-      vi.mocked(d3Force.forceCollide).mockReturnValue({
-        radius: vi.fn().mockImplementation((fn: any) => {
-          radiusCallback = fn
-          return {
-            strength: vi.fn().mockReturnThis(),
-            iterations: vi.fn().mockReturnValue(mockForces.collide),
-          }
-        }),
-      } as any)
-      
-      store.addClusterForce()
-      
-      const nodeWithNullScale = { ref_id: 'test', scale: null }
-      expect(radiusCallback(nodeWithNullScale)).toBe(95)
-    })
-    
-    test('should set collision strength to 0.5', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      const mockStrength = vi.fn().mockReturnThis()
-      
-      vi.mocked(d3Force.forceCollide).mockReturnValue({
-        radius: vi.fn().mockReturnThis(),
-        strength: mockStrength,
-        iterations: vi.fn().mockReturnValue(mockForces.collide),
-      } as any)
-      
-      store.addClusterForce()
-      
-      expect(mockStrength).toHaveBeenCalledWith(0.5)
-    })
-    
-    test('should set collision iterations to 1', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      const mockIterations = vi.fn().mockReturnValue(mockForces.collide)
-      
-      vi.mocked(d3Force.forceCollide).mockReturnValue({
-        radius: vi.fn().mockReturnThis(),
-        strength: vi.fn().mockReturnThis(),
-        iterations: mockIterations,
-      } as any)
-      
-      store.addClusterForce()
-      
-      expect(mockIterations).toHaveBeenCalledWith(1)
-    })
-  })
-  
-  describe('Integration with setForces', () => {
-    test('should be called when graphStyle is "force"', () => {
-      vi.mocked(useGraphStore.getState).mockReturnValue({
-        graphStyle: 'force',
-        neighbourhoods: [],
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      const addClusterForceSpy = vi.spyOn(store, 'addClusterForce')
-      const simulationRestartSpy = vi.spyOn(store, 'simulationRestart')
-      
-      store.setForces()
-      
-      expect(addClusterForceSpy).toHaveBeenCalled()
-      expect(simulationRestartSpy).toHaveBeenCalled()
-    })
-    
-    test('should not be called when graphStyle is "sphere"', () => {
-      vi.mocked(useGraphStore.getState).mockReturnValue({
-        graphStyle: 'sphere',
-        neighbourhoods: [],
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      const addClusterForceSpy = vi.spyOn(store, 'addClusterForce')
-      
-      store.setForces()
-      
-      expect(addClusterForceSpy).not.toHaveBeenCalled()
-    })
-    
-    test('should not be called when graphStyle is "split"', () => {
-      vi.mocked(useGraphStore.getState).mockReturnValue({
-        graphStyle: 'split',
-        neighbourhoods: [],
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      const addClusterForceSpy = vi.spyOn(store, 'addClusterForce')
-      
-      store.setForces()
-      
-      expect(addClusterForceSpy).not.toHaveBeenCalled()
-    })
-  })
-  
-  describe('Link Force Configuration', () => {
-    test('should preserve existing link references', () => {
-      const mockLinks = [
-        { source: { ref_id: 'node1' }, target: { ref_id: 'node2' }, ref_id: 'link1' },
-        { source: { ref_id: 'node2' }, target: { ref_id: 'node3' }, ref_id: 'link2' },
-      ]
-      
-      const mockLinkForce = {
-        links: vi.fn().mockReturnValue(mockLinks),
+  });
+
+  return { nodes, nodeTypes };
+};
+
+/**
+ * Unit tests for calculateGridMap
+ */
+describe('calculateGridMap', () => {
+  describe('Basic Grid Layout', () => {
+    test('should return a Map with all node ref_ids as keys', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 3,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      expect(gridMap).toBeInstanceOf(Map);
+      expect(gridMap.size).toBe(3);
+      nodes.forEach((node) => {
+        expect(gridMap.has(node.ref_id)).toBe(true);
+      });
+    });
+
+    test('should return position objects with x, y, z coordinates', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 2,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      gridMap.forEach((position) => {
+        expect(position).toHaveProperty('x');
+        expect(position).toHaveProperty('y');
+        expect(position).toHaveProperty('z');
+        expect(typeof position.x).toBe('number');
+        expect(typeof position.y).toBe('number');
+        expect(typeof position.z).toBe('number');
+      });
+    });
+
+    test('should arrange nodes in square grid pattern', () => {
+      // 4 nodes should form 2x2 grid
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 4,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const positions = Array.from(gridMap.values());
+
+      // Check that we have 4 unique positions
+      const uniqueXZ = new Set(positions.map((p) => `${p.x},${p.z}`));
+      expect(uniqueXZ.size).toBe(4);
+
+      // All nodes should be on the same Y layer
+      const yValues = positions.map((p) => p.y);
+      expect(new Set(yValues).size).toBe(1);
+    });
+  });
+
+  describe('Node Type Grouping', () => {
+    test('should separate different node types into different Y layers', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 2,
+        TypeB: 2,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      const typeANodes = nodes.filter((n) => n.node_type === 'TypeA');
+      const typeBNodes = nodes.filter((n) => n.node_type === 'TypeB');
+
+      const typeAPositions = typeANodes.map((n) => gridMap.get(n.ref_id)!);
+      const typeBPositions = typeBNodes.map((n) => gridMap.get(n.ref_id)!);
+
+      // All nodes of same type should have same Y coordinate
+      const typeAYs = new Set(typeAPositions.map((p) => p.y));
+      const typeBYs = new Set(typeBPositions.map((p) => p.y));
+
+      expect(typeAYs.size).toBe(1);
+      expect(typeBYs.size).toBe(1);
+
+      // Different types should have different Y coordinates
+      const [typeAY] = typeAYs;
+      const [typeBY] = typeBYs;
+      expect(typeAY).not.toBe(typeBY);
+    });
+
+    test('should maintain Y-layer separation of 500 units between types', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 2,
+        TypeB: 2,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      const typeANode = nodes.find((n) => n.node_type === 'TypeA')!;
+      const typeBNode = nodes.find((n) => n.node_type === 'TypeB')!;
+
+      const typeAPos = gridMap.get(typeANode.ref_id)!;
+      const typeBPos = gridMap.get(typeBNode.ref_id)!;
+
+      // Y difference should be 500 units
+      expect(Math.abs(typeAPos.y - typeBPos.y)).toBe(500);
+    });
+
+    test('should position layers from top to bottom in order', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 1, // typeIndex 0 -> y = +750 (top)
+        TypeB: 1, // typeIndex 1 -> y = +250
+        TypeC: 1, // typeIndex 2 -> y = -250
+        TypeD: 1, // typeIndex 3 -> y = -750 (bottom)
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      const positions = nodeTypes.map((type) => {
+        const node = nodes.find((n) => n.node_type === type)!;
+        return gridMap.get(node.ref_id)!;
+      });
+
+      // Top-to-bottom positioning: first type at top, last at bottom
+      // With 4 types, startOffset = ((4-1)/2) * 500 = 750
+      // TypeA (index 0): y = 750 - (0 * 500) = 750
+      // TypeB (index 1): y = 750 - (1 * 500) = 250
+      // TypeC (index 2): y = 750 - (2 * 500) = -250
+      // TypeD (index 3): y = 750 - (3 * 500) = -750
+      expect(positions[0].y).toBe(750);  // TypeA: top
+      expect(positions[1].y).toBe(250);  // TypeB
+      expect(positions[2].y).toBe(-250); // TypeC
+      expect(positions[3].y).toBe(-750); // TypeD: bottom
+    });
+  });
+
+  describe('Grid Spacing', () => {
+    test('should use 300-unit spacing between adjacent nodes', () => {
+      // 2 nodes in a row should be 300 units apart
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 2,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const positions = Array.from(gridMap.values());
+
+      // Sort by x to get adjacent nodes
+      positions.sort((a, b) => a.x - b.x);
+
+      const distance = Math.abs(positions[1].x - positions[0].x);
+      expect(distance).toBe(300);
+    });
+
+    test('should arrange 9 nodes in 3x3 grid with proper spacing', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 9,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const positions = Array.from(gridMap.values());
+
+      // Count unique X and Z coordinates
+      const uniqueXs = new Set(positions.map((p) => p.x));
+      const uniqueZs = new Set(positions.map((p) => p.z));
+
+      expect(uniqueXs.size).toBe(3); // 3 columns
+      expect(uniqueZs.size).toBe(3); // 3 rows
+
+      // Verify spacing between columns and rows
+      const sortedXs = Array.from(uniqueXs).sort((a, b) => a - b);
+      const sortedZs = Array.from(uniqueZs).sort((a, b) => a - b);
+
+      for (let i = 1; i < sortedXs.length; i++) {
+        expect(sortedXs[i] - sortedXs[i - 1]).toBe(300);
       }
-      
-      mockSimulation.force = vi.fn().mockImplementation(function(name: string, forceValue?: any) {
-        // If called with 2 arguments, it's a setter - return simulation for chaining
-        if (arguments.length === 2) {
-          return mockSimulation
+      for (let i = 1; i < sortedZs.length; i++) {
+        expect(sortedZs[i] - sortedZs[i - 1]).toBe(300);
+      }
+    });
+  });
+
+  describe('Grid Centering', () => {
+    test('should center grid around origin for single type', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 4, // 2x2 grid
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const positions = Array.from(gridMap.values());
+
+      // Calculate center of mass
+      const avgX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length;
+      const avgZ = positions.reduce((sum, p) => sum + p.z, 0) / positions.length;
+
+      // Center should be close to (0, 0) in X-Z plane
+      expect(Math.abs(avgX)).toBeLessThan(1);
+      expect(Math.abs(avgZ)).toBeLessThan(1);
+    });
+
+    test('should center grid around origin for multiple types', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 4,
+        TypeB: 4,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const positions = Array.from(gridMap.values());
+
+      // Calculate center of mass in X-Z plane
+      const avgX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length;
+      const avgZ = positions.reduce((sum, p) => sum + p.z, 0) / positions.length;
+
+      expect(Math.abs(avgX)).toBeLessThan(1);
+      expect(Math.abs(avgZ)).toBeLessThan(1);
+    });
+
+    test('should maintain Y-axis centering around 0 with positive and negative layers', () => {
+      // Need at least 3 types to get both positive and negative Y values
+      // TypeA: y=0, TypeB: y=500, TypeC: y=-500
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 2,
+        TypeB: 2,
+        TypeC: 2,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const positions = Array.from(gridMap.values());
+
+      const yValues = positions.map((p) => p.y);
+      const hasNegative = yValues.some((y) => y < 0);
+      const hasPositive = yValues.some((y) => y > 0);
+
+      // Should have both positive and negative Y values
+      expect(hasNegative).toBe(true);
+      expect(hasPositive).toBe(true);
+
+      // Y values should be symmetric (balanced around 0)
+      const avgY = yValues.reduce((sum, y) => sum + y, 0) / yValues.length;
+      expect(Math.abs(avgY)).toBeLessThan(1);
+    });
+  });
+
+  describe('Edge Cases', () => {
+    test('should handle empty nodes array', () => {
+      const gridMap = calculateGridMap([], []);
+
+      expect(gridMap).toBeInstanceOf(Map);
+      expect(gridMap.size).toBe(0);
+    });
+
+    test('should handle single node', () => {
+      const nodes = [createMockNode({ ref_id: 'single', node_type: 'TypeA' })];
+      const nodeTypes = ['TypeA'];
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      expect(gridMap.size).toBe(1);
+      const position = gridMap.get('single')!;
+
+      // Single node should be centered at origin
+      expect(position.x).toBe(0);
+      expect(position.z).toBe(0);
+      expect(position.y).toBe(0); // Single type is centered at Y=0
+    });
+
+    test('should handle single type with multiple nodes', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 5,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      expect(gridMap.size).toBe(5);
+
+      // All nodes should be on same Y layer
+      const positions = Array.from(gridMap.values());
+      const yValues = new Set(positions.map((p) => p.y));
+      expect(yValues.size).toBe(1);
+    });
+
+    test('should handle many types with different node counts', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 1,
+        TypeB: 4,
+        TypeC: 9,
+        TypeD: 2,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      expect(gridMap.size).toBe(16);
+
+      // Each type should have its own Y layer
+      const typeYMapping = new Map<string, number>();
+      nodes.forEach((node) => {
+        const pos = gridMap.get(node.ref_id)!;
+        if (!typeYMapping.has(node.node_type)) {
+          typeYMapping.set(node.node_type, pos.y);
+        } else {
+          // All nodes of same type should have same Y
+          expect(pos.y).toBe(typeYMapping.get(node.node_type));
         }
-        // If called with 1 argument, it's a getter - return the force
-        if (name === 'link') {
-          return mockLinkForce
-        }
-        return null
-      })
-      
-      const mockLinksMethod = vi.fn().mockReturnThis()
-      
-      vi.mocked(d3Force.forceLink).mockReturnValue({
-        links: mockLinksMethod,
-        strength: vi.fn().mockReturnThis(),
-        distance: vi.fn().mockReturnThis(),
-        id: vi.fn().mockReturnValue(mockForces.link),
-      } as any)
-      
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      store.addClusterForce()
-      
-      // Verify links were retrieved and passed with ref_id mapping
-      expect(mockLinkForce.links).toHaveBeenCalled()
-      expect(mockLinksMethod).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ source: 'node1', target: 'node2' }),
-          expect.objectContaining({ source: 'node2', target: 'node3' }),
-        ])
-      )
-    })
-    
-    test('should use ref_id as link identifier', () => {
-      const store = useSimulationStore.getState()
-      store.simulation = mockSimulation
-      
-      let idCallback: any
-      
-      vi.mocked(d3Force.forceLink).mockReturnValue({
-        links: vi.fn().mockReturnThis(),
-        strength: vi.fn().mockReturnThis(),
-        distance: vi.fn().mockReturnThis(),
-        id: vi.fn().mockImplementation((fn: any) => {
-          idCallback = fn
-          return mockForces.link
-        }),
-      } as any)
-      
-      store.addClusterForce()
-      
-      const testNode = { ref_id: 'test123' }
-      expect(idCallback(testNode)).toBe('test123')
-    })
-  })
-})
+      });
+
+      expect(typeYMapping.size).toBe(4);
+    });
+
+    test('should handle non-square grids correctly', () => {
+      // 6 nodes should form 3x2 grid (ceil(sqrt(6)) = 3)
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 6,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const positions = Array.from(gridMap.values());
+
+      const uniqueXs = new Set(positions.map((p) => p.x));
+      const uniqueZs = new Set(positions.map((p) => p.z));
+
+      expect(uniqueXs.size).toBe(3); // 3 columns
+      expect(uniqueZs.size).toBe(2); // 2 rows
+    });
+
+    test('should handle type not in nodeTypes array', () => {
+      const nodes = [
+        createMockNode({ ref_id: 'node1', node_type: 'TypeX' }), // TypeX not in nodeTypes
+      ];
+      const nodeTypes = ['TypeA', 'TypeB'];
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      expect(gridMap.size).toBe(1);
+      // Should still create position even if type not found (indexOf returns -1, +1 = 0)
+      const position = gridMap.get('node1')!;
+      expect(position).toBeDefined();
+      expect(typeof position.x).toBe('number');
+      expect(typeof position.y).toBe('number');
+      expect(typeof position.z).toBe('number');
+    });
+  });
+
+  describe('Position Calculation Accuracy', () => {
+    test('should calculate correct typeIndex for position calculations', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 1,
+        TypeB: 1,
+        TypeC: 1,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      // Top-to-bottom positioning with 3 types:
+      // startOffset = ((3-1)/2) * 500 = 500
+      // TypeA (index 0): y = 500 - (0 * 500) = 500 (top)
+      // TypeB (index 1): y = 500 - (1 * 500) = 0 (center)
+      // TypeC (index 2): y = 500 - (2 * 500) = -500 (bottom)
+
+      const typeAPos = gridMap.get(nodes.find(n => n.node_type === 'TypeA')!.ref_id)!;
+      const typeBPos = gridMap.get(nodes.find(n => n.node_type === 'TypeB')!.ref_id)!;
+      const typeCPos = gridMap.get(nodes.find(n => n.node_type === 'TypeC')!.ref_id)!;
+
+      expect(typeAPos.y).toBe(500);  // TypeA: top
+      expect(typeBPos.y).toBe(0);    // TypeB: center
+      expect(typeCPos.y).toBe(-500); // TypeC: bottom
+    });
+
+    test('should maintain consistent positions for same node configuration', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 4,
+      });
+
+      const gridMap1 = calculateGridMap(nodes, nodeTypes);
+      const gridMap2 = calculateGridMap(nodes, nodeTypes);
+
+      // Should produce identical results
+      expect(gridMap1.size).toBe(gridMap2.size);
+      nodes.forEach((node) => {
+        const pos1 = gridMap1.get(node.ref_id)!;
+        const pos2 = gridMap2.get(node.ref_id)!;
+        expect(pos1.x).toBe(pos2.x);
+        expect(pos1.y).toBe(pos2.y);
+        expect(pos1.z).toBe(pos2.z);
+      });
+    });
+  });
+
+  describe('Performance', () => {
+    test('should handle large node counts efficiently', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 100,
+        TypeB: 100,
+        TypeC: 100,
+      });
+
+      const startTime = performance.now();
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+      const endTime = performance.now();
+
+      const duration = endTime - startTime;
+
+      expect(gridMap.size).toBe(300);
+      // Should complete in reasonable time (< 100ms for 300 nodes)
+      expect(duration).toBeLessThan(100);
+    });
+
+    test('should maintain O(1) lookup performance', () => {
+      const { nodes, nodeTypes } = createMockNodesWithTypes({
+        TypeA: 100,
+      });
+
+      const gridMap = calculateGridMap(nodes, nodeTypes);
+
+      const startTime = performance.now();
+
+      // Test 100 random lookups
+      for (let i = 0; i < 100; i++) {
+        const randomNode = nodes[Math.floor(Math.random() * nodes.length)];
+        const position = gridMap.get(randomNode.ref_id);
+        expect(position).toBeDefined();
+      }
+
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      // 100 lookups should be near-instant (< 10ms)
+      expect(duration).toBeLessThan(10);
+    });
+  });
+});

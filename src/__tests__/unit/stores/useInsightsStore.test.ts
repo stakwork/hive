@@ -155,6 +155,54 @@ describe("useInsightsStore - acceptRecommendation", () => {
         expect.any(Object)
       );
     });
+
+    test("should handle refetch failure gracefully after successful acceptance", async () => {
+      // Arrange
+      const recommendationId = "rec-refetch-fail";
+      const workspaceSlug = "test-workspace";
+      const mockSuccessResponse = {
+        success: true,
+        task: { id: "task-123", title: "Test task" },
+        recommendation: { id: recommendationId, status: "ACCEPTED" },
+      };
+
+      // Mock successful accept API call
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockSuccessResponse,
+      });
+
+      // Mock failed refetch call - this should be caught and logged, not thrown
+      mockFetch.mockRejectedValueOnce(new Error("Refetch network failure"));
+
+      const { result } = renderHook(() => useInsightsStore());
+
+      // Set workspace slug to trigger refetch
+      act(() => {
+        result.current.setWorkspaceSlug(workspaceSlug);
+      });
+
+      // Act - Should not throw despite refetch failure
+      let returnedResult;
+      await act(async () => {
+        returnedResult = await result.current.acceptRecommendation(recommendationId);
+      });
+
+      // Assert - Accept call should succeed and return result
+      expect(returnedResult).toEqual(mockSuccessResponse);
+      
+      // Assert - Both API calls should have been attempted
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        `/api/janitors/recommendations/${recommendationId}/accept`,
+        expect.any(Object)
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        `/api/workspaces/${workspaceSlug}/janitors/recommendations?limit=10`
+      );
+    });
   });
 
   describe("Error Handling - API Errors", () => {

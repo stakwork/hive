@@ -2,9 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
-  Monitor,
   RefreshCw,
   ExternalLink,
   Circle,
@@ -20,12 +19,14 @@ import {
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
 import { usePlaywrightReplay } from "@/hooks/useStaktrakReplay";
+import { useBrowserLoadingStatus } from "@/hooks/useBrowserLoadingStatus";
 import { TestManagerModal } from "./TestManagerModal";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { useDebugSelection } from "@/hooks/useDebugSelection";
 import { ActionsList } from "@/components/ActionsList";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
+import { SIDEBAR_WIDTH } from "@/lib/constants";
 
 export function BrowserArtifactPanel({
   artifacts,
@@ -43,7 +44,7 @@ export function BrowserArtifactPanel({
   workspaceId?: string;
   taskId?: string;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
-  onUserJourneySave?: (filename: string, generatedCode: string) => void;
+  onUserJourneySave?: (testName: string, generatedCode: string) => void;
   externalTestCode?: string | null;
   externalTestTitle?: string | null;
   isMobile?: boolean;
@@ -54,14 +55,13 @@ export function BrowserArtifactPanel({
   const [urlInput, setUrlInput] = useState("");
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [isUrlReady, setIsUrlReady] = useState<Record<string, boolean>>({});
-  const [urlCheckAttempts, setUrlCheckAttempts] = useState<Record<string, number>>({});
 
   // Get the current artifact and its content
   const activeArtifact = artifacts[activeTab];
   const activeContent = activeArtifact?.content as BrowserContent;
 
-  const { toast } = useToast();
+  // Track URL loading status
+  const { isReady: isUrlReady } = useBrowserLoadingStatus(activeContent?.url);
 
   // Local toast handler for all action types
   const showActionToast = useCallback((type: string, text: string) => {
@@ -98,11 +98,7 @@ export function BrowserArtifactPanel({
       // Show error toast if test generation failed
       if (error) {
         console.error("[Browser] Test generation failed:", error);
-        toast({
-          title: "Test Generation Failed",
-          description: error,
-          variant: "destructive",
-        });
+        toast.error("Test Generation Failed", { description: error });
         return; // Don't open modal on error
       }
 
@@ -117,11 +113,12 @@ export function BrowserArtifactPanel({
   const {
     isPlaywrightReplaying,
     playwrightProgress,
-    currentAction,
     startPlaywrightReplay,
     stopPlaywrightReplay,
     replayScreenshots,
     replayActions,
+    previewActions,
+    previewPlaywrightReplay,
   } = usePlaywrightReplay(iframeRef, workspaceId, taskId, (message) => {
     showActionToast("Screenshot Error", message);
   });
@@ -146,6 +143,13 @@ export function BrowserArtifactPanel({
       toggleActionsView();
     }
   }, [externalTestCode, isSetup, isRecorderReady, showActions, toggleActionsView]);
+
+  // Preview test code when loaded (parse actions without starting replay)
+  useEffect(() => {
+    if (externalTestCode && isRecorderReady && previewActions.length === 0) {
+      previewPlaywrightReplay(externalTestCode);
+    }
+  }, [externalTestCode, isRecorderReady, previewActions.length, previewPlaywrightReplay]);
 
   // Use debug selection hook with iframeRef from staktrak
   const {
@@ -175,57 +179,6 @@ export function BrowserArtifactPanel({
   useEffect(() => {
     setUrlInput(displayUrl || "");
   }, [displayUrl]);
-
-  // Poll URL to check if it's ready (only on initial load for each artifact)
-  useEffect(() => {
-    const url = activeContent?.url;
-    if (!url) return;
-
-    // If we already know this URL is ready, don't poll
-    if (isUrlReady[url]) return;
-
-    const maxAttempts = 30; // 30 attempts = 30 seconds max
-    const pollInterval = 1000; // 1 second
-
-    const checkUrl = async () => {
-      try {
-        const response = await fetch(url, { 
-          method: 'HEAD',
-          mode: 'no-cors', // Allow checking cross-origin URLs
-        });
-        // With no-cors mode, we can't read the status, but if fetch succeeds, URL is likely ready
-        setIsUrlReady(prev => ({ ...prev, [url]: true }));
-        setUrlCheckAttempts(prev => ({ ...prev, [url]: 0 }));
-      } catch (error) {
-        // URL not ready yet, increment attempts
-        setUrlCheckAttempts(prev => {
-          const currentAttempts = (prev[url] || 0) + 1;
-          
-          if (currentAttempts >= maxAttempts) {
-            // Give up after max attempts and show iframe anyway
-            setIsUrlReady(prevReady => ({ ...prevReady, [url]: true }));
-            return { ...prev, [url]: 0 };
-          }
-          
-          return { ...prev, [url]: currentAttempts };
-        });
-      }
-    };
-
-    // Initial check
-    checkUrl();
-
-    // Set up polling
-    const intervalId = setInterval(() => {
-      if (!isUrlReady[url] && (urlCheckAttempts[url] || 0) < maxAttempts) {
-        checkUrl();
-      } else {
-        clearInterval(intervalId);
-      }
-    }, pollInterval);
-
-    return () => clearInterval(intervalId);
-  }, [activeContent?.url, isUrlReady, urlCheckAttempts]);
 
   const handleUrlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUrlInput(e.target.value);
@@ -351,20 +304,38 @@ export function BrowserArtifactPanel({
                       </Tooltip>
                     </TooltipProvider>
                     {/* <Monitor className="w-4 h-4 flex-shrink-0" /> */}
-                    <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
+                    <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0 relative">
                       <Input
                         type="text"
                         value={isActive ? urlInput : tabUrl}
                         onChange={handleUrlInputChange}
                         onFocus={(e) => e.target.select()}
                         disabled={!isActive}
-                        className="h-7 text-sm"
+                        className="h-7 text-sm pr-9"
                         placeholder="Enter URL..."
                       />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={handleRefresh} 
+                              className="h-6 w-6 p-0 absolute right-1 top-1/2 -translate-y-1/2"
+                              type="button"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Refresh</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </form>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {isSetup &&
+                    {/* Actions list button - only in user journey view */}
+                    {onUserJourneySave &&
+                      isSetup &&
                       isRecorderReady &&
                       (isRecording || isPlaywrightReplaying || capturedActions.length > 0) && (
                         <TooltipProvider>
@@ -389,7 +360,8 @@ export function BrowserArtifactPanel({
                           </Tooltip>
                         </TooltipProvider>
                       )}
-                    {isSetup && isRecorderReady && isRecording && (
+                    {/* Assertion mode button - only in user journey view when recording */}
+                    {onUserJourneySave && isSetup && isRecorderReady && isRecording && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -412,8 +384,8 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-
-                    {isSetup && isRecorderReady && (
+                    {/* Record/Stop button - only in user journey view */}
+                    {onUserJourneySave && isSetup && isRecorderReady && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -436,42 +408,6 @@ export function BrowserArtifactPanel({
                         </Tooltip>
                       </TooltipProvider>
                     )}
-
-                    {!onUserJourneySave && !isMobile && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setIsTestModalOpen(true)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <FlaskConical className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Tests</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    {!onUserJourneySave && !isMobile && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={debugMode ? "default" : "ghost"}
-                              size="sm"
-                              onClick={handleDebugElement}
-                              className="h-8 w-8 p-0"
-                              title="Debug Element"
-                            >
-                              <Bug className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Debug Element</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -487,23 +423,21 @@ export function BrowserArtifactPanel({
                         <TooltipContent side="bottom">Open in new tab</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" onClick={handleRefresh} className="h-8 w-8 p-0">
-                            <RefreshCw className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Refresh</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
                   </div>
                 </div>
               )}
               {showActions && (
-                <div className="fixed top-0 left-0 bottom-0 z-40 w-80 transition-all duration-300 ease-in-out">
+                <div
+                  className={`fixed top-0 left-0 bottom-0 z-40 ${SIDEBAR_WIDTH} transition-all duration-300 ease-in-out`}
+                >
                   <ActionsList
-                    actions={replayActions.length > 0 ? replayActions : capturedActions}
+                    actions={
+                      replayActions.length > 0
+                        ? replayActions
+                        : previewActions.length > 0
+                          ? previewActions
+                          : capturedActions
+                    }
                     onRemoveAction={removeAction}
                     onClearAll={clearAllActions}
                     isRecording={isRecording}
@@ -512,12 +446,12 @@ export function BrowserArtifactPanel({
                     totalActions={playwrightProgress.total}
                     screenshots={replayScreenshots}
                     title={externalTestTitle || undefined}
-                    onReplayToggle={(generatedPlaywrightTest || externalTestCode) ? handleReplayToggle : undefined}
+                    onReplayToggle={generatedPlaywrightTest || externalTestCode ? handleReplayToggle : undefined}
                   />
                 </div>
               )}
               <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
-                {isActive && !isUrlReady[content.url] && (
+                {isActive && !isUrlReady && (
                   <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-3">
                       <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -528,9 +462,10 @@ export function BrowserArtifactPanel({
                 <iframe
                   key={`${artifact.id}-${refreshKey}`}
                   ref={isActive ? iframeRef : undefined}
-                  src={content.url}
+                  src={isUrlReady ? content.url : "about:blank"}
                   className="w-full h-full border-0"
                   title={`Live Preview ${index + 1}`}
+                  allow="camera *; microphone *; clipboard-read *; clipboard-write *"
                 />
                 {/* Debug overlay - only active for the current tab */}
                 {isActive && (
@@ -565,7 +500,6 @@ export function BrowserArtifactPanel({
         }}
         generatedCode={generatedPlaywrightTest}
         errorMessage={generationError}
-        initialTab={"generated"}
         onUserJourneySave={onUserJourneySave}
       />
     </div>

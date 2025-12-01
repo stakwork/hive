@@ -1,12 +1,18 @@
 import { executeScheduledJanitorRuns } from "@/services/janitor-cron";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * GET endpoint for Vercel cron execution and health check
  * Vercel cron jobs trigger GET requests, not POST
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Verify Vercel cron secret
+    const authHeader = request.headers.get('authorization');
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Check if cron is enabled
     const cronEnabled = process.env.JANITOR_CRON_ENABLED === "true";
     if (!cronEnabled) {

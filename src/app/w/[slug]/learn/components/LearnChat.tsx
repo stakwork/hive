@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LearnChatArea } from "./LearnChatArea";
 import { LearnSidebar } from "./LearnSidebar";
 import { useStreamProcessor } from "@/lib/streaming";
@@ -13,6 +14,8 @@ interface LearnChatProps {
 }
 
 export function LearnChat({ workspaceSlug }: LearnChatProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   const [mode, setMode] = useState<"learn" | "chat" | "mic">("chat");
   const [messages, setMessages] = useState<LearnMessage[]>([
@@ -27,6 +30,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
   const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const [scrollToTopTrigger, setScrollToTopTrigger] = useState(0);
   const { processStream } = useStreamProcessor<LearnMessage>({
     toolProcessors: learnToolProcessors,
     hiddenTools: ["final_answer"],
@@ -34,10 +38,68 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   });
   const hasReceivedContentRef = useRef(false);
   const isLocalhost = typeof window !== "undefined" && window.location.hostname === "localhost";
+  const hasLoadedFeatureRef = useRef(false);
 
   const triggerRefetch = () => {
     setRefetchTrigger((prev) => prev + 1);
   };
+
+  const loadFeatureById = async (featureId: string, featureName?: string) => {
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/learnings/features/${encodeURIComponent(featureId)}?workspace=${encodeURIComponent(workspaceSlug)}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const feature = data.feature;
+
+      const userMessage: LearnMessage = {
+        id: Date.now().toString(),
+        content: `Tell me about the "${featureName || feature?.name || "this"}" feature`,
+        role: "user",
+        timestamp: new Date(),
+      };
+
+      const assistantMessage: LearnMessage = {
+        id: (Date.now() + 1).toString(),
+        content: feature?.documentation || "No documentation available for this feature.",
+        role: "assistant",
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+
+      // Trigger scroll to top by incrementing counter
+      setScrollToTopTrigger((prev) => prev + 1);
+    } catch (error) {
+      console.error("Error fetching feature documentation:", error);
+      const errorMessage: LearnMessage = {
+        id: (Date.now() + 1).toString(),
+        content: "I'm sorry, but I encountered an error while fetching the feature documentation. Please try again later.",
+        role: "assistant",
+        timestamp: new Date(),
+        isError: true,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const featureId = searchParams.get("feature_id");
+    if (featureId && !hasLoadedFeatureRef.current) {
+      hasLoadedFeatureRef.current = true;
+      loadFeatureById(featureId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, workspaceSlug]);
 
   const handleSend = async (content: string) => {
     if (!content.trim()) return;
@@ -147,6 +209,16 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     handleSend(prompt);
   };
 
+  const handleFeatureClick = async (featureId: string, featureName: string) => {
+    // Update URL with feature_id
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("feature_id", featureId);
+    router.push(`?${params.toString()}`, { scroll: false });
+
+    // Load the feature
+    await loadFeatureById(featureId, featureName);
+  };
+
   return (
     <div className="relative h-full">
       <div className={isMobile ? "h-full" : "h-full pr-80"}>
@@ -160,6 +232,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           onRefetchLearnings={triggerRefetch}
           showMicMode={isLocalhost}
           workspaceSlug={workspaceSlug}
+          scrollToTopTrigger={scrollToTopTrigger}
         />
       </div>
       {!isMobile && (
@@ -167,6 +240,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
           <LearnSidebar
             workspaceSlug={workspaceSlug}
             onPromptClick={handlePromptClick}
+            onFeatureClick={handleFeatureClick}
             currentQuestion={currentInput.trim() || undefined}
             refetchTrigger={refetchTrigger}
           />

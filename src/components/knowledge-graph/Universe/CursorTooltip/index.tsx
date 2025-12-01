@@ -1,4 +1,4 @@
-import { useHoveredNode } from '@/stores/useGraphStore'
+import { useHoveredNode } from '@/stores/useStores'
 import { useEffect, useRef } from 'react'
 import { HoverCard } from './HoverCard/index'
 

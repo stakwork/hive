@@ -2,7 +2,7 @@ import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react'
 import axios from 'axios';
 import ImportNodeModal from './ImportNodeModal';
 import RequestQueue from './RequestQueue';
-import { useToastContext } from '@/components/ui/toast-provider';
+import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 declare global {
@@ -209,7 +209,6 @@ interface WorkflowAppProps {
 }
 
 export default function App(workflowApp: WorkflowAppProps) {
-  const { showToast } = useToastContext();
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     title: string;
@@ -240,13 +239,14 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   // Helper to show toast messages (replaces window.showFlashMessage)
   const showFlashMessage = useCallback((message: string, type: 'success' | 'info' | 'error') => {
-    const variant = type === 'error' ? 'destructive' : type === 'success' ? 'success' : 'default';
-    showToast({
-      title: message,
-      variant,
-      duration: 3000
-    });
-  }, [showToast]);
+    if (type === 'error') {
+      toast.error(message);
+    } else if (type === 'success') {
+      toast.success(message);
+    } else {
+      toast(message);
+    }
+  }, []);
 
   // Helper to show error dialog (replaces swal for errors)
   const showErrorDialog = useCallback((title: string, message: string) => {

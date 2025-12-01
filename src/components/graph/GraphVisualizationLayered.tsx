@@ -29,6 +29,7 @@ interface GraphVisualizationLayeredProps {
 // Define layer order: top to bottom
 const LAYER_ORDER: Record<string, number> = {
   Episode: 0,
+  Call: 0,
   Hint: 0,
   Prompt: 0,
   Video: 1,

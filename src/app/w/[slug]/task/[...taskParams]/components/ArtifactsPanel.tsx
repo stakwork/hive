@@ -2,11 +2,11 @@
 
 import { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
-import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel } from "../artifacts";
+import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
+import { ArtifactsHeader } from "./ArtifactsHeader";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -26,16 +26,18 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
   const ideArtifacts = artifacts.filter((a) => a.type === "IDE");
   const graphArtifacts = artifacts.filter((a) => a.type === "GRAPH");
   const workflowArtifacts = artifacts.filter((a) => a.type === "WORKFLOW");
+  const diffArtifacts = artifacts.filter((a) => a.type === "DIFF");
 
   const availableTabs: ArtifactType[] = useMemo(() => {
     const tabs: ArtifactType[] = [];
-    if (codeArtifacts.length > 0) tabs.push("CODE");
     if (browserArtifacts.length > 0) tabs.push("BROWSER");
-    if (ideArtifacts.length > 0) tabs.push("IDE");
-    if (graphArtifacts.length > 0) tabs.push("GRAPH");
     if (workflowArtifacts.length > 0) tabs.push("WORKFLOW");
+    if (graphArtifacts.length > 0) tabs.push("GRAPH");
+    if (diffArtifacts.length > 0) tabs.push("DIFF");
+    if (codeArtifacts.length > 0) tabs.push("CODE");
+    if (ideArtifacts.length > 0) tabs.push("IDE");
     return tabs;
-  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length]);
+  }, [codeArtifacts.length, browserArtifacts.length, ideArtifacts.length, graphArtifacts.length, workflowArtifacts.length, diffArtifacts.length]);
 
   // Auto-select first tab when artifacts become available
   useEffect(() => {
@@ -57,47 +59,18 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
       transition={{ duration: 0.3, ease: [0.4, 0.0, 0.2, 1] }}
       className="h-full flex-1 min-w-0 min-h-0 bg-background rounded-xl border shadow-sm overflow-hidden flex flex-col"
     >
-      <Tabs
-        value={activeTab as string}
-        className="flex-1 flex flex-col min-h-0"
-        onValueChange={(value) => {
-          setActiveTab(value as ArtifactType);
-        }}
-      >
+      <div className="flex-1 flex flex-col min-h-0">
         {!isMobile && (
           <motion.div
-            className="border-b bg-background/80 backdrop-blur"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4 }}
           >
-            <TabsList className="w-full flex">
-              {codeArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="CODE">
-                  Code / Files
-                </TabsTrigger>
-              )}
-              {browserArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="BROWSER">
-                  Live Preview
-                </TabsTrigger>
-              )}
-              {ideArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="IDE">
-                  IDE
-                </TabsTrigger>
-              )}
-              {graphArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="GRAPH">
-                  Graph
-                </TabsTrigger>
-              )}
-              {workflowArtifacts.length > 0 && (
-                <TabsTrigger className="cursor-pointer" value="WORKFLOW">
-                  Workflow
-                </TabsTrigger>
-              )}
-            </TabsList>
+            <ArtifactsHeader
+              availableArtifacts={availableTabs}
+              activeArtifact={activeTab}
+              onArtifactChange={setActiveTab}
+            />
           </motion.div>
         )}
         {isMobile && onTogglePreview && (
@@ -126,22 +99,12 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
           transition={{ delay: 0.4 }}
         >
           {codeArtifacts.length > 0 && (
-            <TabsContent
-              value="CODE"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "CODE"}
-            >
+            <div className="h-full" hidden={activeTab !== "CODE"}>
               <CodeArtifactPanel artifacts={codeArtifacts} />
-            </TabsContent>
+            </div>
           )}
           {browserArtifacts.length > 0 && (
-            <TabsContent
-              value="BROWSER"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "BROWSER"}
-            >
+            <div className="h-full" hidden={activeTab !== "BROWSER"}>
               <BrowserArtifactPanel
                 artifacts={browserArtifacts}
                 workspaceId={workspaceId}
@@ -149,15 +112,10 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />
-            </TabsContent>
+            </div>
           )}
           {ideArtifacts.length > 0 && (
-            <TabsContent
-              value="IDE"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "IDE"}
-            >
+            <div className="h-full" hidden={activeTab !== "IDE"}>
               <BrowserArtifactPanel
                 artifacts={ideArtifacts}
                 ide={true}
@@ -166,33 +124,28 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />
-            </TabsContent>
+            </div>
           )}
           {graphArtifacts.length > 0 && (
-            <TabsContent
-              value="GRAPH"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "GRAPH"}
-            >
+            <div className="h-full" hidden={activeTab !== "GRAPH"}>
               <GraphArtifactPanel artifacts={graphArtifacts} />
-            </TabsContent>
+            </div>
           )}
           {workflowArtifacts.length > 0 && (
-            <TabsContent
-              value="WORKFLOW"
-              className="h-full mt-0"
-              forceMount
-              hidden={activeTab !== "WORKFLOW"}
-            >
+            <div className="h-full" hidden={activeTab !== "WORKFLOW"}>
               <WorkflowArtifactPanel
                 artifacts={workflowArtifacts}
                 isActive={activeTab === "WORKFLOW"}
               />
-            </TabsContent>
+            </div>
+          )}
+          {diffArtifacts.length > 0 && (
+            <div className="h-full" hidden={activeTab !== "DIFF"}>
+              <DiffArtifactPanel artifacts={diffArtifacts} />
+            </div>
           )}
         </motion.div>
-      </Tabs>
+      </div>
     </motion.div>
   );
 }

@@ -29,27 +29,40 @@ const resetPosition = {
   vz: null,
 }
 
-interface SimulationStore {
+export interface SimulationStore {
   simulation: ForceSimulation | null
   simulationVersion: number
   simulationInProgress: boolean
+  isSleeping: boolean
   simulationCreate: (nodes: Node[]) => void
   removeSimulation: () => void
   addNodesAndLinks: (nodes: Node[], links: Link[], replace: boolean) => void
   setForces: () => void
-  addRadialForce: () => void
+  resetSimulation: () => void
+  addLinkForce: () => void
   addClusterForce: () => void
   addSplitForce: () => void
   simulationRestart: () => void
   getLinks: () => Link<NodeExtended>[]
   updateSimulationVersion: () => void
   setSimulationInProgress: (simulationInProgress: boolean) => void
+  setIsSleeping: (isSleeping: boolean) => void
 }
 
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
   simulation: null,
   simulationVersion: 0,
   simulationInProgress: false,
+  isSleeping: false,
+  resetSimulation: () => {
+    const { simulation } = get()
+    if (!simulation) {
+      return
+    }
+    simulation.stop()
+    simulation.nodes([])
+    simulation.force('link').links([])
+  },
   simulationCreate: (nodes) => {
     const structuredNodes = structuredClone(nodes)
 
@@ -100,7 +113,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     )
 
     const nodesPositioned = graphStyle === 'split' ? nodes.map((n: Node) => {
-      console.log('node-position', n);
       const index = nodeTypes.indexOf(n.node_type) + 1
       const yOffset = Math.floor(index / 2) * 500
 
@@ -121,12 +133,12 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   setForces: () => {
-    const { simulationRestart, addRadialForce, addClusterForce, addSplitForce } = get()
+    const { simulationRestart, addLinkForce, addClusterForce, addSplitForce } = get()
     const { graphStyle } = useGraphStore.getState()
 
     switch (graphStyle) {
       case 'sphere':
-        addRadialForce()
+        addLinkForce()
         break
       case 'force':
         addClusterForce()
@@ -135,14 +147,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
         addSplitForce()
         break
       default:
-        addRadialForce()
+        addLinkForce()
         break
     }
 
     simulationRestart()
   },
 
-  addRadialForce: () => {
+  addLinkForce: () => {
     const { simulation } = get()
 
     simulation
@@ -256,7 +268,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
           }
         }),
       )
-      .force('radial', forceRadial(2000, 0, 0, 0).strength(0.1))
+      // .force('radial', forceRadial(2000, 0, 0, 0).strength(0.1))
       .force('center', forceCenter().strength(1))
       .force('x', forceX().strength(1))
       .force('y', forceY().strength(1))
@@ -277,6 +289,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   simulationRestart: () => {
+    console.log('simulationRestart-start')
     const { simulation, setSimulationInProgress } = get()
 
     if (!simulation) {
@@ -294,5 +307,9 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   setSimulationInProgress: (simulationInProgress: boolean) => {
     set({ simulationInProgress })
+  },
+
+  setIsSleeping: (isSleeping: boolean) => {
+    set({ isSleeping })
   },
 }))

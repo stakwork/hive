@@ -51,7 +51,13 @@ export async function POST(request: NextRequest) {
     }
 
     const repository = await db.repository.findFirst({
-      where: { githubWebhookId: webhookId },
+      where: {
+        githubWebhookId: webhookId,
+        workspace: {
+          deleted: false,
+          deletedAt: null,
+        },
+      },
       select: {
         id: true,
         repositoryUrl: true,

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { Trash2, AlertTriangle } from "lucide-react";
 
 interface DeleteWorkspaceProps {
@@ -36,15 +36,12 @@ export function DeleteWorkspace({
   const [confirmationText, setConfirmationText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
-  const { toast } = useToast();
 
   const handleDelete = async () => {
     if (confirmationText !== workspaceName) {
-      toast({
-        title: "Confirmation failed",
+      toast.error("Confirmation failed", {
         description:
           "Please type the workspace name exactly as shown to confirm deletion.",
-        variant: "destructive",
       });
       return;
     }
@@ -61,10 +58,8 @@ export function DeleteWorkspace({
         throw new Error(error.error || "Failed to delete workspace");
       }
 
-      toast({
-        title: "Workspace deleted",
+      toast.success("Workspace deleted", {
         description: "Your workspace has been permanently deleted.",
-        variant: "default",
       });
 
       // Redirect to workspaces page after successful deletion
@@ -72,13 +67,11 @@ export function DeleteWorkspace({
       router.refresh();
     } catch (error) {
       console.error("Error deleting workspace:", error);
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description:
           error instanceof Error
             ? error.message
             : "Failed to delete workspace. Please try again.",
-        variant: "destructive",
       });
     } finally {
       setIsDeleting(false);
@@ -91,7 +84,7 @@ export function DeleteWorkspace({
 
   return (
     <>
-      <Card className="border-destructive/20">
+      <Card className="border-destructive/20" data-testid="delete-workspace-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <Trash2 className="w-5 h-5" />
@@ -107,6 +100,7 @@ export function DeleteWorkspace({
             variant="destructive"
             onClick={() => setIsOpen(true)}
             className="w-full"
+            data-testid="delete-workspace-button"
           >
             <Trash2 className="w-4 h-4 mr-2" />
             Delete Workspace
@@ -115,7 +109,7 @@ export function DeleteWorkspace({
       </Card>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent>
+        <DialogContent data-testid="delete-workspace-dialog">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="w-5 h-5" />
@@ -141,6 +135,7 @@ export function DeleteWorkspace({
               </Label>
               <Input
                 id="confirmation"
+                data-testid="delete-workspace-confirmation-input"
                 value={confirmationText}
                 onChange={(e) => setConfirmationText(e.target.value)}
                 placeholder={workspaceName}
@@ -157,6 +152,7 @@ export function DeleteWorkspace({
                 setConfirmationText("");
               }}
               disabled={isDeleting}
+              data-testid="delete-workspace-cancel-button"
             >
               Cancel
             </Button>
@@ -164,6 +160,7 @@ export function DeleteWorkspace({
               variant="destructive"
               onClick={handleDelete}
               disabled={!canDelete || isDeleting}
+              data-testid="delete-workspace-confirm-button"
             >
               {isDeleting ? "Deleting..." : "Delete Workspace"}
             </Button>

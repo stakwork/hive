@@ -1,16 +1,10 @@
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import {
   RepositoryStatus,
   SwarmStatus,
 } from "@prisma/client";
-
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
-}
+import { slugify } from "./slugify";
 
 /**
  * Ensures a mock workspace and a completed swarm exist for a given user.
@@ -32,6 +26,18 @@ export async function ensureMockWorkspaceForUser(
   let suffix = 1;
   while (await db.workspace.findUnique({ where: { slug: slugCandidate } })) {
     slugCandidate = `${baseSlug}-${++suffix}`;
+  }
+
+  // Create encrypted mock pool API key for Pool Manager integration (optional)
+  let encryptedPoolApiKey: string | null = null;
+  try {
+    const encryptionService = EncryptionService.getInstance();
+    encryptedPoolApiKey = JSON.stringify(
+      encryptionService.encryptField("poolApiKey", "mock-pool-api-key")
+    );
+  } catch {
+    // Encryption not available (e.g., TOKEN_ENCRYPTION_KEY not set)
+    // This is fine for E2E tests - pool manager mock will work without encrypted key
   }
 
   // Wrap all DB operations in transaction to prevent partial state
@@ -72,6 +78,7 @@ export async function ensureMockWorkspaceForUser(
         agentRequestId: null,
         agentStatus: null,
         containerFilesSetUp: true, // Enable for E2E tests to show dashboard immediately
+        poolApiKey: encryptedPoolApiKey, // Mock pool API key for Pool Manager mock
       },
     });
 

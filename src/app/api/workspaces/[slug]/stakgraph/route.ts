@@ -2,7 +2,7 @@ import { getServiceConfig } from "@/config/services";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
 import { PoolManagerService } from "@/services/pool-manager";
@@ -382,7 +382,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     try {
-      const callbackUrl = getGithubWebhookCallbackUrl(request);
+      const callbackUrl = getGithubWebhookCallbackUrl(request, workspace.id);
       const webhookService = new WebhookService(getServiceConfig("github"));
 
       const primaryRepo = await getPrimaryRepository(workspace.id);

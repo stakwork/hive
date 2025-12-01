@@ -1,5 +1,6 @@
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore } from '@/stores/useGraphStore'
+import { useDataStore } from '@/stores/useStores'
+import { getStoreBundle } from '@/stores/createStoreFactory'
+import { useStoreId } from '@/stores/StoreProvider'
 import { Billboard, Line, Text } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import gsap from 'gsap'
@@ -26,6 +27,7 @@ const _LineComponent = (props: LineComponentProps) => {
   const lineRef = useRef<Line2 | null>(null)
   const groupRef = useRef<Group | null>(null)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
+  const storeId = useStoreId()
 
   const { label, source, target, sourceX, sourceY, sourceZ, targetX, targetY, targetZ } = props
 
@@ -52,7 +54,7 @@ const _LineComponent = (props: LineComponentProps) => {
       return
     }
 
-    const { hoveredNode, searchQuery, selectedNodeTypes, selectedLinkTypes, selectedNode } = useGraphStore.getState()
+    const { hoveredNode, searchQuery, selectedNodeTypes, selectedLinkTypes, selectedNode } = getStoreBundle(storeId).graph.getState()
     const line = lineRef.current
     const activeNode = hoveredNode || selectedNode
 

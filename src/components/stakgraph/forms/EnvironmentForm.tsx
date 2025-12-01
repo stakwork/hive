@@ -7,7 +7,7 @@ import { EnvironmentData, FormSectionProps } from "../types";
 import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { parseEnv } from "@/lib/env-parser";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useEffect, useState } from "react";
 
 interface EnvironmentFormProps extends FormSectionProps<EnvironmentData> {
@@ -31,7 +31,6 @@ export default function EnvironmentForm({
     setEnvVars,
     bulkAddEnvVars,
   } = useEnvironmentVars();
-  const { toast } = useToast();
   const [showImportSection, setShowImportSection] = useState(false);
 
   // Sync environment variables when data changes
@@ -71,25 +70,16 @@ export default function EnvironmentForm({
 
       const count = Object.keys(parsed).length;
       if (count === 0) {
-        toast({
-          title: "No variables found",
-          description: "The clipboard content doesn't contain valid environment variables.",
-          variant: "destructive",
-        });
+        toast.error("No variables found", { description: "The clipboard content doesn't contain valid environment variables." });
         return;
       }
 
       bulkAddEnvVars(parsed);
-      toast({
-        title: "Variables imported",
+      toast.success("Variables imported", {
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
       });
     } catch (err) {
-      toast({
-        title: "Paste failed",
-        description: "Unable to read from clipboard. Please try again.",
-        variant: "destructive",
-      });
+      toast.error("Paste failed", { description: "Unable to read from clipboard. Please try again." });
     }
   };
 
@@ -99,26 +89,19 @@ export default function EnvironmentForm({
 
       const count = Object.keys(parsed).length;
       if (count === 0) {
-        toast({
-          title: "No variables found",
+        toast.error("No variables found", {
           description: `The file "${fileName}" doesn't contain valid environment variables.`,
-          variant: "destructive",
         });
         return;
       }
 
       bulkAddEnvVars(parsed);
-      toast({
-        title: "Variables imported",
+      toast.success("Variables imported", {
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''} from ${fileName}.`,
       });
       setShowImportSection(false);
     } catch (err) {
-      toast({
-        title: "Import failed",
-        description: "Failed to parse the file. Please check the format.",
-        variant: "destructive",
-      });
+      toast.error("Import failed", { description: "Failed to parse the file. Please check the format." });
     }
   };
 

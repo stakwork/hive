@@ -183,8 +183,21 @@ export async function POST(request: NextRequest) {
     console.log(">>> Commit payload:", commitPayload);
     console.log(">>> Posting to control port:", controlPortUrl);
 
+    // Check if task already has a PullRequest artifact in chat history
+    const existingPullRequest = await db.artifact.findFirst({
+      where: {
+        message: {
+          taskId: taskId,
+        },
+        type: "PULL_REQUEST",
+      },
+    });
+
     // POST to /push on the control port with the same payload
-    const pushUrl = `${controlPortUrl}/push?pr=true&commit=true`;
+    // If a PR already exists, stay on current branch instead of creating a new one
+    const stayOnBranch = existingPullRequest ? "&stayOnCurrentBranch=true" : "";
+    const pushUrl = `${controlPortUrl}/push?pr=true&commit=true${stayOnBranch}`;
+    console.log(">>> Push URL:", pushUrl, existingPullRequest ? "(staying on current branch)" : "(creating new branch)");
     const pushResponse = await fetch(pushUrl, {
       method: "POST",
       headers: {

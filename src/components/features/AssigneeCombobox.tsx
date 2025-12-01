@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Check, User as UserIcon, Bot } from "lucide-react";
+import { toast } from "sonner";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -89,7 +90,13 @@ export function AssigneeCombobox({ workspaceSlug, currentAssignee, onSelect, sho
       setUpdating(true);
       await onSelect(memberId, memberData);
       setOpen(false);
-      
+
+      if (memberId === "system:task-coordinator" && ticketData) {
+        toast.info("Task queued for coordinator", {
+          description: "Processing begins when a machine is available",
+        });
+      }
+
       if (memberId === "system:bounty-hunter" && ticketData) {
         const bountyUrl = generateSphinxBountyUrl({
           ...ticketData,

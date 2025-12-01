@@ -459,6 +459,14 @@ var userBehaviour = (() => {
     }
     if (visualSelector)
       selectors.visualSelector = visualSelector;
+    let className;
+    if (target.className) {
+      if (typeof target.className === "string") {
+        className = target.className;
+      } else if (typeof target.className === "object" && "baseVal" in target.className) {
+        className = target.className.baseVal;
+      }
+    }
     return {
       x: e.clientX,
       y: e.clientY,
@@ -467,7 +475,7 @@ var userBehaviour = (() => {
       elementInfo: {
         tagName: target.tagName.toLowerCase(),
         id: target.id || void 0,
-        className: target.className || void 0,
+        className: className || void 0,
         attributes: getElementAttributes(target)
       }
     };
@@ -4268,6 +4276,27 @@ var userBehaviour = (() => {
       console.error(`[Screenshot] Error capturing for actionIndex=${actionIndex}:`, error);
     }
   }
+  function previewPlaywrightTest(testCode) {
+    try {
+      const actions = parsePlaywrightTest(testCode);
+      window.parent.postMessage(
+        {
+          type: "staktrak-playwright-replay-preview-ready",
+          totalActions: actions.length,
+          actions
+        },
+        getParentOrigin()
+      );
+    } catch (error) {
+      window.parent.postMessage(
+        {
+          type: "staktrak-playwright-replay-preview-error",
+          error: error instanceof Error ? error.message : "Unknown error"
+        },
+        getParentOrigin()
+      );
+    }
+  }
   async function startPlaywrightReplay(testCode) {
     try {
       const actions = parsePlaywrightTest(testCode);
@@ -4438,6 +4467,11 @@ var userBehaviour = (() => {
         parentOrigin = event.origin;
       }
       switch (data.type) {
+        case "staktrak-playwright-replay-preview":
+          if (data.testCode) {
+            previewPlaywrightTest(data.testCode);
+          }
+          break;
         case "staktrak-playwright-replay-start":
           if (data.testCode) {
             startPlaywrightReplay(data.testCode);

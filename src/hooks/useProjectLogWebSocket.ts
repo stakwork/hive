@@ -99,7 +99,9 @@ export const useProjectLogWebSocket = (
         wsRef.current = null;
       }
     };
-  }, [projectId, chatId, isVerboseLoggingEnabled, addLogEntry]);
+    // addLogEntry is stable (has no dependencies) and doesn't need to trigger reconnection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, chatId, isVerboseLoggingEnabled]);
 
   return {
     logs,

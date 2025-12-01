@@ -8,19 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { StoreProvider } from "@/stores/StoreProvider";
 import { CallRecording } from "@/types/calls";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const nodeTypes = ['-Clip', '-Episode']
-const nodeTypeParam = JSON.stringify(nodeTypes)
 
 export default function CallPage() {
   const params = useParams();
   const router = useRouter();
   const { slug, id: workspaceId } = useWorkspace();
   const ref_id = params.ref_id as string;
+
+  const storeId = `workspace-${workspaceId}-calls-${ref_id}`;
 
   const [call, setCall] = useState<CallRecording | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,7 +65,7 @@ export default function CallPage() {
       try {
         // Fetch the subgraph data for this specific call
         const response = await fetch(
-          `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Clip","Video"]&depth=2&include_properties=true`)}`
+          `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Call","Clip","Video"]&depth=2&include_properties=true`)}`
         );
 
         if (!response.ok) {
@@ -79,7 +80,7 @@ export default function CallPage() {
 
         // Find the main call node
         const callNode = data.data.nodes.find((node: any) =>
-          (node.node_type === "Episode" || node.node_type === "Clip") && node.ref_id === ref_id
+          (node.node_type === "Episode" || node.node_type === "Call") && node.ref_id === ref_id
         );
 
         if (!callNode) {
@@ -101,7 +102,7 @@ export default function CallPage() {
 
         // Extract transcript from video nodes
         const videoNodes = data.data.nodes.filter((node: any) =>
-          node.node_type === "Video" && node.properties?.text && node.properties?.timestamp
+          (node.node_type === "Video" || node.node_type === "Clip") && node.properties?.text && node.properties?.timestamp
         );
 
         const transcriptSegments = videoNodes.map((node: any) => {
@@ -240,14 +241,16 @@ export default function CallPage() {
 
           {/* Right Side - Synchronized Knowledge Graph */}
           <div className="flex-1 p-4 min-h-0 overflow-hidden">
-            <div className="h-full">
-              <SynchronizedGraphComponent
-                endpoint={`/graph/subgraph?node_type=${encodeURIComponent(nodeTypeParam)}&include_properties=true&start_node=${call.ref_id}&depth=2&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
-                height="h-full"
-                width="w-full"
-                currentTime={currentTime}
-                onTimeMarkerClick={handleTimeMarkerClick}
-              />
+            <div className="h-full w-full">
+              <StoreProvider storeId={storeId}>
+                <SynchronizedGraphComponent
+                  endpoint={`/graph/subgraph?start_node=${ref_id}&node_type=["Episode","Call","Clip","Video"]&depth=2&include_properties=true`}
+                  height="h-full"
+                  width="w-full"
+                  currentTime={currentTime}
+                  onTimeMarkerClick={handleTimeMarkerClick}
+                />
+              </StoreProvider>
             </div>
           </div>
         </div>

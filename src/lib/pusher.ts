@@ -43,4 +43,5 @@ export const PUSHER_EVENTS = {
   WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
   STAKWORK_RUN_UPDATE: "stakwork-run-update",
   STAKWORK_RUN_DECISION: "stakwork-run-decision",
+  HIGHLIGHT_NODES: "highlight-nodes",
 } as const;

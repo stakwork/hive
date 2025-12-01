@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Github, Unlink } from "lucide-react";
+import { toast } from "sonner";
 
 interface DisconnectAccountProps {
   user: {
@@ -70,7 +71,9 @@ export function DisconnectAccount({ user }: DisconnectAccountProps) {
     } catch (error) {
       console.error("Error disconnecting account:", error);
       setIsDisconnecting(false);
-      alert("Failed to disconnect GitHub account. Please try again.");
+      toast.error("Failed to disconnect GitHub account", {
+        description: "Please try again.",
+      });
     }
   };
 

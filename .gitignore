@@ -79,3 +79,6 @@ yarn.lock
 mock-tests/
 
 test-results
+
+# Private files
+private/

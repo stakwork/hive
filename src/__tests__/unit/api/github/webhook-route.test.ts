@@ -192,6 +192,32 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
   });
 
   describe("Repository Lookup", () => {
+    test("should filter out deleted workspaces when looking up repository", async () => {
+      vi.mocked(db.repository.findFirst).mockResolvedValue(null);
+
+      const payload = createGitHubPushPayload();
+      const body = JSON.stringify(payload);
+      const signature = computeValidWebhookSignature(mockWebhookSecret, body);
+
+      const request = createWebhookRequest(webhookUrl, payload, signature, mockWebhookId);
+
+      const response = await POST(request as any);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(db.repository.findFirst).toHaveBeenCalledWith({
+        where: {
+          githubWebhookId: mockWebhookId,
+          workspace: {
+            deleted: false,
+            deletedAt: null,
+          },
+        },
+        select: expect.any(Object),
+      });
+    });
+
     test("should return 404 when repository is not found", async () => {
       vi.mocked(db.repository.findFirst).mockResolvedValue(null);
 
@@ -207,7 +233,13 @@ describe("GitHub Webhook Route - POST /api/github/webhook", () => {
       expect(response.status).toBe(404);
       expect(data.success).toBe(false);
       expect(db.repository.findFirst).toHaveBeenCalledWith({
-        where: { githubWebhookId: mockWebhookId },
+        where: {
+          githubWebhookId: mockWebhookId,
+          workspace: {
+            deleted: false,
+            deletedAt: null,
+          },
+        },
         select: expect.any(Object),
       });
     });

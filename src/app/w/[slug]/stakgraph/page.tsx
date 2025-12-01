@@ -5,7 +5,7 @@ import { FileTabs } from "@/components/stakgraph/forms/EditFilesForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStakgraphStore } from "@/stores/useStakgraphStore";
 import { ArrowLeft, Loader2, Save, Webhook } from "lucide-react";
@@ -33,9 +33,6 @@ export default function StakgraphPage() {
     handleFileChange,
   } = useStakgraphStore();
 
-  const { toast } = useToast();
-
-
   // Load existing settings on component mount
   useEffect(() => {
     if (slug) {
@@ -48,28 +45,20 @@ export default function StakgraphPage() {
 
     if (!slug) return;
 
-    await saveSettings(slug, toast);
+    await saveSettings(slug);
     refreshCurrentWorkspace();
   };
 
   const handleEnsureWebhooks = async () => {
     try {
       if (!id) {
-        toast({
-          title: "Error",
-          description: "Workspace not ready",
-          variant: "destructive",
-        });
+        toast.error("Error", { description: "Workspace not ready" });
         return;
       }
       
       const primaryRepo = formData.repositories?.[0];
       if (!primaryRepo?.repositoryUrl) {
-        toast({
-          title: "Error",
-          description: "No repository configured",
-          variant: "destructive",
-        });
+        toast.error("Error", { description: "No repository configured" });
         return;
       }
 
@@ -86,33 +75,18 @@ export default function StakgraphPage() {
 
       if (!res.ok) {
         if (data.error === "INSUFFICIENT_PERMISSIONS") {
-          toast({
-            title: "Permission Required",
-            description: data.message || "Admin access required to manage webhooks on this repository",
-            variant: "destructive",
-          });
+          toast.error("Permission Required", { description: data.message || "Admin access required to manage webhooks on this repository" });
         } else {
-          toast({
-            title: "Error",
-            description: data.message || "Failed to add webhooks",
-            variant: "destructive",
-          });
+          toast.error("Error", { description: data.message || "Failed to add webhooks" });
         }
         return;
       }
 
-      toast({
-        title: "Webhooks added",
-        description: "GitHub webhooks have been ensured",
-      });
+      toast("Webhooks added", { description: "GitHub webhooks have been ensured" });
       await loadSettings(slug!);
     } catch (error) {
       console.error("Failed to ensure webhooks", error);
-      toast({
-        title: "Error",
-        description: "Failed to add webhooks",
-        variant: "destructive",
-      });
+      toast.error("Error", { description: "Failed to add webhooks" });
     }
   };
 

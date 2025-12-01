@@ -1,5 +1,6 @@
 import { PrismaClient, RepositoryStatus, SwarmStatus } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
+import { slugify } from "../src/utils/slugify";
 
 dotenvConfig({ path: ".env.local" });
 
@@ -24,14 +25,6 @@ function parseArgs(argv: string[]): SeedArgs {
     }
   }
   return args;
-}
-
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
 }
 
 async function ensureUniqueWorkspaceSlug(base: string): Promise<string> {
@@ -168,6 +161,7 @@ async function seedForUser(userId: string) {
       environmentVariables,
       services,
       workspaceId: workspace.id,
+      containerFilesSetUp: true, // Enable for E2E tests to show dashboard immediately
     },
   });
 

@@ -1,46 +1,22 @@
 "use client";
-import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { WizardStepRenderer } from "./WizardStepRenderer";
 
 export const STEPS_ARRAY = [
   "WELCOME",
-  "GITHUB_AUTH",
-  "PROJECT_NAME",
 ];
 
 export type TWizardStep = (typeof STEPS_ARRAY)[number];
 
 export default function WorkspaceWizard() {
-  const { data: session } = useSession();
-  const [repositoryUrlDraft, setRepositoryUrlDraft] = useState<string>("");
+  const [currentStep] = useState<string>("WELCOME");
 
-  const [currentStep, setCurrentStep] = useState<string>("WELCOME");
+  // Single-step onboarding: WELCOME handles auth modal + workspace creation
 
-  useEffect(() => {
-    const draft = localStorage.getItem("repoUrl");
-    if (draft) {
-      setRepositoryUrlDraft(draft);
-    }
+  const handleNext = useCallback(() => {
+    // No-op since we only have one step now
+    // All navigation is handled within the WELCOME step
   }, []);
-
-
-  useEffect(() => {
-    if (repositoryUrlDraft && session?.user) {
-      setCurrentStep(STEPS_ARRAY[2]);
-    }
-  }, [repositoryUrlDraft, session?.user, setCurrentStep]);
-
-  const handleNext = useCallback(async () => {
-    const currentStepIndex = STEPS_ARRAY.indexOf(currentStep);
-    if (currentStepIndex < STEPS_ARRAY.length - 1) {
-      const delta = session?.user ? 2 : 1;
-      const newStep = currentStepIndex + delta;
-
-      setCurrentStep(STEPS_ARRAY[newStep]);
-
-    }
-  }, [currentStep, session?.user, setCurrentStep]);
 
   return (
     <div className="min-h-screen bg-background">

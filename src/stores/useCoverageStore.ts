@@ -17,6 +17,7 @@ type CoverageStore = {
   unitGlob: string;
   integrationGlob: string;
   e2eGlob: string;
+  search: string;
   setNodeType: (t: UncoveredNodeType) => void;
   setSort: (s: CoverageSortOption) => void;
   setSortDirection: (d: SortDirection) => void;
@@ -29,6 +30,7 @@ type CoverageStore = {
   setUnitGlob: (glob: string) => void;
   setIntegrationGlob: (glob: string) => void;
   setE2eGlob: (glob: string) => void;
+  setSearch: (search: string) => void;
   resetPagination: () => void;
 };
 
@@ -45,6 +47,7 @@ export const useCoverageStore = create<CoverageStore>()(
     unitGlob: "",
     integrationGlob: "",
     e2eGlob: "",
+    search: "",
     setNodeType: (t) => set({ nodeType: t, offset: 0 }),
     setSort: (s) => set({ sort: s, offset: 0 }),
     setSortDirection: (d) => set({ sortDirection: d, offset: 0 }),
@@ -64,6 +67,7 @@ export const useCoverageStore = create<CoverageStore>()(
     setUnitGlob: (glob) => set({ unitGlob: glob, offset: 0 }),
     setIntegrationGlob: (glob) => set({ integrationGlob: glob, offset: 0 }),
     setE2eGlob: (glob) => set({ e2eGlob: glob, offset: 0 }),
+    setSearch: (search) => set({ search, offset: 0 }),
     resetPagination: () => set({ offset: 0 }),
   })),
 );

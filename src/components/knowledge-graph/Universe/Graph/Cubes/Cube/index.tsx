@@ -1,4 +1,4 @@
-import { useGraphStore, useSelectedNode } from '@/stores/useGraphStore'
+import { useGraphStore, useSelectedNode } from '@/stores/useStores'
 import { useFrame } from '@react-three/fiber'
 import { NodeExtended } from '@Universe/types'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'

@@ -1,12 +1,13 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
+import { VMConfigSection } from "@/components/pool-status";
 import { RerunIngest } from "@/components/RerunIngest";
+import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
+import { PageHeader } from "@/components/ui/page-header";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
-import { VMConfigSection } from "@/components/pool-status";
-import { PageHeader } from "@/components/ui/page-header";
+import { authOptions } from "@/lib/auth/nextauth";
 import { getWorkspaceBySlug } from "@/services/workspace";
+import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
 
 export default async function SettingsPage({
@@ -34,7 +35,7 @@ export default async function SettingsPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader 
+      <PageHeader
         title="Workspace Settings"
         description="Manage workspace configuration, members, and settings."
       />
@@ -51,6 +52,8 @@ export default async function SettingsPage({
             workspaceId={workspace.id}
             workspaceName={workspace.name}
           />
+
+          <NodeTypeOrderSettings />
 
           {workspace.userRole === "OWNER" && (
             <DeleteWorkspace

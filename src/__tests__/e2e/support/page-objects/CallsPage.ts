@@ -48,7 +48,19 @@ export class CallsPage {
    * Navigate to calls page via sidebar
    */
   async navigateViaNavigation(): Promise<void> {
-    await this.page.locator(selectors.navigation.callsLink).click();
+    // First, expand Context section if it's not already expanded
+    const contextButton = this.page.locator('[data-testid="nav-context"]');
+    const callsLink = this.page.locator(selectors.navigation.callsLink);
+
+    // Check if calls link is visible, if not, click context to expand
+    const isCallsVisible = await callsLink.isVisible().catch(() => false);
+    if (!isCallsVisible) {
+      await contextButton.click();
+      // Wait for calls link to become visible after expanding
+      await callsLink.waitFor({ state: 'visible', timeout: 5000 });
+    }
+
+    await callsLink.click();
     await this.page.waitForURL(/\/w\/.*\/calls/, { timeout: 10000 });
   }
 }

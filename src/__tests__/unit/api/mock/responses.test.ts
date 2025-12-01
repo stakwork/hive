@@ -1,10 +1,10 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { generateBugReportResponse } from "@/app/api/mock/responses";
-import { makeRes } from "@/app/api/mock/helpers";
+import { generateBugReportResponse } from "@/app/api/mock/chat/responses";
+import { makeRes } from "@/app/api/mock/chat/helpers";
 import { ChatRole, ChatStatus } from "@/lib/chat";
 
 // Mock the helpers module
-vi.mock("@/app/api/mock/helpers", () => ({
+vi.mock("@/app/api/mock/chat/helpers", () => ({
   makeRes: vi.fn(),
 }));
 
@@ -13,7 +13,7 @@ const mockedMakeRes = vi.mocked(makeRes);
 describe("generateBugReportResponse", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Default mock implementation
     mockedMakeRes.mockImplementation((message: string) => ({
       id: `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -35,17 +35,17 @@ describe("generateBugReportResponse", () => {
 
   test("should return no debug information message when artifacts is empty", () => {
     const artifacts: { type: string; content: unknown }[] = [];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("No debug information found in the request.");
   });
 
   test("should return no debug information message when artifacts is undefined", () => {
     const artifacts = undefined as any;
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("No debug information found in the request.");
   });
 
@@ -54,9 +54,9 @@ describe("generateBugReportResponse", () => {
       { type: "CODE", content: { file: "test.js" } },
       { type: "FORM", content: { webhook: "https://example.com" } },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("No debug information found in the request.");
   });
 
@@ -77,16 +77,16 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith(mockMessage);
   });
 
   test("should return debug info with file and context when no message but valid sourceFile exists", () => {
     const artifacts = [
       {
-        type: "BUG_REPORT", 
+        type: "BUG_REPORT",
         content: {
           sourceFiles: [
             {
@@ -98,9 +98,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("🐛 Debug info: src/utils/apiClient.ts - API key exposure risk");
   });
 
@@ -118,9 +118,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("🐛 Debug info: src/config/database.json");
   });
 
@@ -139,9 +139,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("Debug artifact received. Component analysis in progress...");
   });
 
@@ -154,9 +154,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("Debug artifact received. Component analysis in progress...");
   });
 
@@ -170,9 +170,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("Debug artifact received. Component analysis in progress...");
   });
 
@@ -183,9 +183,9 @@ describe("generateBugReportResponse", () => {
         content: null,
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("Debug artifact received. Component analysis in progress...");
   });
 
@@ -215,9 +215,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith(firstMessage);
   });
 
@@ -238,9 +238,9 @@ describe("generateBugReportResponse", () => {
       },
       { type: "FORM", content: { webhook: "https://example.com" } },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith(bugMessage);
   });
 
@@ -251,9 +251,9 @@ describe("generateBugReportResponse", () => {
         content: "invalid content format",
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("Debug artifact received. Component analysis in progress...");
   });
 
@@ -274,9 +274,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith(priorityMessage);
     // Verify it doesn't fall back to file-based message
     expect(mockedMakeRes).not.toHaveBeenCalledWith(expect.stringContaining("🐛 Debug info:"));
@@ -297,9 +297,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("Debug artifact received. Component analysis in progress...");
   });
 
@@ -317,9 +317,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith("Debug artifact received. Component analysis in progress...");
   });
 
@@ -338,9 +338,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     // Should still process but with our controlled message format
     expect(mockedMakeRes).toHaveBeenCalledWith("🐛 Debug info: /etc/passwd - system file access attempt");
     expect(mockedMakeRes).toHaveBeenCalledTimes(1);
@@ -362,9 +362,9 @@ describe("generateBugReportResponse", () => {
         },
       },
     ];
-    
+
     generateBugReportResponse(artifacts);
-    
+
     expect(mockedMakeRes).toHaveBeenCalledWith(`🐛 Debug info: ${longFilePath} - ${longContext}`);
   });
 });

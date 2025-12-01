@@ -1,0 +1,19 @@
+{
+  "name": "Hive (Development)",
+  "short_name": "Hive Dev",
+  "icons": [
+    {
+      "src": "/dev/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/dev/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#a855f7",
+  "background_color": "#1e1b4b",
+  "display": "standalone"
+}

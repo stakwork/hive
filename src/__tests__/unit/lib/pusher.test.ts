@@ -275,6 +275,7 @@ describe("pusher.ts", () => {
         WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
         STAKWORK_RUN_UPDATE: "stakwork-run-update",
         STAKWORK_RUN_DECISION: "stakwork-run-decision",
+        HIGHLIGHT_NODES: "highlight-nodes",
       });
     });
 
@@ -310,10 +311,11 @@ describe("pusher.ts", () => {
       expect(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE).toBe("workspace-task-title-update");
       expect(PUSHER_EVENTS.STAKWORK_RUN_UPDATE).toBe("stakwork-run-update");
       expect(PUSHER_EVENTS.STAKWORK_RUN_DECISION).toBe("stakwork-run-decision");
+      expect(PUSHER_EVENTS.HIGHLIGHT_NODES).toBe("highlight-nodes");
     });
 
     it("should have correct number of events", () => {
-      expect(Object.keys(PUSHER_EVENTS)).toHaveLength(8);
+      expect(Object.keys(PUSHER_EVENTS)).toHaveLength(9);
     });
 
     it("should follow kebab-case naming convention for event values", () => {

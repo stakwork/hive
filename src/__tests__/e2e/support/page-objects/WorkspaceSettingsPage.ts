@@ -161,6 +161,30 @@ export class WorkspaceSettingsPage {
     await expect(row).toHaveCount(0, { timeout: 10000 });
   }
 
+  async initiateDelete(): Promise<void> {
+    await this.page.locator(selectors.workspaceDeletion.deleteButton).click();
+    await expect(this.page.locator(selectors.workspaceDeletion.dialog)).toBeVisible({ timeout: 10000 });
+  }
+
+  async confirmDelete(workspaceName: string): Promise<void> {
+    const dialog = this.page.locator(selectors.workspaceDeletion.dialog);
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+    
+    await dialog.locator(selectors.workspaceDeletion.confirmationInput).fill(workspaceName);
+    await dialog.locator(selectors.workspaceDeletion.confirmButton).click();
+  }
+
+  async waitForDeletion(): Promise<void> {
+    // Wait for redirect to workspaces list page
+    await expect(this.page).toHaveURL('http://localhost:3000/workspaces', { timeout: 15000 });
+  }
+
+  async deleteWorkspace(workspaceName: string): Promise<void> {
+    await this.initiateDelete();
+    await this.confirmDelete(workspaceName);
+    await this.waitForDeletion();
+  }
+
   private getRoleActionSelector(role: WorkspaceRole): string | undefined {
     switch (role) {
       case WorkspaceRole.ADMIN:

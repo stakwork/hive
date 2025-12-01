@@ -1,14 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, Check, X, Eye, Edit } from "lucide-react";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { GenerationControls } from "@/components/features/GenerationControls";
+import { GenerationPreview } from "@/components/features/GenerationPreview";
+import { AIButton } from "@/components/ui/ai-button";
+import { Button } from "@/components/ui/button";
+import { ImagePreview } from "@/components/ui/image-preview";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { AIButton } from "@/components/ui/ai-button";
-import { SaveIndicator } from "./SaveIndicator";
-import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAIGeneration } from "@/hooks/useAIGeneration";
+import { useImageUpload } from "@/hooks/useImageUpload";
+import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
+import { Edit, Eye } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { SaveIndicator } from "./SaveIndicator";
 
 interface GeneratedContent {
   content: string;
@@ -17,7 +25,7 @@ interface GeneratedContent {
 interface AITextareaSectionProps {
   id: string;
   label: string;
-  description: string;
+  description?: string;
   type: "requirements" | "architecture";
   featureId: string;
   value: string | null;
@@ -45,137 +53,251 @@ export function AITextareaSection({
   rows = 8,
   className,
 }: AITextareaSectionProps) {
-  const [generatedContent, setGeneratedContent] = useState<string>("");
-  // Default to edit mode when empty, preview mode when has content
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [quickGenerating, setQuickGenerating] = useState(false);
+  const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
 
-  const handleAccept = () => {
-    if (generatedContent) {
-      // Use the complete content from AI (no appending)
-      onChange(generatedContent);
-      onBlur(generatedContent);
-      setGeneratedContent("");
+  const { workspace } = useWorkspace();
+  const { latestRun, refetch } = useStakworkGeneration({
+    featureId,
+    type: "ARCHITECTURE",
+    enabled: type === "architecture",
+  });
+
+  const aiGeneration = useAIGeneration({
+    featureId,
+    workspaceId: workspace?.id || "",
+    type: "ARCHITECTURE",
+    displayName: type, // Pass the actual type for correct toast messages
+    enabled: true, // Enable for both requirements and architecture (accept/reject for quick generation)
+  });
+
+  useEffect(() => {
+    if (latestRun?.status === "COMPLETED" && !latestRun.decision && latestRun.result) {
+      aiGeneration.setContent(latestRun.result, "deep", latestRun.id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestRun]); // aiGeneration.setContent is stable (useCallback), safe to omit
+
+  const {
+    isDragging,
+    isUploading,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    handlePaste,
+  } = useImageUpload({
+    featureId,
+    onImageInserted: (markdownImage) => {
+      console.log('Image inserted:', markdownImage);
+    },
+    onError: (error) => {
+      console.error('Image upload error:', error);
+    },
+  });
+
+  const handleAccept = async () => {
+    if (!aiGeneration.content) return;
+
+    onChange(aiGeneration.content);
+    onBlur(aiGeneration.content);
+
+    await aiGeneration.accept();
   };
 
-  const handleReject = () => {
-    setGeneratedContent("");
+  const handleReject = async () => {
+    await aiGeneration.reject();
+  };
+
+  const handleProvideFeedback = async (feedback: string) => {
+    await aiGeneration.provideFeedback(feedback);
   };
 
   const handleGenerated = (results: GeneratedContent[]) => {
     if (results.length > 0) {
-      setGeneratedContent(results[0].content);
+      aiGeneration.setContent(results[0].content, "quick");
+    }
+  };
+
+  const handleDeepThink = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      // Use aiGeneration.regenerate() to ensure runId is captured for accept/reject
+      await aiGeneration.regenerate(false);
+      // Immediately fetch the newly created run to show loading state
+      await refetch();
+    } catch (error) {
+      console.error("Deep think failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    try {
+      setInitiatingDeepThink(true);
+      await aiGeneration.regenerate(true);
+      // Immediately fetch the newly created run to show loading state
+      await refetch();
+    } catch (error) {
+      console.error("Retry failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
     }
   };
 
   const handleModeSwitch = (newMode: "edit" | "preview") => {
-    // If switching from edit to preview, trigger save
     if (mode === "edit" && newMode === "preview") {
       onBlur(value);
     }
     setMode(newMode);
   };
 
+  const isErrorState = latestRun?.status &&
+    ["FAILED", "ERROR", "HALTED"].includes(latestRun.status);
+
+  const isLoadingState = initiatingDeepThink || (latestRun?.status &&
+    ["PENDING", "IN_PROGRESS"].includes(latestRun.status));
+
+  const showWorkflowBadge = !!(
+    latestRun &&
+    !latestRun.decision &&
+    isErrorState
+  );
+
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Label htmlFor={id} className="text-sm font-medium">
-          {label}
-        </Label>
-        <AIButton<GeneratedContent>
-          endpoint={`/api/features/${featureId}/generate`}
-          params={{ type }}
-          onGenerated={handleGenerated}
-          tooltip="Generate with AI"
-          iconOnly
-        />
-        <SaveIndicator
-          field={id}
-          savedField={savedField}
-          saving={saving}
-          saved={saved}
-        />
-      </div>
-      <p className="text-sm text-muted-foreground">
-        {description}
-      </p>
-
-      {/* AI Suggestion Preview */}
-      {generatedContent ? (
-        <div className="rounded-md border border-border bg-muted/50 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex items-start gap-3">
-            <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-1" />
-            <div className="flex-1 text-sm whitespace-pre-wrap">
-              {generatedContent}
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAccept}
-            >
-              <Check className="h-4 w-4 mr-2 text-green-600" />
-              Accept
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleReject}
-            >
-              <X className="h-4 w-4 mr-2 text-red-600" />
-              Reject
-            </Button>
-          </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Label htmlFor={id} className="text-base font-semibold">
+            {label}
+          </Label>
+          <SaveIndicator
+            field={id}
+            savedField={savedField}
+            saving={saving}
+            saved={saved}
+          />
         </div>
+        <div className="flex items-center gap-2">
+          <AIButton<GeneratedContent>
+            endpoint={`/api/features/${featureId}/generate`}
+            params={{ type }}
+            onGenerated={handleGenerated}
+            onGeneratingChange={setQuickGenerating}
+            disabled={isLoadingState || showWorkflowBadge}
+            label="Generate"
+          />
+          {type === "architecture" && (
+            <GenerationControls
+              onQuickGenerate={() => {}}
+              onDeepThink={handleDeepThink}
+              onRetry={handleRetry}
+              status={latestRun?.status}
+              isLoading={aiGeneration.isLoading}
+              isQuickGenerating={quickGenerating}
+              disabled={false}
+              showDeepThink={true}
+            />
+          )}
+        </div>
+      </div>
+      {description && (
+        <p className="text-sm text-muted-foreground">
+          {description}
+        </p>
+      )}
+
+      {aiGeneration.content ? (
+        <GenerationPreview
+          content={aiGeneration.content}
+          source={aiGeneration.source || "quick"}
+          onAccept={handleAccept}
+          onReject={handleReject}
+          onProvideFeedback={type === "architecture" ? handleProvideFeedback : undefined}
+          isLoading={aiGeneration.isLoading}
+        />
       ) : (
         /* Content Area - Toggle between Edit and Preview */
-        <div className="relative">
-        {mode === "edit" ? (
-          <Textarea
-            id={id}
-            placeholder={`Type your ${label.toLowerCase()} here...`}
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-            onBlur={(e) => onBlur(e.target.value || null)}
-            rows={rows}
-            className={cn("resize-y font-mono text-sm min-h-[200px] pr-10", className)}
-          />
-        ) : (
-          <div className={cn(
-            "rounded-md border border-border bg-muted/30 p-4 min-h-[200px]",
-            !value && "flex items-center justify-center text-sm text-muted-foreground",
-            className
-          )}>
-            {value ? (
-              <MarkdownRenderer size="compact">{value}</MarkdownRenderer>
+        <div className="space-y-2">
+          <div className="relative">
+            {mode === "edit" ? (
+              <>
+                {/* Sticky Toggle Button - overlaid, doesn't affect layout */}
+                <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleModeSwitch("preview")}
+                        className="pointer-events-auto h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-2 mr-2"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      Preview markdown
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Textarea
+                  ref={textareaRef}
+                  id={id}
+                  placeholder={`Type your ${label.toLowerCase()} here...`}
+                  value={value || ""}
+                  onChange={(e) => onChange(e.target.value)}
+                  onBlur={(e) => onBlur(e.target.value || null)}
+                  rows={rows}
+                  className={cn("resize-y font-mono text-sm min-h-[200px] pr-12", className)}
+                  isDragging={isDragging}
+                  isUploading={isUploading}
+                  onDragEnter={handleDragEnter}
+                  onDragLeave={handleDragLeave}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  onPaste={handlePaste}
+                />
+              </>
             ) : (
-              <p>No content yet. Click Edit to add {label.toLowerCase()}.</p>
+              <>
+                {/* Sticky Toggle Button - overlaid, doesn't affect layout */}
+                <div className="sticky top-0 z-10 h-0 flex justify-end pointer-events-none">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleModeSwitch("edit")}
+                        className="pointer-events-auto h-8 w-8 p-0 bg-background/80 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-background/90 mt-2 mr-2"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      Edit content
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className={cn(
+                  "rounded-md border border-border bg-muted/30 p-4 min-h-[200px] pr-12",
+                  !value && "flex items-center justify-center text-sm text-muted-foreground",
+                  className
+                )}>
+                  {value ? (
+                    <MarkdownRenderer size="compact">{value}</MarkdownRenderer>
+                  ) : (
+                    <p>No content yet. Click Edit to add {label.toLowerCase()}.</p>
+                  )}
+                </div>
+              </>
             )}
           </div>
-        )}
 
-        {/* Toggle Buttons - positioned inside content area */}
-        <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm border border-border/50 rounded-md p-0.5">
-          <Button
-            size="sm"
-            variant={mode === "preview" ? "secondary" : "ghost"}
-            onClick={() => handleModeSwitch("preview")}
-            className="h-6 w-6 p-0"
-            title="Preview"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="sm"
-            variant={mode === "edit" ? "secondary" : "ghost"}
-            onClick={() => handleModeSwitch("edit")}
-            className="h-6 w-6 p-0"
-            title="Edit"
-          >
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+          {/* Image Preview - Only show in edit mode */}
+          {mode === "edit" && <ImagePreview content={value} />}
         </div>
       )}
     </div>

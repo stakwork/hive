@@ -1,5 +1,5 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import { PoolUserResponse, ServiceConfig, PoolStatusResponse } from "@/types";
+import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse, VMData } from "@/types";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
 import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";
@@ -26,12 +26,14 @@ interface IPoolManagerService {
     github_username: string,
   ) => Promise<void>;
   getPoolStatus: (poolId: string, poolApiKey: string) => Promise<PoolStatusResponse>;
+  getPoolWorkspaces: (poolId: string, poolApiKey: string) => Promise<PoolWorkspacesResponse>;
 }
 
 export class PoolManagerService extends BaseServiceClass implements IPoolManagerService {
   public readonly serviceName = "poolManager";
 
   constructor(config: ServiceConfig) {
+    // Config is already resolved by getServiceConfig() - mock URLs are set there if USE_MOCKS=true
     super(config);
   }
 
@@ -106,6 +108,51 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           unusedVms: data.status.unused_vms,
           lastCheck: data.status.last_check,
         },
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("fetch")) {
+        throw new Error("Unable to connect to pool service");
+      }
+      throw error;
+    }
+  }
+
+  async getPoolWorkspaces(poolId: string, poolApiKey: string): Promise<PoolWorkspacesResponse> {
+    try {
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
+
+      const response = await fetch(`${this.config.baseURL}/pools/${poolId}/workspaces`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${decryptedApiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to fetch workspace data at the moment");
+      }
+
+      const data = await response.json();
+
+      return {
+        pool_name: data.pool_name,
+        workspaces: data.workspaces.map((vm: any) => ({
+          id: vm.id,
+          subdomain: vm.subdomain,
+          state: vm.state,
+          internal_state: vm.internal_state,
+          usage_status: vm.usage_status,
+          user_info: vm.user_info || null,
+          resource_usage: vm.resource_usage,
+          marked_at: vm.marked_at || null,
+          url: vm.url,
+          created: vm.created,
+          repoName: vm.repoName,
+          primaryRepo: vm.primaryRepo,
+          repositories: vm.repositories,
+          branches: vm.branches,
+        })),
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes("fetch")) {

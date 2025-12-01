@@ -2,6 +2,7 @@
 
 import { GraphComponent } from "@/components/knowledge-graph";
 import { StreamErrorBoundary, StreamingMessage } from "@/components/streaming";
+import { StoreProvider } from "@/stores/StoreProvider";
 import type { LearnMessage } from "@/types/learn";
 import { motion } from "framer-motion";
 import { BookOpen, User } from "lucide-react";
@@ -22,6 +23,9 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
   // Show graph for Learn mode (non-streaming, message is complete)
   // OR Chat mode when final answer exists
   const shouldShowGraph = !isUser && message.ref_id && (!isStreamingMessage || hasFinalAnswer);
+
+  // Generate a unique store ID for each graph instance
+  const storeId = `learn-chat-${message.id || message.ref_id}`;
 
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} gap-3`}>
@@ -71,12 +75,14 @@ export function LearnChatMessage({ message }: LearnChatMessageProps) {
           transition={{ duration: 0.3, delay: 0.2 }}
           className="w-full"
         >
-          <GraphComponent
-            title="Related Knowledge"
-            endpoint={`/graph/subgraph?include_properties=true&start_node=${message.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
-            height="h-96"
-            width="w-full"
-          />
+          <StoreProvider storeId={storeId}>
+            <GraphComponent
+              title="Related Knowledge"
+              endpoint={`/graph/subgraph?include_properties=true&start_node=${message.ref_id}&depth=1&min_depth=0&limit=100&sort_by=date_added_to_graph&order_by=desc`}
+              height="h-96"
+              width="w-full"
+            />
+          </StoreProvider>
         </motion.div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { Vector3 } from 'three'
 
-export const initialCameraPosition = new Vector3(0, 0, 0)
+export const initialCameraPosition = new Vector3(0, 0, 6000)
 
 export const arriveDistance = 100
 

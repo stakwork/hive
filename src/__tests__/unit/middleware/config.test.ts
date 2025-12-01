@@ -106,7 +106,7 @@ describe("resolveRouteAccess", () => {
     it("protects workspace routes by default", () => {
       expect(resolveRouteAccess("/w/my-workspace")).toBe("protected");
       expect(resolveRouteAccess("/w/my-workspace/tasks")).toBe("protected");
-      expect(resolveRouteAccess("/w/my-workspace/insights")).toBe("protected");
+      expect(resolveRouteAccess("/w/my-workspace/recommendations")).toBe("protected");
     });
 
     it("protects dashboard routes by default", () => {
@@ -225,7 +225,7 @@ describe("resolveRouteAccess", () => {
 
     it("correctly classifies workspace routes", () => {
       expect(resolveRouteAccess("/w/stakwork/tasks")).toBe("protected");
-      expect(resolveRouteAccess("/w/stakwork/insights")).toBe("protected");
+      expect(resolveRouteAccess("/w/stakwork/recommendations")).toBe("protected");
       expect(resolveRouteAccess("/w/stakwork/settings")).toBe("protected");
     });
 

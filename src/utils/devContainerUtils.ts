@@ -126,11 +126,6 @@ ${envEntries}
   return `[\n${formattedApps.join(",\n")}\n  ]`;
 };
 
-export interface GetFilesParams {
-  repoName: string;
-  servicesData: ServiceDataConfig[];
-}
-
 export const getPM2AppsContent = (repoName: string, servicesData: ServiceDataConfig[]) => {
   const pm2Apps = generatePM2Apps(repoName, servicesData);
   const pm2AppFormatted = formatPM2Apps(pm2Apps);
@@ -196,29 +191,6 @@ export function dockerfileContent() {
 `;
 }
 
-export const getDevContainerFiles = (params: GetFilesParams): Record<string, DevContainerFile> => {
-  const { repoName, servicesData } = params;
-
-  return {
-    devcontainer_json: {
-      name: "devcontainer.json",
-      content: devcontainerJsonContent(repoName),
-      type: "json",
-    },
-    pm2_config_js: getPM2AppsContent(repoName, servicesData),
-    docker_compose_yml: {
-      name: "docker-compose.yml",
-      content: dockerComposeContent(),
-      type: "yaml",
-    },
-    dockerfile: {
-      name: "Dockerfile",
-      content: dockerfileContent(),
-      type: "dockerfile",
-    },
-  };
-};
-
 const fileTypeMapper = {
   "devcontainer.json": "json",
   "pm2.config.js": "javascript",
@@ -237,6 +209,104 @@ const fileNamesMapper = {
 export function parsePM2Content(content: string | undefined): ServiceConfig[] {
   if (!content) return [];
 
+  const services: ServiceConfig[] = [];
+
+  // Helper function to parse pm2.config.js content to extract ServiceConfig[]
+  const parsePM2ConfigToServices = (pm2Content: string): ServiceConfig[] => {
+    console.log(">>> pm2Content", pm2Content);
+    const parsedServices: ServiceConfig[] = [];
+
+    try {
+      // Match the apps array in the module.exports
+      const appsMatch = pm2Content.match(/apps:\s*\[([\s\S]*?)\]/);
+      if (!appsMatch) return parsedServices;
+
+      const appsContent = appsMatch[1];
+
+      // Split by service objects (look for name: pattern)
+      const serviceBlocks = appsContent.split(/(?=name:)/);
+
+      for (const block of serviceBlocks) {
+        if (!block.trim()) continue;
+
+        // Extract fields using regex
+        const nameMatch = block.match(/name:\s*["']([^"']+)["']/);
+        const scriptMatch = block.match(/script:\s*["']([^"']+)["']/);
+        const cwdMatch = block.match(/cwd:\s*["']([^"']+)["']/);
+        const interpreterMatch = block.match(/interpreter:\s*["']([^"']+)["']/);
+
+        // Extract env variables
+        const envMatch = block.match(/env:\s*\{([\s\S]*?)\}/);
+        let port = 3000;
+        let installCmd: string | undefined;
+        let buildCmd: string | undefined;
+        let testCmd: string | undefined;
+        let preStartCmd: string | undefined;
+        let postStartCmd: string | undefined;
+        let rebuildCmd: string | undefined;
+        let resetCmd: string | undefined;
+
+        if (envMatch) {
+          const envContent = envMatch[1];
+          const portMatch = envContent.match(/PORT:\s*["'](\d+)["']/);
+          const installMatch = envContent.match(/INSTALL_COMMAND:\s*["']([^"']+)["']/);
+          const buildMatch = envContent.match(/BUILD_COMMAND:\s*["']([^"']+)["']/);
+          const testMatch = envContent.match(/TEST_COMMAND:\s*["']([^"']+)["']/);
+          const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*["']([^"']+)["']/);
+          const postStartMatch = envContent.match(/POST_START_COMMAND:\s*["']([^"']+)["']/);
+          const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*["']([^"']+)["']/);
+          const resetMatch = envContent.match(/RESET_COMMAND:\s*["']([^"']+)["']/);
+
+          if (portMatch) port = parseInt(portMatch[1]);
+          if (installMatch) installCmd = installMatch[1];
+          if (buildMatch) buildCmd = buildMatch[1];
+          if (testMatch) testCmd = testMatch[1];
+          if (preStartMatch) preStartCmd = preStartMatch[1];
+          if (postStartMatch) postStartCmd = postStartMatch[1];
+          if (rebuildMatch) rebuildCmd = rebuildMatch[1];
+          if (resetMatch) resetCmd = resetMatch[1];
+        }
+
+        if (nameMatch && scriptMatch) {
+          // Extract cwd to determine if it's a subdirectory
+          let serviceDir: string | undefined;
+          if (cwdMatch) {
+            const cwdPath = cwdMatch[1];
+            // Extract subdirectory from path like /workspaces/reponame/subdirectory
+            const pathParts = cwdPath.split("/").filter((p) => p);
+            if (pathParts.length > 2) {
+              // Has subdirectory beyond /workspaces/reponame
+              serviceDir = pathParts.slice(2).join("/");
+            }
+          }
+
+          const service: ServiceConfig = {
+            name: nameMatch[1],
+            port,
+            cwd: serviceDir,
+            interpreter: interpreterMatch ? interpreterMatch[1] : undefined,
+            scripts: {
+              start: scriptMatch[1],
+              install: installCmd,
+              build: buildCmd,
+              test: testCmd,
+              preStart: preStartCmd,
+              postStart: postStartCmd,
+              rebuild: rebuildCmd,
+              reset: resetCmd,
+            },
+          };
+
+          parsedServices.push(service);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to parse pm2.config.js:", error);
+    }
+
+    return parsedServices;
+  };
+
   // Try plain text first, then base64
   try {
     return parsePM2ConfigToServices(content);
@@ -246,105 +316,9 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
       return parsePM2ConfigToServices(decoded);
     } catch {
       console.error("Failed to parse pm2.config.js");
-      return [];
+      return services;
     }
   }
-}
-
-// Parse pm2.config.js content to extract ServiceConfig[]
-export function parsePM2ConfigToServices(pm2Content: string): ServiceConfig[] {
-  console.log(">>> pm2Content", pm2Content);
-  const services: ServiceConfig[] = [];
-
-  try {
-    // Match the apps array in the module.exports
-    const appsMatch = pm2Content.match(/apps:\s*\[([\s\S]*?)\]/);
-    if (!appsMatch) return services;
-
-    const appsContent = appsMatch[1];
-
-    // Split by service objects (look for name: pattern)
-    const serviceBlocks = appsContent.split(/(?=name:)/);
-
-    for (const block of serviceBlocks) {
-      if (!block.trim()) continue;
-
-      // Extract fields using regex
-      const nameMatch = block.match(/name:\s*["']([^"']+)["']/);
-      const scriptMatch = block.match(/script:\s*["']([^"']+)["']/);
-      const cwdMatch = block.match(/cwd:\s*["']([^"']+)["']/);
-      const interpreterMatch = block.match(/interpreter:\s*["']([^"']+)["']/);
-
-      // Extract env variables
-      const envMatch = block.match(/env:\s*\{([\s\S]*?)\}/);
-      let port = 3000;
-      let installCmd: string | undefined;
-      let buildCmd: string | undefined;
-      let testCmd: string | undefined;
-      let preStartCmd: string | undefined;
-      let postStartCmd: string | undefined;
-      let rebuildCmd: string | undefined;
-      let resetCmd: string | undefined;
-
-      if (envMatch) {
-        const envContent = envMatch[1];
-        const portMatch = envContent.match(/PORT:\s*["'](\d+)["']/);
-        const installMatch = envContent.match(/INSTALL_COMMAND:\s*["']([^"']+)["']/);
-        const buildMatch = envContent.match(/BUILD_COMMAND:\s*["']([^"']+)["']/);
-        const testMatch = envContent.match(/TEST_COMMAND:\s*["']([^"']+)["']/);
-        const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*["']([^"']+)["']/);
-        const postStartMatch = envContent.match(/POST_START_COMMAND:\s*["']([^"']+)["']/);
-        const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*["']([^"']+)["']/);
-        const resetMatch = envContent.match(/RESET_COMMAND:\s*["']([^"']+)["']/);
-
-        if (portMatch) port = parseInt(portMatch[1]);
-        if (installMatch) installCmd = installMatch[1];
-        if (buildMatch) buildCmd = buildMatch[1];
-        if (testMatch) testCmd = testMatch[1];
-        if (preStartMatch) preStartCmd = preStartMatch[1];
-        if (postStartMatch) postStartCmd = postStartMatch[1];
-        if (rebuildMatch) rebuildCmd = rebuildMatch[1];
-        if (resetMatch) resetCmd = resetMatch[1];
-      }
-
-      if (nameMatch && scriptMatch) {
-        // Extract cwd to determine if it's a subdirectory
-        let serviceDir: string | undefined;
-        if (cwdMatch) {
-          const cwdPath = cwdMatch[1];
-          // Extract subdirectory from path like /workspaces/reponame/subdirectory
-          const pathParts = cwdPath.split("/").filter((p) => p);
-          if (pathParts.length > 2) {
-            // Has subdirectory beyond /workspaces/reponame
-            serviceDir = pathParts.slice(2).join("/");
-          }
-        }
-
-        const service: ServiceConfig = {
-          name: nameMatch[1],
-          port,
-          cwd: serviceDir,
-          interpreter: interpreterMatch ? interpreterMatch[1] : undefined,
-          scripts: {
-            start: scriptMatch[1],
-            install: installCmd,
-            build: buildCmd,
-            test: testCmd,
-            preStart: preStartCmd,
-            postStart: postStartCmd,
-            rebuild: rebuildCmd,
-            reset: resetCmd,
-          },
-        };
-
-        services.push(service);
-      }
-    }
-  } catch (error) {
-    console.error("Failed to parse pm2.config.js:", error);
-  }
-
-  return services;
 }
 
 export const getDevContainerFilesFromBase64 = (base64Files: Record<string, string>) => {

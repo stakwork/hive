@@ -180,3 +180,6 @@ export const SupportedLanguages: TSupportedLanguage[] = [
   { name: 'Angular', icon: SiAngular, color: 'text-red-600' },
   { name: 'Svelte', icon: SiSvelte, color: 'text-orange-500' }
 ];
+
+// UI Layout constants
+export const SIDEBAR_WIDTH = "md:w-64";

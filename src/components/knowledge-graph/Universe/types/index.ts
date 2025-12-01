@@ -211,7 +211,7 @@ export type Guests = {
   twitter_handle: string
 }
 
-export const nodeTypes = ['clip', 'episode', 'guest', 'show', 'topic', 'data_series', 'tweet'] as const
+export const nodeTypes = ['clip', 'episode', 'call', 'guest', 'show', 'topic', 'data_series', 'tweet'] as const
 
 export type NodeType = (typeof nodeTypes)[number]
 

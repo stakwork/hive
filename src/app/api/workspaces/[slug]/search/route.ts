@@ -209,7 +209,7 @@ export async function GET(
       type: "feature" as const,
       title: feature.title,
       description: feature.brief,
-      url: `/w/${slug}/roadmap/${feature.id}`,
+      url: `/w/${slug}/plan/${feature.id}`,
       metadata: {
         status: feature.status,
         priority: feature.priority,

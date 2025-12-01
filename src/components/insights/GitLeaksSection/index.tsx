@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, ShieldAlert, CheckCircle2, ExternalLink } from "lucide-react";
 import { GitLeakResult } from "@/types/git-leaks";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 
 type SortKey = "Date" | "File";
 type SortDirection = "asc" | "desc";
@@ -49,7 +50,7 @@ function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, cl
 
 export function GitLeaksSection() {
   const { workspace } = useWorkspace();
-  const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [leaks, setLeaks] = useState<GitLeakResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,10 +58,11 @@ export function GitLeaksSection() {
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("Date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const hasAutoScanned = useRef(false);
 
   const ITEMS_PER_PAGE = 15;
 
-  const handleRunScan = async () => {
+  const handleRunScan = useCallback(async () => {
     if (!workspace?.slug) return;
 
     setLoading(true);
@@ -78,22 +80,25 @@ export function GitLeaksSection() {
       setScannedAt(data.scannedAt);
       setPage(1);
 
-      toast({
-        title: "Scan completed",
+      toast.success("Scan completed", {
         description: `Found ${data.count} potential secret${data.count !== 1 ? "s" : ""}`,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred";
       setError(errorMessage);
-      toast({
-        title: "Scan failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast.error("Scan failed", { description: errorMessage });
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspace?.slug]);
+
+  // Auto-scan only when ?scan=git-leaks is in URL (from widget click)
+  useEffect(() => {
+    if (searchParams.get("scan") === "git-leaks" && !hasAutoScanned.current) {
+      hasAutoScanned.current = true;
+      handleRunScan();
+    }
+  }, [searchParams, handleRunScan]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -163,7 +168,7 @@ export function GitLeaksSection() {
   const hasLeaks = leaks.length > 0;
 
   return (
-    <Card className="w-full">
+    <Card id="git-leaks" className="w-full">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>

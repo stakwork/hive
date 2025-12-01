@@ -17,11 +17,16 @@ import { createTestUser } from "@/__tests__/support/fixtures/user";
 import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
 
 // Mock the config module at the top level
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-stakwork-api-key",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
     STAKWORK_USER_JOURNEY_WORKFLOW_ID: "999",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
   },
 }));
 
@@ -377,6 +382,34 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       });
     });
 
+    test("should include webhook_url in payload for status callbacks", async () => {
+      const { user, workspace } = await createUserJourneyTestSetup();
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test webhook URL inclusion",
+          workspaceId: workspace.id,
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      // Verify webhook_url is included in Stakwork payload
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+
+      expect(payload).toHaveProperty("webhook_url");
+      expect(payload.webhook_url).toMatch(/\/api\/stakwork\/webhook\?task_id=/);
+
+      // Verify task_id parameter matches the created task
+      const taskIdMatch = payload.webhook_url.match(/task_id=([^&]+)/);
+      expect(taskIdMatch).toBeTruthy();
+      expect(taskIdMatch[1]).toBeTruthy(); // Verify task ID exists
+    });
+
     test("should handle null GitHub credentials gracefully", async () => {
       const { workspace } = await createUserJourneyTestSetup();
 
@@ -506,7 +539,7 @@ describe("POST /api/stakwork/user-journey - Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const analyticsMessage =
-        "User viewed insights page, clicked on recommendation #42, and opened file explorer";
+        "User viewed recommendations page, clicked on recommendation #42, and opened file explorer";
       const request = createPostRequest(
         "http://localhost:3000/api/stakwork/user-journey",
         {

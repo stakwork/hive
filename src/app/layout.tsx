@@ -1,4 +1,4 @@
-import { ToastProvider } from "@/components/ui/toast-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import SessionProvider from "@/providers/SessionProvider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -8,6 +8,7 @@ import Script from "next/script";
 import "./globals.css";
 import ModalClient from "./ModalClient";
 import QueryProvider from "@/providers/QueryProvider";
+import { getMetadata } from "@/lib/metadata";
 
 const inter = Inter({ subsets: ["latin"] });
 const roboto = Roboto({
@@ -22,19 +23,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export const metadata: Metadata = {
-  title: "Hive",
-  description: "A PMs dream",
-  icons: {
-    icon: [
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/favicon.ico", sizes: "any" },
-    ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
-  },
-  manifest: "/site.webmanifest",
-};
+export const metadata: Metadata = getMetadata();
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -55,17 +44,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="/js/playwright-generator.js" />
       </head>
       <body className={`${inter.className} ${roboto.variable} min-h-screen bg-background text-foreground antialiased`}>
-        <ToastProvider>
-          <ThemeProvider defaultTheme="system" storageKey="theme">
-            <SessionProvider>
-              <WorkspaceProvider>
-                <QueryProvider>
-                  <ModalClient>{children}</ModalClient>
-                </QueryProvider>
-              </WorkspaceProvider>
-            </SessionProvider>
-          </ThemeProvider>
-        </ToastProvider>
+        <ThemeProvider defaultTheme="system" storageKey="theme">
+          <SessionProvider>
+            <WorkspaceProvider>
+              <QueryProvider>
+                <ModalClient>{children}</ModalClient>
+              </QueryProvider>
+            </WorkspaceProvider>
+          </SessionProvider>
+        </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );

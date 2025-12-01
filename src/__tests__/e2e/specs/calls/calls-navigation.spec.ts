@@ -31,8 +31,18 @@ test.describe('Calls Navigation', () => {
   });
 
   test('should navigate to calls page via sidebar', async ({ page }) => {
+    // Expand Context section first if needed
+    const contextButton = page.locator('[data-testid="nav-context"]');
+    const callsLink = page.locator(selectors.navigation.callsLink);
+
+    const isCallsVisible = await callsLink.isVisible().catch(() => false);
+    if (!isCallsVisible) {
+      await contextButton.click();
+      await callsLink.waitFor({ state: 'visible', timeout: 5000 });
+    }
+
     // Click the calls navigation link
-    await page.locator(selectors.navigation.callsLink).click();
+    await callsLink.click();
 
     // Wait for URL to change to calls page
     await page.waitForURL(/\/w\/.*\/calls/, { timeout: 10000 });

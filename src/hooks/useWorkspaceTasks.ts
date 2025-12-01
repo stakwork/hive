@@ -108,7 +108,7 @@ export function useWorkspaceTasks(
   const [currentPage, setCurrentPage] = useState(1);
   const [isRestoringFromStorage, setIsRestoringFromStorage] = useState(false);
 
-  const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications) => {
+  const fetchTasks = useCallback(async (page: number, reset: boolean = false, includeLatestMessage: boolean = includeNotifications, limit: number = pageLimit) => {
     if (!workspaceId || !session?.user) {
       setTasks([]);
       setPagination(null);
@@ -120,7 +120,7 @@ export function useWorkspaceTasks(
 
     try {
       const archivedParam = showArchived ? '&includeArchived=true' : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -219,12 +219,16 @@ export function useWorkspaceTasks(
         if ('archived' in update && update.archived !== showArchived) {
           const filteredTasks = prevTasks.filter(task => task.id !== update.taskId);
 
-          // Only refetch if there might be more tasks to load (pagination.hasMore is true)
+          // Fetch exactly 1 replacement item to maintain the same total count
           // Use setTimeout to avoid state updates during render
           setTimeout(() => {
-            // Access pagination via closure - check if there are more tasks to fetch
             if (pagination?.hasMore) {
-              fetchTasks(currentPage, false, includeNotifications);
+              // Calculate page to get the next item after current loaded items
+              const totalLoadedItems = filteredTasks.length; // After removal
+              const nextItemPage = totalLoadedItems + 1;
+
+              // Fetch exactly 1 replacement item
+              fetchTasks(nextItemPage, false, includeNotifications, 1);
             }
           }, 0);
 

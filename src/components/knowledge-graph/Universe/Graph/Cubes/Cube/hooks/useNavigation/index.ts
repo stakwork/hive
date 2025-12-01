@@ -1,5 +1,5 @@
 
-import { useSelectedNode } from '@/stores/useGraphStore'
+import { useSelectedNode } from '@/stores/useStores'
 import { useFrame } from '@react-three/fiber'
 import { variableVector3 } from '@Universe/constants'
 import { NodeExtended } from '@Universe/types'

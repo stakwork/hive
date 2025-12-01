@@ -14,6 +14,7 @@ interface TestEnvDefaults {
   SWARM_SUPER_ADMIN_URL: string;
   STAKWORK_CUSTOMERS_EMAIL: string;
   STAKWORK_CUSTOMERS_PASSWORD: string;
+  API_TOKEN: string;
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
@@ -28,6 +29,7 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
   SWARM_SUPER_ADMIN_URL: "https://super.test",
   STAKWORK_CUSTOMERS_EMAIL: "c@test.local",
   STAKWORK_CUSTOMERS_PASSWORD: "secret",
+  API_TOKEN: "test-api-token",
 };
 
 /**

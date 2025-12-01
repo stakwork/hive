@@ -6,13 +6,13 @@ import { waitForElement } from '../helpers/waits';
  * Encapsulates all feature detail interactions
  */
 export class FeatureDetailPage {
-  constructor(private page: Page) {}
+  constructor(private page: Page) { }
 
   /**
    * Navigate to feature detail page
    */
   async goto(workspaceSlug: string, featureId: string): Promise<void> {
-    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/roadmap/${featureId}`);
+    await this.page.goto(`http://localhost:3000/w/${workspaceSlug}/plan/${featureId}`);
     await this.waitForLoad();
   }
 
@@ -21,8 +21,16 @@ export class FeatureDetailPage {
    */
   async waitForLoad(): Promise<void> {
     await this.page.waitForURL(/\/w\/.*\/roadmap\/.*/, { timeout: 10000 });
-    // Wait for the brief section or form to be visible
-    await waitForElement(this.page, '#brief', { timeout: 10000 });
+
+    // First, wait for the page to finish loading (no more loading skeletons)
+    await this.page.waitForFunction(() => {
+      // Check if there are any loading skeletons visible
+      const skeletons = document.querySelectorAll('[class*="skeleton"], .animate-pulse');
+      return skeletons.length === 0;
+    }, { timeout: 15000 });
+
+    // Then wait for the actual form elements to be present
+    await this.page.waitForSelector('#brief', { state: 'visible', timeout: 30000 });
   }
 
   /**

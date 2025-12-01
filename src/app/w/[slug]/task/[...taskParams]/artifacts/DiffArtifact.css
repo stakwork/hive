@@ -1,0 +1,379 @@
+/* Import react-diff-view base styles */
+@import 'react-diff-view/style/index.css';
+
+/* Import Prism syntax highlighting theme */
+@import './prism-dark-plus.css';
+
+/* Light mode (default) */
+:root {
+    --diff-background-color: #ffffff;
+    --diff-text-color: #24292e;
+    --diff-selection-background-color: #b3d7ff;
+    --diff-selection-text-color: #24292e;
+    --diff-gutter-insert-background-color: #ccffd8;
+    --diff-gutter-insert-text-color: #24292e;
+    --diff-gutter-delete-background-color: #ffd7d5;
+    --diff-gutter-delete-text-color: #24292e;
+    --diff-code-insert-background-color: #e6ffec;
+    --diff-code-insert-text-color: #24292e;
+    --diff-code-delete-background-color: #ffebe9;
+    --diff-code-delete-text-color: #24292e;
+    --diff-code-insert-edit-background-color: #abf2bc;
+    --diff-code-insert-edit-text-color: #24292e;
+    --diff-code-delete-edit-background-color: #ffc1bc;
+    --diff-code-delete-edit-text-color: #24292e;
+    --diff-code-selected-background-color: #fffce0;
+    --diff-code-selected-text-color: #24292e;
+    --diff-omit-gutter-line-color: #cb2a1d;
+}
+
+/* Container styles */
+.diff-artifact-container {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Show +/- indicators in the gutter */
+.diff-artifact-container .diff-gutter-insert::before {
+    content: '+';
+    font-weight: bold;
+}
+
+.diff-artifact-container .diff-gutter-delete::before {
+    content: '-';
+    font-weight: bold;
+}
+
+/* Gap indicator for unchanged lines between hunks */
+.diff-gap-indicator {
+    display: grid;
+    grid-template-columns: 60px 60px 1fr;
+    align-items: center;
+    padding: 8px 0;
+    background-color: #f6f8fa;
+    border-top: 1px solid #d0d7de;
+    border-bottom: 1px solid #d0d7de;
+    color: #57606a;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.diff-artifact-container.dark-mode .diff-gap-indicator {
+    background-color: #0d1117;
+    border-top: 1px solid #21262d;
+    border-bottom: 1px solid #21262d;
+    color: #8b949e;
+}
+
+.diff-gap-text {
+    grid-column: 1 / -1;
+    margin-left: 8px;
+    padding: 4px 10px;
+    background-color: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    font-weight: 500;
+    text-align: center;
+    width: fit-content;
+    white-space: nowrap;
+}
+
+.diff-artifact-container.dark-mode .diff-gap-text {
+    background-color: #161b22;
+    border-color: #30363d;
+}
+
+/* Dark mode styles */
+.diff-artifact-container.dark-mode {
+    --diff-background-color: #0d1117;
+    --diff-text-color: #c9d1d9;
+    --diff-selection-background-color: #1f6feb;
+    --diff-selection-text-color: #ffffff;
+    --diff-gutter-insert-background-color: rgba(26, 77, 46, 0.6);
+    --diff-gutter-insert-text-color: #56d364;
+    --diff-gutter-delete-background-color: rgba(111, 40, 40, 0.6);
+    --diff-gutter-delete-text-color: #f85149;
+    --diff-code-insert-background-color: rgba(26, 77, 46, 0.4);
+    --diff-code-insert-text-color: #aff5b4;
+    --diff-code-delete-background-color: rgba(111, 40, 40, 0.4);
+    --diff-code-delete-text-color: #ffdcd7;
+    --diff-code-insert-edit-background-color: #2ea043;
+    --diff-code-insert-edit-text-color: #ffffff;
+    --diff-code-delete-edit-background-color: #da3633;
+    --diff-code-delete-edit-text-color: #ffffff;
+    --diff-code-selected-background-color: #1f6feb;
+    --diff-code-selected-text-color: #ffffff;
+    --diff-omit-gutter-line-color: #f85149;
+}
+
+/* Force dark mode styles with higher specificity */
+.diff-artifact-container.dark-mode .diff {
+    background-color: var(--diff-background-color);
+    color: var(--diff-text-color);
+    border-color: #30363d;
+}
+
+.diff-artifact-container.dark-mode .diff-gutter {
+    background-color: var(--diff-background-color);
+    color: var(--diff-text-color);
+    border-color: #30363d;
+}
+
+.diff-artifact-container.dark-mode .diff-gutter-insert {
+    background-color: var(--diff-gutter-insert-background-color) !important;
+    color: var(--diff-gutter-insert-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-gutter-delete {
+    background-color: var(--diff-gutter-delete-background-color) !important;
+    color: var(--diff-gutter-delete-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-code {
+    background-color: var(--diff-background-color);
+    color: var(--diff-text-color);
+    border-color: #30363d;
+}
+
+.diff-artifact-container.dark-mode .diff-code-insert {
+    background-color: var(--diff-code-insert-background-color) !important;
+    color: var(--diff-code-insert-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-code-delete {
+    background-color: var(--diff-code-delete-background-color) !important;
+    color: var(--diff-code-delete-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-code-insert .diff-code-edit {
+    background-color: var(--diff-code-insert-edit-background-color) !important;
+    color: var(--diff-code-insert-edit-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-code-delete .diff-code-edit {
+    background-color: var(--diff-code-delete-edit-background-color) !important;
+    color: var(--diff-code-delete-edit-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-code-normal {
+    background-color: var(--diff-background-color);
+    color: var(--diff-text-color);
+}
+
+.diff-artifact-container.dark-mode .diff-code-selected {
+    background-color: var(--diff-code-selected-background-color) !important;
+    color: var(--diff-code-selected-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-gutter-selected {
+    background-color: var(--diff-code-selected-background-color) !important;
+    color: var(--diff-code-selected-text-color) !important;
+}
+
+.diff-artifact-container.dark-mode .diff-hunk {
+    background-color: #161b22;
+}
+
+.diff-artifact-container.dark-mode .diff-decoration {
+    background-color: #161b22;
+    border-color: #30363d;
+}
+
+.diff-artifact-container.dark-mode .diff-decoration-gutter,
+.diff-artifact-container.dark-mode .diff-decoration-content {
+    background-color: #161b22;
+    color: #8b949e;
+    border-color: #30363d;
+}
+
+/* Custom Scrollbar for the diff container */
+.diff-artifact-container ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.diff-artifact-container ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.diff-artifact-container ::-webkit-scrollbar-thumb {
+    background: #d0d7de;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+.diff-artifact-container ::-webkit-scrollbar-thumb:hover {
+    background-color: #a3aab1;
+}
+
+.diff-artifact-container.dark-mode ::-webkit-scrollbar-thumb {
+    background: #30363d;
+}
+
+.diff-artifact-container.dark-mode ::-webkit-scrollbar-thumb:hover {
+    background-color: #484f58;
+}
+
+/* ======================================================
+   Prism Syntax Highlighting in Diff Context
+   ====================================================== */
+
+/* Override Prism pre/code background to be transparent in diff */
+.diff-artifact-container pre[class*="language-"],
+.diff-artifact-container code[class*="language-"] {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    text-shadow: none !important;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace !important;
+}
+
+/* Ensure tokens inherit font styling */
+.diff-artifact-container .token {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* Dark mode token colors (from prism-dark-plus.css) */
+.diff-artifact-container.dark-mode .token.comment,
+.diff-artifact-container.dark-mode .token.prolog {
+    color: #6a9955;
+}
+
+.diff-artifact-container.dark-mode .token.punctuation {
+    color: #d4d4d4;
+}
+
+.diff-artifact-container.dark-mode .token.property,
+.diff-artifact-container.dark-mode .token.tag,
+.diff-artifact-container.dark-mode .token.boolean,
+.diff-artifact-container.dark-mode .token.number,
+.diff-artifact-container.dark-mode .token.constant,
+.diff-artifact-container.dark-mode .token.symbol,
+.diff-artifact-container.dark-mode .token.unit {
+    color: #b5cea8;
+}
+
+.diff-artifact-container.dark-mode .token.selector,
+.diff-artifact-container.dark-mode .token.attr-name,
+.diff-artifact-container.dark-mode .token.string,
+.diff-artifact-container.dark-mode .token.char,
+.diff-artifact-container.dark-mode .token.builtin {
+    color: #ce9178;
+}
+
+.diff-artifact-container.dark-mode .token.operator,
+.diff-artifact-container.dark-mode .token.entity {
+    color: #d4d4d4;
+}
+
+.diff-artifact-container.dark-mode .token.operator.arrow {
+    color: #569cd6;
+}
+
+.diff-artifact-container.dark-mode .token.atrule {
+    color: #ce9178;
+}
+
+.diff-artifact-container.dark-mode .token.keyword {
+    color: #569cd6;
+}
+
+.diff-artifact-container.dark-mode .token.keyword.module,
+.diff-artifact-container.dark-mode .token.keyword.control-flow {
+    color: #c586c0;
+}
+
+.diff-artifact-container.dark-mode .token.function,
+.diff-artifact-container.dark-mode .token.function .token.maybe-class-name {
+    color: #dcdcaa;
+}
+
+.diff-artifact-container.dark-mode .token.regex {
+    color: #d16969;
+}
+
+.diff-artifact-container.dark-mode .token.important {
+    color: #569cd6;
+}
+
+.diff-artifact-container.dark-mode .token.class-name,
+.diff-artifact-container.dark-mode .token.maybe-class-name {
+    color: #4ec9b0;
+}
+
+.diff-artifact-container.dark-mode .token.console,
+.diff-artifact-container.dark-mode .token.parameter,
+.diff-artifact-container.dark-mode .token.interpolation,
+.diff-artifact-container.dark-mode .token.variable,
+.diff-artifact-container.dark-mode .token.imports .token.maybe-class-name,
+.diff-artifact-container.dark-mode .token.exports .token.maybe-class-name {
+    color: #9cdcfe;
+}
+
+/* Light mode token colors */
+.diff-artifact-container .token.comment,
+.diff-artifact-container .token.prolog {
+    color: #008000;
+}
+
+.diff-artifact-container .token.punctuation {
+    color: #393a34;
+}
+
+.diff-artifact-container .token.property,
+.diff-artifact-container .token.tag,
+.diff-artifact-container .token.boolean,
+.diff-artifact-container .token.number,
+.diff-artifact-container .token.constant,
+.diff-artifact-container .token.symbol {
+    color: #09885a;
+}
+
+.diff-artifact-container .token.selector,
+.diff-artifact-container .token.attr-name,
+.diff-artifact-container .token.string,
+.diff-artifact-container .token.char,
+.diff-artifact-container .token.builtin {
+    color: #a31515;
+}
+
+.diff-artifact-container .token.operator,
+.diff-artifact-container .token.entity {
+    color: #393a34;
+}
+
+.diff-artifact-container .token.keyword {
+    color: #0000ff;
+}
+
+.diff-artifact-container .token.function {
+    color: #795e26;
+}
+
+.diff-artifact-container .token.regex {
+    color: #ee0000;
+}
+
+.diff-artifact-container .token.class-name,
+.diff-artifact-container .token.maybe-class-name {
+    color: #267f99;
+}
+
+.diff-artifact-container .token.variable {
+    color: #001080;
+}
+
+/* Ensure syntax highlighting is visible on diff backgrounds */
+.diff-artifact-container .diff-code-insert .token,
+.diff-artifact-container .diff-code-delete .token {
+    opacity: 0.95;
+}
+
+/* Maintain token visibility in dark mode on colored backgrounds */
+.diff-artifact-container.dark-mode .diff-code-insert .token,
+.diff-artifact-container.dark-mode .diff-code-delete .token {
+    opacity: 1;
+}

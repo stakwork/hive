@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { db } from "@/lib/db";
 import { TaskSourceType } from "@prisma/client";
 import { getWorkspaceById } from "@/services/workspace";
-import { type StakworkWorkflowPayload } from "@/app/api/chat/message/route";
+import { type StakworkWorkflowPayload } from "@/types/stakwork";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { getBaseUrl } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,10 @@ async function callStakwork(
   username: string | null,
   workspaceId: string,
   taskId: string,
+  testFilePath: string | null,
+  testFileUrl: string | null,
+  baseBranch: string | null,
+  testName: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -34,9 +39,16 @@ async function callStakwork(
       throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
     }
 
+    // Generate webhook URLs
+    const baseUrl = getBaseUrl();
+    const webhookUrl = `${baseUrl}/api/chat/response`;
+    const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?task_id=${taskId}`;
+
     // stakwork workflow vars
     const vars = {
+      taskId,
       message,
+      webhookUrl,
       accessToken,
       username,
       swarmUrl,
@@ -44,12 +56,16 @@ async function callStakwork(
       poolName,
       repo2graph_url: repo2GraphUrl,
       workspaceId,
-      task_id: taskId,
+      testFilePath,
+      testFileUrl,
+      baseBranch,
+      testName,
     };
 
     const stakworkPayload: StakworkWorkflowPayload = {
       name: "hive_autogen",
       workflow_id: parseInt(config.STAKWORK_USER_JOURNEY_WORKFLOW_ID),
+      webhook_url: workflowWebhookUrl,
       workflow_params: {
         set_var: {
           attributes: {
@@ -152,23 +168,22 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.poolName || swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
+    // Get workspace's primary repository if available
+    const repository = await db.repository.findFirst({
+      where: { workspaceId: workspace.id },
+      select: { id: true, repositoryUrl: true, branch: true },
+    });
+
+    // Don't create fake testFilePath - Stakwork workflow will determine the actual path
+    // The path will be synced from the graph after the workflow completes
+    const testFilePath = null;
+    const testFileUrl = null;
+
     // Create a task FIRST to track this user journey test
     // This allows us to send the task ID to Stakwork so webhooks can update the task
     // The test code itself is stored in the graph; this task tracks metadata and status
     let task = null;
     try {
-      // Use the user's chosen filename directly, or provide a default
-      // The filename is provided by the browser artifact panel when the user saves the test
-      const testFilePath = testName
-        ? `src/__tests__/e2e/specs/${testName}`
-        : `src/__tests__/e2e/specs/user-journey-test.spec.ts`;
-
-      // Get workspace's primary repository if available
-      const repository = await db.repository.findFirst({
-        where: { workspaceId: workspace.id },
-        select: { id: true, repositoryUrl: true, branch: true },
-      });
-
       // Create task record (stakworkProjectId will be updated after Stakwork call)
       task = await db.task.create({
         data: {
@@ -180,9 +195,7 @@ export async function POST(request: NextRequest) {
           workflowStatus: "PENDING",
           priority: "MEDIUM",
           testFilePath,
-          testFileUrl: repository?.repositoryUrl
-            ? `${repository.repositoryUrl}/blob/${repository.branch || 'main'}/${testFilePath}`
-            : null,
+          testFileUrl,
           stakworkProjectId: null,
           repositoryId: repository?.id || null,
           createdById: userId,
@@ -231,6 +244,10 @@ export async function POST(request: NextRequest) {
       username,
       workspaceId,
       task.id,
+      testFilePath,
+      testFileUrl,
+      repository?.branch || 'main',
+      testName || taskTitle,
     );
 
     // Update task with stakworkProjectId if Stakwork succeeded

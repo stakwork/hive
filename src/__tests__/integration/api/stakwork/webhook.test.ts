@@ -98,7 +98,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
   });
 
   describe("Payload Validation", () => {
-    test("should return 400 when task_id is missing from body and query", async () => {
+    test("should return 400 when both task_id and run_id are missing", async () => {
       const request = createPostRequest(webhookUrl, {
         project_status: "completed",
       });
@@ -107,7 +107,7 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("task_id is required");
+      expect(data.error).toBe("Either task_id or run_id is required");
     });
 
     test("should return 400 when project_status is missing", async () => {

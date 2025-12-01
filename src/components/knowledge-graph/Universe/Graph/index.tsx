@@ -1,14 +1,16 @@
 import { deepEqual } from '@/lib/utils/deepEqual'
-import { useDataStore } from '@/stores/useDataStore'
-import { useGraphStore } from '@/stores/useGraphStore'
+import { getStoreBundle } from '@/stores/createStoreFactory'
+import { useStoreId } from '@/stores/StoreProvider'
 import { useSchemaStore } from '@/stores/useSchemaStore'
-import { useSimulationStore } from '@/stores/useSimulationStore'
+import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
 import { Group } from 'three'
 import { Line2 } from 'three-stdlib'
-import { Connections } from './Connections'
+import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
+import { HighlightedNodesLayer } from './HighlightedNodes'
+import { HtmlNodesLayer } from './HtmlNodesLayer'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
 import { calculateRadius } from './utils/calculateGroupRadius'
@@ -33,13 +35,15 @@ export const Graph = () => {
   const groupRef = useRef<Group>(null)
   const { normalizedSchemasByType } = useSchemaStore((s) => s)
   const prevRadius = useRef(0)
+  const storeId = useStoreId()
 
 
 
   const linksPositionRef = useRef(new Map<string, LinkPosition>())
   const nodesPositionRef = useRef(new Map<string, NodePosition>())
+  const justWokeUpRef = useRef(false)
 
-  const { graphStyle, setGraphRadius, neighbourhoods } = useGraphStore((s) => s)
+  const { graphStyle, setGraphRadius, activeFilterTab } = useGraphStore((s) => s)
 
   const {
     simulation,
@@ -51,9 +55,40 @@ export const Graph = () => {
     removeSimulation,
     setForces,
     setSimulationInProgress,
+    isSleeping,
+    setIsSleeping,
   } = useSimulationStore((s) => s)
 
   const highlightNodes = useGraphStore((s) => s.highlightNodes)
+
+  // Wake up the simulation when component mounts
+  useEffect(() => {
+    // Check if we're returning from a sleeping state
+    const wasSleeping = isSleeping
+
+    if (wasSleeping) {
+      // Mark that we just woke up to prevent immediate setForces()
+      justWokeUpRef.current = true
+
+      // If we have existing simulation and data, set alpha to almost min to quickly trigger end event
+      if (simulation && dataInitial?.nodes?.length) {
+        simulation.alpha(0.001).restart() // Almost minimum alpha to quickly trigger 'end' event
+      }
+
+      // Reset the flag after a brief delay to allow normal operation
+      setTimeout(() => {
+        justWokeUpRef.current = false
+      }, 100)
+    }
+
+    // Always wake up the simulation
+    setIsSleeping(false)
+
+    // Clean up: put simulation to sleep when component unmounts
+    return () => {
+      setIsSleeping(true)
+    }
+  }, [setIsSleeping, isSleeping, simulation, dataInitial])
 
   useEffect(() => {
     if (highlightNodes.length) {
@@ -84,17 +119,17 @@ export const Graph = () => {
     }
   }, [dataNew, simulation, simulationCreate, dataInitial, addNodesAndLinks])
 
-  useEffect(() => {
-    ; () => removeSimulation()
-  }, [removeSimulation])
+  // useEffect(() => {
+  //   ; () => removeSimulation()
+  // }, [removeSimulation])
 
   useEffect(() => {
-    if (!simulation) {
+    if (!simulation || isSleeping || justWokeUpRef.current) {
       return
     }
 
     setForces()
-  }, [graphStyle, setForces, simulation])
+  }, [graphStyle, setForces, simulation, isSleeping])
 
   useEffect(() => {
     if (!simulation) {
@@ -105,7 +140,7 @@ export const Graph = () => {
       return
     }
 
-    const { selectedNode } = useGraphStore.getState()
+    const { selectedNode } = getStoreBundle(storeId).graph.getState()
 
     const gr = groupRef.current.getObjectByName('simulation-3d-group__nodes') as Group
     const grPoints = groupRef.current.getObjectByName('simulation-3d-group__node-points') as Group
@@ -182,8 +217,6 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  console.warn(`Missing source or target node for link: ${link?.ref_id}`)
-
                   return
                 }
 
@@ -206,19 +239,6 @@ export const Graph = () => {
               }
             }
           })
-        }
-
-        if (gr) {
-          if (selectedNode) {
-            return
-          }
-
-          const newRadius = calculateRadius(gr)
-
-          if (prevRadius.current === 0 || Math.abs(prevRadius.current - newRadius) > 200) {
-            setGraphRadius(newRadius)
-            prevRadius.current = newRadius
-          }
         }
       }
     })
@@ -294,8 +314,6 @@ export const Graph = () => {
                 const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
-                  console.warn(`Missing source or target node for link: ${link?.ref_id}`)
-
                   return
                 }
 
@@ -352,6 +370,9 @@ export const Graph = () => {
   }
 
 
+  console.log('activeFilterTab', activeFilterTab)
+  console.log('graphStyle', graphStyle)
+
 
   return (
 
@@ -359,8 +380,11 @@ export const Graph = () => {
       <group>
         <Cubes />
 
-        <Connections linksPosition={linksPositionRef.current} />
+        {/* <Connections linksPosition={linksPositionRef.current} /> */}
+        <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
+      <HighlightedNodesLayer />
+      {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
       <NodeDetailsPanel />
     </group>

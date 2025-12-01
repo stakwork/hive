@@ -7,6 +7,8 @@ const stakworkWebhookSchema = z.object({
   projectId: z.number(),
   status: z.string(),
   workspaceId: z.string().optional(), // For external workflows without janitor run
+  autoCreateTasks: z.boolean().optional(), // Auto-create task from first recommendation
+  autoMergePr: z.boolean().optional(), // Auto-merge PR when autoCreateTasks is true
   results: z.object({
     recommendations: z.array(z.object({
       title: z.string(),

@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const callbackUrl = getGithubWebhookCallbackUrl(request);
+    const callbackUrl = getGithubWebhookCallbackUrl(request, workspaceId);
     const webhookService = new WebhookService(getServiceConfig("github"));
     const result = await webhookService.ensureRepoWebhook({
       userId: session.user.id as string,

@@ -1,4 +1,4 @@
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { parsePM2Content } from "@/utils/devContainerUtils";
 
 // Re-export constants for external use
@@ -6,6 +6,11 @@ export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
 
 // Import for internal use
 import { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
+
+// Get the Pool Manager base URL (already resolved for mock mode in env.ts)
+function getBaseUrl(): string {
+  return config.POOL_MANAGER_BASE_URL;
+}
 
 export interface PodWorkspace {
   branches: string[];
@@ -38,7 +43,7 @@ interface ProcessInfo {
 }
 
 export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace> {
-  const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspace`;
+  const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspace`;
 
   const response = await fetch(url, {
     method: "GET",
@@ -59,7 +64,7 @@ export async function getWorkspaceFromPool(poolName: string, poolApiKey: string)
 }
 
 export async function getPodFromPool(podId: string, poolApiKey: string): Promise<PodWorkspace> {
-  const url = `${config.POOL_MANAGER_BASE_URL}/workspaces/${podId}`;
+  const url = `${getBaseUrl()}/workspaces/${podId}`;
 
   const response = await fetch(url, {
     method: "GET",
@@ -80,7 +85,7 @@ export async function getPodFromPool(podId: string, poolApiKey: string): Promise
 }
 
 async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
-  const markUsedUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
+  const markUsedUrl = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
 
   console.log(`>>> Marking workspace as used: POST ${markUsedUrl}`);
 
@@ -104,7 +109,7 @@ async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolAp
 }
 
 async function markWorkspaceAsUnused(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
-  const markUnusedUrl = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-unused`;
+  const markUnusedUrl = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-unused`;
 
   console.log(`>>> Marking workspace as unused: POST ${markUnusedUrl}`);
 

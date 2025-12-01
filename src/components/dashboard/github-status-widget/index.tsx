@@ -7,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
@@ -17,7 +17,6 @@ import { useState } from "react";
 export function GitHubStatusWidget() {
   const { workspace, slug } = useWorkspace();
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
-  const { toast } = useToast();
   const [isInstalling, setIsInstalling] = useState(false);
 
   const handleGithubAppInstall = async () => {
@@ -39,20 +38,12 @@ export function GitHubStatusWidget() {
         window.location.href = data.data.link;
       } else {
         setIsInstalling(false);
-        toast({
-          title: "Installation Failed",
-          description: data.message || "Failed to generate GitHub App installation link",
-          variant: "destructive",
-        });
+        toast.error("Installation Failed", { description: data.message || "Failed to generate GitHub App installation link" });
       }
     } catch (error) {
       console.error("Failed to install GitHub App:", error);
       setIsInstalling(false);
-      toast({
-        title: "Installation Failed",
-        description: "An error occurred while trying to install the GitHub App",
-        variant: "destructive",
-      });
+      toast.error("Installation Failed", { description: "An error occurred while trying to install the GitHub App" });
     }
   };
 
@@ -86,7 +77,7 @@ export function GitHubStatusWidget() {
   const lastUpdated = repository?.updatedAt;
 
   // Determine status color
-  const statusColor = status === "SYNCED" ? "bg-green-500" : status === "PENDING" ? "bg-orange-500" : "bg-red-500";
+  const statusColor = status === "SYNCED" ? "bg-green-500" : status === "PENDING" ? "bg-yellow-500" : "bg-red-500";
 
   return (
     <TooltipProvider>
@@ -99,7 +90,7 @@ export function GitHubStatusWidget() {
         </TooltipTrigger>
         <TooltipContent side="bottom" className="max-w-xs">
           <div className="space-y-1.5 text-xs">
-            <div className={`font-medium ${status === "SYNCED" ? "text-green-600" : status === "PENDING" ? "text-orange-600" : "text-red-600"}`}>
+            <div className={`font-medium ${status === "SYNCED" ? "text-green-600" : status === "PENDING" ? "text-yellow-600" : "text-red-600"}`}>
               {status}
             </div>
             {lastUpdated && (

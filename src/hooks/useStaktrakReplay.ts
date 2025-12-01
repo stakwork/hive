@@ -17,7 +17,37 @@ export function usePlaywrightReplay(
     { message: string; actionIndex: number; action: string; timestamp: string }[]
   >([]);
   const [replayScreenshots, setReplayScreenshots] = useState<Screenshot[]>([]);
-  const [replayActions, setReplayActions] = useState<any[]>([]);
+  const [replayActions, setReplayActions] = useState<unknown[]>([]);
+  const [previewActions, setPreviewActions] = useState<unknown[]>([]);
+
+  const previewPlaywrightReplay = (testCode: string) => {
+    if (!iframeRef?.current?.contentWindow) {
+      return false;
+    }
+
+    if (!testCode || typeof testCode !== "string") {
+      return false;
+    }
+
+    if (!testCode.includes("page.") || !testCode.includes("test(")) {
+      return false;
+    }
+
+    try {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "staktrak-playwright-replay-preview",
+          testCode,
+        },
+        "*",
+      );
+
+      return true;
+    } catch (error) {
+      console.error("Error previewing Playwright test:", error);
+      return false;
+    }
+  };
 
   const startPlaywrightReplay = (testCode: string) => {
     if (!iframeRef?.current?.contentWindow) {
@@ -118,6 +148,15 @@ export function usePlaywrightReplay(
       if (!data || !data.type) return;
 
       switch (data.type) {
+        case "staktrak-playwright-replay-preview-ready":
+          setPreviewActions(data.actions || []);
+          break;
+
+        case "staktrak-playwright-replay-preview-error":
+          console.error("Playwright preview error:", data.error);
+          setPreviewActions([]);
+          break;
+
         case "staktrak-playwright-replay-started":
           setPlaywrightProgress({ current: 0, total: data.totalActions || 0 });
           setReplayActions(data.actions || []);
@@ -262,6 +301,8 @@ export function usePlaywrightReplay(
     replayErrors,
     replayScreenshots,
     replayActions,
+    previewActions,
+    previewPlaywrightReplay,
     startPlaywrightReplay,
     pausePlaywrightReplay,
     resumePlaywrightReplay,

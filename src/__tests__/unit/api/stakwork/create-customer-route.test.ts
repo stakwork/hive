@@ -165,10 +165,10 @@ const TestHelpers = {
     expect(mockCreateCustomer).not.toHaveBeenCalled();
   },
 
-  expectSuccessfulResponse: async (response: Response, expectedToken: string) => {
+  expectSuccessfulResponse: async (response: Response) => {
     expect(response.status).toBe(201);
     const data = await response.json();
-    expect(data).toEqual({ token: expectedToken });
+    expect(data).toEqual({ success: true });
   },
 
   expectApiErrorResponse: async (response: Response, apiError: ApiError) => {
@@ -333,7 +333,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
 
       expect(mockCreateCustomer).toHaveBeenCalledTimes(1);
       expect(mockCreateCustomer).toHaveBeenCalledWith("workspace-123");
-      await TestHelpers.expectSuccessfulResponse(response, token);
+      await TestHelpers.expectSuccessfulResponse(response);
     });
 
     test("should handle createCustomer throwing ApiError", async () => {
@@ -394,7 +394,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const request = TestHelpers.createMockRequest({ workspaceId: "workspace-123" });
       const response = await POST(request);
 
-      await TestHelpers.expectSuccessfulResponse(response, token);
+      await TestHelpers.expectSuccessfulResponse(response);
     });
 
     test("should return 500 when response has no data property", async () => {
@@ -435,7 +435,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const response = await POST(request);
 
       expect(mockEncryptField).toHaveBeenCalledWith("stakworkApiKey", "");
-      await TestHelpers.expectSuccessfulResponse(response, token);
+      await TestHelpers.expectSuccessfulResponse(response);
     });
   });
 
@@ -544,7 +544,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const response = await POST(request);
 
       expect(mockWorkspaceUpdate).not.toHaveBeenCalled();
-      await TestHelpers.expectSuccessfulResponse(response, token);
+      await TestHelpers.expectSuccessfulResponse(response);
     });
 
     test("should query swarm after workspace update", async () => {

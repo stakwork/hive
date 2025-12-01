@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskStatus, Priority, WorkflowStatus, TaskSourceType, Prisma } from "@prisma/client";
-import { sanitizeTask, extractPrArtifact } from "@/lib/helpers/tasks";
+import { extractPrArtifact, sanitizeTask } from "@/lib/helpers/tasks";
+import { Priority, Prisma, TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
+import { getServerSession } from "next-auth/next";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate pagination parameters
-    if (page < 1 || limit < 1 || limit > 100) {
+    if (page < 1 || limit < 1 || limit > 1000) {
       return NextResponse.json(
         {
           error: "Invalid pagination parameters. Page must be >= 1, limit must be 1-100",
@@ -95,8 +95,8 @@ export async function GET(request: NextRequest) {
         { mode: "agent" },
         // Show Stakwork tasks regardless of status
         { stakworkProjectId: { not: null } },
-        // Show user journey tasks regardless of status
-        { sourceType: TaskSourceType.USER_JOURNEY },
+        // Hide user journey tasks regardless of status
+        // { sourceType: TaskSourceType.USER_JOURNEY },
       ];
     }
 
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy: {
-          createdAt: "desc",
+          updatedAt: "desc",
         },
         skip,
         take: limit,

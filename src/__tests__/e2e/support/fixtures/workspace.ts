@@ -26,13 +26,13 @@ export async function navigateToTasks(page: Page, workspaceSlug: string): Promis
 }
 
 /**
- * Navigate to insights page
+ * Navigate to recommendations page
  */
-export async function navigateToInsights(page: Page, workspaceSlug: string): Promise<void> {
-  await page.goto(`http://localhost:3000/w/${workspaceSlug}/insights`);
+export async function navigateToRecommendations(page: Page, workspaceSlug: string): Promise<void> {
+  await page.goto(`http://localhost:3000/w/${workspaceSlug}/recommendations`);
 
-  // Wait for insights page to load
-  const pageTitle = page.locator(selectors.pageTitle.insights);
+  // Wait for recommendations page to load
+  const pageTitle = page.locator(selectors.pageTitle.recommendations);
   await expect(pageTitle).toBeVisible({ timeout: 10000 });
 }
 

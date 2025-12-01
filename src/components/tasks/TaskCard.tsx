@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, GitPullRequest, GitMerge, GitPullRequestClosed, ExternalLink } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
+import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -143,13 +144,6 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
 
-        {/* Workflow Status - hidden when PR artifact exists */}
-        {!hideWorkflowStatus && !task.prArtifact && (
-          <div className="px-2 py-0.5 rounded-full border bg-background text-xs">
-            <WorkflowStatusBadge status={task.workflowStatus} />
-          </div>
-        )}
-
         {/* Optional: Agent badge */}
         {!hideWorkflowStatus && task.mode === "agent" && (
           <Badge variant="secondary" className="gap-1 h-5">
@@ -174,53 +168,26 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           </Badge>
         )}
 
+        {/* Workflow Status - hidden when PR artifact exists */}
+        {/* Agent tasks show "Running" instead of "Pending" since they're active until completion */}
+        {!hideWorkflowStatus && !task.prArtifact && (
+          <div className="px-2 py-0.5 rounded-full border bg-background text-xs">
+            <WorkflowStatusBadge
+              status={
+                task.mode === "agent" && task.workflowStatus === "PENDING"
+                  ? "IN_PROGRESS"
+                  : task.workflowStatus
+              }
+            />
+          </div>
+        )}
+
         {/* PR Status Badge */}
         {task.prArtifact && task.prArtifact.content && (
-          <a
-            href={task.prArtifact.content.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex"
-          >
-            <Badge
-              variant="secondary"
-              className={`gap-1 h-5 ${
-                task.prArtifact.content.status === "IN_PROGRESS"
-                  ? "border-[#238636]/30"
-                  : task.prArtifact.content.status === "CANCELLED"
-                    ? "border-[#6e7681]/30"
-                    : task.prArtifact.content.status === "DONE"
-                      ? "border-[#8957e5]/30"
-                      : "bg-gray-100 text-gray-800 border-gray-200"
-              }`}
-              style={
-                task.prArtifact.content.status === "IN_PROGRESS"
-                  ? { backgroundColor: "#238636", color: "white" }
-                  : task.prArtifact.content.status === "CANCELLED"
-                    ? { backgroundColor: "#6e7681", color: "white" }
-                    : task.prArtifact.content.status === "DONE"
-                      ? { backgroundColor: "#8957e5", color: "white" }
-                      : undefined
-              }
-            >
-              {task.prArtifact.content.status === "DONE" ? (
-                <GitMerge className="w-3 h-3" />
-              ) : task.prArtifact.content.status === "CANCELLED" ? (
-                <GitPullRequestClosed className="w-3 h-3" />
-              ) : (
-                <GitPullRequest className="w-3 h-3" />
-              )}
-              {task.prArtifact.content.status === "IN_PROGRESS"
-                ? "Open"
-                : task.prArtifact.content.status === "CANCELLED"
-                  ? "Closed"
-                  : task.prArtifact.content.status === "DONE"
-                    ? "Merged"
-                    : `PR ${task.prArtifact.content.status.toLowerCase() || "UNKNOWN"}`}
-              <ExternalLink className="w-3 h-3 ml-0.5" />
-            </Badge>
-          </a>
+          <PRStatusBadge
+            url={task.prArtifact.content.url}
+            status={task.prArtifact.content.status}
+          />
         )}
       </div>
     </motion.div>

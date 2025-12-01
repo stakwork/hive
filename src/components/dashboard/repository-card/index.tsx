@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeTime } from "@/lib/utils";
@@ -19,7 +19,6 @@ export function RepositoryCard() {
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
   console.log('hasGithubAppTokens-is-here', hasGithubAppTokens);
   console.log('isGithubAppLoading-is-here', isGithubAppLoading);
-  const { toast } = useToast();
   const [isInstalling, setIsInstalling] = useState(false);
   // Handle GitHub App installation
   const handleGithubAppInstall = async () => {
@@ -44,20 +43,12 @@ export function RepositoryCard() {
         // Don't set isInstalling to false - let the page navigate
       } else {
         setIsInstalling(false);
-        toast({
-          title: "Installation Failed",
-          description: data.message || "Failed to generate GitHub App installation link",
-          variant: "destructive",
-        });
+        toast.error("Installation Failed", { description: data.message || "Failed to generate GitHub App installation link" });
       }
     } catch (error) {
       console.error("Failed to install GitHub App:", error);
       setIsInstalling(false);
-      toast({
-        title: "Installation Failed",
-        description: "An error occurred while trying to install the GitHub App",
-        variant: "destructive",
-      });
+      toast.error("Installation Failed", { description: "An error occurred while trying to install the GitHub App" });
     }
   };
 

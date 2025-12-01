@@ -1,26 +1,44 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { MessageCircle, Lightbulb, RefreshCw, Sprout } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { MessageCircle, Lightbulb, RefreshCw, Sprout, Box, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Learnings } from "@/types/learn";
 
+interface Feature {
+  id: string;
+  name: string;
+  documentation?: string;
+}
+
 interface LearnSidebarProps {
   workspaceSlug: string;
   onPromptClick?: (prompt: string) => void;
+  onFeatureClick?: (featureId: string, featureName: string) => void;
   currentQuestion?: string;
   refetchTrigger?: number;
 }
 
-export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, refetchTrigger }: LearnSidebarProps) {
+export function LearnSidebar({
+  workspaceSlug,
+  onPromptClick,
+  onFeatureClick,
+  currentQuestion,
+  refetchTrigger,
+}: LearnSidebarProps) {
   const [learnings, setLearnings] = useState<Learnings | null>(null);
+  const [features, setFeatures] = useState<Feature[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFeaturesLoading, setIsFeaturesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [budget, setBudget] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isFeaturesCollapsed, setIsFeaturesCollapsed] = useState(false);
+  const [isHintsCollapsed, setIsHintsCollapsed] = useState(false);
+  const [isPromptsCollapsed, setIsPromptsCollapsed] = useState(false);
 
   useEffect(() => {
     const fetchLearnings = async () => {
@@ -52,6 +70,29 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceSlug, refetchTrigger]);
 
+  useEffect(() => {
+    const fetchFeatures = async () => {
+      setIsFeaturesLoading(true);
+      try {
+        const url = `/api/learnings/features?workspace=${encodeURIComponent(workspaceSlug)}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch features: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setFeatures(data.features || []);
+      } catch (error) {
+        console.error("Error fetching features:", error);
+      } finally {
+        setIsFeaturesLoading(false);
+      }
+    };
+
+    fetchFeatures();
+  }, [workspaceSlug]);
+
   const refetchLearnings = async () => {
     setIsLoading(true);
     setError(null);
@@ -80,6 +121,12 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
   const handlePromptClick = (prompt: string) => {
     if (onPromptClick) {
       onPromptClick(prompt);
+    }
+  };
+
+  const handleFeatureClickInternal = (featureId: string, featureName: string) => {
+    if (onFeatureClick) {
+      onFeatureClick(featureId, featureName);
     }
   };
 
@@ -149,6 +196,48 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Features Section */}
+        {!isFeaturesLoading && features && features.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <button
+              onClick={() => setIsFeaturesCollapsed(!isFeaturesCollapsed)}
+              className="flex items-center gap-2 mb-3 w-full hover:opacity-70 transition-opacity"
+            >
+              <Box className="w-4 h-4 text-muted-foreground" />
+              <h3 className="font-medium text-muted-foreground">Concepts</h3>
+              <ChevronDown
+                className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${isFeaturesCollapsed ? "-rotate-90" : ""}`}
+              />
+            </button>
+            <AnimatePresence>
+              {!isFeaturesCollapsed && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-2 overflow-hidden"
+                >
+                  {features.map((feature, index) => (
+                    <motion.button
+                      key={index}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                      onClick={() => handleFeatureClickInternal(feature.id, feature.name)}
+                      className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
+                    >
+                      <div className="text-muted-foreground group-hover:text-foreground transition-colors">
+                        {feature.name}
+                      </div>
+                    </motion.button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
         {/* Hints Section */}
         {learnings?.hints && learnings.hints.length > 0 && (
           <motion.div
@@ -156,54 +245,90 @@ export function LearnSidebar({ workspaceSlug, onPromptClick, currentQuestion, re
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.1 }}
           >
-            <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => setIsHintsCollapsed(!isHintsCollapsed)}
+              className="flex items-center gap-2 mb-3 w-full hover:opacity-70 transition-opacity"
+            >
               <Lightbulb className="w-4 h-4 text-muted-foreground" />
               <h3 className="font-medium text-muted-foreground">Helpful Hints</h3>
-            </div>
-            <div className="space-y-2">
-              {learnings.hints.map((hint, index) => (
-                <motion.button
-                  key={index}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.2, delay: index * 0.05 }}
-                  onClick={() => handlePromptClick(hint)}
-                  className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
+              <ChevronDown
+                className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${isHintsCollapsed ? "-rotate-90" : ""}`}
+              />
+            </button>
+            <AnimatePresence>
+              {!isHintsCollapsed && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-2 overflow-hidden"
                 >
-                  <div className="text-muted-foreground group-hover:text-foreground transition-colors">{hint}</div>
-                </motion.button>
-              ))}
-            </div>
+                  {learnings.hints.map((hint, index) => (
+                    <motion.button
+                      key={index}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                      onClick={() => handlePromptClick(hint)}
+                      className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
+                    >
+                      <div className="text-muted-foreground group-hover:text-foreground transition-colors">{hint}</div>
+                    </motion.button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 
         {/* Prompts Section */}
         {learnings?.prompts && learnings.prompts.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-            <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => setIsPromptsCollapsed(!isPromptsCollapsed)}
+              className="flex items-center gap-2 mb-3 w-full hover:opacity-70 transition-opacity"
+            >
               <MessageCircle className="w-4 h-4 text-muted-foreground" />
               <h3 className="font-medium text-muted-foreground">Previous Prompts</h3>
-            </div>
-            <div className="space-y-2">
-              {learnings.prompts.map((prompt, index) => (
-                <motion.button
-                  key={index}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.2, delay: index * 0.05 }}
-                  onClick={() => handlePromptClick(prompt)}
-                  className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
+              <ChevronDown
+                className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${isPromptsCollapsed ? "-rotate-90" : ""}`}
+              />
+            </button>
+            <AnimatePresence>
+              {!isPromptsCollapsed && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-2 overflow-hidden"
                 >
-                  <div className="text-muted-foreground group-hover:text-foreground transition-colors">{prompt}</div>
-                </motion.button>
-              ))}
-            </div>
+                  {learnings.prompts.map((prompt, index) => (
+                    <motion.button
+                      key={index}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                      onClick={() => handlePromptClick(prompt)}
+                      className="w-full text-left p-3 text-sm bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer group"
+                    >
+                      <div className="text-muted-foreground group-hover:text-foreground transition-colors">
+                        {prompt}
+                      </div>
+                    </motion.button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 
         {/* Empty State */}
         {(!learnings?.prompts || learnings.prompts.length === 0) &&
-          (!learnings?.hints || learnings.hints.length === 0) && (
+          (!learnings?.hints || learnings.hints.length === 0) &&
+          (!features || features.length === 0) &&
+          !isFeaturesLoading && (
             <div className="text-center py-12">
               <div className="text-muted-foreground text-sm">
                 No learning resources available yet.

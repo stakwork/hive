@@ -1,4 +1,4 @@
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { DevContainerFile } from "@/utils/devContainerUtils";
 import { EncryptionService } from "@/lib/encryption";
 

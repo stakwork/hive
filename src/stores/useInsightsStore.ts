@@ -8,7 +8,10 @@ interface Recommendation {
   impact?: string;
   priority: string;
   janitorRun?: {
-    type: string;
+    id: string;
+    janitorType: string;
+    status: string;
+    createdAt: string;
   };
 }
 

@@ -20,6 +20,20 @@ export interface StakworkProjectPayload {
   workflow_params: Record<string, unknown>;
 }
 
+// Payload for Stakwork workflow with webhook support
+export interface StakworkWorkflowPayload {
+  name: string;
+  workflow_id: number;
+  webhook_url?: string;
+  workflow_params: {
+    set_var: {
+      attributes: {
+        vars: Record<string, unknown>;
+      };
+    };
+  };
+}
+
 export interface CreateProjectRequest {
   title: any;
   description: any;
@@ -56,6 +70,10 @@ export const CreateStakworkRunSchema = z.object({
   workspaceId: z.string().cuid(),
   featureId: z.string().cuid().optional().nullable(),
   params: z.record(z.string(), z.unknown()).optional(),
+  history: z.array(z.object({
+    role: z.enum(["assistant", "user"]),
+    content: z.string(),
+  })).optional(),
 });
 
 export const StakworkRunWebhookSchema = z.object({

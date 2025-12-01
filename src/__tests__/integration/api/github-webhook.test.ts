@@ -265,6 +265,40 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
   });
 
   describe("Database Integration", () => {
+    test("should return 404 when workspace is deleted", async () => {
+      const { repository, webhookSecret, workspace } = await createTestRepository();
+
+      // Soft delete the workspace
+      await db.workspace.update({
+        where: { id: workspace.id },
+        data: {
+          deleted: true,
+          deletedAt: new Date(),
+        },
+      });
+
+      const payload = createGitHubPushPayload(
+        testBranches.main,
+        repository.repositoryUrl
+      );
+      const body = JSON.stringify(payload);
+      const signature = computeValidWebhookSignature(webhookSecret, body);
+
+      const request = createWebhookRequest(
+        webhookUrl,
+        payload,
+        signature,
+        repository.githubWebhookId!
+      );
+
+      const response = await POST(request as any);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(triggerAsyncSync).not.toHaveBeenCalled();
+    });
+
     test("should lookup repository by githubWebhookId", async () => {
       const customWebhookId = "webhook-integration-test-456";
       const { repository, webhookSecret } = await createTestRepository({
