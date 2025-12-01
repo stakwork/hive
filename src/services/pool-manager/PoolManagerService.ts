@@ -33,6 +33,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
   public readonly serviceName = "poolManager";
 
   constructor(config: ServiceConfig) {
+    // Config is already resolved by getServiceConfig() - mock URLs are set there if USE_MOCKS=true
     super(config);
   }
 

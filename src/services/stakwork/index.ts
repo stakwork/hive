@@ -1,6 +1,6 @@
 import { BaseServiceClass } from "@/lib/base-service";
 import { ServiceConfig } from "@/types";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();

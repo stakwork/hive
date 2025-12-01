@@ -1,3 +1,7 @@
+// Mock mode - when true, URLs resolve to local mock endpoints
+const USE_MOCKS = process.env.USE_MOCKS === "true";
+const MOCK_BASE = process.env.NEXTAUTH_URL || "http://localhost:3000";
+
 const requiredEnvVars = {
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
   POOL_MANAGER_API_KEY: process.env.POOL_MANAGER_API_KEY,
@@ -10,29 +14,37 @@ const requiredEnvVars = {
   //ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
 } as const;
 
-// Validate environment variables
-for (const [key, value] of Object.entries(requiredEnvVars)) {
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
+// Validate environment variables (skip in mock mode)
+if (!USE_MOCKS) {
+  for (const [key, value] of Object.entries(requiredEnvVars)) {
+    if (!value) {
+      throw new Error(`Missing required environment variable: ${key}`);
+    }
   }
 }
 
 export const env = requiredEnvVars;
 
 // Optional environment variables with defaults
+// URLs resolve to mock endpoints when USE_MOCKS=true
 export const optionalEnvVars = {
-  STAKWORK_BASE_URL: process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
+  STAKWORK_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/stakwork`
+    : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
   STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
   STAKWORK_USER_JOURNEY_WORKFLOW_ID: process.env.STAKWORK_USER_JOURNEY_WORKFLOW_ID,
   STAKWORK_TRANSCRIPT_WORKFLOW_ID: process.env.STAKWORK_TRANSCRIPT_WORKFLOW_ID,
   STAKWORK_AI_GENERATION_WORKFLOW_ID: process.env.STAKWORK_AI_GENERATION_WORKFLOW_ID,
-  POOL_MANAGER_BASE_URL: process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
+  POOL_MANAGER_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/pool-manager`
+    : process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
+  USE_MOCKS,
 } as const;
 
 // Combined environment configuration

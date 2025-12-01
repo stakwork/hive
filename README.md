@@ -85,6 +85,7 @@ npm run dev
 - `npm run seed:auto-seed` - Seed workspace with GitHub-linked user
 - `npm run test:decrypt` - View critical database fields
 - `npm run mock-server` - Start mock server for testing
+- Mock endpoints available at `/api/mock/*` for development without external dependencies
 - `npx shadcn@latest add [component]` - Add shadcn/ui components
 
 ## Environment Variables
@@ -97,3 +98,6 @@ NEXTAUTH_SECRET="your-jwt-secret"
 GITHUB_CLIENT_ID="your-github-client-id"  
 GITHUB_CLIENT_SECRET="your-github-client-secret"
 ```
+
+Optional environment variables:
+- `USE_MOCKS` - Enable mock mode for all external services (`true` to enable)

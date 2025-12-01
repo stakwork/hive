@@ -1,4 +1,4 @@
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { AuthBody, PoolManagerAuthResponse } from "@/types/pool-manager";
 import { EncryptionService } from "@/lib/encryption";
 

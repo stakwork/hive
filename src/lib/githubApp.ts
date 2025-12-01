@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
 
 export interface AppInstallationStatus {

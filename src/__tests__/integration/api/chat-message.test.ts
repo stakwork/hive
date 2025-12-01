@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/chat/message/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
 import {
@@ -16,7 +16,7 @@ import {
 import { createTestUser } from "@/__tests__/support/fixtures/user";
 
 // Mock environment config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-stakwork-key",
     STAKWORK_BASE_URL: "https://test-stakwork.com",

@@ -1,12 +1,13 @@
 import { ServiceConfig } from "@/types";
+import { optionalEnvVars } from "./env";
 
 // Service endpoint configurations
+// Note: poolManager and stakwork baseURLs come from env.ts which handles USE_MOCKS routing
 export const serviceConfigs: Record<string, ServiceConfig> = {
   stakwork: {
-    baseURL:
-      process.env.STAKWORK_BASE_URL || "https://jobs.stakwork.com/api/v1",
+    baseURL: optionalEnvVars.STAKWORK_BASE_URL,
     apiKey: process.env.STAKWORK_API_KEY || "",
-    timeout: parseInt(process.env.API_TIMEOUT || "10000"),
+    timeout: optionalEnvVars.API_TIMEOUT,
     headers: {
       "Content-Type": "application/json",
       "X-User-Email": process.env.STAKWORK_CUSTOMERS_EMAIL || "",
@@ -14,10 +15,9 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     },
   },
   poolManager: {
-    baseURL:
-      process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
+    baseURL: optionalEnvVars.POOL_MANAGER_BASE_URL,
     apiKey: process.env.POOL_MANAGER_API_KEY || "",
-    timeout: parseInt(process.env.API_TIMEOUT || "10000"),
+    timeout: optionalEnvVars.API_TIMEOUT,
     headers: {
       "Content-Type": "application/json",
     },
