@@ -91,6 +91,7 @@ export default function UserJourneys() {
 
       const result = await response.json();
       if (result.success && result.data) {
+        console.log("[UserJourneys] Received data:", result.data.map((t: UserJourneyRow) => ({ id: t.id, title: t.title, hasVideo: t.hasVideo })));
         setUserJourneys(result.data);
       }
     } catch (error) {
@@ -394,47 +395,49 @@ export default function UserJourneys() {
     if (!activeVideoData) return null;
 
     return (
-      <div className="fixed inset-0 z-50 bg-background">
-        {/* Header with close button */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setViewMode("table");
-                setActiveVideoData(null);
-              }}
-              className="h-8"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Tests
-            </Button>
-            <h2 className="text-lg font-semibold">{activeVideoData.title}</h2>
-          </div>
-        </div>
-
-        {/* Main content area */}
-        <div className="flex h-[calc(100vh-57px)]">
-          {/* Left sidebar - placeholder for actions list */}
-          <div className={`${SIDEBAR_WIDTH} border-r bg-muted/20 p-4`}>
-            <div className="text-sm text-muted-foreground">Actions list coming soon...</div>
+      <Card>
+        <CardContent className="p-0">
+          {/* Header with back button */}
+          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setViewMode("table");
+                  setActiveVideoData(null);
+                }}
+                className="h-8"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Tests
+              </Button>
+              <h2 className="text-lg font-semibold">{activeVideoData.title}</h2>
+            </div>
           </div>
 
-          {/* Right side - video player */}
-          <div className="flex-1 flex items-center justify-center bg-black">
-            <video
-              key={activeVideoData.url}
-              controls
-              autoPlay
-              className="max-w-full max-h-full"
-              src={activeVideoData.url}
-            >
-              Your browser does not support the video tag.
-            </video>
+          {/* Main content area */}
+          <div className="flex" style={{ height: "calc(100vh - 250px)" }}>
+            {/* Left sidebar - placeholder for actions list */}
+            <div className={`${SIDEBAR_WIDTH} border-r bg-muted/20 p-4`}>
+              <div className="text-sm text-muted-foreground">Actions list coming soon...</div>
+            </div>
+
+            {/* Right side - video player */}
+            <div className="flex-1 flex items-center justify-center bg-black">
+              <video
+                key={activeVideoData.url}
+                controls
+                autoPlay
+                className="max-w-full max-h-full"
+                src={activeVideoData.url}
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   };
 
