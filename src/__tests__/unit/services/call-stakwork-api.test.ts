@@ -290,7 +290,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("uses webhook URL when provided (for FORM artifact continuation)", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const webhookUrl = "https://stakwork.example.com/webhook/continue/abc123";
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
 
@@ -303,7 +303,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("falls back to /projects endpoint when webhook is not provided", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
 
       await callStakworkAPI(createTestParams({ webhook: undefined }));
