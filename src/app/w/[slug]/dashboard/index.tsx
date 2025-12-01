@@ -1,6 +1,7 @@
 "use client";
 
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
+import { GitLeaksWidget } from "@/components/dashboard/git-leaks-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
@@ -48,12 +49,15 @@ function DashboardInner() {
 
   return (
     <div className="flex flex-col flex-1 h-full relative">
-      {/* Ingestion Status Widget with transition */}
+      {/* Top-left: Git Leaks + Ingestion Status widgets with transition */}
       <div className={`absolute z-10 transition-all duration-200 ease-in-out ${isCentered
         ? "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
         : "top-4 left-4"
         }`}>
-        <IngestionStatusWidget />
+        <div className="flex items-center gap-2">
+          <GitLeaksWidget />
+          <IngestionStatusWidget />
+        </div>
       </div>
 
       {/* Top-right widgets */}
