@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
+import { ArtifactType, TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { EncryptionService } from "@/lib/encryption";
 import { getUserAppTokens } from "@/lib/githubApp";
@@ -518,27 +518,31 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     // 6. Check for video artifacts (separate optimized query)
     const taskIds = updatedTasks.map(t => t.id);
+    console.log("[user-journeys] Checking videos for task IDs:", taskIds);
     const tasksWithVideos = await db.task.findMany({
       where: {
         id: { in: taskIds }
       },
-      select: {
-        id: true,
+      include: {
         chatMessages: {
-          select: {
-            artifacts: {
-              where: { type: "MEDIA" },
-              select: {
-                content: true,
-              },
-              take: 1,
-            },
-          },
           orderBy: { timestamp: "desc" },
           take: 10,
+          include: {
+            artifacts: {
+              where: { type: ArtifactType.MEDIA },
+              orderBy: { createdAt: "desc" },
+            },
+          },
         },
       },
     });
+    console.log("[user-journeys] Tasks with messages found:", tasksWithVideos.length);
+    console.log("[user-journeys] Message/artifact details:", tasksWithVideos.map(t => ({
+      taskId: t.id,
+      messageCount: t.chatMessages.length,
+      artifactCounts: t.chatMessages.map(m => m.artifacts.length),
+      artifactTypes: t.chatMessages.flatMap(m => m.artifacts.map(a => a.type))
+    })));
 
     // Build Set for O(1) lookup
     const videoTaskIds = new Set<string>();
@@ -548,8 +552,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           for (const artifact of message.artifacts) {
             try {
               const content = JSON.parse(artifact.content as string);
+              console.log("[user-journeys] Video check:", { taskId: task.id, mediaType: content.mediaType, hasS3Key: !!content.s3Key });
               if (content.mediaType === "video" && content.s3Key) {
                 videoTaskIds.add(task.id);
+                console.log("[user-journeys] ✓ Task has video:", task.id);
                 break;
               }
             } catch (error) {
@@ -560,6 +566,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         }
       }
     }
+    console.log("[user-journeys] Tasks with videos:", Array.from(videoTaskIds));
 
     // 7. Process tasks with PR artifacts and video detection
     const processedTasks: UserJourneyResponse[] = await Promise.all(
