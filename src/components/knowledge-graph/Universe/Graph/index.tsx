@@ -7,6 +7,7 @@ import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
 import { Group } from 'three'
 import { Line2 } from 'three-stdlib'
+import { RepositoryScene } from '../GitSeeScene'
 import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
@@ -384,6 +385,7 @@ export const Graph = () => {
         <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
       <HighlightedNodesLayer />
+      <RepositoryScene />
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
       <NodeDetailsPanel />
