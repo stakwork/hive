@@ -551,11 +551,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         if (message.artifacts && message.artifacts.length > 0) {
           for (const artifact of message.artifacts) {
             try {
-              const content = JSON.parse(artifact.content as string);
-              console.log("[user-journeys] Video check:", { taskId: task.id, mediaType: content.mediaType, hasS3Key: !!content.s3Key });
-              if (content.mediaType === "video" && content.s3Key) {
+              // Prisma returns JSON fields as objects, not strings
+              const content = typeof artifact.content === 'string'
+                ? JSON.parse(artifact.content)
+                : artifact.content;
+
+              if (content && typeof content === 'object' && content.mediaType === "video" && content.s3Key) {
                 videoTaskIds.add(task.id);
-                console.log("[user-journeys] ✓ Task has video:", task.id);
                 break;
               }
             } catch (error) {
