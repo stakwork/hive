@@ -45,6 +45,7 @@ export const optionalEnvVars = {
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
   USE_MOCKS,
+  MOCK_BASE,
 } as const;
 
 // Combined environment configuration
