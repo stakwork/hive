@@ -9,6 +9,8 @@ export type SidebarFilterWithCount = {
   count: number
 }
 
+const repositoryNodeTypes = ['GitHubRepo', 'Commits', 'Stars', 'Issues', 'Age', 'Contributor'];
+
 const defaultData: Omit<
   DataStore,
   | 'setTrendingTopics'
@@ -34,11 +36,13 @@ const defaultData: Omit<
   | 'resetData'
   | 'finishLoading'
   | 'setNodeTypeOrder'
+  | 'setRepositoryNodes'
 > = {
   categoryFilter: null,
   dataInitial: null,
   runningProjectMessages: [],
   filters: defaultFilters,
+  repositoryNodes: [],
   queuedSources: null,
   selectedTimestamp: null,
   sources: null,
@@ -75,6 +79,7 @@ export const createDataStore = () =>
           linksNormalized,
           nodeTypeOrder,
           nodeLinksNormalized: existingNodeLinksNormalized,
+          repositoryNodes: existingRepositoryNodes,
         } = get()
 
         if (!data?.nodes) {
@@ -85,7 +90,12 @@ export const createDataStore = () =>
         const normalizedLinksMap = linksNormalized || new Map()
         const nodeLinksNormalized: Record<string, string[]> = existingNodeLinksNormalized || {}
 
-        const nodesFilteredByFilters = data.nodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
+
+        // Separate repository nodes from regular graph nodes
+        const repositoryNodes = data.nodes.filter((node) => repositoryNodeTypes.includes(node.node_type));
+        const graphNodes = data.nodes.filter((node) => !repositoryNodeTypes.includes(node.node_type));
+
+        const nodesFilteredByFilters = graphNodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
         const newNodes: Node[] = []
 
         nodesFilteredByFilters.forEach((node) => {
@@ -139,6 +149,13 @@ export const createDataStore = () =>
         const linkTypes = [...new Set(updatedLinks.map((node) => node.edge_type))]
         const sidebarFilters = ['all', ...nodeTypes.map((type) => type.toLowerCase())]
 
+        const updatedRepositoryNodes = [...existingRepositoryNodes];
+        repositoryNodes.forEach((repoNode) => {
+          if (!updatedRepositoryNodes.find(existing => existing.ref_id === repoNode.ref_id)) {
+            updatedRepositoryNodes.push(repoNode);
+          }
+        });
+
         const sidebarFilterCounts = sidebarFilters.map((filter) => ({
           name: filter,
           count: updatedNodes.filter((node) => filter === 'all' || node.node_type?.toLowerCase() === filter).length,
@@ -153,6 +170,7 @@ export const createDataStore = () =>
           dataNew: { nodes: newNodes, links: newLinks },
           nodeTypes,
           linkTypes,
+          repositoryNodes: updatedRepositoryNodes,
           sidebarFilters,
           sidebarFilterCounts,
           nodesNormalized: normalizedNodesMap,
@@ -175,6 +193,7 @@ export const createDataStore = () =>
           sidebarFilter: 'all',
           sidebarFilters: [],
           sidebarFilterCounts: [],
+          repositoryNodes: [],
           dataNew: null,
           runningProjectId: '',
           nodeTypes: [],
@@ -236,5 +255,9 @@ export const createDataStore = () =>
           })
         }
       },
+      setRepositoryNodes: (repositoryNodes) => set({ repositoryNodes }),
     }))
   );
+
+
+export const useRepositoryNodes = () => useDataStore((s) => s.repositoryNodes)

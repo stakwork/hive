@@ -21,6 +21,7 @@ export type SidebarFilterWithCount = {
 }
 
 export type DataStore = {
+  repositoryNodes: Node[],
   splashDataLoading: boolean
   abortRequest: boolean
   categoryFilter: NodeType | null
@@ -73,6 +74,7 @@ export type DataStore = {
 
 const defaultData: Omit<
   DataStore,
+  | 'setRepositoryNodes'
   | 'setTrendingTopics'
   | 'setStats'
   | 'setSidebarFilter'
@@ -101,6 +103,7 @@ const defaultData: Omit<
   dataInitial: null,
   runningProjectMessages: [],
   filters: defaultFilters,
+  repositoryNodes: [],
   queuedSources: null,
   selectedTimestamp: null,
   sources: null,
@@ -333,3 +336,6 @@ export const getLinksBetweenNodes = (nodeA: string, nodeB: string) => {
 
   return refIds.map((refId) => linksNormalized.get(refId)).filter((link): link is Link => !!link)
 }
+
+
+export const useRepositoryNodes = () => useDataStore((s) => s.repositoryNodes)
