@@ -39,6 +39,7 @@ interface UserJourneyResponse {
   testFilePath: string | null;
   testFileUrl: string | null;
   createdAt: string;
+  hasVideo: boolean;
   badge: BadgeMetadata;
   task: {
     description: string | null;
@@ -515,7 +516,52 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       orderBy: { createdAt: "desc" },
     });
 
-    // 6. Process tasks with PR artifacts
+    // 6. Check for video artifacts (separate optimized query)
+    const taskIds = updatedTasks.map(t => t.id);
+    const tasksWithVideos = await db.task.findMany({
+      where: {
+        id: { in: taskIds }
+      },
+      select: {
+        id: true,
+        chatMessages: {
+          select: {
+            artifacts: {
+              where: { type: "MEDIA" },
+              select: {
+                content: true,
+              },
+              take: 1,
+            },
+          },
+          orderBy: { timestamp: "desc" },
+          take: 10,
+        },
+      },
+    });
+
+    // Build Set for O(1) lookup
+    const videoTaskIds = new Set<string>();
+    for (const task of tasksWithVideos) {
+      for (const message of task.chatMessages) {
+        if (message.artifacts && message.artifacts.length > 0) {
+          for (const artifact of message.artifacts) {
+            try {
+              const content = JSON.parse(artifact.content as string);
+              if (content.mediaType === "video" && content.s3Key) {
+                videoTaskIds.add(task.id);
+                break;
+              }
+            } catch (error) {
+              console.error("[user-journeys] Error parsing artifact content:", error);
+            }
+          }
+          if (videoTaskIds.has(task.id)) break;
+        }
+      }
+    }
+
+    // 7. Process tasks with PR artifacts and video detection
     const processedTasks: UserJourneyResponse[] = await Promise.all(
       updatedTasks.map(async (task) => {
         const prArtifact = await extractPrArtifact(task, userId);
@@ -525,6 +571,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           testFilePath: task.testFilePath,
           testFileUrl: task.testFileUrl,
           createdAt: task.createdAt.toISOString(),
+          hasVideo: videoTaskIds.has(task.id),
           badge: calculateBadge(task, prArtifact),
           task: {
             description: task.description,

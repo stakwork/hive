@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Archive, ExternalLink, Loader2, Plus, Play, Eye } from "lucide-react";
+import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
@@ -41,6 +41,7 @@ interface UserJourneyRow {
   testFilePath: string | null;
   testFileUrl: string | null;
   createdAt: string;
+  hasVideo: boolean;
   badge: BadgeMetadata;
   task: {
     description: string | null;
@@ -548,10 +549,12 @@ export default function UserJourneys() {
                               onClick={() => handleReplay(row)}
                               disabled={isReplayingTask === row.id}
                               className="h-8 w-8 p-0"
-                              title="Replay test"
+                              title={row.hasVideo ? "Play recording" : "Run test"}
                             >
                               {isReplayingTask === row.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : row.hasVideo ? (
+                                <PlayCircle className="h-4 w-4" />
                               ) : (
                                 <Play className="h-4 w-4" />
                               )}
