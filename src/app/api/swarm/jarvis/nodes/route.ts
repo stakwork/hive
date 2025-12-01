@@ -6,6 +6,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import type { JarvisNode, JarvisResponse } from "@/types/jarvis";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { mockData } from "./example";
 
 export const runtime = "nodejs";
 
@@ -80,6 +81,8 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
+
+    console.log('request--here', request);
 
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
@@ -170,7 +173,10 @@ export async function GET(request: NextRequest) {
         const s3Service = getS3Service();
         // Only process the nodes array, keep edges and other data unchanged
         const processedNodes = await processNodesMediaUrls(data.nodes, s3Service);
-        processedData = {
+
+        console.log('endpoint--here', endpoint);
+
+        processedData = !endpoint.includes('start_date_added_to_graph') ? mockData.data : {
           ...data,
           nodes: processedNodes,
         };
@@ -187,7 +193,7 @@ export async function GET(request: NextRequest) {
       {
         success: apiResult.ok,
         status: apiResult.status,
-        data: {
+        data: !endpoint.includes('start_date_added_to_graph') ? mockData.data : {
           ...(processedData as JarvisResponse),
         },
       },
