@@ -95,8 +95,8 @@ export async function GET(request: NextRequest) {
         { mode: "agent" },
         // Show Stakwork tasks regardless of status
         { stakworkProjectId: { not: null } },
-        // Show user journey tasks regardless of status
-        { sourceType: TaskSourceType.USER_JOURNEY },
+        // Hide user journey tasks regardless of status
+        // { sourceType: TaskSourceType.USER_JOURNEY },
       ];
     }
 
