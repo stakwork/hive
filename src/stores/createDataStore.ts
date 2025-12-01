@@ -161,6 +161,10 @@ export const createDataStore = () =>
           count: updatedNodes.filter((node) => filter === 'all' || node.node_type?.toLowerCase() === filter).length,
         }))
 
+        if (repositoryNodes.length) {
+          set({ repositoryNodes: updatedRepositoryNodes })
+        }
+
         if (!newNodes.length && !newLinks.length) {
           return
         }
