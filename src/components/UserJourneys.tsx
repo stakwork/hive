@@ -11,16 +11,11 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
-import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye } from "lucide-react";
+import { SIDEBAR_WIDTH } from "@/lib/constants";
+import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye, ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useModal } from "./modals/ModlaProvider";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
@@ -74,9 +69,11 @@ export default function UserJourneys() {
   const [replayTestCode, setReplayTestCode] = useState<string | null>(null);
   const [replayTitle, setReplayTitle] = useState<string | null>(null);
   const [isReplayingTask, setIsReplayingTask] = useState<string | null>(null);
-  const [videoPlayerData, setVideoPlayerData] = useState<{
+  const [viewMode, setViewMode] = useState<"table" | "video">("table");
+  const [activeVideoData, setActiveVideoData] = useState<{
     url: string;
     title: string;
+    taskId: string;
   } | null>(null);
   const open = useModal();
 
@@ -177,48 +174,6 @@ export default function UserJourneys() {
     };
   }, [frontend, dropPod]);
 
-  // Simplified test code fetching (ChatMessage first, then graph fallback)
-  const fetchTestCode = async (row: UserJourneyRow): Promise<string | null> => {
-    // Try ChatMessage first (pending tasks)
-    try {
-      const messagesResponse = await fetch(`/api/tasks/${row.id}/messages`);
-      if (messagesResponse.ok) {
-        const result = await messagesResponse.json();
-        const testCode = result.data?.messages?.[0]?.message;
-        if (testCode && testCode.trim().length > 0) {
-          console.log("[testCode] from task message", testCode);
-          return testCode;
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching from ChatMessage:", error);
-    }
-
-    // Fallback to graph (deployed tasks)
-    if (row.title) {
-      try {
-        const graphResponse = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=E2etest&output=json`);
-        if (graphResponse.ok) {
-          const result = await graphResponse.json();
-          if (result.success && Array.isArray(result.data)) {
-            // Match by test name (properties.name)
-            const node = result.data.find((n: { properties: { name: string } }) => {
-              return n.properties.name === row.title;
-            });
-            if (node?.properties.body) {
-              console.log("[testCode] from graph", node.properties.body);
-              return node.properties.body;
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching from graph:", error);
-      }
-    }
-
-    return null;
-  };
-
   const handleArchive = async (row: UserJourneyRow) => {
     try {
       setArchivingId(row.id);
@@ -277,7 +232,9 @@ export default function UserJourneys() {
         const errorData = await response.json();
         console.error("Failed to claim pod:", errorData);
 
-        toast.error("Unable to Create User Journey", { description: "No virtual machines are available right now. Please try again later." });
+        toast.error("Unable to Create User Journey", {
+          description: "No virtual machines are available right now. Please try again later.",
+        });
         return;
       }
 
@@ -310,9 +267,7 @@ export default function UserJourneys() {
           if (message.artifacts) {
             const videoArtifact = message.artifacts.find(
               (artifact: any) =>
-                artifact.type === "MEDIA" &&
-                artifact.content?.mediaType === "video" &&
-                artifact.content?.s3Key
+                artifact.type === "MEDIA" && artifact.content?.mediaType === "video" && artifact.content?.s3Key,
             );
 
             if (videoArtifact) {
@@ -321,10 +276,12 @@ export default function UserJourneys() {
                 const urlResponse = await fetch(`/api/tasks/${row.id}/artifacts/${videoArtifact.id}/url`);
                 if (urlResponse.ok) {
                   const urlData = await urlResponse.json();
-                  setVideoPlayerData({
+                  setActiveVideoData({
                     url: urlData.url,
                     title: row.title,
+                    taskId: row.id,
                   });
+                  setViewMode("video");
                   setIsReplayingTask(null);
                   return;
                 } else {
@@ -407,7 +364,9 @@ export default function UserJourneys() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Failed to save user journey:", errorData);
-        toast.error("Failed to Save", { description: errorData.error || "Unable to save user journey test. Please try again." });
+        toast.error("Failed to Save", {
+          description: errorData.error || "Unable to save user journey test. Please try again.",
+        });
         return;
       }
 
@@ -429,6 +388,54 @@ export default function UserJourneys() {
       console.error("Error saving user journey:", error);
       toast.error("Error", { description: "An unexpected error occurred. Please try again." });
     }
+  };
+
+  const renderVideoView = () => {
+    if (!activeVideoData) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 bg-background">
+        {/* Header with close button */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setViewMode("table");
+                setActiveVideoData(null);
+              }}
+              className="h-8"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Tests
+            </Button>
+            <h2 className="text-lg font-semibold">{activeVideoData.title}</h2>
+          </div>
+        </div>
+
+        {/* Main content area */}
+        <div className="flex h-[calc(100vh-57px)]">
+          {/* Left sidebar - placeholder for actions list */}
+          <div className={`${SIDEBAR_WIDTH} border-r bg-muted/20 p-4`}>
+            <div className="text-sm text-muted-foreground">Actions list coming soon...</div>
+          </div>
+
+          {/* Right side - video player */}
+          <div className="flex-1 flex items-center justify-center bg-black">
+            <video
+              key={activeVideoData.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-full"
+              src={activeVideoData.url}
+            >
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderBadge = (badge: BadgeMetadata) => {
@@ -479,7 +486,9 @@ export default function UserJourneys() {
 
   return (
     <div className="space-y-6">
-      {frontend ? (
+      {viewMode === "video" ? (
+        renderVideoView()
+      ) : frontend ? (
         <div className="space-y-4">
           <div className="flex items-center justify-end">
             <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
@@ -521,123 +530,101 @@ export default function UserJourneys() {
                 Create User Journey
               </Button>
             </div>
-              {fetchingJourneys ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : filteredRows.length > 0 ? (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader className="bg-muted/50">
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead className="w-[80px]">Replay</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Test File</TableHead>
-                        <TableHead>Created</TableHead>
-                        <TableHead className="w-[100px]">Archive</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredRows.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell className="font-medium">{row.title}</TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleReplay(row)}
-                              disabled={isReplayingTask === row.id}
-                              className="h-8 w-8 p-0"
-                              title={row.hasVideo ? "Play recording" : "Run test"}
-                            >
-                              {isReplayingTask === row.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : row.hasVideo ? (
-                                <PlayCircle className="h-4 w-4" />
-                              ) : (
-                                <Play className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell>{renderBadge(row.badge)}</TableCell>
-                          <TableCell>
-                            {row.testFileUrl ? (
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => window.open(row.testFileUrl!, "_blank")}
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </Button>
-                              </div>
+            {fetchingJourneys ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredRows.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead className="w-[80px]">Replay</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Test File</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="w-[100px]">Archive</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="font-medium">{row.title}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleReplay(row)}
+                            disabled={isReplayingTask === row.id}
+                            className="h-8 w-8 p-0"
+                            title={row.hasVideo ? "Play recording" : "Run test"}
+                          >
+                            {isReplayingTask === row.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : row.hasVideo ? (
+                              <PlayCircle className="h-4 w-4" />
                             ) : (
-                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                              <Play className="h-4 w-4" />
                             )}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {new Date(row.createdAt).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleArchive(row)}
-                              disabled={archivingId === row.id}
-                              className="h-8 w-8 p-0"
-                              title="Archive test"
-                            >
-                              {archivingId === row.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Archive className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">
-                    {!showPendingTasks && userJourneys.length > 0
-                      ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
-                      : !showFailedTasks && userJourneys.length > 0
-                        ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
-                        : "No E2E tests yet. Create a user journey to get started!"}
-                  </p>
-                </div>
-              )}
+                          </Button>
+                        </TableCell>
+                        <TableCell>{renderBadge(row.badge)}</TableCell>
+                        <TableCell>
+                          {row.testFileUrl ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => window.open(row.testFileUrl!, "_blank")}
+                                className="h-6 w-6 p-0"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(row.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleArchive(row)}
+                            disabled={archivingId === row.id}
+                            className="h-8 w-8 p-0"
+                            title="Archive test"
+                          >
+                            {archivingId === row.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Archive className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">
+                  {!showPendingTasks && userJourneys.length > 0
+                    ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
+                    : !showFailedTasks && userJourneys.length > 0
+                      ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
+                      : "No E2E tests yet. Create a user journey to get started!"}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
-
-      {/* Video Player Dialog */}
-      <Dialog open={!!videoPlayerData} onOpenChange={() => setVideoPlayerData(null)}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>{videoPlayerData?.title || "Test Recording"}</DialogTitle>
-          </DialogHeader>
-          <div className="w-full">
-            {videoPlayerData && (
-              <video
-                key={videoPlayerData.url}
-                controls
-                autoPlay
-                className="w-full rounded-lg"
-                src={videoPlayerData.url}
-              >
-                Your browser does not support the video tag.
-              </video>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
