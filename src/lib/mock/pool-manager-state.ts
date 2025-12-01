@@ -104,18 +104,20 @@ class MockPoolStateManager {
   // Pod Management
   private createPod(poolName: string, index: number): MockPod {
     const podId = `${poolName}-pod-${index}`;
+    // Use POD_URL env var for mock pods, fallback to localhost
+    const podUrl = process.env.POD_URL || "http://localhost:3000";
     return {
       id: podId,
       state: "running",
       usage_status: "available",
       flagged_for_recreation: false,
-      url: `https://${podId}.mock-pool.local`,
+      url: podUrl,
       password: `mock-password-${index}`,
       portMappings: {
-        "3000": `https://${podId}.mock-pool.local:3000`,
-        "3001": `https://${podId}.mock-pool.local:3001`,
-        "5173": `https://${podId}.mock-pool.local:5173`,
-        "8080": `https://${podId}.mock-pool.local:8080`,
+        "3000": podUrl,
+        "3001": podUrl,
+        "5173": podUrl,
+        "8080": podUrl,
       },
       repositories: [],
       branches: [],
