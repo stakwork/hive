@@ -26,6 +26,7 @@ import { db } from "@/lib/db";
 import { getS3Service } from "@/services/s3";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { ArtifactType } from "@prisma/client";
+import { MediaContent } from "@/lib/chat";
 
 export const fetchCache = "force-no-store";
 
@@ -50,7 +51,7 @@ export async function GET(
     const artifact = await db.artifact.findUnique({
       where: { id: artifactId },
       include: {
-        chatMessage: {
+        message: {
           include: {
             task: {
               select: {
@@ -68,7 +69,7 @@ export async function GET(
     }
 
     // Validate artifact belongs to the specified task
-    if (artifact.chatMessage?.task?.id !== taskId) {
+    if (artifact.message?.task?.id !== taskId) {
       return NextResponse.json({ error: "Artifact does not belong to this task" }, { status: 400 });
     }
 
@@ -78,7 +79,7 @@ export async function GET(
     }
 
     // Validate user has access to the workspace
-    const workspaceId = artifact.chatMessage?.task?.workspaceId;
+    const workspaceId = artifact.message?.task?.workspaceId;
     if (!workspaceId) {
       return NextResponse.json({ error: "Artifact not associated with a workspace" }, { status: 404 });
     }
@@ -89,7 +90,7 @@ export async function GET(
     }
 
     // Extract S3 key from artifact content
-    const content = artifact.content as any;
+    const content = artifact.content as unknown as MediaContent;
     const s3Key = content?.s3Key;
 
     if (!s3Key) {
