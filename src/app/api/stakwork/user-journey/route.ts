@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { db } from "@/lib/db";
 import { TaskSourceType } from "@prisma/client";
 import { getWorkspaceById } from "@/services/workspace";

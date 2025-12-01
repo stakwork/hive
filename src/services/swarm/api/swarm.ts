@@ -1,5 +1,5 @@
 import { EncryptionService } from "@/lib/encryption";
-import { env } from "@/lib/env";
+import { env } from "@/config/env";
 import { HttpClient } from "@/lib/http-client";
 import {
   CreateSwarmRequest,

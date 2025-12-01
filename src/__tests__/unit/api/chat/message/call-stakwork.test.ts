@@ -4,7 +4,7 @@ import { POST } from "@/app/api/chat/message/route";
 import { getServerSession } from "next-auth/next";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
 import { getS3Service } from "@/services/s3";
