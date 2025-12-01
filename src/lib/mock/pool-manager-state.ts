@@ -104,18 +104,20 @@ class MockPoolStateManager {
   // Pod Management
   private createPod(poolName: string, index: number): MockPod {
     const podId = `${poolName}-pod-${index}`;
+    // Use mock browser frame endpoint for URLs - this serves HTML with staktrak setup
+    const mockFrameUrl = "/api/mock/browser-frame";
     return {
       id: podId,
       state: "running",
       usage_status: "available",
       flagged_for_recreation: false,
-      url: `https://${podId}.mock-pool.local`,
+      url: mockFrameUrl,
       password: `mock-password-${index}`,
       portMappings: {
-        "3000": `https://${podId}.mock-pool.local:3000`,
-        "3001": `https://${podId}.mock-pool.local:3001`,
-        "5173": `https://${podId}.mock-pool.local:5173`,
-        "8080": `https://${podId}.mock-pool.local:8080`,
+        "3000": mockFrameUrl,
+        "3001": mockFrameUrl,
+        "5173": mockFrameUrl,
+        "8080": mockFrameUrl,
       },
       repositories: [],
       branches: [],
