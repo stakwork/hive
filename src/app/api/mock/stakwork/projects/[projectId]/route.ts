@@ -9,7 +9,11 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const { projectId } = await params;
+    let { projectId } = await params;
+    // Strip .json suffix if present (app calls /projects/123.json)
+    if (projectId.endsWith(".json")) {
+      projectId = projectId.slice(0, -5);
+    }
     const project = mockStakworkState.getProject(parseInt(projectId));
 
     if (!project) {
