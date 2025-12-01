@@ -311,17 +311,27 @@ export default function UserJourneys() {
               (artifact: any) =>
                 artifact.type === "MEDIA" &&
                 artifact.content?.mediaType === "video" &&
-                artifact.content?.url
+                artifact.content?.s3Key
             );
 
             if (videoArtifact) {
-              // Video already exists, show it
-              setVideoPlayerData({
-                url: videoArtifact.content.url,
-                title: row.title,
-              });
-              setIsReplayingTask(null);
-              return;
+              // Video artifact exists, fetch fresh presigned URL
+              try {
+                const urlResponse = await fetch(`/api/tasks/${row.id}/artifacts/${videoArtifact.id}/url`);
+                if (urlResponse.ok) {
+                  const urlData = await urlResponse.json();
+                  setVideoPlayerData({
+                    url: urlData.url,
+                    title: row.title,
+                  });
+                  setIsReplayingTask(null);
+                  return;
+                } else {
+                  console.error("Failed to fetch fresh video URL");
+                }
+              } catch (error) {
+                console.error("Error fetching fresh video URL:", error);
+              }
             }
           }
         }

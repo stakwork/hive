@@ -165,17 +165,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Upload failed" }, { status: 500 });
     }
 
-    // Step 7: Generate Presigned Download URL
-    let presignedDownloadUrl: string;
-    try {
-      // 7-day expiration (same as screenshots)
-      presignedDownloadUrl = await s3Service.generatePresignedDownloadUrl(s3Key, 604800);
-    } catch (error) {
-      console.error("Failed to generate presigned URL:", error);
-      return NextResponse.json({ error: "Upload failed" }, { status: 500 });
-    }
-
-    // Step 8: Create ChatMessage + 2 Artifacts
+    // Step 7: Create ChatMessage + 2 Artifacts
+    // Note: We only store s3Key, not presigned URL, because:
+    // - Presigned URLs expire when Vercel's OIDC credentials expire (~1 hour)
+    // - Fresh URLs are generated on-demand via /api/artifacts/[id]/url endpoint
     let chatMessage;
     try {
       chatMessage = await db.chatMessage.create({
@@ -189,7 +182,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               {
                 type: ArtifactType.MEDIA,
                 content: {
-                  url: presignedDownloadUrl,
                   s3Key: s3Key,
                   mediaType: "video",
                   filename: videoFile.name || "recording.webm",
@@ -220,7 +212,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
     }
 
-    // Step 9: Invalidate API Key (One-time Use)
+    // Step 8: Invalidate API Key (One-time Use)
     try {
       await db.task.update({
         where: { id: taskId },
@@ -231,12 +223,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // Don't fail the request, video is already uploaded
     }
 
-    // Step 10: Return Success Response
+    // Step 9: Return Success Response
     return NextResponse.json(
       {
         success: true,
         data: {
-          videoUrl: presignedDownloadUrl,
           s3Key: s3Key,
           messageId: chatMessage.id,
           artifactIds: chatMessage.artifacts.map((a) => a.id),
