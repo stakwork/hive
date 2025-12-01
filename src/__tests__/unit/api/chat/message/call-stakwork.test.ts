@@ -41,7 +41,7 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-vi.mock("@/lib/env");
+vi.mock("@/config/env");
 vi.mock("@/services/s3");
 vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn(),

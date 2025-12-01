@@ -1,9 +1,9 @@
 import { vi } from "vitest";
 
 /**
- * Mock for @/lib/env to prevent environment variable validation errors in unit tests.
+ * Mock for @/config/env to prevent environment variable validation errors in unit tests.
  *
- * src/lib/env.ts validates required env vars on import, which crashes unit tests.
+ * src/config/env.ts validates required env vars on import, which crashes unit tests.
  * This mock provides test-safe defaults for all required environment variables.
  */
 
@@ -33,7 +33,7 @@ const mockConfig = {
   USE_MOCKS: false,
 };
 
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   env: mockEnv,
   config: mockConfig,
   optionalEnvVars: {

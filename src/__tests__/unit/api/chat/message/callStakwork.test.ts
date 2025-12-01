@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi, Mock } from "vitest";
 import { NextRequest } from "next/server";
 
 // Mock dependencies before imports
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_BASE_URL: "https://test-stakwork.example.com",

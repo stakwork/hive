@@ -1,4 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("@/config/env", () => ({
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.com",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
+  },
+}));
+
 import { getServiceConfig, serviceConfigs } from "@/config/services";
 import { ServiceConfig } from "@/types";
 

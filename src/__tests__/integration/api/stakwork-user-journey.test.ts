@@ -17,11 +17,16 @@ import { createTestUser } from "@/__tests__/support/fixtures/user";
 import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
 
 // Mock the config module at the top level
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-stakwork-api-key",
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
     STAKWORK_USER_JOURNEY_WORKFLOW_ID: "999",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    API_TIMEOUT: 10000,
   },
 }));
 

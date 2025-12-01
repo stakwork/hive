@@ -19,7 +19,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_BASE_URL: "https://test-stakwork.com",
@@ -44,7 +44,7 @@ global.fetch = vi.fn();
 
 // Import mocked modules
 const { db: mockDb } = await import("@/lib/db");
-const { config: mockConfig } = await import("@/lib/env");
+const { config: mockConfig } = await import("@/config/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
 const { buildFeatureContext: mockBuildFeatureContext } = await import("@/services/task-coordinator");
 const mockFetch = fetch as vi.MockedFunction<typeof fetch>;

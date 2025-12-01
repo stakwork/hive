@@ -25,7 +25,7 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {},
 }));
 vi.mock("@/lib/auth/nextauth", () => ({
@@ -48,7 +48,7 @@ global.fetch = vi.fn();
 // Import mocked modules
 const { getServerSession: mockGetServerSession } = await import("next-auth/next");
 const { db: mockDb } = await import("@/lib/db");
-const { config: mockConfig } = await import("@/lib/env");
+const { config: mockConfig } = await import("@/config/env");
 const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
 const { getS3Service: mockGetS3Service } = await import("@/services/s3");
 const { transformSwarmUrlToRepo2Graph: mockTransformSwarmUrlToRepo2Graph } = await import("@/lib/utils/swarm");
