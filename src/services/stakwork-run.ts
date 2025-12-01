@@ -14,7 +14,7 @@ import {
 } from "@/types/stakwork";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { stakworkService } from "@/lib/service-factory";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
 import {
   pusherServer,
@@ -24,6 +24,7 @@ import {
 import { mapStakworkStatus } from "@/utils/conversions";
 import { buildFeatureContext } from "@/lib/ai/utils";
 import { EncryptionService } from "@/lib/encryption";
+import { createUserStory } from "@/services/roadmap/user-stories";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -201,8 +202,13 @@ export async function createStakworkRun(
       throw new Error("Feature not found");
     }
 
-    // Build feature context for ARCHITECTURE and TASK_GENERATION types
-    if (input.type === StakworkRunType.ARCHITECTURE || input.type === StakworkRunType.TASK_GENERATION) {
+    // Build feature context for ARCHITECTURE, TASK_GENERATION, USER_STORIES, and REQUIREMENTS types
+    if (
+      input.type === StakworkRunType.ARCHITECTURE ||
+      input.type === StakworkRunType.TASK_GENERATION ||
+      input.type === StakworkRunType.USER_STORIES ||
+      input.type === StakworkRunType.REQUIREMENTS
+    ) {
       featureContext = buildFeatureContext(feature as Parameters<typeof buildFeatureContext>[0]);
     }
   }
@@ -695,7 +701,47 @@ export async function updateStakworkRunDecision(
         }
         break;
 
-      // Future: Add cases for REQUIREMENTS, USER_STORIES, etc.
+      case StakworkRunType.REQUIREMENTS:
+        if (!updatedRun.result) {
+          throw new Error("No result found in run");
+        }
+
+        // Update feature.requirements field
+        await db.feature.update({
+          where: { id: updatedRun.featureId },
+          data: { requirements: updatedRun.result },
+        });
+        break;
+
+      case StakworkRunType.USER_STORIES:
+        if (!updatedRun.result) {
+          throw new Error("No result found in run");
+        }
+
+        try {
+          const parsedStories = JSON.parse(updatedRun.result);
+
+          if (!Array.isArray(parsedStories)) {
+            throw new Error("Result is not an array");
+          }
+
+          // Create user stories from the parsed result, maintaining order
+          for (const storyData of parsedStories) {
+            if (!storyData.title || typeof storyData.title !== "string") {
+              console.warn("Skipping invalid story data:", storyData);
+              continue;
+            }
+
+            await createUserStory(updatedRun.featureId, userId, {
+              title: storyData.title,
+            });
+          }
+        } catch (error) {
+          console.error("Failed to parse or create user stories:", error);
+          throw new Error("Failed to process user stories result");
+        }
+        break;
+
       default:
         console.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);
     }

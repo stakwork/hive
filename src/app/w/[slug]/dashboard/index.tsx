@@ -1,6 +1,7 @@
 "use client";
 
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
+import { GitLeaksWidget } from "@/components/dashboard/git-leaks-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
@@ -33,7 +34,7 @@ function DashboardInner() {
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
 
   useGraphPolling({
-    enabled: false && activeFilterTab === 'all',
+    enabled: activeFilterTab === 'all',
     interval: 5000
   });
 
@@ -48,10 +49,15 @@ function DashboardInner() {
 
   return (
     <div className="flex flex-col flex-1 h-full relative">
-      {/* Ingestion Status Widget with transition */}
+      {/* Top-left: Git Leaks widget (always fixed) */}
+      <div className="absolute top-4 left-4 z-10">
+        <GitLeaksWidget />
+      </div>
+
+      {/* Ingestion Status widget - transitions from center to top-left (next to shield) */}
       <div className={`absolute z-10 transition-all duration-200 ease-in-out ${isCentered
         ? "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-        : "top-4 left-4"
+        : "top-4 left-16"
         }`}>
         <IngestionStatusWidget />
       </div>

@@ -51,7 +51,7 @@ describe("callStakworkAPI", () => {
 
   describe("Configuration Validation", () => {
     test("throws error when STAKWORK_API_KEY is missing", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalApiKey = config.STAKWORK_API_KEY;
       
       // Temporarily unset the API key
@@ -66,7 +66,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("throws error when STAKWORK_WORKFLOW_ID is missing", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
       
       // Temporarily unset the workflow ID
@@ -83,7 +83,7 @@ describe("callStakworkAPI", () => {
 
   describe("Workflow ID Selection", () => {
     test("selects first workflow ID for live mode", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       // Set up multiple workflow IDs
       const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
       (config as any).STAKWORK_WORKFLOW_ID = "100,200,300";
@@ -104,7 +104,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("selects third workflow ID for unit mode", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
       (config as any).STAKWORK_WORKFLOW_ID = "100,200,300";
 
@@ -124,7 +124,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("selects third workflow ID for integration mode", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
       (config as any).STAKWORK_WORKFLOW_ID = "100,200,300";
 
@@ -144,7 +144,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("selects second workflow ID for default mode when available", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
       (config as any).STAKWORK_WORKFLOW_ID = "100,200,300";
 
@@ -164,7 +164,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("falls back to first workflow ID for default mode when second is not available", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       const originalWorkflowId = config.STAKWORK_WORKFLOW_ID;
       (config as any).STAKWORK_WORKFLOW_ID = "100";
 
@@ -278,7 +278,7 @@ describe("callStakworkAPI", () => {
 
   describe("HTTP Execution", () => {
     test("makes POST request to correct endpoint", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
 
       await callStakworkAPI(createTestParams());
@@ -290,7 +290,7 @@ describe("callStakworkAPI", () => {
     });
 
     test("includes correct Authorization header with API key", async () => {
-      const { config } = await import("@/lib/env");
+      const { config } = await import("@/config/env");
       mockFetch.mockResolvedValueOnce(createSuccessResponse() as any);
 
       await callStakworkAPI(createTestParams());

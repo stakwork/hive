@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi, Mock } from "vitest";
 import { NextRequest } from "next/server";
 
 // Mock dependencies before imports
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_BASE_URL: "https://test-stakwork.example.com",
@@ -23,7 +23,7 @@ vi.mock("@/lib/utils", () => ({
 }));
 
 // Import after mocks are set up
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { getS3Service } from "@/services/s3";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { getBaseUrl } from "@/lib/utils";

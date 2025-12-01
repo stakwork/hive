@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useNodeTypes } from "@/stores/useDataStore";
+import type { SchemaExtended } from "@/stores/useSchemaStore";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   closestCenter,
@@ -28,8 +29,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Plus, RotateCcw, X } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 interface NodeTypeConfigItem {
@@ -111,9 +112,15 @@ function SortableNodeTypeRow({ item, onValueChange, onRemove, canRemove = false 
 export function NodeTypeOrderSettings() {
   const { workspace, updateWorkspace } = useWorkspace();
   const nodeTypesFromGraph = useNodeTypes(); // Node types from current graph data
+  const [schemas, setSchemas] = useState<SchemaExtended[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddingNewType, setIsAddingNewType] = useState(false);
   const [newNodeTypeName, setNewNodeTypeName] = useState("");
+  const [isLoadingSchemas, setIsLoadingSchemas] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [maxVisibleItems, setMaxVisibleItems] = useState(5);
+
+
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -121,6 +128,30 @@ export function NodeTypeOrderSettings() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Fetch schemas from API
+  useEffect(() => {
+    const fetchSchemas = async () => {
+      if (!workspace?.id) return;
+
+      setIsLoadingSchemas(true);
+      try {
+        const response = await fetch(`/api/swarm/jarvis/schema?id=${workspace.id}`);
+        const data = await response.json();
+
+        if (data.success && data.data?.schemas) {
+          setSchemas(data.data.schemas.filter((schema: SchemaExtended) => !schema.is_deleted));
+        }
+      } catch (error) {
+        console.error('Failed to fetch schemas:', error);
+        toast.error('Failed to load schemas');
+      } finally {
+        setIsLoadingSchemas(false);
+      }
+    };
+
+    fetchSchemas();
+  }, [workspace?.id]);
 
   // Parse existing node type configuration from workspace
   const existingConfig = useMemo(() => {
@@ -133,33 +164,75 @@ export function NodeTypeOrderSettings() {
 
   // Create merged list of node types with values and IDs for DnD
   const [nodeTypeConfig, setNodeTypeConfig] = useState<NodeTypeConfigItem[]>(() => {
+    // 1. Get all node types from schemas (alphabetically sorted)
+    const schemaNodeTypes = schemas
+      .filter(schema => !schema.is_deleted)
+      .map(schema => schema.type)
+      .sort((a, b) => a.localeCompare(b));
+
+    // 2. Combine with node types from current graph data
+    const allNodeTypes = Array.from(new Set([...schemaNodeTypes, ...nodeTypesFromGraph]));
+
+    // 3. Create a map for existing configuration
+    const existingConfigMap = new Map(existingConfig.map(item => [item.type, item]));
+
+    // 4. Sort: existing order first (preserving order), then alphabetically
     const existingTypes = new Set(existingConfig.map(item => item.type));
-    const newTypes = nodeTypesFromGraph.filter(type => !existingTypes.has(type));
+    const newTypes = allNodeTypes.filter(type => !existingTypes.has(type)).sort();
 
     // Create items from existing config (preserving order)
-    const existingItems = existingConfig.map(item => ({
-      id: item.type,
+    const existingItems = existingConfig.map((item, index) => ({
+      id: `existing-${item.type}-${index}`,
       type: item.type,
       value: item.value
     }));
 
     // Create items for new types (sorted alphabetically)
-    const newItems = newTypes.map(type => ({
-      id: type,
+    const newItems = newTypes.map((type, index) => ({
+      id: `new-${type}-${index}`,
       type: type,
       value: 20 // Default value of 20 for new types
-    })).sort((a, b) => a.type.localeCompare(b.type));
+    }));
 
     const combined = [...existingItems, ...newItems];
 
     if (combined.length === 0) {
-      // Default node types when no data is available
+      // Default node types when no schemas or data is available
       const defaultTypes = ['Function', 'Feature', 'File', 'Endpoint', 'Person', 'Episode', 'Call', 'Message'];
-      return defaultTypes.map(type => ({ id: type, type, value: 20 }));
+      return defaultTypes.map((type, index) => ({ id: `default-${type}-${index}`, type, value: 20 }));
     }
 
     return combined;
   });
+
+  // Update nodeTypeConfig when schemas change
+  useEffect(() => {
+    // 1. Get all node types from schemas (alphabetically sorted)
+    const schemaNodeTypes = schemas
+      .filter(schema => !schema.is_deleted)
+      .map(schema => schema.type)
+      .sort((a, b) => a.localeCompare(b));
+
+    // 2. Combine with node types from current graph data
+    const allNodeTypes = Array.from(new Set([...schemaNodeTypes, ...nodeTypesFromGraph]));
+
+    // 3. Sort: existing order first (preserving order), then alphabetically
+    const existingTypes = new Set(existingConfig.map(item => item.type));
+    const currentTypes = new Set(nodeTypeConfig.map(item => item.type));
+    const newTypes = allNodeTypes.filter(type => !existingTypes.has(type) && !currentTypes.has(type)).sort();
+
+    // Only update if there are actually new types to add
+    if (newTypes.length > 0) {
+      setNodeTypeConfig(prev => {
+        const newItems = newTypes.map((type, index) => ({
+          id: `${type}-${Date.now()}-${index}`, // Ensure unique ID
+          type: type,
+          value: 20
+        }));
+        return [...prev, ...newItems];
+      });
+    }
+  }, [schemas, nodeTypesFromGraph, existingConfig]);
 
   // Handle drag end event
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -229,20 +302,6 @@ export function NodeTypeOrderSettings() {
     toast.success("Node type removed");
   }, []);
 
-  // Reset to default values
-  const handleReset = useCallback(() => {
-    if (nodeTypesFromGraph.length > 0) {
-      // Reset current graph node types to default value 20
-      const resetConfig = nodeTypesFromGraph.map(type => ({ id: type, type, value: 20 }));
-      setNodeTypeConfig(resetConfig);
-    } else {
-      // Reset to default types with value 20
-      const defaultTypes = ['Function', 'Feature', 'File', 'Endpoint', 'Person', 'Episode', 'Call', 'Message'];
-      const resetConfig = defaultTypes.map(type => ({ id: type, type, value: 20 }));
-      setNodeTypeConfig(resetConfig);
-    }
-    toast.success("Reset to default values");
-  }, [nodeTypesFromGraph]);
 
   // Save configuration
   const handleSave = useCallback(async () => {
@@ -307,6 +366,7 @@ export function NodeTypeOrderSettings() {
         <CardDescription>
           Configure numeric values for each node type and reorder them using drag-and-drop.
           These values and order will be available for use in API requests and graph operations.
+          {isLoadingSchemas && " (Loading schemas...)"}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -320,7 +380,7 @@ export function NodeTypeOrderSettings() {
             strategy={verticalListSortingStrategy}
           >
             <div className="space-y-2">
-              {nodeTypeConfig.map((item) => (
+              {(isExpanded ? nodeTypeConfig : nodeTypeConfig.slice(0, maxVisibleItems)).map((item) => (
                 <SortableNodeTypeRow
                   key={item.id}
                   item={item}
@@ -329,6 +389,30 @@ export function NodeTypeOrderSettings() {
                   canRemove={!nodeTypesFromGraph.includes(item.type)}
                 />
               ))}
+
+              {/* Show expand/collapse button if there are more items */}
+              {nodeTypeConfig.length > maxVisibleItems && (
+                <div className="flex justify-center pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    {isExpanded ? (
+                      <>
+                        <ChevronUp className="w-4 h-4 mr-2" />
+                        Show Less ({nodeTypeConfig.length - maxVisibleItems} hidden)
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4 mr-2" />
+                        Show More ({nodeTypeConfig.length - maxVisibleItems} more)
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
 
               {/* Add new node type row */}
               {isAddingNewType && (
@@ -391,14 +475,6 @@ export function NodeTypeOrderSettings() {
 
         <div className="flex justify-between pt-4">
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handleReset}
-              disabled={isSubmitting}
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset to Default (20)
-            </Button>
             {!isAddingNewType && (
               <Button
                 variant="outline"

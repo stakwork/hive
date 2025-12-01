@@ -22,7 +22,7 @@ import { EncryptionService } from "@/lib/encryption";
 vi.mock("next-auth/next");
 
 // Mock env module with GitHub App config
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   config: {
     GITHUB_APP_CLIENT_ID: "test_client_id_123",
     GITHUB_APP_CLIENT_SECRET: "test_client_secret_456",

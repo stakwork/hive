@@ -29,7 +29,7 @@ vi.mock("@/lib/db", () => ({
     },
   },
 }));
-vi.mock("@/lib/env");
+vi.mock("@/config/env");
 vi.mock("@/services/s3");
 vi.mock("@/lib/utils", async () => {
   const actual = await vi.importActual("@/lib/utils");
@@ -46,7 +46,7 @@ vi.mock("@/lib/utils/swarm", () => ({
 import { getServerSession } from "next-auth/next";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";

@@ -1,9 +1,9 @@
 import { vi } from "vitest";
 
 /**
- * Mock for @/lib/env to prevent environment variable validation errors in unit tests.
+ * Mock for @/config/env to prevent environment variable validation errors in unit tests.
  *
- * src/lib/env.ts validates required env vars on import, which crashes unit tests.
+ * src/config/env.ts validates required env vars on import, which crashes unit tests.
  * This mock provides test-safe defaults for all required environment variables.
  */
 
@@ -30,9 +30,10 @@ const mockConfig = {
   GITHUB_APP_CLIENT_ID: "test-client-id",
   GITHUB_APP_CLIENT_SECRET: "test-client-secret",
   LOG_LEVEL: "INFO",
+  USE_MOCKS: false,
 };
 
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   env: mockEnv,
   config: mockConfig,
   optionalEnvVars: {
@@ -46,6 +47,7 @@ vi.mock("@/lib/env", () => ({
     GITHUB_APP_CLIENT_ID: mockConfig.GITHUB_APP_CLIENT_ID,
     GITHUB_APP_CLIENT_SECRET: mockConfig.GITHUB_APP_CLIENT_SECRET,
     LOG_LEVEL: mockConfig.LOG_LEVEL,
+    USE_MOCKS: false,
   },
 }));
 

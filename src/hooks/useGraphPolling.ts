@@ -36,11 +36,15 @@ export function useGraphPolling({
   // Fetch new nodes and edges for polling
   const fetchLatestNodes = useCallback(async () => {
 
-    if (!workspaceId || !enabled || isPollingRequestInProgress.current) return;
+    if (!workspaceId || !enabled) return;
 
-    // dataInitial is now available from the hook above
+    // Check if request is already in progress - exit early to prevent race conditions
+    if (isPollingRequestInProgress.current) {
+      console.log('Polling: Request already in progress, skipping...');
+      return;
+    }
 
-    // Mark request as in progress
+    // Mark request as in progress immediately
     isPollingRequestInProgress.current = true;
     setIsPollingActive(true);
 
@@ -106,15 +110,27 @@ export function useGraphPolling({
     if (pollIntervalRef.current || !enabled) return; // Already polling or disabled
 
     setIsPolling(true);
-    pollIntervalRef.current = setInterval(() => {
-      fetchLatestNodes();
-    }, interval);
+
+    // Use async interval pattern to ensure requests complete before next one starts
+    const runPollingCycle = async () => {
+      if (!enabled) return;
+
+      await fetchLatestNodes();
+
+      // Schedule next poll only after current request completes
+      if (enabled && pollIntervalRef.current) {
+        pollIntervalRef.current = setTimeout(runPollingCycle, interval);
+      }
+    };
+
+    // Start first cycle immediately
+    pollIntervalRef.current = setTimeout(runPollingCycle, 0);
   }, [fetchLatestNodes, enabled, interval]);
 
   // Stop polling
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
+      clearTimeout(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
 

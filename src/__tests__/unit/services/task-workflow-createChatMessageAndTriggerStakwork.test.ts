@@ -40,6 +40,13 @@ vi.mock("@/lib/env", () => ({
     STAKWORK_WORKFLOW_ID: "123,456,789",
   },
 }));
+vi.mock("@/config/env", () => ({
+  config: {
+    STAKWORK_API_KEY: "test-stakwork-key",
+    STAKWORK_BASE_URL: "https://stakwork.example.com",
+    STAKWORK_WORKFLOW_ID: "123,456,789",
+  },
+}));
 vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn(() => "http://localhost:3000"),
 }));
@@ -53,6 +60,13 @@ const { createChatMessageAndTriggerStakwork } = await import(
 
 // Import db to get the mock
 const { db: mockDb } = await import("@/lib/db");
+const { config: mockConfig } = await import("@/config/env");
+const { getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT } = await import("@/lib/auth/nextauth");
+const { getBaseUrl: mockGetBaseUrl } = await import("@/lib/utils");
+const mockFetch = fetch as vi.MockedFunction<typeof fetch>;
+
+// Import the functions to test (must be after mocks)
+const { createTaskWithStakworkWorkflow, sendMessageToStakwork } = await import("@/services/task-workflow");
 
 describe("createChatMessageAndTriggerStakwork", () => {
   let mocks: ReturnType<typeof setupTaskWorkflowMocks>;

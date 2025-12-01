@@ -78,9 +78,9 @@ export async function extractPrArtifact(
         const content = prArt.content as PrArtifactContent;
         const prUrl = content.url;
 
-        // Skip GitHub API check if status is already in a terminal state (DONE or CANCELLED)
-        const isTerminalState = content.status === "DONE" || content.status === "CANCELLED";
-        if (isTerminalState) {
+        // Skip GitHub API check if status is already DONE (merged PRs can't change)
+        // Note: CANCELLED is not terminal - a closed PR can be re-opened or replaced with a new PR
+        if (content.status === "DONE") {
           return { id: prArt.id, type: prArt.type, content };
         }
 

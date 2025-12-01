@@ -207,6 +207,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
           sourceType: "USER",
           priority: "MEDIUM",
           createdAt: twentyFiveHoursAgo,
+          updatedAt: twentyFiveHoursAgo,
         },
       });
 
@@ -248,6 +249,7 @@ describe("Integration: /api/cron/task-coordinator", () => {
           sourceType: "USER",
           priority: "MEDIUM",
           createdAt: twoHoursAgo,
+          updatedAt: twoHoursAgo,
         },
       });
 

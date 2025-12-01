@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { StakworkWorkflowPayload } from "@/types/stakwork";
 
 async function sendChunkToStakwork(chunk: string) {

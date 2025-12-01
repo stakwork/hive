@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { createTaskWithStakworkWorkflow } from "@/services/task-workflow";
 import { stakworkService } from "@/lib/service-factory";
-import { config as envConfig } from "@/lib/env";
+import { config as envConfig } from "@/config/env";
 import { pusherServer } from "@/lib/pusher";
 import { JANITOR_ERRORS } from "@/lib/constants/janitor";
 import { janitorMocks, janitorMockSetup, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/janitor-mocks";

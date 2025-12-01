@@ -1,6 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { config } from "@/lib/env";
+import { config } from "@/config/env";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth/next";

@@ -1,7 +1,7 @@
 // lib/secrets/swarms.ts
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { env } from "@/lib/env";
+import { env } from "@/config/env";
 import { generateSecurePassword } from "@/lib/utils/password";
 import { PoolManagerService } from "../pool-manager";
 

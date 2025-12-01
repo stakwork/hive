@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { fetchSwarmDetails } from "@/services/swarm/api/swarm";
 
 // Mock the env module
-vi.mock("@/lib/env", () => ({
+vi.mock("@/config/env", () => ({
   env: {
     SWARM_SUPER_ADMIN_URL: "https://test-swarm-admin.example.com",
     SWARM_SUPERADMIN_API_KEY: "test-super-admin-key-12345",

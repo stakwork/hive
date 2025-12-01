@@ -35,13 +35,13 @@ describe("haltStaleAgentTasks", () => {
         id: "task-1",
         title: "Stale Agent Task 1",
         workspaceId: "workspace-1",
-        createdAt: twentyFiveHoursAgo,
+        updatedAt: twentyFiveHoursAgo,
       },
       {
         id: "task-2",
         title: "Stale Agent Task 2",
         workspaceId: "workspace-1",
-        createdAt: twentyFiveHoursAgo,
+        updatedAt: twentyFiveHoursAgo,
       },
     ];
 
@@ -55,7 +55,8 @@ describe("haltStaleAgentTasks", () => {
       where: {
         mode: "agent",
         status: "IN_PROGRESS",
-        createdAt: {
+        workflowStatus: { not: "HALTED" },
+        updatedAt: {
           lt: expect.any(Date),
         },
         deleted: false,
@@ -64,7 +65,7 @@ describe("haltStaleAgentTasks", () => {
         id: true,
         title: true,
         workspaceId: true,
-        createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -128,13 +129,13 @@ describe("haltStaleAgentTasks", () => {
         id: "task-1",
         title: "Task 1",
         workspaceId: "workspace-1",
-        createdAt: twentyFiveHoursAgo,
+        updatedAt: twentyFiveHoursAgo,
       },
       {
         id: "task-2",
         title: "Task 2",
         workspaceId: "workspace-1",
-        createdAt: twentyFiveHoursAgo,
+        updatedAt: twentyFiveHoursAgo,
       },
     ];
 
@@ -229,6 +230,39 @@ describe("haltStaleAgentTasks", () => {
     vi.useRealTimers();
   });
 
+  test("should not target already halted tasks", async () => {
+    // Set current time
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+
+    await haltStaleAgentTasks();
+
+    // Verify the query specifically filters out already halted tasks
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    expect(findManyCall?.where?.workflowStatus).toEqual({ not: "HALTED" });
+
+    vi.useRealTimers();
+  });
+
+  test("should use updatedAt to detect stale tasks (not createdAt)", async () => {
+    // Set current time
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue([]);
+
+    await haltStaleAgentTasks();
+
+    // Verify the query uses updatedAt for staleness detection
+    const findManyCall = vi.mocked(mockDb.task.findMany).mock.calls[0][0];
+    expect(findManyCall?.where?.updatedAt).toBeDefined();
+    expect(findManyCall?.where?.createdAt).toBeUndefined();
+
+    vi.useRealTimers();
+  });
+
   test("should set workflowCompletedAt when halting tasks", async () => {
     // Set current time
     const now = new Date("2024-10-24T12:00:00Z");
@@ -242,7 +276,7 @@ describe("haltStaleAgentTasks", () => {
         id: "task-1",
         title: "Task 1",
         workspaceId: "workspace-1",
-        createdAt: twentyFiveHoursAgo,
+        updatedAt: twentyFiveHoursAgo,
       },
     ];
 

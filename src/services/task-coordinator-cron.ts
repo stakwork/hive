@@ -182,6 +182,12 @@ async function processTicketSweep(
   }
   console.log(`[TaskCoordinator] Processing ticket ${task.id} (${task.priority}) for workspace ${workspaceSlug}`);
 
+  // Touch updatedAt so task bubbles to top of "recently active" sorted list
+  await db.task.update({
+    where: { id: task.id },
+    data: { updatedAt: new Date() },
+  });
+
   try {
     // Assign to task creator, fall back to feature creator if needed
     const userId = task.createdById ?? task.feature?.createdById;
@@ -234,12 +240,13 @@ export async function haltStaleAgentTasks(): Promise<{
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-    // Find agent tasks that have been in IN_PROGRESS status for more than 24 hours
+    // Find agent tasks that have been in IN_PROGRESS status with no activity for more than 24 hours
     const staleTasks = await db.task.findMany({
       where: {
         mode: "agent",
         status: "IN_PROGRESS",
-        createdAt: {
+        workflowStatus: { not: "HALTED" },
+        updatedAt: {
           lt: twentyFourHoursAgo,
         },
         deleted: false,
@@ -248,7 +255,7 @@ export async function haltStaleAgentTasks(): Promise<{
         id: true,
         title: true,
         workspaceId: true,
-        createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -258,11 +265,7 @@ export async function haltStaleAgentTasks(): Promise<{
     for (const task of staleTasks) {
       try {
         await haltTask(task.id);
-
         tasksHalted++;
-        console.log(
-          `[HaltStaleAgentTasks] Halted task ${task.id} (${task.title}) - created at ${task.createdAt}`
-        );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[HaltStaleAgentTasks] Error halting task ${task.id}:`, errorMessage);

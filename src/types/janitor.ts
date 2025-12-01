@@ -33,6 +33,7 @@ export interface StakworkWebhookPayload {
   status: string;
   workspaceId?: string; // For external workflows without janitor run
   autoCreateTasks?: boolean; // Auto-create task from first recommendation
+  autoMergePr?: boolean; // Auto-merge PR when autoCreateTasks is true
   results?: {
     recommendations: Array<{
       title: string;

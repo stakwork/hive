@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -49,6 +50,7 @@ function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, cl
 
 export function GitLeaksSection() {
   const { workspace } = useWorkspace();
+  const searchParams = useSearchParams();
   const [leaks, setLeaks] = useState<GitLeakResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,10 +58,11 @@ export function GitLeaksSection() {
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("Date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const hasAutoScanned = useRef(false);
 
   const ITEMS_PER_PAGE = 15;
 
-  const handleRunScan = async () => {
+  const handleRunScan = useCallback(async () => {
     if (!workspace?.slug) return;
 
     setLoading(true);
@@ -87,7 +90,15 @@ export function GitLeaksSection() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspace?.slug]);
+
+  // Auto-scan only when ?scan=git-leaks is in URL (from widget click)
+  useEffect(() => {
+    if (searchParams.get("scan") === "git-leaks" && !hasAutoScanned.current) {
+      hasAutoScanned.current = true;
+      handleRunScan();
+    }
+  }, [searchParams, handleRunScan]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -157,7 +168,7 @@ export function GitLeaksSection() {
   const hasLeaks = leaks.length > 0;
 
   return (
-    <Card className="w-full">
+    <Card id="git-leaks" className="w-full">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>

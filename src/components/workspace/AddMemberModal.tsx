@@ -33,6 +33,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { InfoIcon, Search, UserCheck } from "lucide-react";
+import { toast } from "sonner";
 import { useDebounce } from "@/hooks/useDebounce";
 import { AssignableMemberRoleSchema, WorkspaceRole, RoleLabels } from "@/lib/auth/roles";
 
@@ -128,9 +129,14 @@ export function AddMemberModal({ open, onOpenChange, workspaceSlug, onMemberAdde
 
       // Success - refresh parent and close modal
       await onMemberAdded();
+      toast.success("Member added");
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add member");
+      const message = err instanceof Error ? err.message : "Failed to add member";
+      setError(message);
+      toast.error("Failed to add member", {
+        description: message,
+      });
     } finally {
       setIsSubmitting(false);
     }

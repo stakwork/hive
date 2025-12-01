@@ -73,6 +73,7 @@ const GraphComponentInner = ({
   const { id: workspaceId, slug, workspace } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
   const currentRequestRef = useRef<AbortController | null>(null);
+  const isInitialMountRef = useRef(true);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
@@ -103,7 +104,7 @@ const GraphComponentInner = ({
   }, [workspaceId, setSchemas]);
 
   // Fetch data based on active filter tab
-  const fetchFilteredData = useCallback(async (tab: FilterTab) => {
+  const fetchFilteredData = useCallback(async (tab: FilterTab, forceRefresh = false) => {
     if (!workspaceId) return;
 
     // Cancel previous request if it exists
@@ -111,7 +112,11 @@ const GraphComponentInner = ({
       currentRequestRef.current.abort();
     }
 
-    resetData();
+    // Only reset data if this is a forced refresh
+    if (forceRefresh) {
+      resetData();
+    }
+
     setNodesLoading(true);
 
     // Create new abort controller for this request
@@ -225,7 +230,22 @@ const GraphComponentInner = ({
 
   // Load data when filter changes
   useEffect(() => {
-    fetchFilteredData(activeFilterTab);
+    const hasExistingData = dataInitial?.nodes && dataInitial.nodes.length > 0;
+
+    if (isInitialMountRef.current) {
+      // First mount: only fetch if no data exists
+      isInitialMountRef.current = false;
+      if (!hasExistingData) {
+        console.log('Initial mount - no existing data, fetching for tab:', activeFilterTab);
+        fetchFilteredData(activeFilterTab);
+      } else {
+        console.log('Initial mount - found existing data, skipping fetch for tab:', activeFilterTab);
+      }
+    } else {
+      // Subsequent changes: this is an actual tab change, always fetch with refresh
+      console.log('Tab changed, fetching with refresh for tab:', activeFilterTab);
+      fetchFilteredData(activeFilterTab, true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFilterTab]);
 
