@@ -75,9 +75,10 @@ function getAvatarTexture(color: number, avatarUrl?: string) {
 export function RepositoryScene() {
   const repoRef = useRef<THREE.Group>(null);
   const contributorRefs = useRef<(THREE.Mesh | null)[]>([]);
-  const fileRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const contributorGroupRefs = useRef<(THREE.Group | null)[]>([]);
   const startTimeRef = useRef<number | null>(null);
   const hasNavigatedRef = useRef(false);
+  const nextIndexRef = useRef(0);
 
   // lighting refs
   const lightRefTopLeft = useRef<THREE.DirectionalLight>(null);
@@ -85,6 +86,7 @@ export function RepositoryScene() {
   const spotLightRef = useRef<THREE.SpotLight>(null);
 
   const [showOuterNodes, setShowOuterNodes] = useState(false);
+  const [slotIndices, setSlotIndices] = useState<number[]>([]);
 
   const { workspace } = useWorkspace();
   const dataInitial = useDataStore((s) => s.dataInitial);
@@ -114,7 +116,7 @@ export function RepositoryScene() {
       hasNavigatedRef.current = true;
 
       const center = new THREE.Vector3(gitseePosition.x, gitseePosition.y, gitseePosition.z);
-      const radius = hasGraphNodes ? 120 : 80; // Larger radius if main graph exists
+      const radius = hasGraphNodes ? 85 : 60; // tighter frame to keep GitHub mini-graph close
 
       const sphere = new THREE.Sphere(center, radius);
 
@@ -132,88 +134,135 @@ export function RepositoryScene() {
       .filter((n) => n.node_type === 'Contributor')
       .slice(0, 12);
 
-    const radius = 18;
     const count = nodes.length || 1;
+    const rows = Math.min(3, Math.max(1, Math.ceil(count / 4)));
+
+    // distribute nodes per row
+    const rowSizes: number[] = [];
+    let remaining = count;
+    for (let r = 0; r < rows; r++) {
+      const left = rows - r;
+      const size = Math.ceil(remaining / left);
+      rowSizes.push(size);
+      remaining -= size;
+    }
 
     return nodes.map((n, i) => {
-      const angle = (i / count) * Math.PI * 2;
-      const target = new THREE.Vector3(
-        Math.cos(angle) * radius,
-        (Math.random() - 0.5) * 3,
-        Math.sin(angle) * radius
-      );
+      let rowIndex = 0;
+      let offset = i;
+      for (let r = 0; r < rowSizes.length; r++) {
+        if (offset < rowSizes[r]) {
+          rowIndex = r;
+          break;
+        }
+        offset -= rowSizes[r];
+      }
+
+      const inRowCount = rowSizes[rowIndex] || 1;
+      const t = inRowCount > 1 ? offset / (inRowCount - 1) : 0.5;
+      const rowSpread = rows === 1 ? 22 : rows === 2 ? 26 : 28;
+      const x = (t - 0.5) * rowSpread;
+      const yStep = 6;
+      const y = (rowIndex - (rows - 1) / 2) * -yStep;
+      const z = Math.sin((t - 0.5) * Math.PI) * 4 + rowIndex * -0.6;
+      const target = new THREE.Vector3(x, y, z);
 
       return {
         name: n.properties?.name || 'Unknown Contributor',
         contributions: n.properties?.contributions || 0,
         avatar_url: n.properties?.avatar_url,
         color: 0x6366f1,
+        id: n.ref_id || n.properties?.id || n.properties?.name || `contrib-${i}`,
         target,
+        wobblePhase: Math.random() * Math.PI * 2,
+        rowIndex,
         texture: getAvatarTexture(0x6366f1, n.properties?.avatar_url),
       };
     });
   }, [repositoryNodes]);
 
-  const filesData = useMemo(
-    () => [
-      { name: 'package.json', pos: new THREE.Vector3(-14, 5, 6) },
-      { name: 'README.md', pos: new THREE.Vector3(14, 5, -6) },
-      { name: 'Dockerfile', pos: new THREE.Vector3(-11, -4, -8) },
-      { name: 'tsconfig.json', pos: new THREE.Vector3(11, -4, 8) },
-      { name: 'docker-compose.yml', pos: new THREE.Vector3(0, 10, -10) },
-      { name: '.env', pos: new THREE.Vector3(9, -7, 0) },
-    ],
-    []
+  // Active rotating contributors (spotlight 3D ring)
+  const activeCount = useMemo(
+    () => Math.max(1, Math.min(5, contributorData.length || 0)),
+    [contributorData.length]
   );
 
-  // 📌 FINAL CALLOUT DISTANCES (bigger, cleaner)
-  const statsData = useMemo(() => {
-    const commitsNode = repositoryNodes.find((n) => n.node_type === 'Commits');
-    const starsNode = repositoryNodes.find((n) => n.node_type === 'Stars');
-    const issuesNode = repositoryNodes.find((n) => n.node_type === 'Issues');
-    const ageNode = repositoryNodes.find((n) => n.node_type === 'Age');
+  // initialize slot indices when data changes
+  useEffect(() => {
+    if (contributorData.length === 0) {
+      setSlotIndices([]);
+      return;
+    }
+    nextIndexRef.current = activeCount % contributorData.length;
+    setSlotIndices(Array.from({ length: activeCount }).map((_, i) => i % contributorData.length));
+  }, [contributorData.length, activeCount]);
 
-    return [
-      {
-        label: `${commitsNode?.properties?.total_commits || 0} COMMITS`,
-        sub: 'repository metric',
-        pos: new THREE.Vector3(-30, 6, 0),
-      },
-      {
-        label: `${issuesNode?.properties?.total_issues || 0} ISSUES`,
-        sub: 'repository metric',
-        pos: new THREE.Vector3(30, 6, 0),
-      },
-      {
-        label: `${starsNode?.properties?.stars || 0} STARS`,
-        sub: 'repository metric',
-        pos: new THREE.Vector3(0, -22, 0),
-      },
-      {
-        label: `${ageNode?.properties?.age_in_years || 0} YEARS OLD`,
-        sub: 'repository metric',
-        pos: new THREE.Vector3(0, 22, 0),
-      },
-    ];
-  }, [repositoryNodes]);
+  // rotate one slot at a time for smooth replacements
+  useEffect(() => {
+    if (contributorData.length <= activeCount || activeCount === 0) return;
+    let tick = 0;
+    const interval = setInterval(() => {
+      tick += 1;
+      const slotToAdvance = tick % activeCount;
+      setSlotIndices((prev) => {
+        if (prev.length === 0) return prev;
+        const activeSet = new Set(prev);
+        let candidate = nextIndexRef.current % contributorData.length;
+        let attempts = 0;
+        const maxAttempts = contributorData.length;
+        while (attempts < maxAttempts && activeSet.has(candidate)) {
+          candidate = (candidate + 1) % contributorData.length;
+          attempts += 1;
+        }
 
-  const contributorLines = useMemo(
+        const next = [...prev];
+        next[slotToAdvance] = candidate;
+        nextIndexRef.current = (candidate + 1) % contributorData.length;
+        return next;
+      });
+    }, 1800);
+    return () => clearInterval(interval);
+  }, [contributorData.length, activeCount]);
+
+  const activeContributors = useMemo(() => {
+    if (contributorData.length === 0 || slotIndices.length === 0) return [];
+    return slotIndices.map((dataIndex, slotIndex) => {
+      const source = contributorData[dataIndex % contributorData.length];
+      return {
+        ...source,
+        slotIndex,
+      };
+    });
+  }, [slotIndices, contributorData]);
+
+  const slotPositions = useMemo(
     () =>
-      contributorData.map((c) => {
-        const { x, y, z } = c.target;
-        return new Float32Array([0, 0, 0, x, y, z]);
+      activeContributors.map((_, slotIndex) => {
+        const angle = (slotIndex / Math.max(1, activeCount)) * Math.PI * 2 + Math.PI / 2;
+        const radius = 16;
+        const yArc = Math.sin(angle * 1.3) * 3.2;
+        return new THREE.Vector3(
+          Math.cos(angle) * radius,
+          yArc,
+          Math.sin(angle) * radius
+        );
       }),
-    [contributorData]
+    [activeContributors, activeCount]
   );
 
-  const fileLines = useMemo(
+  const activeSlots = useMemo(
     () =>
-      filesData.map((f) => {
-        const { x, y, z } = f.pos;
-        return new Float32Array([0, 0, 0, x, y, z]);
-      }),
-    [filesData]
+      activeContributors.map((c, slotIndex) => ({
+        ...c,
+        target: slotPositions[slotIndex],
+      })),
+    [activeContributors, slotPositions]
   );
+
+  const activeSlotsRef = useRef<typeof activeSlots>([]);
+  useEffect(() => {
+    activeSlotsRef.current = activeSlots;
+  }, [activeSlots]);
 
   // --------------------------------------------------------
   // ANIMATION
@@ -233,7 +282,7 @@ export function RepositoryScene() {
     const ease = 1 - Math.pow(1 - p, 3);
 
     if (repoRef.current) {
-      const baseScale = 2.0;
+      const baseScale = 2.6;
       const scale = baseScale * ease;
       repoRef.current.scale.set(scale, scale, scale);
     }
@@ -248,21 +297,32 @@ export function RepositoryScene() {
 
     const t = elapsed - outerDelay;
 
-    // contributors gently move
-    contributorRefs.current.forEach((mesh, i) => {
-      if (!mesh) return;
-      const c = contributorData[i];
+    // contributors gently orbit and wobble; only active slots are rendered
+    const orbitRadius = 16;
+    const angleOffset = t * 0.4;
 
-      tempVec.copy(c.target);
-      tempVec.y += Math.sin(t * 1.2 + i * 0.6) * 0.15;
-      mesh.position.lerp(tempVec, 0.05);
+    activeSlotsRef.current.forEach((c, idx) => {
+      const mesh = contributorRefs.current[idx];
+      const group = contributorGroupRefs.current[idx];
+      if (!mesh || !group) return;
+
+      const angle = (c.slotIndex / Math.max(1, activeSlotsRef.current.length)) * Math.PI * 2 + angleOffset;
+      const yArc = Math.sin(angle * 1.3) * 3.2;
+      tempVec.set(
+        Math.cos(angle) * orbitRadius,
+        yArc,
+        Math.sin(angle) * orbitRadius
+      );
+
+      const wobble = Math.sin(t * 1.1 + c.wobblePhase) * 0.35;
+      tempVec.y += wobble * 0.4;
+      tempVec.x += Math.cos(t * 0.7 + c.wobblePhase) * 0.3;
+      tempVec.z += Math.sin(t * 0.8 + c.wobblePhase) * 0.35;
+
+      group.position.lerp(tempVec, 0.12);
     });
 
-    // files rotate
-    fileRefs.current.forEach((mesh) => {
-      if (!mesh) return;
-      mesh.rotation.y += 0.002;
-    });
+    // files removed
   });
 
   // Don't render if no repository nodes available
@@ -291,263 +351,115 @@ export function RepositoryScene() {
       {/* CENTRAL GITHUB NODE */}
       <group ref={repoRef}>
         {/* Background circle */}
-        <mesh scale={[1, 1, 1]}>
-          <circleGeometry args={[2.5, 64]} />
+        {/* <mesh scale={[1, 1, 1]}>
+          <circleGeometry args={[1, 64]} />
           <meshStandardMaterial
             color={0x24292e}
             emissive={0x161b22}
             emissiveIntensity={0.3}
           />
-        </mesh>
+        </mesh> */}
 
         {/* GitHub icon using HTML/CSS */}
         <Html
           center
           occlude={false}
           sprite
-          transform
           zIndexRange={[100, 101]}
           position={[0, 0, 0.1]}
         >
           <div
             style={{
-              width: '64px',
-              height: '64px',
+              width: '140px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: '10px',
               pointerEvents: 'none',
+              textAlign: 'center',
+              fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
             }}
           >
-            <svg
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="white"
-              style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.3))' }}
+            <div
+              style={{
+                width: '76px',
+                height: '76px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-            </svg>
+              <svg
+                width="56"
+                height="56"
+                viewBox="0 0 24 24"
+                fill="white"
+                style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.3))' }}
+              >
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+              </svg>
+            </div>
+            <div
+              style={{
+                color: '#ffffff',
+                fontWeight: 700,
+                fontSize: '16px',
+                textShadow: '0 4px 18px rgba(0,0,0,0.45)',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {repoLabel}
+            </div>
           </div>
         </Html>
 
-        {/* Subtle border ring */}
-        <lineSegments>
-          <edgesGeometry args={[new THREE.RingGeometry(2.4, 2.6, 64)]} />
-          <lineBasicMaterial color={0xffffff} transparent opacity={0.2} />
+        {/* Subtle border rings */}
+        {/* <lineSegments>
+          <edgesGeometry args={[new THREE.RingGeometry(2.9, 3.2, 72)]} />
+          <lineBasicMaterial color={0xffffff} transparent opacity={0.25} />
         </lineSegments>
+        <lineSegments>
+          <edgesGeometry args={[new THREE.RingGeometry(8.5, 8.8, 96)]} />
+          <lineBasicMaterial color={'#374151'} transparent opacity={0.2} />
+        </lineSegments>
+        <lineSegments>
+          <edgesGeometry args={[new THREE.RingGeometry(13, 13.3, 96)]} />
+          <lineBasicMaterial color={'#1f2937'} transparent opacity={0.18} />
+        </lineSegments> */}
       </group>
-
-      {/* CENTER LABEL */}
-      <Billboard>
-        <Text
-          position={[0, 4.2, 0]}
-          fontSize={1.5}
-          color="#ffffff"
-          outlineWidth={0.05}
-          anchorX="center"
-          anchorY="middle"
-        >
-          {repoLabel}
-        </Text>
-        <Text
-          position={[0, 3, 0]}
-          fontSize={0.85}
-          color="#94a3b8"
-          anchorX="center"
-          anchorY="middle"
-        >
-          GitHub Repository Overview
-        </Text>
-      </Billboard>
 
       {/* CONTRIBUTORS */}
       {
         showOuterNodes &&
-        contributorData.map((c, i) => (
-          <Billboard key={`contrib-${i}`}>
-            <line>
-              <bufferGeometry>
-                <bufferAttribute
-                  attach="attributes-position"
-                  args={[contributorLines[i], 3]}
+        activeSlots.map((c, i) => (
+          <group key={`contrib-slot-${i}`} ref={(g) => (contributorGroupRefs.current[i] = g)}>
+            <Billboard>
+              <mesh
+                ref={(m) => (contributorRefs.current[i] = m)}
+                position={[0, 0, 0]}
+              >
+                <circleGeometry args={[1.8, 48]} />
+                <meshBasicMaterial
+                  map={c.texture}
+                  transparent
+                  opacity={0.98}
+                  side={THREE.DoubleSide}
                 />
-              </bufferGeometry>
-              <lineBasicMaterial
-                color={c.color}
-                transparent
-                opacity={0.25}
-              />
-            </line>
-
-            <mesh
-              ref={(m) => (contributorRefs.current[i] = m)}
-              position={[0, 0, 0]}
-            >
-              <circleGeometry args={[1.5, 48]} />
-              <meshBasicMaterial
-                map={c.texture}
-                transparent
-                opacity={0.98}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-
-            <Text
-              position={[c.target.x, c.target.y - 2.2, c.target.z]}
-              fontSize={0.9}
-              color="#e5e7eb"
-              anchorX="center"
-              anchorY="middle"
-              maxWidth={12}
-            >
-              {c.name}
-            </Text>
-          </Billboard>
-        ))
-      }
-
-      {/* FILES */}
-      {
-        showOuterNodes &&
-        filesData.map((f, i) => (
-          <Billboard key={`file-${i}`}>
-            <line>
-              <bufferGeometry>
-                <bufferAttribute
-                  attach="attributes-position"
-                  args={[fileLines[i], 3]}
-                />
-              </bufferGeometry>
-              <lineBasicMaterial
-                color={0x64748b}
-                transparent
-                opacity={0.2}
-              />
-            </line>
-
-            <mesh
-              ref={(m) => (fileRefs.current[i] = m)}
-              position={f.pos}
-            >
-              <boxGeometry args={[4, 2.5, 0.3]} />
-              <meshStandardMaterial
-                color={0x16171d}
-                emissive={0x2a2c36}
-                emissiveIntensity={0.6}
-                metalness={0.6}
-                roughness={0.4}
-                transparent
-                opacity={0.95}
-              />
-            </mesh>
-
-            <Text
-              position={[f.pos.x, f.pos.y - 2, f.pos.z]}
-              fontSize={0.85}
-              color="#e5e7eb"
-              anchorX="center"
-              anchorY="middle"
-              maxWidth={14}
-            >
-              {f.name}
-            </Text>
-          </Billboard>
-        ))
-      }
-
-      {/* 🔥 STATS — FINAL CALL-OUT STYLE */}
-      {
-        showOuterNodes &&
-        statsData.map((s, i) => {
-          // calculate dot position (70% toward the callout)
-          const dotPos = new THREE.Vector3(
-            s.pos.x * 0.65,
-            s.pos.y * 0.65,
-            s.pos.z
-          );
-
-          const linePoints = new Float32Array([
-            0, 0, 0, // center
-            dotPos.x, dotPos.y, dotPos.z,
-            s.pos.x, s.pos.y, s.pos.z,
-          ]);
-
-          return (
-            <group key={`stat-${i}`}>
-
-              {/* yellow dot */}
-              <mesh position={dotPos}>
-                <circleGeometry args={[0.45, 32]} />
-                <meshBasicMaterial color={'#ffd54a'} />
               </mesh>
 
-              {/* line from center to dot to callout */}
-              <line>
-                <bufferGeometry>
-                  <bufferAttribute
-                    attach="attributes-position"
-                    args={[linePoints, 3]}
-                  />
-                </bufferGeometry>
-                <lineBasicMaterial
-                  color={'#ffd54a'}
-                  linewidth={2}
-                  transparent
-                  opacity={0.9}
-                />
-              </line>
-
-              {/* HTML callout box */}
-              <Html
-                transform
-                sprite
-                distanceFactor={20}
-                position={[s.pos.x, s.pos.y, s.pos.z]}
-                style={{ pointerEvents: 'none' }}
+              <Text
+                position={[0, -2.2, 0]}
+                fontSize={0.9}
+                color="#e5e7eb"
+                anchorX="center"
+                anchorY="middle"
+                maxWidth={12}
               >
-                <div
-                  style={{
-                    border: '2px solid #ffd54a',
-                    padding: '14px 18px',
-                    borderRadius: '6px',
-                    color: '#fefefe',
-                    fontFamily:
-                      'Inter, system-ui, -apple-system, sans-serif',
-                    background: 'rgba(0, 0, 0, 0.7)',
-                    backdropFilter: 'blur(4px)',
-                    minWidth: '180px',
-                    boxShadow: '0 0 22px rgba(255,213,74,0.3)',
-                    letterSpacing: '0.03em',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '15px',
-                      fontWeight: 600,
-                      marginBottom: '4px',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {s.label}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: '#f3e3aa',
-                      opacity: 0.85,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                    }}
-                  >
-                    {s.sub}
-                  </div>
-                </div>
-              </Html>
-            </group>
-          );
-        })
+                {c.name}
+              </Text>
+            </Billboard>
+          </group>
+        ))
       }
 
       {/* LIGHTING */}
