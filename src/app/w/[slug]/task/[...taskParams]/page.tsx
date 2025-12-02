@@ -722,7 +722,10 @@ export default function TaskChatPage() {
   const hasNonFormArtifacts = artifactsWithoutOldDiffs.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
   const browserArtifact = artifactsWithoutOldDiffs.find((a) => a.type === "BROWSER");
 
-  const inputDisabled = isLoading || !isConnected;
+  const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
+    workflowStatus === WorkflowStatus.FAILED ||
+    workflowStatus === WorkflowStatus.ERROR;
+  const inputDisabled = isLoading || !isConnected || isTerminalState;
   if (hasActiveChatForm) {
     // TODO: rm this and only enable if ready below
   }
@@ -781,6 +784,7 @@ export default function TaskChatPage() {
                     showPreviewToggle={!!browserArtifact}
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
+                    taskMode={taskMode}
                   />
                 )}
               </div>
@@ -801,6 +805,7 @@ export default function TaskChatPage() {
                       workspaceSlug={slug}
                       onCommit={handleCommit}
                       isCommitting={isGeneratingCommitInfo || isCommitting}
+                      taskMode={taskMode}
                     />
                   </div>
                 </ResizablePanel>
@@ -832,6 +837,7 @@ export default function TaskChatPage() {
                 workspaceSlug={slug}
                 onCommit={handleCommit}
                 isCommitting={isGeneratingCommitInfo || isCommitting}
+                taskMode={taskMode}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -866,6 +872,7 @@ export default function TaskChatPage() {
                     showPreviewToggle={!!browserArtifact}
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
+                    taskMode={taskMode}
                   />
                 )}
               </div>
@@ -889,6 +896,7 @@ export default function TaskChatPage() {
                       taskTitle={taskTitle}
                       stakworkProjectId={stakworkProjectId}
                       workspaceSlug={slug}
+                      taskMode={taskMode}
                     />
                   </div>
                 </ResizablePanel>
@@ -923,6 +931,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 stakworkProjectId={stakworkProjectId}
                 workspaceSlug={slug}
+                taskMode={taskMode}
               />
             </div>
           )}
