@@ -19,6 +19,9 @@ vi.mock("next-auth/next");
 // Mock axios for GitHub API calls
 vi.mock("axios");
 
+// Import serviceConfigs from the correct module
+import { serviceConfigs } from "@/config/services";
+
 // Helper to create user with GitHub credentials
 async function createTestUserWithGitHubCreds() {
   const testUser = await createTestUser({ name: "Test User" });
@@ -234,7 +237,7 @@ describe("GitHub Repositories API Integration Tests", () => {
 
         // Verify axios was called with correct parameters
         expect(axios.get).toHaveBeenCalledWith(
-          "https://api.github.com/user/repos",
+          `${serviceConfigs.github.baseURL}/user/repos`,
           {
             headers: {
               Authorization: `token ${accessToken}`,

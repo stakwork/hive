@@ -57,38 +57,68 @@ describe('getGithubUsernameAndPAT', () => {
   });
 
   describe('Mock User Detection', () => {
-    it('should return null for mock users with @mock.dev email', async () => {
-      // Arrange
+    it('should lookup GitHub records for mock users with @mock.dev email', async () => {
+      // Arrange - mock user with GitHub records created by ensureMockWorkspaceForUser
       (db.user.findUnique as any).mockResolvedValue({
         id: mockUserId,
         email: 'testuser@mock.dev',
       });
+      (db.gitHubAuth.findUnique as any).mockResolvedValue({
+        userId: mockUserId,
+        githubUsername: 'mock-user',
+      });
+      (db.workspace.findUnique as any).mockResolvedValue({
+        slug: mockWorkspaceSlug,
+        sourceControlOrg: {
+          id: 'org-123',
+          githubLogin: 'mock-user',
+        },
+      });
+      (db.sourceControlToken.findUnique as any).mockResolvedValue({
+        token: 'encrypted_mock_token',
+      });
+
+      // Act
+      const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
+
+      // Assert - mock users should now be able to access their GitHub records
+      expect(result).toEqual({
+        username: 'mock-user',
+        token: 'decrypted_mock_token',
+      });
+      expect(db.gitHubAuth.findUnique).toHaveBeenCalled();
+    });
+
+    it('should return null for mock users without GitHub records', async () => {
+      // Arrange - mock user without GitHub records
+      (db.user.findUnique as any).mockResolvedValue({
+        id: mockUserId,
+        email: 'testuser@mock.dev',
+      });
+      (db.gitHubAuth.findUnique as any).mockResolvedValue(null);
 
       // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
       // Assert
       expect(result).toBeNull();
-      expect(db.user.findUnique).toHaveBeenCalledWith({
-        where: { id: mockUserId },
-      });
-      // Should not query GitHub auth or account for mock users
-      expect(db.gitHubAuth.findUnique).not.toHaveBeenCalled();
-      expect(db.account.findFirst).not.toHaveBeenCalled();
+      expect(db.gitHubAuth.findUnique).toHaveBeenCalled();
     });
 
-    it('should return null for mock users with any subdomain of @mock.dev', async () => {
+    it('should lookup GitHub records for mock users with any subdomain of @mock.dev', async () => {
       // Arrange
       (db.user.findUnique as any).mockResolvedValue({
         id: mockUserId,
         email: 'developer@staging.mock.dev',
       });
+      (db.gitHubAuth.findUnique as any).mockResolvedValue(null);
 
       // Act
       const result = await getGithubUsernameAndPAT(mockUserId, mockWorkspaceSlug);
 
-      // Assert
+      // Assert - should still attempt lookup even for subdomain mock emails
       expect(result).toBeNull();
+      expect(db.gitHubAuth.findUnique).toHaveBeenCalled();
     });
   });
 
