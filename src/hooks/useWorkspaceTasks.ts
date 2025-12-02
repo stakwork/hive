@@ -98,7 +98,8 @@ export function useWorkspaceTasks(
   workspaceSlug?: string | null,
   includeNotifications: boolean = false,
   pageLimit: number = 5,
-  showArchived: boolean = false
+  showArchived: boolean = false,
+  search?: string
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -120,7 +121,8 @@ export function useWorkspaceTasks(
 
     try {
       const archivedParam = showArchived ? '&includeArchived=true' : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
+      const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -148,7 +150,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -172,7 +174,8 @@ export function useWorkspaceTasks(
 
       for (let page = 1; page <= storedPage; page++) {
         const archivedParam = showArchived ? '&includeArchived=true' : '';
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}`;
+        const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {
