@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
 
         console.log('endpoint--here', endpoint);
 
-        processedData = !endpoint.includes('start_date_added_to_graph') ? mockData.data : {
+        processedData = {
           ...data,
           nodes: processedNodes,
         };
