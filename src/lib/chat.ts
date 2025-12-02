@@ -103,14 +103,14 @@ export interface DiffContent {
 }
 
 export interface MediaContent {
-  url: string;              // Presigned download URL
-  s3Key: string;            // S3 storage key
+  url?: string; // Presigned download URL
+  s3Key: string; // S3 storage key
   mediaType: "video" | "audio";
-  filename: string;         // Original filename
-  size: number;             // File size in bytes
-  contentType: string;      // MIME type (e.g., "video/webm")
+  filename: string; // Original filename
+  size: number; // File size in bytes
+  contentType: string; // MIME type (e.g., "video/webm")
   duration?: number | null; // Duration in seconds (optional)
-  uploadedAt: string;       // ISO timestamp
+  uploadedAt: string; // ISO timestamp
 }
 
 // Client-side types that extend Prisma types with proper JSON field typing

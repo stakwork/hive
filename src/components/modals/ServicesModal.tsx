@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
 import { parseEnv } from "@/lib/env-parser";
-import { Clipboard, Loader2, Save, Settings, ChevronDown, ChevronRight } from "lucide-react";
+import { Clipboard, Loader2, Save, Settings, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
 import {
@@ -277,9 +277,17 @@ export default function ServicesModal({
           <CardContent className="overflow-y-auto max-h-[calc(90vh-120px)]">
             <div className="space-y-4">
               <h3 className="text-lg font-semibold mb-2">Environment Variables</h3>
-              <p className="text-sm text-muted-foreground mb-4">
+              <p className="text-sm text-muted-foreground mb-2">
                 Add any environment variables your code environment needs.
               </p>
+              
+              {/* Security Warning */}
+              <div className="flex items-start gap-2 p-3 mb-4 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  <strong>Development environment only:</strong> Do not use production credentials or API keys. Use development/testing keys only.
+                </p>
+              </div>
 
               {/* Import section */}
               <div className="bg-muted/30 rounded-lg p-3 mb-4">

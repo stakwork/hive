@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
+import { ArtifactType, TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { EncryptionService } from "@/lib/encryption";
 import { getUserAppTokens } from "@/lib/githubApp";
@@ -39,6 +39,7 @@ interface UserJourneyResponse {
   testFilePath: string | null;
   testFileUrl: string | null;
   createdAt: string;
+  hasVideo: boolean;
   badge: BadgeMetadata;
   task: {
     description: string | null;
@@ -515,7 +516,61 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       orderBy: { createdAt: "desc" },
     });
 
-    // 6. Process tasks with PR artifacts
+    // 6. Check for video artifacts (separate optimized query)
+    const taskIds = updatedTasks.map(t => t.id);
+    console.log("[user-journeys] Checking videos for task IDs:", taskIds);
+    const tasksWithVideos = await db.task.findMany({
+      where: {
+        id: { in: taskIds }
+      },
+      include: {
+        chatMessages: {
+          orderBy: { timestamp: "desc" },
+          take: 10,
+          include: {
+            artifacts: {
+              where: { type: ArtifactType.MEDIA },
+              orderBy: { createdAt: "desc" },
+            },
+          },
+        },
+      },
+    });
+    console.log("[user-journeys] Tasks with messages found:", tasksWithVideos.length);
+    console.log("[user-journeys] Message/artifact details:", tasksWithVideos.map(t => ({
+      taskId: t.id,
+      messageCount: t.chatMessages.length,
+      artifactCounts: t.chatMessages.map(m => m.artifacts.length),
+      artifactTypes: t.chatMessages.flatMap(m => m.artifacts.map(a => a.type))
+    })));
+
+    // Build Set for O(1) lookup
+    const videoTaskIds = new Set<string>();
+    for (const task of tasksWithVideos) {
+      for (const message of task.chatMessages) {
+        if (message.artifacts && message.artifacts.length > 0) {
+          for (const artifact of message.artifacts) {
+            try {
+              // Prisma returns JSON fields as objects, not strings
+              const content = typeof artifact.content === 'string'
+                ? JSON.parse(artifact.content)
+                : artifact.content;
+
+              if (content && typeof content === 'object' && content.mediaType === "video" && content.s3Key) {
+                videoTaskIds.add(task.id);
+                break;
+              }
+            } catch (error) {
+              console.error("[user-journeys] Error parsing artifact content:", error);
+            }
+          }
+          if (videoTaskIds.has(task.id)) break;
+        }
+      }
+    }
+    console.log("[user-journeys] Tasks with videos:", Array.from(videoTaskIds));
+
+    // 7. Process tasks with PR artifacts and video detection
     const processedTasks: UserJourneyResponse[] = await Promise.all(
       updatedTasks.map(async (task) => {
         const prArtifact = await extractPrArtifact(task, userId);
@@ -525,6 +580,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           testFilePath: task.testFilePath,
           testFileUrl: task.testFileUrl,
           createdAt: task.createdAt.toISOString(),
+          hasVideo: videoTaskIds.has(task.id),
           badge: calculateBadge(task, prArtifact),
           task: {
             description: task.description,
