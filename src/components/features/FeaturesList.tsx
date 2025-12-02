@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/pagination";
 import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 
 interface FeaturesListProps {
   workspaceId: string;
@@ -70,6 +71,9 @@ function FeatureRow({
           currentAssignee={feature.assignee}
           onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
         />
+      </TableCell>
+      <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
+        {formatRelativeOrDate(feature.updatedAt)}
       </TableCell>
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
         {new Date(feature.createdAt).toLocaleDateString()}
@@ -145,19 +149,19 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     return "ALL";
   });
 
-  const [sortBy, setSortBy] = useState<"title" | "createdAt" | null>(() => {
+  const [sortBy, setSortBy] = useState<"title" | "createdAt" | "updatedAt" | null>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("features-filters-sort-preference");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          return parsed.sortBy || null;
+          return parsed.sortBy || "updatedAt";
         } catch {
-          return null;
+          return "updatedAt";
         }
       }
     }
-    return null;
+    return "updatedAt";
   });
 
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => {
@@ -166,13 +170,13 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          return parsed.sortOrder || "asc";
+          return parsed.sortOrder || "desc";
         } catch {
-          return "asc";
+          return "desc";
         }
       }
     }
-    return "asc";
+    return "desc";
   });
 
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -361,7 +365,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   };
 
   // Handle sort changes - reset to page 1 when changing sort field
-  const handleSort = (field: "title" | "createdAt", order: "asc" | "desc" | null) => {
+  const handleSort = (field: "title" | "createdAt" | "updatedAt", order: "asc" | "desc" | null) => {
     if (order === null) {
       setSortBy(null);
     } else {
@@ -726,6 +730,15 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                   </TableHead>
                   <TableHead className="w-[150px] text-right">
                     <SortableColumnHeader
+                      label="Updated At"
+                      field="updatedAt"
+                      currentSort={sortBy === "updatedAt" ? sortOrder : null}
+                      onSort={(order) => handleSort("updatedAt", order)}
+                      align="right"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[150px] text-right">
+                    <SortableColumnHeader
                       label="Created"
                       field="createdAt"
                       currentSort={sortBy === "createdAt" ? sortOrder : null}
@@ -740,7 +753,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
               <TableBody>
                 {features.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center">
+                    <TableCell colSpan={7} className="h-32 text-center">
                       <p className="text-muted-foreground">No features match your filters</p>
                     </TableCell>
                   </TableRow>
