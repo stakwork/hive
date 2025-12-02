@@ -29,6 +29,7 @@ interface AgentChatAreaProps {
   showPreviewToggle?: boolean;
   showPreview?: boolean;
   onTogglePreview?: () => void;
+  taskMode?: string;
 }
 
 export function AgentChatArea({
@@ -47,6 +48,7 @@ export function AgentChatArea({
   showPreviewToggle = false,
   showPreview = false,
   onTogglePreview,
+  taskMode,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -208,6 +210,8 @@ export function AgentChatArea({
         onRemoveDebugAttachment={onRemoveDebugAttachment}
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
+        taskMode={taskMode}
+        workspaceSlug={workspaceSlug}
       />
     </motion.div>
   );
