@@ -12,9 +12,10 @@ import { Lightbulb, List, LayoutGrid, Trash2, X, Search } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
+import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePriority } from "@/types/roadmap";
 import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
 import { StatusPopover } from "@/components/ui/status-popover";
+import { PrioritySelector } from "@/components/ui/priority-selector";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -188,6 +189,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [isCreating, setIsCreating] = useState(false);
   const [newFeatureTitle, setNewFeatureTitle] = useState("");
   const [newFeatureStatus, setNewFeatureStatus] = useState<FeatureStatus>("BACKLOG");
+  const [newFeaturePriority, setNewFeaturePriority] = useState<FeaturePriority>("NONE");
   const [newFeatureAssigneeId, setNewFeatureAssigneeId] = useState<string | null>(null);
   const [newFeatureAssigneeDisplay, setNewFeatureAssigneeDisplay] = useState<{
     id: string;
@@ -461,6 +463,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           title: newFeatureTitle.trim(),
           workspaceId,
           status: newFeatureStatus,
+          priority: newFeaturePriority,
           assigneeId: newFeatureAssigneeId,
         }),
       });
@@ -486,6 +489,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const handleCancelCreate = () => {
     setNewFeatureTitle("");
     setNewFeatureStatus("BACKLOG");
+    setNewFeaturePriority("NONE");
     setNewFeatureAssigneeId(null);
     setNewFeatureAssigneeDisplay(null);
     setIsCreating(false);
@@ -659,6 +663,10 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     currentStatus={newFeatureStatus}
                     onUpdate={async (status) => setNewFeatureStatus(status)}
                   />
+                  <PrioritySelector
+                    value={newFeaturePriority}
+                    onChange={(priority) => setNewFeaturePriority(priority)}
+                  />
                   <AssigneeCombobox
                     workspaceSlug={workspaceSlug}
                     currentAssignee={newFeatureAssigneeDisplay}
@@ -668,6 +676,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     }}
                   />
                 </div>
+
                 <div className="flex items-center justify-end gap-2">
                   <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
                     Cancel
