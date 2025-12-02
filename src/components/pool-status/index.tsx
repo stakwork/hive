@@ -160,7 +160,7 @@ export function VMConfigSection() {
               </div>
             ) : (
               <Button asChild>
-                <Link onClick={handleOpenModal} href={`/w/${slug}/code-graph`}>
+                <Link onClick={handleOpenModal} href={`/w/${slug}`}>
                   <Zap className="w-4 h-4 mr-2" />
                   Launch Pods
                 </Link>

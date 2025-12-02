@@ -29,7 +29,7 @@ export function ConnectRepository({
   const router = useRouter();
 
   const handleStartSetup = () => {
-    router.push(`/w/${workspaceSlug}/code-graph`);
+    router.push(`/w/${workspaceSlug}`);
   };
 
   return (

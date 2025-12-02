@@ -4,7 +4,8 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, Bot, Workflow, ArrowUp } from "lucide-react";
+import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus } from "lucide-react";
+import Link from "next/link";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
@@ -23,6 +24,8 @@ interface ChatInputProps {
   onRemoveDebugAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   hasPrArtifact?: boolean;
+  workspaceSlug?: string;
+  taskMode?: string;
 }
 
 export function ChatInput({
@@ -34,6 +37,8 @@ export function ChatInput({
   onRemoveDebugAttachment,
   workflowStatus,
   hasPrArtifact = false,
+  workspaceSlug,
+  taskMode,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
@@ -112,6 +117,51 @@ export function ChatInput({
 
   const modeConfig = getModeConfig(mode);
   const ModeIcon = modeConfig.icon;
+
+  // Show simplified ended state for terminal workflow statuses
+  const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
+    workflowStatus === WorkflowStatus.FAILED ||
+    workflowStatus === WorkflowStatus.ERROR;
+
+  const getTerminalMessage = () => {
+    if (taskMode === "agent") {
+      return "Session expired.";
+    }
+    switch (workflowStatus) {
+      case WorkflowStatus.HALTED:
+        return "Workflow halted.";
+      case WorkflowStatus.FAILED:
+        return "Workflow failed.";
+      case WorkflowStatus.ERROR:
+        return "Workflow error.";
+      default:
+        return "Workflow ended.";
+    }
+  };
+
+  if (isTerminalState) {
+    return (
+      <div className={cn(
+        "px-4 py-4 border-t bg-background",
+        isMobile && "fixed bottom-0 left-0 right-0 z-10 pb-[env(safe-area-inset-bottom)]"
+      )}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
+            <span>{getTerminalMessage()}</span>
+          </div>
+          {workspaceSlug && (
+            <Button asChild size="sm">
+              <Link href={`/w/${workspaceSlug}/task/new`}>
+                <Plus className="h-3 w-3 mr-1" />
+                New Task
+              </Link>
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(

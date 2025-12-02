@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const includeLatestMessage = searchParams.get("includeLatestMessage") === "true";
     const sourceType = searchParams.get("sourceType");
     const includeArchived = searchParams.get("includeArchived");
+    const search = searchParams.get("search") || undefined;
 
     if (!workspaceId) {
       return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
@@ -103,6 +104,38 @@ export async function GET(request: NextRequest) {
     // Add sourceType filter if provided
     if (sourceType && Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
       whereClause.sourceType = sourceType as TaskSourceType;
+    }
+
+    // Add search filter if provided
+    if (search && search.trim()) {
+      const existingOR = whereClause.OR;
+      
+      // Create search conditions
+      const searchConditions = [
+        {
+          title: {
+            contains: search.trim(),
+            mode: 'insensitive' as const,
+          },
+        },
+        {
+          description: {
+            contains: search.trim(),
+            mode: 'insensitive' as const,
+          },
+        },
+      ];
+
+      // If there's already an OR clause (from visibility rules), we need to combine them with AND
+      if (existingOR && Array.isArray(existingOR)) {
+        whereClause.AND = [
+          { OR: existingOR },
+          { OR: searchConditions },
+        ];
+        delete whereClause.OR;
+      } else {
+        whereClause.OR = searchConditions;
+      }
     }
 
     const [tasks, totalCount] = await Promise.all([

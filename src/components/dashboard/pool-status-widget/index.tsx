@@ -141,7 +141,7 @@ export function PoolStatusWidget() {
     // Ready to launch pods
     return (
       <Button asChild size="sm" className="h-10 gap-2">
-        <Link onClick={handleOpenModal} href={`/w/${slug}/code-graph`}>
+        <Link onClick={handleOpenModal} href={`/w/${slug}`}>
           <Server className="w-4 h-4" />
           Launch Pods
         </Link>
