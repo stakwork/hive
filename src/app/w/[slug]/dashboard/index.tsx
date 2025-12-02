@@ -50,21 +50,24 @@ function DashboardInner() {
   };
 
   useEffect(() => {
+    const repoName = workspace?.repositories?.[0]?.name || 'Repository';
+
     addNewNode({
       edges: [],
       nodes: [
         {
           ref_id: tempGitHubRepoRef,
-          name: workspace?.repositories[0]?.name || '',
-          label: workspace?.repositories[0]?.name || '',
+          name: repoName,
+          label: repoName,
           node_type: 'GitHubRepo',
           x: 0,
           y: 0,
           z: 0,
           properties: {
-            name: workspace?.repositories[0]?.name || '',
-            description: workspace?.repositories[0]?.name || '',
-          },
+            name: repoName,
+            description: repoName,
+          } as any,
+          edge_count: 0,
         },
       ],
     });
