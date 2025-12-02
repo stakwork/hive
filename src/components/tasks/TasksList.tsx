@@ -16,6 +16,8 @@ import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
 import { useEffect, useState } from "react";
+import { Search, X } from "lucide-react";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface TasksListProps {
   workspaceId: string;
@@ -34,13 +36,18 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     return "active";
   });
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   // showArchived is true when activeTab is "archived"
   const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
     workspaceId,
     workspaceSlug,
     true,
     10,
-    activeTab === "archived"
+    activeTab === "archived",
+    debouncedSearchQuery
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -50,6 +57,14 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
       setActiveTab(value);
       localStorage.setItem("tasks-tab-preference", value);
     }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
   };
 
   // Refresh task list when global notification count changes
@@ -91,6 +106,26 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
         </CardHeader>
 
         <CardContent>
+          {/* Search Bar */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="w-full rounded-md border border-gray-300 py-2 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
           <TabsContent value="active" className="mt-4 space-y-3">
             {tasks.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
