@@ -1,10 +1,12 @@
 /**
  * GitHub OAuth Repository Access Check
- * 
+ *
  * This module provides functionality to check repository access
  * using GitHub OAuth tokens (not GitHub App installation tokens).
  * Used during the OAuth callback flow to verify repository permissions.
  */
+
+import { serviceConfigs } from "@/config/services";
 
 export interface RepositoryAccessResult {
   hasAccess: boolean;
@@ -39,7 +41,7 @@ export async function checkRepositoryAccess(
     const [, owner, repo] = githubMatch;
 
     // Check if we can access the repository
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    const response = await fetch(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/vnd.github.v3+json",

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { TaskStatus, Prisma } from "@prisma/client";
 
@@ -93,7 +94,7 @@ export async function extractPrArtifact(
             try {
               const tokens = await getUserAppTokens(userId, owner);
               if (tokens?.accessToken) {
-                const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`, {
+                const response = await fetch(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}/pulls/${prNumber}`, {
                   headers: {
                     Accept: "application/vnd.github+json",
                     Authorization: `Bearer ${tokens.accessToken}`,

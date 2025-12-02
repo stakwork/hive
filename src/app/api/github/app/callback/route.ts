@@ -1,7 +1,8 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { config } from "@/config/env";
+import { config, optionalEnvVars } from "@/config/env";
+import { serviceConfigs } from "@/config/services";
 import { checkRepositoryAccess } from "@/lib/github-oauth-repository-access";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
@@ -12,7 +13,7 @@ export const runtime = "nodejs";
 async function getAccessToken(code: string, state: string) {
   // console.log("getAccessToken", code, state);
   // 2. Exchange the temporary code for an OAuth token
-  const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+  const tokenResponse = await fetch(optionalEnvVars.GITHUB_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
     // console.log("userRefreshToken", userRefreshToken);
 
     // Get GitHub user info to determine which org/user this token belongs to
-    const userResponse = await fetch("https://api.github.com/user", {
+    const userResponse = await fetch(`${serviceConfigs.github.baseURL}/user`, {
       headers: {
         Authorization: `Bearer ${userAccessToken}`,
         Accept: "application/vnd.github.v3+json",
@@ -142,7 +143,7 @@ export async function GET(request: NextRequest) {
 
     if (installationId) {
       // We have an installation - get the user's installations to find this one
-      const installationsResponse = await fetch("https://api.github.com/user/installations", {
+      const installationsResponse = await fetch(`${serviceConfigs.github.baseURL}/user/installations`, {
         headers: {
           Authorization: `Bearer ${userAccessToken}`,
           Accept: "application/vnd.github.v3+json",

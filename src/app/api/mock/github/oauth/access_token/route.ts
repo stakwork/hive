@@ -12,7 +12,18 @@ import { mockGitHubState } from "@/lib/mock/github-state";
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    // Handle both JSON and form-urlencoded requests (NextAuth uses form-urlencoded)
+    const contentType = request.headers.get("content-type") || "";
+    let params: Record<string, string>;
+
+    if (contentType.includes("application/json")) {
+      params = await request.json();
+    } else {
+      // Parse as form-urlencoded (default for OAuth token requests)
+      const text = await request.text();
+      params = Object.fromEntries(new URLSearchParams(text));
+    }
+
     const {
       client_id,
       client_secret,
@@ -20,14 +31,15 @@ export async function POST(request: NextRequest) {
       grant_type = "authorization_code",
       refresh_token,
       scope = "repo,user,read:org",
-    } = body;
+    } = params;
 
-    // Validate required fields
-    if (!client_id || !client_secret) {
+    // In mock mode, be lenient with client validation
+    // Real GitHub validates these, but for mock we just need the code
+    if (!code && !refresh_token) {
       return NextResponse.json(
         {
           error: "invalid_request",
-          error_description: "Missing required parameters",
+          error_description: "Missing code or refresh_token",
         },
         { status: 400 }
       );
@@ -49,7 +61,14 @@ export async function POST(request: NextRequest) {
       }
     } else if (code) {
       // Authorization code flow
-      token = mockGitHubState.createToken(code, scope);
+      const result = mockGitHubState.exchangeAuthCode(code);
+      if (!result) {
+        // Code not found - auto-create token for backwards compatibility
+        // (allows direct token creation without authorize flow)
+        token = mockGitHubState.createToken(code, scope);
+      } else {
+        token = result.token;
+      }
     } else {
       return NextResponse.json(
         {

@@ -138,6 +138,14 @@ export interface MockCommit {
   html_url: string;
 }
 
+interface MockAuthCode {
+  code: string;
+  clientId: string;
+  scope: string;
+  createdAt: Date;
+  used: boolean;
+}
+
 class MockGitHubStateManager {
   private users: Map<string, MockGitHubUser> = new Map();
   private installations: Map<number, MockInstallation> = new Map();
@@ -146,6 +154,8 @@ class MockGitHubStateManager {
   private tokens: Map<string, MockToken> = new Map();
   private branches: Map<string, MockBranch[]> = new Map();
   private commits: Map<string, MockCommit[]> = new Map();
+  private authCodes: Map<string, MockAuthCode> = new Map();
+  private authCodeCounter = 1000;
 
   private userIdCounter = 1000;
   private installationIdCounter = 1000;
@@ -235,6 +245,39 @@ class MockGitHubStateManager {
     return Array.from(this.installations.values()).filter(
       (inst) => inst.account.login === owner
     );
+  }
+
+  /**
+   * Create an authorization code for OAuth flow
+   */
+  createAuthCode(params: { clientId: string; scope: string }): string {
+    const code = `mock_auth_code_${this.authCodeCounter++}_${Date.now()}`;
+    this.authCodes.set(code, {
+      code,
+      clientId: params.clientId,
+      scope: params.scope,
+      createdAt: new Date(),
+      used: false,
+    });
+    return code;
+  }
+
+  /**
+   * Exchange an authorization code for a token
+   * Returns null if code is invalid or already used
+   */
+  exchangeAuthCode(code: string): { token: MockToken; scope: string } | null {
+    const authCode = this.authCodes.get(code);
+    if (!authCode || authCode.used) {
+      return null;
+    }
+
+    // Mark code as used
+    authCode.used = true;
+
+    // Create and return token
+    const token = this.createToken(code, authCode.scope);
+    return { token, scope: authCode.scope };
   }
 
   /**
@@ -508,11 +551,13 @@ class MockGitHubStateManager {
     this.tokens.clear();
     this.branches.clear();
     this.commits.clear();
+    this.authCodes.clear();
     this.userIdCounter = 1000;
     this.installationIdCounter = 1000;
     this.repositoryIdCounter = 1000;
     this.webhookIdCounter = 1000;
     this.commitCounter = 1000;
+    this.authCodeCounter = 1000;
   }
 
   /**

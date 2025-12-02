@@ -1,4 +1,5 @@
 import { authOptions } from "@/lib/auth/nextauth";
+import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -33,7 +34,7 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
     const [, owner, repo] = githubMatch;
 
     // Check repository access and permissions
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    const response = await fetch(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/vnd.github.v3+json',

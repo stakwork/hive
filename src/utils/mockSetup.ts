@@ -2,12 +2,18 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
   RepositoryStatus,
+  SourceControlOrgType,
   SwarmStatus,
 } from "@prisma/client";
 import { slugify } from "./slugify";
 
+// Mock GitHub user ID counter (starts high to avoid conflicts)
+let mockGitHubIdCounter = 100000;
+
 /**
  * Ensures a mock workspace and a completed swarm exist for a given user.
+ * Also creates GitHub-related records (GitHubAuth, SourceControlOrg, SourceControlToken)
+ * to enable full GitHub feature testing in mock mode.
  * Returns the workspace slug.
  * All DB operations wrapped in transaction for atomicity.
  */
@@ -28,26 +34,111 @@ export async function ensureMockWorkspaceForUser(
     slugCandidate = `${baseSlug}-${++suffix}`;
   }
 
-  // Create encrypted mock pool API key for Pool Manager integration (optional)
+  // Get user info for building mock GitHub username
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { name: true, email: true },
+  });
+
+  // Generate mock GitHub username from user's name or email
+  const mockGitHubUsername = user?.name?.toLowerCase().replace(/\s+/g, "-")
+    || user?.email?.split("@")[0]
+    || "mock-user";
+  const mockGitHubUserId = String(mockGitHubIdCounter++);
+  const mockInstallationId = mockGitHubIdCounter++;
+
+  // Create encrypted tokens for mock (optional - gracefully handle if encryption not available)
   let encryptedPoolApiKey: string | null = null;
+  let encryptedGitHubToken: string | null = null;
+  let encryptedGitHubRefreshToken: string | null = null;
+
   try {
     const encryptionService = EncryptionService.getInstance();
     encryptedPoolApiKey = JSON.stringify(
       encryptionService.encryptField("poolApiKey", "mock-pool-api-key")
     );
+    encryptedGitHubToken = JSON.stringify(
+      encryptionService.encryptField("access_token", `gho_mock_token_${mockGitHubUserId}`)
+    );
+    encryptedGitHubRefreshToken = JSON.stringify(
+      encryptionService.encryptField("refresh_token", `ghr_mock_refresh_${mockGitHubUserId}`)
+    );
   } catch {
     // Encryption not available (e.g., TOKEN_ENCRYPTION_KEY not set)
-    // This is fine for E2E tests - pool manager mock will work without encrypted key
+    // This is fine for E2E tests - mocks will work without encrypted keys
   }
 
   // Wrap all DB operations in transaction to prevent partial state
   const workspace = await db.$transaction(async (tx) => {
+    // 1. Create GitHubAuth record (links user to their GitHub identity)
+    await tx.gitHubAuth.upsert({
+      where: { userId },
+      create: {
+        userId,
+        githubUserId: mockGitHubUserId,
+        githubUsername: mockGitHubUsername,
+        githubNodeId: `MDQ6VXNlcjEwMDAwMA==`,
+        name: user?.name || "Mock User",
+        accountType: "User",
+        publicRepos: 10,
+        followers: 5,
+        following: 3,
+        scopes: ["repo", "user", "read:org"],
+      },
+      update: {
+        // If already exists, just update scopes
+        scopes: ["repo", "user", "read:org"],
+      },
+    });
+
+    // 2. Create SourceControlOrg (represents the GitHub org/user that has the app installed)
+    const sourceControlOrg = await tx.sourceControlOrg.upsert({
+      where: { githubLogin: mockGitHubUsername },
+      create: {
+        type: SourceControlOrgType.USER,
+        githubLogin: mockGitHubUsername,
+        githubInstallationId: mockInstallationId,
+        name: user?.name || "Mock User",
+        avatarUrl: `https://avatars.githubusercontent.com/u/${mockGitHubUserId}?v=4`,
+      },
+      update: {
+        // If already exists, don't update
+      },
+    });
+
+    // 3. Create SourceControlToken (encrypted GitHub App tokens for API access)
+    if (encryptedGitHubToken) {
+      await tx.sourceControlToken.upsert({
+        where: {
+          userId_sourceControlOrgId: {
+            userId,
+            sourceControlOrgId: sourceControlOrg.id,
+          },
+        },
+        create: {
+          userId,
+          sourceControlOrgId: sourceControlOrg.id,
+          token: encryptedGitHubToken,
+          refreshToken: encryptedGitHubRefreshToken,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8 hours from now
+          scopes: ["repo", "user", "read:org"],
+        },
+        update: {
+          token: encryptedGitHubToken,
+          refreshToken: encryptedGitHubRefreshToken,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    // 4. Create workspace linked to the SourceControlOrg
     const workspace = await tx.workspace.create({
       data: {
         name: "Mock Workspace",
         description: "Development workspace (mock)",
         slug: slugCandidate,
         ownerId: userId,
+        sourceControlOrgId: sourceControlOrg.id,
       },
       select: { id: true, slug: true },
     });
