@@ -28,6 +28,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { claimPodAndGetFrontend, POD_PORTS } from "@/lib/pods";
 import { EncryptionService } from "@/lib/encryption";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import crypto from "crypto";
 
 export const fetchCache = "force-no-store";
@@ -78,16 +79,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Verify user has access to workspace
-    const workspaceMember = await db.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: {
-          workspaceId: task.workspaceId,
-          userId: session.user.id,
-        },
-      },
-    });
+    const accessValidation = await validateWorkspaceAccessById(task.workspaceId, session.user.id);
 
-    if (!workspaceMember) {
+    if (!accessValidation.hasAccess) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
