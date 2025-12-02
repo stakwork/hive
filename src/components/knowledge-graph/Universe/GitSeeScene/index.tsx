@@ -101,22 +101,21 @@ export function RepositoryScene() {
 
   // position GitSee vs main graph - aligned as last “row” after node type layers
   const gitseePosition = useMemo(() => {
-    if (!hasGraphNodes) {
-      return new THREE.Vector3(0, 0, 0);
-    }
-
     const layerSpacing = 500; // keep in sync with LayerLabels
     const totalTypes = nodeTypes.length;
 
-    if (!totalTypes) {
+    if (!hasGraphNodes || totalTypes === 0) {
       return new THREE.Vector3(0, 0, 0);
     }
 
+    // LayerLabels positions layers from top to bottom using startOffset - index*layerSpacing.
+    // GitSee should appear after the last layer.
     const startOffset = ((totalTypes - 1) / 2) * layerSpacing;
-    const yAfterLastLayer = startOffset - totalTypes * layerSpacing;
+    const gitseeIndex = totalTypes; // place after the last node type layer
+    const yAfterLastLayer = startOffset - gitseeIndex * layerSpacing;
 
     return new THREE.Vector3(0, yAfterLastLayer, 0);
-  }, [hasGraphNodes, nodeTypes.length]);
+  }, [hasGraphNodes, nodeTypes]);
 
   // Auto-navigate to GitSee scene on initialization
   useEffect(() => {
@@ -354,10 +353,8 @@ export function RepositoryScene() {
   // RENDER
   // --------------------------------------------------------
 
-  console.log(nodeTypes);
-
   return (
-    <group position={[gitseePosition.x, -(Math.max(0, nodeTypes.length - 1) * 500), gitseePosition.z]}>
+    <group position={[gitseePosition.x, gitseePosition.y, gitseePosition.z]}>
       {/* CENTRAL GITHUB NODE */}
       <group ref={repoRef}>
         {/* Background circle */}
