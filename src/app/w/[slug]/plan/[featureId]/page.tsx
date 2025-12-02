@@ -9,6 +9,7 @@ import { EditableTitle } from "@/components/ui/editable-title";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
+import { PrioritySelector } from "@/components/ui/priority-selector";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
@@ -85,6 +86,11 @@ export default function FeatureDetailPage() {
 
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
     await handleSave({ status });
+    triggerSaved("title");
+  };
+
+  const handleUpdatePriority = async (priority: FeatureDetail["priority"]) => {
+    await handleSave({ priority });
     triggerSaved("title");
   };
 
@@ -389,9 +395,10 @@ export default function FeatureDetailPage() {
               )}
             </div>
 
-            {/* Status, Assignee & Actions */}
+            {/* Status, Priority, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
               <StatusPopover statusType="feature" currentStatus={feature.status} onUpdate={handleUpdateStatus} />
+              <PrioritySelector value={feature.priority} onChange={handleUpdatePriority} />
               <AssigneeCombobox
                 workspaceSlug={workspaceSlug}
                 currentAssignee={feature.assignee}
