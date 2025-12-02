@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
 
     // Sort params
-    const sortBy = searchParams.get("sortBy") as "title" | "createdAt" | undefined;
+    const sortBy = searchParams.get("sortBy") as "title" | "createdAt" | "updatedAt" | undefined;
     const sortOrder = searchParams.get("sortOrder") as "asc" | "desc" | undefined;
 
     if (!workspaceId) {
@@ -67,9 +67,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate sortBy if provided
-    if (sortBy && !["title", "createdAt"].includes(sortBy)) {
+    if (sortBy && !["title", "createdAt", "updatedAt"].includes(sortBy)) {
       return NextResponse.json(
-        { error: "Invalid sortBy parameter. Must be 'title' or 'createdAt'" },
+        { error: "Invalid sortBy parameter. Must be 'title', 'createdAt', or 'updatedAt'" },
         { status: 400 },
       );
     }

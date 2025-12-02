@@ -27,7 +27,7 @@ export async function listFeatures({
   statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
   assigneeId?: string; // String including "UNASSIGNED" special value
   search?: string; // Text search for feature title
-  sortBy?: "title" | "createdAt";
+  sortBy?: "title" | "createdAt" | "updatedAt";
   sortOrder?: "asc" | "desc";
 }) {
   const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
@@ -68,7 +68,7 @@ export async function listFeatures({
   // Build orderBy clause
   const orderByClause: any = sortBy
     ? { [sortBy]: sortOrder || "asc" }
-    : { createdAt: "desc" };
+    : { updatedAt: "desc" };
 
   const [features, totalCount, totalCountWithoutFilters] = await Promise.all([
     db.feature.findMany({
