@@ -1,5 +1,6 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
+import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
@@ -72,7 +73,7 @@ export async function GET(request: Request) {
 
     // Check installation-specific repository access
     const installationId = sourceControlOrg.githubInstallationId;
-    const installationReposUrl = `https://api.github.com/user/installations/${installationId}/repositories`;
+    const installationReposUrl = `${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories`;
 
 
     console.log('installationReposUrl')

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { serviceConfigs } from "@/config/services";
 import axios from "axios";
 
 export const runtime = "nodejs";
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
     const pat = githubProfile.token;
 
     // Search GitHub users
-    const response = await axios.get("https://api.github.com/search/users", {
+    const response = await axios.get(`${serviceConfigs.github.baseURL}/search/users`, {
       headers: {
         Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",
