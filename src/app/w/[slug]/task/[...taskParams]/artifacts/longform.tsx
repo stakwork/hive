@@ -1,19 +1,23 @@
+import React, { memo, useRef, useState, useEffect, useMemo } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { LongformContent, Artifact } from "@/lib/chat";
-import { useRef, useState, useEffect } from "react";
 import { WorkflowUrlLink } from "../components/WorkflowUrlLink";
 import { getArtifactIcon } from "@/lib/icons";
 
-export function LongformArtifactPanel({
-  artifacts,
-  workflowUrl,
-}: {
+interface LongformArtifactPanelProps {
   artifacts: Artifact[];
   workflowUrl?: string;
-}) {
+}
+
+export const LongformArtifactPanel = memo(function LongformArtifactPanel({
+  artifacts,
+  workflowUrl,
+}: LongformArtifactPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showFade, setShowFade] = useState(true);
-  const [isHovered, setIsHovered] = useState(false);
+
+  // Memoize artifact IDs for stable dependency
+  const artifactIds = useMemo(() => artifacts.map(a => a.id).join(','), [artifacts]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -24,16 +28,12 @@ export function LongformArtifactPanel({
     el.addEventListener("scroll", handle);
     handle();
     return () => el.removeEventListener("scroll", handle);
-  }, [artifacts]);
+  }, [artifactIds]);
 
   if (artifacts.length === 0) return null;
 
   return (
-    <div 
-      className="h-full flex flex-col relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="h-full flex flex-col relative group">
       <div
         ref={scrollRef}
         className="bg-background/50 border rounded-lg p-4 max-h-80 overflow-auto whitespace-normal relative"
@@ -56,14 +56,14 @@ export function LongformArtifactPanel({
       {showFade && (
         <div className="pointer-events-none absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-b from-transparent to-background" />
       )}
-      
-      {/* Workflow URL Link */}
+
+      {/* Workflow URL Link - uses CSS group-hover for stable hover state */}
       {workflowUrl && (
-        <WorkflowUrlLink 
+        <WorkflowUrlLink
           workflowUrl={workflowUrl}
-          className={isHovered ? "opacity-100" : "opacity-0"}
+          className="opacity-0 group-hover:opacity-100"
         />
       )}
     </div>
   );
-}
+});

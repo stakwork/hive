@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { memo } from "react";
 import { motion } from "framer-motion";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel } from "../artifacts";
@@ -14,9 +14,7 @@ interface ChatMessageProps {
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
 }
 
-export function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
+export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
   return (
     <motion.div
       key={message.id}
@@ -24,27 +22,23 @@ export function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMes
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
           <div
-            className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
+            className={`px-4 py-1 rounded-md max-w-full shadow-sm relative group ${
               message.role === "USER"
                 ? "bg-primary text-primary-foreground rounded-br-md"
                 : "bg-background text-foreground rounded-bl-md border"
             }`}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
           >
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
               {message.message}
             </MarkdownRenderer>
 
-            {/* Workflow URL Link for message bubble */}
+            {/* Workflow URL Link for message bubble - uses CSS group-hover for stable hover state */}
             {message.workflowUrl && (
-              <WorkflowUrlLink workflowUrl={message.workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />
+              <WorkflowUrlLink workflowUrl={message.workflowUrl} className="opacity-0 group-hover:opacity-100" />
             )}
           </div>
         )}
@@ -103,4 +97,13 @@ export function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMes
         ))}
     </motion.div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if message or replyMessage content actually changed
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.message === nextProps.message.message &&
+    prevProps.message.workflowUrl === nextProps.message.workflowUrl &&
+    prevProps.replyMessage?.id === nextProps.replyMessage?.id &&
+    prevProps.replyMessage?.message === nextProps.replyMessage?.message
+  );
+});

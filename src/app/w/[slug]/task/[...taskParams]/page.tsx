@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
@@ -705,22 +705,26 @@ export default function TaskChatPage() {
     }
   };
 
-  // Separate artifacts by type
-  const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
+  // Separate artifacts by type - memoized to prevent unnecessary re-renders
+  const { artifactsWithoutOldDiffs, hasNonFormArtifacts, browserArtifact } = useMemo(() => {
+    const allArtifacts = messages.flatMap((msg) => msg.artifacts || []);
 
-  // Only keep the LATEST diff artifact, filter out earlier diffs
-  const latestDiffArtifact = allArtifacts.reverse().find((a) => a.type === "DIFF");
-  const artifactsWithoutOldDiffs = allArtifacts
-    .reverse() // Reverse back to original order
-    .filter((a) => {
+    // Only keep the LATEST diff artifact, filter out earlier diffs
+    const reversed = [...allArtifacts].reverse();
+    const latestDiffArtifact = reversed.find((a) => a.type === "DIFF");
+    const filtered = [...reversed].reverse().filter((a) => {
       if (a.type === "DIFF") {
         return a === latestDiffArtifact; // Only keep the latest diff
       }
       return true; // Keep all other artifact types
     });
 
-  const hasNonFormArtifacts = artifactsWithoutOldDiffs.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
-  const browserArtifact = artifactsWithoutOldDiffs.find((a) => a.type === "BROWSER");
+    return {
+      artifactsWithoutOldDiffs: filtered,
+      hasNonFormArtifacts: filtered.some((a) => a.type !== "FORM" && a.type !== "LONGFORM"),
+      browserArtifact: filtered.find((a) => a.type === "BROWSER"),
+    };
+  }, [messages]);
 
   const inputDisabled = isLoading || !isConnected;
   if (hasActiveChatForm) {
