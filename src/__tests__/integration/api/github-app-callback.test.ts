@@ -21,13 +21,21 @@ import { EncryptionService } from "@/lib/encryption";
 // Mock next-auth for session management
 vi.mock("next-auth/next");
 
-// Mock env module with GitHub App config
-vi.mock("@/config/env", () => ({
-  config: {
-    GITHUB_APP_CLIENT_ID: "test_client_id_123",
-    GITHUB_APP_CLIENT_SECRET: "test_client_secret_456",
-  },
-}));
+// Mock env module - use importOriginal to preserve serviceConfigs and optionalEnvVars
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    config: {
+      ...actual.config,
+      GITHUB_APP_CLIENT_ID: "test_client_id_123",
+      GITHUB_APP_CLIENT_SECRET: "test_client_secret_456",
+    },
+  };
+});
+
+// Import config after the mock is set up (for GITHUB_OAUTH_TOKEN_URL)
+import { config } from "@/config/env";
 
 // Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
@@ -135,9 +143,9 @@ describe("GitHub App Callback API Integration Tests", () => {
         expect(location).toContain("github_setup_action=install");
         expect(location).toContain("repository_access=accessible");
 
-        // Verify token exchange API call
+        // Verify token exchange API call (uses GITHUB_OAUTH_TOKEN_URL from config)
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://github.com/login/oauth/access_token",
+          config.GITHUB_OAUTH_TOKEN_URL,
           expect.objectContaining({
             method: "POST",
             body: expect.stringContaining("test_oauth_code"),

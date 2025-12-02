@@ -20,6 +20,9 @@ import {
 // Mock next-auth for session management
 vi.mock("next-auth/next");
 
+// Import serviceConfigs from the correct module
+import { serviceConfigs } from "@/config/services";
+
 // Mock getUserAppTokens from githubApp
 vi.mock("@/lib/githubApp", () => ({
   getUserAppTokens: vi.fn(),
@@ -81,7 +84,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         // Verify GitHub API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/test-owner/test-repo",
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -222,7 +225,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         expect(data.success).toBe(true);
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/octocat/Hello-World",
+          `${serviceConfigs.github.baseURL}/repos/octocat/Hello-World`,
           expect.any(Object)
         );
       });
@@ -270,7 +273,7 @@ describe("GitHub Repository Permissions API Integration Tests", () => {
 
         expect(data.success).toBe(true);
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/repos/nodejs/node",
+          `${serviceConfigs.github.baseURL}/repos/nodejs/node`,
           expect.any(Object)
         );
       });

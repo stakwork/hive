@@ -17,14 +17,19 @@ import {
 // Mock next-auth for session management
 vi.mock("next-auth/next");
 
-// Mock env module with GITHUB_APP config
-vi.mock("@/config/env", () => ({
-  config: {
-    GITHUB_APP_SLUG: "test-hive-app",
-    GITHUB_APP_CLIENT_ID: "test_client_id_123",
-    GITHUB_APP_CLIENT_SECRET: "test_client_secret",
-  },
-}));
+// Mock env module - use importOriginal to preserve serviceConfigs and optionalEnvVars
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    config: {
+      ...actual.config,
+      GITHUB_APP_SLUG: "test-hive-app",
+      GITHUB_APP_CLIENT_ID: "test_client_id_123",
+      GITHUB_APP_CLIENT_SECRET: "test_client_secret",
+    },
+  };
+});
 
 // Mock getUserAppTokens from githubApp
 vi.mock("@/lib/githubApp", () => ({
@@ -33,6 +38,9 @@ vi.mock("@/lib/githubApp", () => ({
 
 // Import the mocked function
 import { getUserAppTokens } from "@/lib/githubApp";
+
+// Import serviceConfigs from the correct module
+import { serviceConfigs } from "@/config/services";
 
 // Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
@@ -476,7 +484,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
         // Verify GitHub API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/users/test-owner",
+          `${serviceConfigs.github.baseURL}/users/test-owner`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: "Bearer test_token_123",
@@ -542,7 +550,7 @@ describe("GitHub App Install API Integration Tests", () => {
 
         // Verify org-specific API endpoint was called
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.github.com/orgs/test-org/installation",
+          `${serviceConfigs.github.baseURL}/orgs/test-org/installation`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: "Bearer test_org_token",

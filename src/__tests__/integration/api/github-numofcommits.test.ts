@@ -24,6 +24,9 @@ vi.mock("next-auth/next");
 // Mock axios
 vi.mock("axios");
 
+// Import serviceConfigs from the correct module
+import { serviceConfigs } from "@/config/services";
+
 describe("GitHub Repository NumOfCommits API Integration Tests", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -74,7 +77,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
         // Verify axios was called correctly
         expect(axios.get).toHaveBeenNthCalledWith(
           1,
-          "https://api.github.com/repos/test-owner/test-repo",
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
               Authorization: `token ${accessToken}`,
@@ -85,7 +88,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
 
         expect(axios.get).toHaveBeenNthCalledWith(
           2,
-          "https://api.github.com/repos/test-owner/test-repo/commits",
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo/commits`,
           {
             headers: {
               Authorization: `token ${accessToken}`,
@@ -100,7 +103,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
 
         expect(axios.get).toHaveBeenNthCalledWith(
           3,
-          "https://api.github.com/repos/test-owner/test-repo/commits",
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo/commits`,
           {
             headers: {
               Authorization: `token ${accessToken}`,
@@ -261,7 +264,7 @@ describe("GitHub Repository NumOfCommits API Integration Tests", () => {
         await expectSuccess(response);
 
         expect(axios.get).toHaveBeenCalledWith(
-          "https://api.github.com/repos/test-owner/test-repo",
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           expect.any(Object)
         );
       });
