@@ -494,40 +494,56 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
   const chunkCenter = useMemo(() => {
     if (chunkNodes.length === 0) return null
 
+    const hasValidPosition = (node: NodeExtended) =>
+      Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z)
+
     // If chunk.sourceNodeRefId is provided, use that node's position as center
     if (chunk.sourceNodeRefId) {
       const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId)
-      if (sourceNode) {
+      if (sourceNode && hasValidPosition(sourceNode)) {
         return [
-          sourceNode.x || 0,
-          sourceNode.y || 0,
-          sourceNode.z || 0,
+          sourceNode.x,
+          sourceNode.y,
+          sourceNode.z,
         ] as [number, number, number]
       }
     }
 
-    // Otherwise, calculate center as average of all node positions
-    const sum = chunkNodes.reduce(
+    const positionedNodes = chunkNodes.filter(hasValidPosition)
+
+    if (positionedNodes.length === 0) {
+      return null
+    }
+
+    // Otherwise, calculate center as average of valid node positions
+    const sum = positionedNodes.reduce(
       (acc, n) => {
-        acc.x += n.x || 0
-        acc.y += n.y || 0
-        acc.z += n.z || 0
+        acc.x += n.x
+        acc.y += n.y
+        acc.z += n.z
         return acc
       },
       { x: 0, y: 0, z: 0 }
     )
 
     return [
-      sum.x / chunkNodes.length,
-      sum.y / chunkNodes.length,
-      sum.z / chunkNodes.length,
+      sum.x / positionedNodes.length,
+      sum.y / positionedNodes.length,
+      sum.z / positionedNodes.length,
     ] as [number, number, number]
   }, [chunkNodes, chunk.sourceNodeRefId])
 
   // Helper function to get animated line points
   const getAnimatedLinePoints = (sourceNode: NodeExtended, targetNode: NodeExtended, progress: number): [number, number, number][] => {
-    const startPoint: [number, number, number] = [sourceNode.x || 0, sourceNode.y || 0, sourceNode.z || 0]
-    const endPoint: [number, number, number] = [targetNode.x || 0, targetNode.y || 0, targetNode.z || 0]
+    const hasValidPosition = (node: NodeExtended) =>
+      Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z)
+
+    if (!hasValidPosition(sourceNode) || !hasValidPosition(targetNode)) {
+      return []
+    }
+
+    const startPoint: [number, number, number] = [sourceNode.x, sourceNode.y, sourceNode.z]
+    const endPoint: [number, number, number] = [targetNode.x, targetNode.y, targetNode.z]
 
     if (progress <= 0) {
       return [startPoint, startPoint] // Line hasn't started growing
@@ -641,22 +657,24 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
     <>
       {/* HIGHLIGHT SPHERES */}
       <group ref={groupRef} name={`chunk-${chunk.chunkId}`}>
-        {chunkNodes.map((node, nodeIndex) => (
-          <group
-            key={`chunk-${chunk.chunkId}-node-${node.ref_id}-${nodeIndex}`}
-            position={[node.x || 0, node.y || 0, node.z || 0]}
-          >
-            <mesh>
-              <sphereGeometry args={[25, 32, 16]} />
-              <meshBasicMaterial
-                color={NEURON_PULSE.color}
-                transparent
-                opacity={0.6}
-                depthWrite={false}
-              />
-            </mesh>
-          </group>
-        ))}
+        {chunkNodes
+          .filter((node) => Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z))
+          .map((node, nodeIndex) => (
+            <group
+              key={`chunk-${chunk.chunkId}-node-${node.ref_id}-${nodeIndex}`}
+              position={[node.x, node.y, node.z]}
+            >
+              <mesh>
+                <sphereGeometry args={[25, 32, 16]} />
+                <meshBasicMaterial
+                  color={NEURON_PULSE.color}
+                  transparent
+                  opacity={0.6}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          ))}
       </group>
 
       {/* PARTICLES */}
@@ -687,10 +705,13 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
       {chunk.sourceNodeRefId ? (
         // Animated edges growing from source node
         (() => {
-          const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId)
+          const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId && Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z))
           if (!sourceNode) return null
 
-          const otherNodes = chunkNodes.filter(node => node.ref_id !== chunk.sourceNodeRefId)
+          const otherNodes = chunkNodes.filter(node =>
+            node.ref_id !== chunk.sourceNodeRefId &&
+            Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z)
+          )
           const connectedNodes = getConnectedNodes(chunk.ref_ids)
           const allEdges: React.JSX.Element[] = []
 
@@ -701,17 +722,20 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
             const progress = animation?.progress || 0
             // const opacity = 0.7 * Math.min(1, progress + 0.2)
 
-            allEdges.push(
-              <Line
-                key={`chunk-edge-${chunk.chunkId}-${edgeKey}-${nodeIndex}`}
-                points={getAnimatedLinePoints(sourceNode, targetNode, progress)}
-                color={COLORS.pulse} // Bright green for chunk edges
-                opacity={0.2}
-                transparent
-                lineWidth={2.0}
-                depthWrite={false}
-              />
-            )
+            const points = getAnimatedLinePoints(sourceNode, targetNode, progress)
+            if (points.length) {
+              allEdges.push(
+                <Line
+                  key={`chunk-edge-${chunk.chunkId}-${edgeKey}-${nodeIndex}`}
+                  points={points}
+                  color={COLORS.pulse} // Bright green for chunk edges
+                  opacity={0.2}
+                  transparent
+                  lineWidth={2.0}
+                  depthWrite={false}
+                />
+              )
+            }
           })
 
           // Connected edges (dimmer blue)
@@ -721,17 +745,20 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
             const progress = animation?.progress || 0
             const opacity = 0.4 * Math.min(1, progress + 0.2)
 
-            allEdges.push(
-              <Line
-                key={`connected-edge-${chunk.chunkId}-${edgeKey}-${nodeIndex}`}
-                points={getAnimatedLinePoints(sourceNode, targetNode, progress)}
-                color="#4A90E2" // Blue for connected edges
-                opacity={opacity}
-                transparent
-                lineWidth={1.2}
-                depthWrite={false}
-              />
-            )
+            const points = getAnimatedLinePoints(sourceNode, targetNode, progress)
+            if (points.length) {
+              allEdges.push(
+                <Line
+                  key={`connected-edge-${chunk.chunkId}-${edgeKey}-${nodeIndex}`}
+                  points={points}
+                  color="#4A90E2" // Blue for connected edges
+                  opacity={opacity}
+                  transparent
+                  lineWidth={1.2}
+                  depthWrite={false}
+                />
+              )
+            }
           })
 
           return allEdges
@@ -740,18 +767,20 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
         // Fallback to center-based lines if no source node
         chunkCenter &&
         chunkNodes.map((node, nodeIndex) => (
-          <Line
-            key={`chunk-line-${chunk.chunkId}-${node.ref_id}-${nodeIndex}`}
-            points={[
-              [node.x || 0, node.y || 0, node.z || 0],
-              chunkCenter,
-            ]}
-            color={COLORS.pulse}
-            opacity={0.55}
-            transparent
-            lineWidth={1.2}
-            depthWrite={false}
-          />
+          Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z) ? (
+            <Line
+              key={`chunk-line-${chunk.chunkId}-${node.ref_id}-${nodeIndex}`}
+              points={[
+                [node.x, node.y, node.z],
+                chunkCenter,
+              ]}
+              color={COLORS.pulse}
+              opacity={0.55}
+              transparent
+              lineWidth={1.2}
+              depthWrite={false}
+            />
+          ) : null
         ))
       )}
     </>
