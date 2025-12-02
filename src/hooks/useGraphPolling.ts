@@ -1,4 +1,6 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { getStoreBundle } from "@/stores/createStoreFactory";
+import { useStoreId } from "@/stores/StoreProvider";
 import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -21,11 +23,11 @@ export function useGraphPolling({
   interval = 3000
 }: UseGraphPollingOptions = {}) {
   const { id: workspaceId } = useWorkspace();
+  const storeId = useStoreId();
   const [isPolling, setIsPolling] = useState(false);
   const [isPollingActive, setIsPollingActive] = useState(false);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
-  const dataInitial = useDataStore((s) => s.dataInitial);
 
 
 
@@ -52,12 +54,14 @@ export function useGraphPolling({
     abortControllerRef.current = new AbortController();
 
     try {
+      const { dataInitial, repositoryNodes } = getStoreBundle(storeId).data.getState();
+
       // Use graph/search as base endpoint for polling
       let pollingEndpoint = "/graph/search/latest?skip_cache=true&limit=1000&top_node_count=500";
 
 
       // Add start_date_added_to_graph parameter if we have nodes (use latest node's date)
-      const latestNode = dataInitial?.nodes?.at(-1); // Nodes are sorted by date_added_to_graph
+      const latestNode = dataInitial?.nodes?.at(-1) || repositoryNodes?.at(-1); // Nodes are sorted by date_added_to_graph
       if (latestNode?.date_added_to_graph) {
         const dateParam = Math.floor(latestNode.date_added_to_graph); // Remove decimal part
         pollingEndpoint += `&start_date_added_to_graph=${dateParam}`;
@@ -103,7 +107,7 @@ export function useGraphPolling({
       setIsPollingActive(false);
       abortControllerRef.current = null;
     }
-  }, [workspaceId, addNewNode, enabled, dataInitial]);
+  }, [workspaceId, addNewNode, enabled, storeId]);
 
   // Start polling
   const startPolling = useCallback(() => {

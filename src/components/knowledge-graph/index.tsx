@@ -254,7 +254,7 @@ const GraphComponentInner = ({
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
 
       <div className="border rounded overflow-hidden bg-card flex-1">
-        {nodesLoading ? (
+        {nodesLoading && !repositoryNodes.length ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">Loading...</div>
           </div>
