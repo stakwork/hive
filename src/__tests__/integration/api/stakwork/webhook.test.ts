@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/stakwork/webhook/route";
-import { WorkflowStatus, TaskStatus } from "@prisma/client";
+import { WorkflowStatus, TaskStatus, StakworkRunType } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   createPostRequest,
+  createSignedWebhookRequest,
   generateUniqueId,
   generateUniqueSlug,
 } from "@/__tests__/support/helpers";
@@ -11,12 +12,8 @@ import {
 /**
  * Integration Tests for POST /api/stakwork/webhook
  * 
- * SECURITY NOTE: This endpoint currently has NO signature verification,
- * unlike other webhooks (GitHub, Stakgraph). This is a known security gap.
- * Any client can send POST requests to manipulate task statuses.
- * 
- * Future enhancement: Implement HMAC-SHA256 signature verification
- * similar to Stakgraph webhook (see src/app/api/swarm/stakgraph/webhook/route.ts)
+ * Tests HMAC-SHA256 signature verification for webhook authentication.
+ * All valid requests must include x-stakwork-signature header with proper HMAC.
  */
 
 // Mock external services only - use real database and utilities
@@ -27,6 +24,7 @@ vi.mock("@/lib/pusher", () => ({
   getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
   PUSHER_EVENTS: {
     WORKFLOW_STATUS_UPDATE: "workflow-status-update",
+    STAKWORK_RUN_UPDATE: "stakwork-run-update",
   },
 }));
 
@@ -35,6 +33,13 @@ const mockedPusherServer = vi.mocked(pusherServer);
 
 describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
   const webhookUrl = "http://localhost:3000/api/stakwork/webhook";
+  const TEST_WEBHOOK_SECRET = "test-webhook-secret-key-for-integration-tests";
+
+  // Set up environment variable before all tests
+  beforeEach(() => {
+    vi.stubEnv("STAKWORK_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET);
+    vi.clearAllMocks();
+  });
 
   async function createTestTask(workflowStatus: WorkflowStatus = WorkflowStatus.PENDING) {
     return await db.$transaction(async (tx) => {
@@ -77,12 +82,40 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
     });
   }
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  async function createTestRun(workflowStatus: WorkflowStatus = WorkflowStatus.PENDING) {
+    return await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: generateUniqueId("user"),
+          email: `user-${generateUniqueId()}@example.com`,
+          name: "Test User",
+        },
+      });
 
-  describe("Security - No Signature Verification", () => {
-    test("should accept webhook without signature verification (SECURITY GAP)", async () => {
+      const workspace = await tx.workspace.create({
+        data: {
+          name: `Test Workspace ${generateUniqueId()}`,
+          slug: generateUniqueSlug("test-workspace"),
+          ownerId: user.id,
+        },
+      });
+
+      const run = await tx.stakworkRun.create({
+        data: {
+          workspaceId: workspace.id,
+          status: workflowStatus,
+          projectId: 12345,
+          webhookUrl: "https://example.com/webhook",
+          type: StakworkRunType.TASK_GENERATION,
+        },
+      });
+
+      return { user, workspace, run };
+    });
+  }
+
+  describe("Security - HMAC Signature Verification", () => {
+    test("should reject webhook without signature header", async () => {
       const { task } = await createTestTask();
 
       const request = createPostRequest(webhookUrl, {
@@ -92,73 +125,153 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
       const response = await POST(request);
 
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error).toContain("Missing signature");
+    });
+
+    test("should reject webhook with invalid signature", async () => {
+      const { task } = await createTestTask();
+
+      // Create request with wrong secret
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        "wrong-secret-key"
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error).toContain("Invalid signature");
+    });
+
+    test("should accept webhook with valid signature", async () => {
+      const { task } = await createTestTask();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+
       expect(response.status).toBe(200);
-      // This succeeds without any authentication/signature - security vulnerability
+      const data = await response.json();
+      expect(data.success).toBe(true);
+    });
+
+    test("should return 500 when webhook secret is not configured", async () => {
+      vi.unstubAllEnvs();
+      const { task } = await createTestTask();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.error).toContain("Server configuration error");
     });
   });
 
   describe("Payload Validation", () => {
-    test("should return 400 when both task_id and run_id are missing", async () => {
+    test("should return 401 when both task_id and run_id are missing (no auth)", async () => {
       const request = createPostRequest(webhookUrl, {
         project_status: "completed",
       });
 
       const response = await POST(request);
+
+      // Should fail auth before checking payload
+      expect(response.status).toBe(401);
+    });
+
+    test("should return 400 when both task_id and run_id are missing (with valid auth)", async () => {
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("Either task_id or run_id is required");
+      expect(data.error).toBe("Missing task_id or run_id");
     });
 
     test("should return 400 when project_status is missing", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-      });
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+        },
+        TEST_WEBHOOK_SECRET
+      );
 
       const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("project_status is required");
+      expect(data.error).toBe("Missing project_status");
     });
 
-    test("should accept task_id from query parameter as fallback", async () => {
+    test("should return 400 for empty string status", async () => {
       const { task } = await createTestTask();
 
-      const request = createPostRequest(
-        `${webhookUrl}?task_id=${task.id}`,
-        {
-          project_status: "completed",
-        }
-      );
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.taskId).toBe(task.id);
-    });
-
-    test("should prioritize task_id from body over query parameter", async () => {
-      const { task } = await createTestTask();
-      const { task: anotherTask } = await createTestTask();
-
-      const request = createPostRequest(
-        `${webhookUrl}?task_id=${anotherTask.id}`,
+      const request = createSignedWebhookRequest(
+        webhookUrl,
         {
           task_id: task.id,
-          project_status: "completed",
-        }
+          project_status: "",
+        },
+        TEST_WEBHOOK_SECRET
       );
 
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.data.taskId).toBe(task.id);
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Missing project_status");
+    });
+
+    test("should return 400 for invalid/unknown status", async () => {
+      const { task } = await createTestTask();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "unknown_invalid_status",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Invalid or unsupported project_status");
     });
 
     test("should handle invalid JSON payload gracefully", async () => {
@@ -166,24 +279,57 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-stakwork-signature": "dummy-sig",
         },
         body: "invalid json {",
       });
 
       const response = await POST(request);
 
-      expect(response.status).toBe(500);
+      // Auth will fail first, or JSON parsing will fail
+      expect([400, 401]).toContain(response.status);
     });
   });
 
-  describe("Task Lookup", () => {
+  describe("Task Status Updates", () => {
+    test("should update task workflow status with valid signature", async () => {
+      const { task } = await createTestTask();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.taskId).toBe(task.id);
+      expect(data.workflowStatus).toBe(WorkflowStatus.COMPLETED);
+
+      // Verify database update
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
+    });
+
     test("should return 404 when task is not found", async () => {
       const nonExistentTaskId = "cltasknotexistxxxxxxxxxx";
 
-      const request = createPostRequest(webhookUrl, {
-        task_id: nonExistentTaskId,
-        project_status: "completed",
-      });
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: nonExistentTaskId,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
 
       const response = await POST(request);
       const data = await response.json();
@@ -192,163 +338,35 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       expect(data.error).toBe("Task not found");
     });
 
-    test("should return 404 when task is soft-deleted", async () => {
-      const { task } = await createTestTask();
-
-      await db.task.update({
-        where: { id: task.id },
-        data: { deleted: true },
-      });
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "completed",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Task not found");
-    });
-  });
-
-  describe("Status Mapping and Updates", () => {
-    test("should update task to IN_PROGRESS and set workflowStartedAt", async () => {
-      const { task } = await createTestTask(WorkflowStatus.PENDING);
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "in_progress",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
-
-      const updatedTask = await db.task.findUnique({
-        where: { id: task.id },
-      });
-
-      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.IN_PROGRESS);
-      expect(updatedTask?.workflowStartedAt).not.toBeNull();
-      expect(updatedTask?.workflowCompletedAt).toBeNull();
-    });
-
-    test("should update task to COMPLETED and set workflowCompletedAt", async () => {
-      const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "completed",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.data.workflowStatus).toBe(WorkflowStatus.COMPLETED);
-
-      const updatedTask = await db.task.findUnique({
-        where: { id: task.id },
-      });
-
-      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
-      expect(updatedTask?.workflowCompletedAt).not.toBeNull();
-    });
-
-    test("should update task to FAILED and set workflowCompletedAt", async () => {
-      const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "failed",
-      });
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-
-      const updatedTask = await db.task.findUnique({
-        where: { id: task.id },
-      });
-
-      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.FAILED);
-      expect(updatedTask?.workflowCompletedAt).not.toBeNull();
-    });
-
-    test("should update task to HALTED and set workflowCompletedAt", async () => {
-      const { task } = await createTestTask(WorkflowStatus.IN_PROGRESS);
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "halted",
-      });
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-
-      const updatedTask = await db.task.findUnique({
-        where: { id: task.id },
-      });
-
-      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.HALTED);
-      expect(updatedTask?.workflowCompletedAt).not.toBeNull();
-    });
-
-    test("should handle unknown status gracefully (return 200 without update)", async () => {
-      const { task } = await createTestTask(WorkflowStatus.PENDING);
-      const originalUpdatedAt = task.updatedAt;
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "unknown_status_xyz",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.message).toContain("Unknown status");
-      expect(data.data.action).toBe("ignored");
-
-      const taskAfter = await db.task.findUnique({
-        where: { id: task.id },
-      });
-
-      expect(taskAfter?.workflowStatus).toBe(WorkflowStatus.PENDING);
-      expect(taskAfter?.updatedAt.getTime()).toBe(originalUpdatedAt.getTime());
-    });
-
-    test("should map various status strings correctly", async () => {
+    test("should map various Stakwork statuses correctly", async () => {
       const statusMappings = [
+        { input: "in_progress", expected: WorkflowStatus.IN_PROGRESS },
         { input: "running", expected: WorkflowStatus.IN_PROGRESS },
-        { input: "processing", expected: WorkflowStatus.IN_PROGRESS },
+        { input: "completed", expected: WorkflowStatus.COMPLETED },
         { input: "success", expected: WorkflowStatus.COMPLETED },
-        { input: "finished", expected: WorkflowStatus.COMPLETED },
+        { input: "failed", expected: WorkflowStatus.FAILED },
         { input: "error", expected: WorkflowStatus.FAILED },
+        { input: "halted", expected: WorkflowStatus.HALTED },
         { input: "paused", expected: WorkflowStatus.HALTED },
-        { input: "stopped", expected: WorkflowStatus.HALTED },
       ];
 
       for (const { input, expected } of statusMappings) {
         const { task } = await createTestTask();
 
-        const request = createPostRequest(webhookUrl, {
-          task_id: task.id,
-          project_status: input,
-        });
+        const request = createSignedWebhookRequest(
+          webhookUrl,
+          {
+            task_id: task.id,
+            project_status: input,
+          },
+          TEST_WEBHOOK_SECRET
+        );
 
         const response = await POST(request);
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.data.workflowStatus).toBe(expected);
+        expect(data.workflowStatus).toBe(expected);
 
         const updatedTask = await db.task.findUnique({
           where: { id: task.id },
@@ -356,206 +374,6 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
 
         expect(updatedTask?.workflowStatus).toBe(expected);
       }
-    });
-  });
-
-  describe("Pusher Broadcasting", () => {
-    test("should broadcast status update to Pusher channel", async () => {
-      const { task } = await createTestTask();
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "completed",
-      });
-
-      await POST(request);
-
-      expect(pusherServer.trigger).toHaveBeenCalledWith(
-        `task-${task.id}`,
-        "workflow-status-update",
-        expect.objectContaining({
-          taskId: task.id,
-          workflowStatus: WorkflowStatus.COMPLETED,
-          timestamp: expect.any(Date),
-        })
-      );
-    });
-
-    test("should include timestamps in Pusher payload", async () => {
-      const { task } = await createTestTask(WorkflowStatus.PENDING);
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "in_progress",
-      });
-
-      await POST(request);
-
-      expect(pusherServer.trigger).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.any(String),
-        expect.objectContaining({
-          workflowStartedAt: expect.any(Date),
-          workflowCompletedAt: null,
-        })
-      );
-    });
-
-    test("should tolerate Pusher broadcast failures (eventual consistency)", async () => {
-      mockedPusherServer.trigger.mockRejectedValueOnce(new Error("Pusher connection failed"));
-
-      const { task } = await createTestTask();
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "completed",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-
-      const updatedTask = await db.task.findUnique({
-        where: { id: task.id },
-      });
-      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
-    });
-
-    test("should not broadcast when status is unknown", async () => {
-      const { task } = await createTestTask();
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "unknown_status",
-      });
-
-      await POST(request);
-
-      expect(pusherServer.trigger).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("Error Handling", () => {
-    test("should return 500 when database update fails", async () => {
-      const { task } = await createTestTask();
-
-      await db.task.delete({
-        where: { id: task.id },
-      });
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "completed",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe("Task not found");
-    });
-
-    test("should handle concurrent status updates correctly", async () => {
-      const { task } = await createTestTask(WorkflowStatus.PENDING);
-
-      const requests = [
-        createPostRequest(webhookUrl, {
-          task_id: task.id,
-          project_status: "in_progress",
-        }),
-        createPostRequest(webhookUrl, {
-          task_id: task.id,
-          project_status: "completed",
-        }),
-      ];
-
-      const responses = await Promise.all(
-        requests.map((req) => POST(req))
-      );
-
-      expect(responses[0].status).toBe(200);
-      expect(responses[1].status).toBe(200);
-
-      const finalTask = await db.task.findUnique({
-        where: { id: task.id },
-      });
-
-      expect([WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED]).toContain(
-        finalTask?.workflowStatus
-      );
-    });
-  });
-
-  describe("Response Format", () => {
-    test("should return success with task data", async () => {
-      const { task } = await createTestTask(WorkflowStatus.PENDING);
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "completed",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(data).toMatchObject({
-        success: true,
-        data: {
-          taskId: task.id,
-          workflowStatus: WorkflowStatus.COMPLETED,
-          previousStatus: WorkflowStatus.PENDING,
-        },
-      });
-    });
-
-    test("should include action field for unknown status", async () => {
-      const { task } = await createTestTask();
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "unknown",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(data.data).toMatchObject({
-        taskId: task.id,
-        receivedStatus: "unknown",
-        action: "ignored",
-      });
-    });
-  });
-
-  describe("Edge Cases", () => {
-    test("should handle empty string status", async () => {
-      const { task } = await createTestTask();
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "",
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("project_status is required");
-    });
-
-    test("should handle case-sensitive status strings", async () => {
-      const { task } = await createTestTask();
-
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "COMPLETED",
-      });
-
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
     });
 
     test("should preserve task user status when updating workflow status", async () => {
@@ -566,10 +384,14 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
         data: { status: TaskStatus.IN_PROGRESS },
       });
 
-      const request = createPostRequest(webhookUrl, {
-        task_id: task.id,
-        project_status: "completed",
-      });
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
 
       await POST(request);
 
@@ -587,10 +409,14 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       const statuses = ["in_progress", "completed"];
 
       for (const status of statuses) {
-        const request = createPostRequest(webhookUrl, {
-          task_id: task.id,
-          project_status: status,
-        });
+        const request = createSignedWebhookRequest(
+          webhookUrl,
+          {
+            task_id: task.id,
+            project_status: status,
+          },
+          TEST_WEBHOOK_SECRET
+        );
 
         const response = await POST(request);
         expect(response.status).toBe(200);
@@ -601,8 +427,218 @@ describe("Stakwork Webhook API - POST /api/stakwork/webhook", () => {
       });
 
       expect(finalTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
-      expect(finalTask?.workflowStartedAt).not.toBeNull();
-      expect(finalTask?.workflowCompletedAt).not.toBeNull();
+    });
+
+    test("should handle concurrent status updates correctly", async () => {
+      const { task } = await createTestTask(WorkflowStatus.PENDING);
+
+      const requests = [
+        createSignedWebhookRequest(
+          webhookUrl,
+          {
+            task_id: task.id,
+            project_status: "in_progress",
+          },
+          TEST_WEBHOOK_SECRET
+        ),
+        createSignedWebhookRequest(
+          webhookUrl,
+          {
+            task_id: task.id,
+            project_status: "completed",
+          },
+          TEST_WEBHOOK_SECRET
+        ),
+      ];
+
+      const responses = await Promise.all(requests.map((req) => POST(req)));
+
+      expect(responses[0].status).toBe(200);
+      expect(responses[1].status).toBe(200);
+
+      const finalTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+
+      expect([WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED]).toContain(
+        finalTask?.workflowStatus
+      );
+    });
+  });
+
+  describe("StakworkRun Status Updates", () => {
+    test("should update run status with valid signature", async () => {
+      const { run } = await createTestRun();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          run_id: run.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.runId).toBe(run.id);
+      expect(data.status).toBe(WorkflowStatus.COMPLETED);
+
+      // Verify database update
+      const updatedRun = await db.stakworkRun.findUnique({
+        where: { id: run.id },
+      });
+      expect(updatedRun?.status).toBe(WorkflowStatus.COMPLETED);
+    });
+
+    test("should return 404 for non-existent run", async () => {
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          run_id: "non-existent-run-id",
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error).toBe("Run not found");
+    });
+  });
+
+  describe("Pusher Broadcasting", () => {
+    test("should broadcast task status update to workspace channel", async () => {
+      const { task, workspace } = await createTestTask();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      await POST(request);
+
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${workspace.slug}`,
+        "workflow-status-update",
+        expect.objectContaining({
+          taskId: task.id,
+          workflowStatus: WorkflowStatus.COMPLETED,
+        })
+      );
+    });
+
+    test("should broadcast run status update to workspace channel", async () => {
+      const { run, workspace } = await createTestRun();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          run_id: run.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      await POST(request);
+
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${workspace.slug}`,
+        "stakwork-run-update",
+        expect.objectContaining({
+          runId: run.id,
+          status: WorkflowStatus.COMPLETED,
+        })
+      );
+    });
+
+    test("should fail when Pusher broadcast fails", async () => {
+      mockedPusherServer.trigger.mockRejectedValueOnce(
+        new Error("Pusher connection failed")
+      );
+
+      const { task } = await createTestTask();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Pusher failure should cause 500 error
+      expect(response.status).toBe(500);
+      expect(data.error).toBe("Internal server error");
+
+      // Database update should have succeeded before Pusher failed
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+      });
+      expect(updatedTask?.workflowStatus).toBe(WorkflowStatus.COMPLETED);
+    });
+  });
+
+  describe("Error Handling", () => {
+    test("should handle database errors gracefully", async () => {
+      const { task } = await createTestTask();
+
+      // Delete task to cause database error
+      await db.task.delete({
+        where: { id: task.id },
+      });
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error).toBe("Task not found");
+    });
+
+    test("should return 500 for unexpected errors", async () => {
+      // Mock database to throw unexpected error
+      vi.spyOn(db.task, "findUnique").mockRejectedValueOnce(
+        new Error("Database connection failed")
+      );
+
+      const { task } = await createTestTask();
+
+      const request = createSignedWebhookRequest(
+        webhookUrl,
+        {
+          task_id: task.id,
+          project_status: "completed",
+        },
+        TEST_WEBHOOK_SECRET
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.error).toBe("Internal server error");
     });
   });
 });

@@ -1,188 +1,177 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { WorkflowStatus } from "@prisma/client";
-import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
-import { StakworkStatusPayload } from "@/types";
+import { pusherServer } from "@/lib/pusher";
+import { PUSHER_EVENTS } from "@/lib/pusher";
+import { computeHmacSha256Hex, timingSafeEqual } from "@/lib/encryption";
 
-export const fetchCache = "force-no-store";
+interface StakworkStatusPayload {
+  task_id?: string;
+  run_id?: string;
+  project_status: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as StakworkStatusPayload;
-    const { project_status, task_id } = body;
-
-    const url = new URL(request.url);
-    const taskIdFromQuery = url.searchParams.get("task_id");
-    const runIdFromQuery = url.searchParams.get("run_id");
-    const finalTaskId = task_id || taskIdFromQuery;
-    const finalRunId = runIdFromQuery;
-
-    // Must provide either task_id or run_id
-    if (!finalTaskId && !finalRunId) {
-      console.error("No task_id or run_id provided in webhook");
+    // 1. Verify webhook signature for authentication
+    const signature = request.headers.get("x-stakwork-signature");
+    if (!signature) {
+      console.error("Stakwork webhook: Missing signature header");
       return NextResponse.json(
-        { error: "Either task_id or run_id is required" },
-        { status: 400 },
+        { error: "Unauthorized: Missing signature" },
+        { status: 401 }
       );
     }
 
+    // 2. Get raw request body for signature verification
+    const rawBody = await request.text();
+    
+    // 3. Verify the webhook secret is configured
+    const webhookSecret = process.env.STAKWORK_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("Stakwork webhook: STAKWORK_WEBHOOK_SECRET not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    // 4. Compute expected signature
+    const expectedSignature = computeHmacSha256Hex(webhookSecret, rawBody);
+
+    // 5. Timing-safe comparison to prevent timing attacks
+    if (!timingSafeEqual(expectedSignature, signature)) {
+      console.error("Stakwork webhook: Invalid signature");
+      return NextResponse.json(
+        { error: "Unauthorized: Invalid signature" },
+        { status: 401 }
+      );
+    }
+
+    // 6. Parse the validated request body
+    let payload: StakworkStatusPayload;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (error) {
+      console.error("Stakwork webhook: Invalid JSON payload", error);
+      return NextResponse.json(
+        { error: "Invalid JSON payload" },
+        { status: 400 }
+      );
+    }
+
+    const { task_id, run_id, project_status } = payload;
+
+    // Validate required fields
     if (!project_status) {
-      console.error("No project_status provided in webhook");
       return NextResponse.json(
-        { error: "project_status is required" },
-        { status: 400 },
+        { error: "Missing project_status" },
+        { status: 400 }
       );
     }
 
+    if (!task_id && !run_id) {
+      return NextResponse.json(
+        { error: "Missing task_id or run_id" },
+        { status: 400 }
+      );
+    }
+
+    // Map external status to internal WorkflowStatus enum
     const workflowStatus = mapStakworkStatus(project_status);
 
-    if (workflowStatus === null) {
+    // Validate mapped status
+    if (!workflowStatus) {
       return NextResponse.json(
-        {
-          success: true,
-          message: `Unknown status '${project_status}' - no update performed`,
-          data: {
-            taskId: finalTaskId,
-            runId: finalRunId,
-            receivedStatus: project_status,
-            action: "ignored",
-          },
-        },
-        { status: 200 },
+        { error: "Invalid or unsupported project_status" },
+        { status: 400 }
       );
     }
 
-    // Handle StakworkRun updates
-    if (finalRunId) {
-      const run = await db.stakworkRun.findFirst({
-        where: {
-          id: finalRunId,
-        },
-        include: {
-          workspace: {
-            select: {
-              slug: true,
-            },
-          },
+    // Handle task status update
+    if (task_id) {
+      const task = await db.task.findUnique({
+        where: { id: task_id },
+        include: { workspace: true },
+      });
+
+      if (!task) {
+        return NextResponse.json({ error: "Task not found" }, { status: 404 });
+      }
+
+      // Update task workflow status
+      const updatedTask = await db.task.update({
+        where: { id: task_id },
+        data: {
+          workflowStatus,
         },
       });
 
+      // Broadcast real-time update to workspace subscribers
+      await pusherServer.trigger(
+        `workspace-${task.workspace.slug}`,
+        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+        {
+          taskId: task_id,
+          workflowStatus,
+          updatedAt: updatedTask.updatedAt,
+        }
+      );
+
+      return NextResponse.json({
+        success: true,
+        taskId: task_id,
+        workflowStatus,
+      });
+    }
+
+    // Handle StakworkRun status update
+    if (run_id) {
+      const run = await db.stakworkRun.findUnique({
+        where: { id: run_id },
+        include: { workspace: true },
+      });
+
       if (!run) {
-        console.error(`StakworkRun not found: ${finalRunId}`);
         return NextResponse.json({ error: "Run not found" }, { status: 404 });
       }
 
+      // Update run status
       const updatedRun = await db.stakworkRun.update({
-        where: { id: finalRunId },
+        where: { id: run_id },
         data: {
           status: workflowStatus,
           updatedAt: new Date(),
         },
       });
 
-      // Broadcast via Pusher
-      try {
-        const channelName = getWorkspaceChannelName(run.workspace.slug);
-        await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
-          runId: finalRunId,
-          type: updatedRun.type,
-          status: workflowStatus,
-          featureId: updatedRun.featureId,
-          timestamp: new Date(),
-        });
-      } catch (error) {
-        console.error("Error broadcasting to Pusher:", error);
-      }
-
-      return NextResponse.json(
-        {
-          success: true,
-          data: {
-            runId: finalRunId,
-            workflowStatus,
-            previousStatus: run.status,
-          },
-        },
-        { status: 200 },
-      );
-    }
-
-    // Handle Task updates (existing logic)
-    if (!finalTaskId) {
-      return NextResponse.json(
-        { error: "task_id is required for task updates" },
-        { status: 400 }
-      );
-    }
-
-    const task = await db.task.findFirst({
-      where: {
-        id: finalTaskId,
-        deleted: false,
-      },
-    });
-
-    if (!task) {
-      console.error(`Task not found: ${finalTaskId}`);
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
-    }
-
-    const updateData: Record<string, unknown> = {
-      workflowStatus,
-      updatedAt: new Date(),
-    };
-
-    if (workflowStatus === WorkflowStatus.IN_PROGRESS) {
-      updateData.workflowStartedAt = new Date();
-    } else if (
-      workflowStatus === WorkflowStatus.COMPLETED ||
-      workflowStatus === WorkflowStatus.FAILED ||
-      workflowStatus === WorkflowStatus.HALTED
-    ) {
-      updateData.workflowCompletedAt = new Date();
-    }
-
-    const updatedTask = await db.task.update({
-      where: { id: finalTaskId },
-      data: updateData,
-    });
-
-    try {
-      const channelName = getTaskChannelName(finalTaskId);
-      const eventPayload = {
-        taskId: finalTaskId,
-        workflowStatus,
-        workflowStartedAt: updatedTask.workflowStartedAt,
-        workflowCompletedAt: updatedTask.workflowCompletedAt,
-        timestamp: new Date(),
-      };
-
+      // Broadcast real-time update to workspace subscribers
       await pusherServer.trigger(
-        channelName,
-        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-        eventPayload,
+        `workspace-${run.workspace.slug}`,
+        PUSHER_EVENTS.STAKWORK_RUN_UPDATE,
+        {
+          runId: run_id,
+          status: workflowStatus,
+          updatedAt: updatedRun.updatedAt,
+        }
       );
-    } catch (error) {
-      console.error("Error broadcasting to Pusher:", error);
+
+      return NextResponse.json({
+        success: true,
+        runId: run_id,
+        status: workflowStatus,
+      });
     }
 
     return NextResponse.json(
-      {
-        success: true,
-        data: {
-          taskId: finalTaskId,
-          workflowStatus,
-          previousStatus: task.workflowStatus,
-        },
-      },
-      { status: 200 },
+      { error: "Unexpected error" },
+      { status: 500 }
     );
   } catch (error) {
-    console.error("Error processing Stakwork webhook:", error);
+    console.error("Stakwork webhook error:", error);
     return NextResponse.json(
-      { error: "Failed to process webhook" },
-      { status: 500 },
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
 }

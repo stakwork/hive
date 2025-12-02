@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { MIDDLEWARE_HEADERS } from "@/config/middleware";
+import { computeHmacSha256Hex } from "@/lib/encryption";
 
 /**
  * Creates a GET request with optional search parameters
@@ -198,4 +199,31 @@ export function createAuthenticatedDeleteRequest(
 ): NextRequest {
   const baseRequest = createDeleteRequest(url);
   return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
+ * Creates a POST request with HMAC signature for webhook authentication
+ * Used for testing webhook routes that require signature verification (Stakwork, GitHub, etc.)
+ */
+export function createSignedWebhookRequest(
+  url: string,
+  body: object,
+  secret: string,
+  signatureHeader: string = "x-stakwork-signature"
+): NextRequest {
+  const absoluteUrl = url.startsWith('http') 
+    ? url 
+    : `http://localhost${url.startsWith('/') ? '' : '/'}${url}`;
+  
+  const bodyString = JSON.stringify(body);
+  const signature = computeHmacSha256Hex(secret, bodyString);
+
+  return new NextRequest(absoluteUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      [signatureHeader]: signature,
+    },
+    body: bodyString,
+  });
 }
