@@ -73,11 +73,10 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
     if (isCreatingRef.current) return;
 
     setIsCreatingWorkspace(true);
+    setCreationStatus("Creating your workspace...");
     isCreatingRef.current = true;
 
     try {
-      setCreationStatus("Finding available workspace name...");
-
       // Extract repo name and find available workspace name
       const repoName = extractRepoNameFromUrl(repoUrl);
       if (!repoName) {
@@ -89,7 +88,6 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
       let projectName = nextIndexedName(base, pool);
 
       // Verify name is available via API
-      setCreationStatus("Checking name availability...");
       const slugResponse = await fetch(`/api/workspaces/slug-availability?slug=${encodeURIComponent(projectName)}`);
       const slugData = await slugResponse.json();
 
@@ -97,8 +95,6 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
         // If still not available, add a timestamp suffix
         projectName = `${base}-${Date.now().toString().slice(-6)}`;
       }
-
-      setCreationStatus("Creating workspace...");
 
       // Create workspace
       const response = await fetch("/api/workspaces", {
@@ -120,8 +116,6 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
 
       if (data?.workspace?.slug && data?.workspace?.id) {
         await refreshWorkspaces();
-
-        setCreationStatus("Setting up GitHub integration...");
 
         // Check GitHub App status for this workspace/repository
         const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`);
