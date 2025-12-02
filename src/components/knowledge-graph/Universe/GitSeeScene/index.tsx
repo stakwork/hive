@@ -80,6 +80,10 @@ export function RepositoryScene() {
   const hasNavigatedRef = useRef(false);
   const nextIndexRef = useRef(0);
 
+  const nodeTypes = useDataStore((s) => s.nodeTypes);
+
+
+
   // lighting refs
   const lightRefTopLeft = useRef<THREE.DirectionalLight>(null);
   const lightRefTopRight = useRef<THREE.DirectionalLight>(null);
@@ -95,20 +99,24 @@ export function RepositoryScene() {
   const cameraControlsRef = useControlStore((s) => s.cameraControlsRef);
 
 
-  console.log('GitSee Debug:', {
-    repositoryNodesCount: repositoryNodes.length,
-    hasGraphNodes,
-    repositoryNodeTypes: repositoryNodes.map(n => n.node_type),
-    allDataNodes: dataInitial?.nodes?.length || 0
-  });
-
-  // position GitSee vs main graph - closer to main view
+  // position GitSee vs main graph - aligned as last “row” after node type layers
   const gitseePosition = useMemo(() => {
-    if (hasGraphNodes) {
-      return new THREE.Vector3(80, 50, 0);
+    if (!hasGraphNodes) {
+      return new THREE.Vector3(0, 0, 0);
     }
-    return new THREE.Vector3(0, 0, 0);
-  }, [hasGraphNodes]);
+
+    const layerSpacing = 500; // keep in sync with LayerLabels
+    const totalTypes = nodeTypes.length;
+
+    if (!totalTypes) {
+      return new THREE.Vector3(0, 0, 0);
+    }
+
+    const startOffset = ((totalTypes - 1) / 2) * layerSpacing;
+    const yAfterLastLayer = startOffset - totalTypes * layerSpacing;
+
+    return new THREE.Vector3(0, yAfterLastLayer, 0);
+  }, [hasGraphNodes, nodeTypes.length]);
 
   // Auto-navigate to GitSee scene on initialization
   useEffect(() => {
@@ -346,8 +354,10 @@ export function RepositoryScene() {
   // RENDER
   // --------------------------------------------------------
 
+  console.log(nodeTypes);
+
   return (
-    <group position={[gitseePosition.x, gitseePosition.y, gitseePosition.z]}>
+    <group position={[gitseePosition.x, -(Math.max(0, nodeTypes.length - 1) * 500), gitseePosition.z]}>
       {/* CENTRAL GITHUB NODE */}
       <group ref={repoRef}>
         {/* Background circle */}

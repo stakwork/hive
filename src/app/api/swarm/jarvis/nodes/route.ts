@@ -192,7 +192,7 @@ export async function GET(request: NextRequest) {
       {
         success: apiResult.ok,
         status: apiResult.status,
-        data: !endpoint.includes('start_date_added_to_graph') ? mockData.data : {
+        data: process.env.USE_MOCK_REPOSITORY === 'true' ? mockData.data : {
           ...(processedData as JarvisResponse),
         },
       },

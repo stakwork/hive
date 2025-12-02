@@ -14,6 +14,7 @@ import { logStoreInstances } from "@/stores/createStoreFactory";
 import { FilterTab } from "@/stores/graphStore.types";
 import { StoreProvider } from "@/stores/StoreProvider";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
+import { useEffect } from "react";
 
 export function Dashboard() {
   const { id } = useWorkspace();
@@ -30,8 +31,12 @@ export function Dashboard() {
 function DashboardInner() {
   const { slug, workspace } = useWorkspace();
   const dataInitial = useDataStore((s) => s.dataInitial);
+  const addNewNode = useDataStore((s) => s.addNewNode);
+  const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
+
+  const tempGitHubRepoRef = 'temp-github-repo';
 
   useGraphPolling({
     enabled: activeFilterTab === 'all',
@@ -44,7 +49,30 @@ function DashboardInner() {
     setActiveFilterTab(value);
   };
 
-  const hasNodes = dataInitial?.nodes && dataInitial.nodes.length > 0;
+  useEffect(() => {
+    addNewNode({
+      edges: [],
+      nodes: [
+        {
+          ref_id: tempGitHubRepoRef,
+          name: workspace?.repositories[0]?.name || '',
+          label: workspace?.repositories[0]?.name || '',
+          node_type: 'GitHubRepo',
+          x: 0,
+          y: 0,
+          z: 0,
+          properties: {
+            name: workspace?.repositories[0]?.name || '',
+            description: workspace?.repositories[0]?.name || '',
+          },
+        },
+      ],
+    });
+
+  }, [addNewNode, workspace?.repositories]);
+
+
+  const hasNodes = (dataInitial?.nodes && dataInitial.nodes.length > 0) || (repositoryNodes.length > 0);
   const isCentered = !hasNodes;
 
   return (
