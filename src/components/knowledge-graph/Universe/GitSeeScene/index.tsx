@@ -7,6 +7,7 @@ import { Billboard, Html, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { truncateText } from '../utils/truncateText';
 
 // --------------------------------------------------------
 // AVATAR TEXTURE CACHE
@@ -118,19 +119,19 @@ export function RepositoryScene() {
   }, [hasGraphNodes, nodeTypes]);
 
   // Auto-navigate to GitSee scene on initialization
-  useEffect(() => {
-    if (repositoryNodes.length > 0 && cameraControlsRef && !hasNavigatedRef.current) {
-      hasNavigatedRef.current = true;
+  // useEffect(() => {
+  //   if (repositoryNodes.length > 0 && cameraControlsRef && !hasNavigatedRef.current) {
+  //     hasNavigatedRef.current = true;
 
-      const center = new THREE.Vector3(gitseePosition.x, gitseePosition.y, gitseePosition.z);
-      const radius = hasGraphNodes ? 85 : 60; // tighter frame to keep GitHub mini-graph close
+  //     const center = new THREE.Vector3(gitseePosition.x, gitseePosition.y, gitseePosition.z);
+  //     const radius = hasGraphNodes ? 85 : 60; // tighter frame to keep GitHub mini-graph close
 
-      const sphere = new THREE.Sphere(center, radius);
+  //     const sphere = new THREE.Sphere(center, radius);
 
-      // Navigate to the GitSee scene with smooth transition
-      cameraControlsRef.fitToSphere(sphere, true);
-    }
-  }, [repositoryNodes.length, cameraControlsRef, gitseePosition, hasGraphNodes]);
+  //     // Navigate to the GitSee scene with smooth transition
+  //     cameraControlsRef.fitToSphere(sphere, true);
+  //   }
+  // }, [repositoryNodes.length, cameraControlsRef, gitseePosition, hasGraphNodes]);
 
   // --------------------------------------------------------
   // DATA
@@ -377,7 +378,7 @@ export function RepositoryScene() {
         >
           <div
             style={{
-              width: '140px',
+              width: '60px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -389,16 +390,16 @@ export function RepositoryScene() {
           >
             <div
               style={{
-                width: '76px',
-                height: '76px',
+                width: '36px',
+                height: '36px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               <svg
-                width="56"
-                height="56"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="white"
                 style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.3))' }}
@@ -413,9 +414,10 @@ export function RepositoryScene() {
                 fontSize: '16px',
                 textShadow: '0 4px 18px rgba(0,0,0,0.45)',
                 letterSpacing: '0.04em',
+                whiteSpace: 'nowrap',
               }}
             >
-              {repoLabel}
+              {truncateText(repoLabel || '', 25)}
             </div>
           </div>
         </Html>
