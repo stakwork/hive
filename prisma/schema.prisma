@@ -777,6 +777,7 @@ model Feature {
 
   status      FeatureStatus    @default(BACKLOG)
   priority    FeaturePriority  @default(NONE)
+  featureType FeatureType      @default(FEATURE)
 
   // Audit fields
   createdById String           @map("created_by_id")
@@ -798,6 +799,7 @@ model Feature {
   @@index([workspaceId])
   @@index([assigneeId])
   @@index([status])
+  @@index([featureType])
   @@index([deleted])
   @@map("features")
 }
@@ -816,6 +818,11 @@ enum FeaturePriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum FeatureType {
+  FEATURE
+  BUG
 }
 
 model UserStory {

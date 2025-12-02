@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "@/app/api/features/route";
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, FeatureType } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
@@ -383,6 +383,108 @@ describe("Features API - Integration Tests", () => {
 
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Trimmed Feature");
+    });
+
+    test("creates feature with featureType=FEATURE", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "New Feature",
+        workspaceId: workspace.id,
+        featureType: FeatureType.FEATURE,
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data).toMatchObject({
+        title: "New Feature",
+        featureType: FeatureType.FEATURE,
+      });
+
+      // Verify in database
+      const dbFeature = await db.feature.findUnique({
+        where: { id: data.data.id },
+      });
+      expect(dbFeature?.featureType).toBe(FeatureType.FEATURE);
+    });
+
+    test("creates feature with featureType=BUG", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Bug Report",
+        workspaceId: workspace.id,
+        featureType: FeatureType.BUG,
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data).toMatchObject({
+        title: "Bug Report",
+        featureType: FeatureType.BUG,
+      });
+
+      // Verify in database
+      const dbFeature = await db.feature.findUnique({
+        where: { id: data.data.id },
+      });
+      expect(dbFeature?.featureType).toBe(FeatureType.BUG);
+    });
+
+    test("validates featureType enum", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "New Feature",
+        workspaceId: workspace.id,
+        featureType: "INVALID_TYPE",
+      }, user);
+
+      const response = await POST(request);
+
+      await expectError(response, "Invalid featureType", 400);
+    });
+
+    test("defaults to FEATURE when featureType is not provided", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Default Type Feature",
+        workspaceId: workspace.id,
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data.featureType).toBe(FeatureType.FEATURE);
+
+      // Verify in database
+      const dbFeature = await db.feature.findUnique({
+        where: { id: data.data.id },
+      });
+      expect(dbFeature?.featureType).toBe(FeatureType.FEATURE);
     });
   });
 });

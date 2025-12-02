@@ -1,4 +1,4 @@
-import type { Prisma, FeatureStatus, FeaturePriority, TaskStatus, Priority } from "@prisma/client";
+import type { Prisma, FeatureStatus, FeaturePriority, FeatureType, TaskStatus, Priority } from "@prisma/client";
 import type {
   ApiSuccessResponse,
   PaginatedApiResponse,
@@ -8,7 +8,7 @@ import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 // Re-export Prisma enums for convenience
-export type { FeatureStatus, FeaturePriority, TaskStatus, Priority };
+export type { FeatureStatus, FeaturePriority, FeatureType, TaskStatus, Priority };
 
 // Backwards compatibility alias
 export type { TaskStatus as TicketStatus };
@@ -98,6 +98,16 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   MEDIUM: "Medium",
   HIGH: "High",
   CRITICAL: "Critical",
+};
+
+export const FEATURE_TYPE_LABELS: Record<FeatureType, string> = {
+  FEATURE: 'Feature',
+  BUG: 'Bug',
+};
+
+export const FEATURE_TYPE_COLORS: Record<FeatureType, string> = {
+  FEATURE: 'bg-blue-100 text-blue-800',
+  BUG: 'bg-red-100 text-red-800',
 };
 
 // Feature with relations (matches GET /api/features list query)
@@ -310,6 +320,7 @@ export interface CreateFeatureRequest {
   workspaceId: string;
   status?: FeatureStatus;
   priority?: FeaturePriority;
+  featureType?: FeatureType;
   assigneeId?: string;
 }
 
@@ -321,6 +332,7 @@ export interface UpdateFeatureRequest {
   personas?: string[];
   status?: FeatureStatus;
   priority?: FeaturePriority;
+  featureType?: FeatureType;
   assigneeId?: string | null;
 }
 
