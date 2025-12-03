@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
       workspaceId,
       deleted: false,
       archived: isShowingArchived,
+      // Exclude user journey tasks - they have their own dedicated page
+      sourceType: { not: TaskSourceType.USER_JOURNEY },
     };
 
     // If showing non-archived tasks (Recent tab), apply visibility rules
