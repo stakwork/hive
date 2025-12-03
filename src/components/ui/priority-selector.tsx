@@ -126,12 +126,18 @@ export function PrioritySelector({
 interface PriorityBadgeProps {
   priority: FeaturePriority;
   className?: string;
+  showLowPriority?: boolean; // If true, always show badge even for LOW priority
 }
 
-export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
+export function PriorityBadge({ priority, className, showLowPriority = false }: PriorityBadgeProps) {
   const config = priorityConfig[priority];
 
   if (!config) {
+    return null;
+  }
+
+  // Don't render LOW priority badges in column view (unless explicitly requested)
+  if (priority === "LOW" && !showLowPriority) {
     return null;
   }
 
