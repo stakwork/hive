@@ -396,6 +396,7 @@ model Task {
   // Agent URLs and credentials (encrypted)
   agentUrl      String? @map("agent_url")
   agentPassword String? @map("agent_password") // Encrypted pod password
+  podId         String? @map("pod_id")
 
   // Bounty code for external bounty platforms
   bountyCode String? @unique @map("bounty_code")

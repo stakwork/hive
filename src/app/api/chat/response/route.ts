@@ -7,6 +7,8 @@ import {
   type ContextTag,
   type Artifact,
   type ChatMessage,
+  type IDEContent,
+  type BrowserContent,
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
@@ -87,6 +89,29 @@ export async function POST(request: NextRequest) {
         content: artifact.content as unknown,
       })) as Artifact[],
     };
+
+    // Extract podId from IDE or Browser artifacts and store on task
+    if (taskId) {
+      const podIdArtifact = artifacts.find(
+        (a: ArtifactRequest) =>
+          (a.type === ArtifactType.IDE || a.type === ArtifactType.BROWSER) &&
+          (a.content as IDEContent | BrowserContent | undefined)?.podId,
+      );
+      if (podIdArtifact) {
+        const podId = (podIdArtifact.content as IDEContent | BrowserContent)?.podId;
+        if (podId) {
+          try {
+            await db.task.update({
+              where: { id: taskId },
+              data: { podId },
+            });
+            console.log(`✅ Stored podId ${podId} from artifact for task ${taskId}`);
+          } catch (error) {
+            console.error("Failed to store podId from artifact:", error);
+          }
+        }
+      }
+    }
 
     if (taskId) {
       try {
