@@ -6,7 +6,8 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
 import type { FeatureWithDetails } from "@/types/roadmap";
-import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS } from "@/types/roadmap";
+import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS, FEATURE_PRIORITY_LABELS, FEATURE_PRIORITY_COLORS } from "@/types/roadmap";
+import { cn } from "@/lib/utils";
 
 interface FeatureCardProps {
   feature: FeatureWithDetails;
@@ -38,6 +39,19 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
           </Badge>
         )}
       </div>
+
+      {feature.priority !== "NONE" && (
+        <div className="mb-2">
+          <span
+            className={cn(
+              "inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium border",
+              FEATURE_PRIORITY_COLORS[feature.priority]
+            )}
+          >
+            {FEATURE_PRIORITY_LABELS[feature.priority]}
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         {feature.assignee && (

@@ -31,6 +31,22 @@ export const FEATURE_STATUS_COLORS: Record<FeatureStatus, string> = {
   CANCELLED: "bg-red-50 text-red-700 border-red-200",
 };
 
+export const FEATURE_PRIORITY_LABELS: Record<FeaturePriority, string> = {
+  NONE: "None",
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+  URGENT: "Urgent",
+};
+
+export const FEATURE_PRIORITY_COLORS: Record<FeaturePriority, string> = {
+  NONE: "bg-gray-100 text-gray-600 border-gray-200",
+  LOW: "bg-blue-100 text-blue-700 border-blue-200",
+  MEDIUM: "bg-yellow-100 text-yellow-700 border-yellow-200",
+  HIGH: "bg-orange-100 text-orange-700 border-orange-200",
+  URGENT: "bg-red-100 text-red-700 border-red-200",
+};
+
 // Kanban columns configuration for feature board
 export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
   {

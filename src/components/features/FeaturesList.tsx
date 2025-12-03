@@ -15,6 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
 import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
 import { StatusPopover } from "@/components/ui/status-popover";
+import { PriorityPopover } from "./PriorityPopover";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -62,6 +63,12 @@ function FeatureRow({
           statusType="feature"
           currentStatus={feature.status}
           onUpdate={(status) => onStatusUpdate(feature.id, status)}
+        />
+      </TableCell>
+      <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
+        <PriorityPopover
+          featureId={feature.id}
+          currentPriority={feature.priority}
         />
       </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
@@ -562,6 +569,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                 <TableRow>
                   <TableHead className="w-[300px]">Title</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
+                  <TableHead className="w-[120px]">Priority</TableHead>
                   <TableHead className="w-[180px]">Assigned</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
                   <TableHead className="w-[150px]">Created by</TableHead>
@@ -573,6 +581,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                   <TableRow key={i}>
                     <TableCell className="w-[300px]">
                       <Skeleton className="h-5 w-full max-w-xs" />
+                    </TableCell>
+                    <TableCell className="w-[120px]">
+                      <Skeleton className="h-6 w-20" />
                     </TableCell>
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
@@ -714,6 +725,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showStatusBadges={true}
                     />
                   </TableHead>
+                  <TableHead className="w-[120px]">Priority</TableHead>
                   <TableHead className="w-[180px]">
                     <FilterDropdownHeader
                       label="Assigned"
@@ -740,7 +752,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
               <TableBody>
                 {features.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center">
+                    <TableCell colSpan={7} className="h-32 text-center">
                       <p className="text-muted-foreground">No features match your filters</p>
                     </TableCell>
                   </TableRow>
