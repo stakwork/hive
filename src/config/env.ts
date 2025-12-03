@@ -43,6 +43,9 @@ export const optionalEnvVars = {
   POOL_MANAGER_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/pool-manager`
     : process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
+  SWARM_SUPER_ADMIN_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/swarm-super-admin`
+    : process.env.SWARM_SUPER_ADMIN_URL,
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
