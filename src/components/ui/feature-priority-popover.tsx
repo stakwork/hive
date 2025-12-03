@@ -13,11 +13,13 @@ const getAllFeaturePriorityOptions = (): FeaturePriority[] => {
 interface FeaturePriorityPopoverProps {
   currentPriority: FeaturePriority;
   onUpdate: (priority: FeaturePriority) => Promise<void>;
+  showLowPriority?: boolean; // Whether to show LOW priority badge in the trigger
 }
 
 export function FeaturePriorityPopover({
   currentPriority,
-  onUpdate
+  onUpdate,
+  showLowPriority = false,
 }: FeaturePriorityPopoverProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -45,7 +47,7 @@ export function FeaturePriorityPopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <div className="cursor-pointer" onClick={(e) => e.stopPropagation()}>
-          <PriorityBadge priority={currentPriority} />
+          <PriorityBadge priority={currentPriority} showLowPriority={showLowPriority} />
         </div>
       </PopoverTrigger>
       <PopoverContent className="w-[200px] p-2" align="start" onClick={(e) => e.stopPropagation()}>
