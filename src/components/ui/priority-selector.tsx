@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, ArrowDown, Minus, ArrowUp, AlertCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,31 +20,32 @@ import {
 } from "@/components/ui/popover";
 import type { FeaturePriority } from "@/types/roadmap";
 
-const priorityConfig: Record<FeaturePriority, { label: string; color: string; dotColor: string }> = {
-  NONE: {
-    label: "None",
-    color: "bg-gray-100 text-gray-700 border-gray-300",
-    dotColor: "bg-gray-400",
-  },
+interface PriorityConfig {
+  icon: React.ReactNode;
+  label: string;
+  color: string;
+}
+
+const priorityConfig: Record<FeaturePriority, PriorityConfig> = {
   LOW: {
+    icon: <ArrowDown className="h-3 w-3" />,
     label: "Low",
-    color: "bg-blue-50 text-blue-700 border-blue-300",
-    dotColor: "bg-blue-500",
+    color: "bg-gray-100 text-gray-700 border-gray-200",
   },
   MEDIUM: {
+    icon: <Minus className="h-3 w-3" />,
     label: "Medium",
-    color: "bg-yellow-50 text-yellow-700 border-yellow-300",
-    dotColor: "bg-yellow-500",
+    color: "bg-blue-50 text-blue-700 border-blue-200",
   },
   HIGH: {
+    icon: <ArrowUp className="h-3 w-3" />,
     label: "High",
-    color: "bg-orange-50 text-orange-700 border-orange-300",
-    dotColor: "bg-orange-500",
+    color: "bg-orange-50 text-orange-700 border-orange-200",
   },
-  URGENT: {
-    label: "Urgent",
-    color: "bg-red-50 text-red-700 border-red-300",
-    dotColor: "bg-red-500",
+  CRITICAL: {
+    icon: <AlertCircle className="h-3 w-3" />,
+    label: "Critical",
+    color: "bg-red-50 text-red-700 border-red-200",
   },
 };
 
@@ -65,60 +66,6 @@ export function PrioritySelector({
 
   const selectedConfig = priorityConfig[value];
 
-  // Hide the selector completely when priority is NONE (for table view)
-  if (value === "NONE") {
-    return (
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            role="combobox"
-            aria-expanded={open}
-            disabled={disabled}
-            className={cn(
-              "w-[180px] justify-center text-muted-foreground hover:text-foreground",
-              className
-            )}
-          >
-            <span className="text-sm">-</span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[180px] p-0">
-          <Command>
-            <CommandInput placeholder="Search priority..." />
-            <CommandList>
-              <CommandEmpty>No priority found.</CommandEmpty>
-              <CommandGroup>
-                {Object.entries(priorityConfig).map(([priority, config]) => (
-                  <CommandItem
-                    key={priority}
-                    value={priority}
-                    onSelect={() => {
-                      onChange(priority as FeaturePriority);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        value === priority ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    <div className="flex items-center gap-2">
-                      <div className={cn("h-2 w-2 rounded-full", config.dotColor)} />
-                      <span>{config.label}</span>
-                    </div>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    );
-  }
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -134,8 +81,8 @@ export function PrioritySelector({
             className
           )}
         >
-          <div className="flex items-center gap-2">
-            <div className={cn("h-2 w-2 rounded-full", selectedConfig.dotColor)} />
+          <div className="flex items-center gap-1.5">
+            {selectedConfig.icon}
             <span className="font-medium">{selectedConfig.label}</span>
           </div>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -162,8 +109,8 @@ export function PrioritySelector({
                       value === priority ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  <div className="flex items-center gap-2">
-                    <div className={cn("h-2 w-2 rounded-full", config.dotColor)} />
+                  <div className="flex items-center gap-1.5">
+                    {config.icon}
                     <span>{config.label}</span>
                   </div>
                 </CommandItem>
@@ -182,12 +129,11 @@ interface PriorityBadgeProps {
 }
 
 export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
-  // Don't render anything when priority is NONE
-  if (priority === "NONE") {
+  const config = priorityConfig[priority];
+
+  if (!config) {
     return null;
   }
-
-  const config = priorityConfig[priority];
 
   return (
     <div
@@ -197,7 +143,7 @@ export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
         className
       )}
     >
-      <div className={cn("h-1.5 w-1.5 rounded-full", config.dotColor)} />
+      {config.icon}
       {config.label}
     </div>
   );
