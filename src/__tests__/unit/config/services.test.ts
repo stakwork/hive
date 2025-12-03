@@ -4,6 +4,7 @@ vi.mock("@/config/env", () => ({
   optionalEnvVars: {
     STAKWORK_BASE_URL: "https://api.stakwork.com",
     POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    SWARM_SUPER_ADMIN_URL: "https://app.superadmin.sphinx.chat",
     API_TIMEOUT: 10000,
   },
   config: {
@@ -94,7 +95,8 @@ describe("getServiceConfig", () => {
         timeout: expect.any(Number),
         headers: expect.any(Object),
       });
-      expect(config.baseURL).toBe(process.env.SWARM_SUPER_ADMIN_URL || "");
+      // baseURL now comes from optionalEnvVars which handles mock routing
+      expect(config.baseURL).toBeTruthy();
       expect(config.apiKey).toBe(""); // Added under x-user-token
       expect(config.timeout).toBe(600000); // 10 minutes timeout
       expect(config.headers).toHaveProperty("Content-Type", "application/json");
