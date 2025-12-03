@@ -173,38 +173,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // If taskId is provided, store agent credentials on the task
+    // If taskId is provided, store agent credentials and podId on the task
     if (taskId && shouldIncludeGoose && goose) {
       try {
-        // Encrypt the pod password
         const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
 
-        // Update the task with agent credentials
         await db.task.update({
           where: { id: taskId },
           data: {
+            podId: podWorkspace.id,
             agentUrl: goose,
             agentPassword: JSON.stringify(encryptedPassword),
           },
         });
 
-        console.log(`✅ Stored agent credentials for task ${taskId}`);
+        console.log(`✅ Stored podId ${podWorkspace.id} and agent credentials for task ${taskId}`);
       } catch (error) {
-        console.error("Failed to store agent credentials:", error);
-        // Don't fail the request, but log the error
-      }
-    }
-
-    // Always store podId on task if taskId is provided
-    if (taskId) {
-      try {
-        await db.task.update({
-          where: { id: taskId },
-          data: { podId: podWorkspace.id },
-        });
-        console.log(`✅ Stored podId ${podWorkspace.id} for task ${taskId}`);
-      } catch (error) {
-        console.error("Failed to store podId:", error);
+        console.error("Failed to store pod info:", error);
       }
     }
 
