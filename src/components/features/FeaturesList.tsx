@@ -34,6 +34,15 @@ import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
 import { formatRelativeOrDate } from "@/lib/date-utils";
 
+// Priority configuration for filtering
+const FEATURE_PRIORITY_LABELS: Record<FeaturePriority, string> = {
+  NONE: "None",
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+  URGENT: "Urgent",
+};
+
 interface FeaturesListProps {
   workspaceId: string;
 }
@@ -60,7 +69,7 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[300px] font-medium truncate">{feature.title}</TableCell>
+      <TableCell className="w-[280px] font-medium truncate">{feature.title}</TableCell>
       <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
           statusType="feature"
@@ -68,10 +77,11 @@ function FeatureRow({
           onUpdate={(status) => onStatusUpdate(feature.id, status)}
         />
       </TableCell>
-      <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
+      <TableCell className="w-[140px]" onClick={(e) => e.stopPropagation()}>
         <PrioritySelector
           value={feature.priority}
           onChange={(priority) => onPriorityUpdate(feature.id, priority)}
+          className="w-full"
         />
       </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
@@ -156,6 +166,21 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       }
     }
     return "ALL";
+  });
+
+  const [priorityFilters, setPriorityFilters] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-filters-sort-preference");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.priorityFilters || [];
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
   });
 
   const [sortBy, setSortBy] = useState<"title" | "createdAt" | "updatedAt" | null>(() => {
