@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, FeatureType } from "@prisma/client";
 
 // Mock dependencies before imports
 vi.mock("@/lib/db", () => ({
@@ -641,6 +641,7 @@ describe("createFeature", () => {
           workspaceId: mockWorkspaceId,
           status: FeatureStatus.BACKLOG,
           priority: FeaturePriority.NONE,
+          featureType: FeatureType.FEATURE,
           assigneeId: null,
           createdById: mockUserId,
           updatedById: mockUserId,
@@ -715,6 +716,7 @@ describe("createFeature", () => {
           workspaceId: mockWorkspaceId,
           status: FeatureStatus.PLANNED,
           priority: FeaturePriority.HIGH,
+          featureType: FeatureType.FEATURE,
           assigneeId: mockAssigneeId,
           createdById: mockUserId,
           updatedById: mockUserId,
@@ -787,6 +789,65 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             createdById: mockUserId,
             updatedById: mockUserId,
+          }),
+        })
+      );
+    });
+  });
+
+  describe("FeatureType Enum Validation", () => {
+    test("throws error for invalid featureType enum value", async () => {
+      await expect(
+        createFeature(mockUserId, {
+          title: "Test Feature",
+          workspaceId: mockWorkspaceId,
+          featureType: "INVALID_TYPE" as FeatureType,
+        })
+      ).rejects.toThrow("Invalid featureType");
+    });
+
+    test("accepts valid FEATURE type", async () => {
+      await createFeature(mockUserId, {
+        title: "Test Feature",
+        workspaceId: mockWorkspaceId,
+        featureType: FeatureType.FEATURE,
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            featureType: FeatureType.FEATURE,
+          }),
+        })
+      );
+    });
+
+    test("accepts valid BUG type", async () => {
+      await createFeature(mockUserId, {
+        title: "Bug Report",
+        workspaceId: mockWorkspaceId,
+        featureType: FeatureType.BUG,
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            featureType: FeatureType.BUG,
+          }),
+        })
+      );
+    });
+
+    test("uses FEATURE as default when featureType is not provided", async () => {
+      await createFeature(mockUserId, {
+        title: "Test Feature",
+        workspaceId: mockWorkspaceId,
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            featureType: FeatureType.FEATURE,
           }),
         })
       );

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, FeatureType } from "@prisma/client";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
@@ -134,6 +134,7 @@ export async function createFeature(
     workspaceId: string;
     status?: FeatureStatus;
     priority?: FeaturePriority;
+    featureType?: FeatureType;
     assigneeId?: string | null;
     brief?: string;
     requirements?: string;
@@ -160,6 +161,7 @@ export async function createFeature(
 
   validateEnum(data.status, FeatureStatus, "status");
   validateEnum(data.priority, FeaturePriority, "priority");
+  validateEnum(data.featureType, FeatureType, "featureType");
 
   if (data.assigneeId) {
     const assignee = await db.user.findFirst({
@@ -184,6 +186,7 @@ export async function createFeature(
       workspaceId: data.workspaceId,
       status: data.status || FeatureStatus.BACKLOG,
       priority: data.priority || FeaturePriority.NONE,
+      featureType: data.featureType || FeatureType.FEATURE,
       assigneeId: data.assigneeId || null,
       createdById: userId,
       updatedById: userId,
