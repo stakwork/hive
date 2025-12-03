@@ -195,6 +195,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
+    // Always store podId on task if taskId is provided
+    if (taskId) {
+      try {
+        await db.task.update({
+          where: { id: taskId },
+          data: { podId: podWorkspace.id },
+        });
+        console.log(`✅ Stored podId ${podWorkspace.id} for task ${taskId}`);
+      } catch (error) {
+        console.error("Failed to store podId:", error);
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
