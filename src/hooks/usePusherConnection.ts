@@ -7,6 +7,7 @@ import {
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
+import type { TaskStatus } from "@prisma/client";
 
 export interface WorkflowStatusUpdate {
   taskId: string;
@@ -29,6 +30,8 @@ export interface TaskTitleUpdateEvent {
   previousTitle: string;
   archived?: boolean;
   timestamp: Date;
+  status?: TaskStatus;
+  workflowStatus?: WorkflowStatus;
 }
 
 interface UsePusherConnectionOptions {
