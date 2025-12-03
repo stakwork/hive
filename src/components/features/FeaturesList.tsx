@@ -394,6 +394,12 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     setPage(1);
   };
 
+  const handlePriorityFiltersChange = (priorities: string | string[]) => {
+    const priorityArray = Array.isArray(priorities) ? priorities : [priorities];
+    setPriorityFilters(priorityArray);
+    setPage(1);
+  };
+
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     setPage(1);
@@ -568,6 +574,14 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const statusOptions = [
     { value: "ALL", label: "All Statuses" },
     ...Object.entries(FEATURE_STATUS_LABELS).map(([value, label]) => ({
+      value,
+      label,
+    })),
+  ];
+
+  const priorityOptions = [
+    { value: "ALL", label: "All Priorities" },
+    ...Object.entries(FEATURE_PRIORITY_LABELS).map(([value, label]) => ({
       value,
       label,
     })),
@@ -787,7 +801,17 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showStatusBadges={true}
                     />
                   </TableHead>
-                  <TableHead className="w-[120px]">Priority</TableHead>
+                  <TableHead className="w-[140px]">
+                    <FilterDropdownHeader
+                      label="Priority"
+                      options={priorityOptions}
+                      value={priorityFilters}
+                      onChange={handlePriorityFiltersChange}
+                      showSearch={false}
+                      multiSelect={true}
+                      showPriorityBadges={true}
+                    />
+                  </TableHead>
                   <TableHead className="w-[180px]">
                     <FilterDropdownHeader
                       label="Assigned"
