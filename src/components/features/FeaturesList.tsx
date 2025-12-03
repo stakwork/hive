@@ -42,6 +42,7 @@ function FeatureRow({
   feature,
   workspaceSlug,
   onStatusUpdate,
+  onPriorityUpdate,
   onAssigneeUpdate,
   onDelete,
   onClick,
@@ -49,6 +50,7 @@ function FeatureRow({
   feature: FeatureWithDetails;
   workspaceSlug: string;
   onStatusUpdate: (featureId: string, status: FeatureStatus) => Promise<void>;
+  onPriorityUpdate: (featureId: string, priority: FeaturePriority) => Promise<void>;
   onAssigneeUpdate: (featureId: string, assigneeId: string | null) => Promise<void>;
   onDelete: (featureId: string) => Promise<void>;
   onClick: () => void;
@@ -64,6 +66,12 @@ function FeatureRow({
           statusType="feature"
           currentStatus={feature.status}
           onUpdate={(status) => onStatusUpdate(feature.id, status)}
+        />
+      </TableCell>
+      <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
+        <PrioritySelector
+          value={feature.priority}
+          onChange={(priority) => onPriorityUpdate(feature.id, priority)}
         />
       </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
@@ -408,6 +416,25 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   };
 
+  const handleUpdatePriority = async (featureId: string, priority: FeaturePriority) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update priority");
+      }
+
+      setFeatures((prev) => prev.map((f) => (f.id === featureId ? { ...f, priority } : f)));
+    } catch (error) {
+      console.error("Failed to update priority:", error);
+      throw error;
+    }
+  };
+
   const handleUpdateAssignee = async (featureId: string, assigneeId: string | null) => {
     try {
       const response = await fetch(`/api/features/${featureId}`, {
@@ -570,7 +597,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                 <TableRow>
                   <TableHead className="w-[300px]">Title</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
+                  <TableHead className="w-[120px]">Priority</TableHead>
                   <TableHead className="w-[180px]">Assigned</TableHead>
+                  <TableHead className="w-[150px] text-right">Updated At</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
                   <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -585,8 +614,14 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
+                    <TableCell className="w-[120px]">
+                      <Skeleton className="h-6 w-20" />
+                    </TableCell>
                     <TableCell className="w-[180px]">
                       <Skeleton className="h-6 w-32" />
+                    </TableCell>
+                    <TableCell className="w-[150px] text-right">
+                      <Skeleton className="h-4 w-24 ml-auto" />
                     </TableCell>
                     <TableCell className="w-[150px] text-right">
                       <Skeleton className="h-4 w-24 ml-auto" />
@@ -727,6 +762,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showStatusBadges={true}
                     />
                   </TableHead>
+                  <TableHead className="w-[120px]">Priority</TableHead>
                   <TableHead className="w-[180px]">
                     <FilterDropdownHeader
                       label="Assigned"
@@ -762,7 +798,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
               <TableBody>
                 {features.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-32 text-center">
+                    <TableCell colSpan={8} className="h-32 text-center">
                       <p className="text-muted-foreground">No features match your filters</p>
                     </TableCell>
                   </TableRow>
@@ -773,6 +809,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       feature={feature}
                       workspaceSlug={workspaceSlug}
                       onStatusUpdate={handleUpdateStatus}
+                      onPriorityUpdate={handleUpdatePriority}
                       onAssigneeUpdate={handleUpdateAssignee}
                       onDelete={handleDeleteFeature}
                       onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
