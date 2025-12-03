@@ -81,6 +81,7 @@ function FeatureRow({
         <FeaturePriorityPopover
           currentPriority={feature.priority}
           onUpdate={(priority) => onPriorityUpdate(feature.id, priority)}
+          showLowPriority={true}
         />
       </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
