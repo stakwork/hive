@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { env } from "@/config/env";
+import { config } from "@/config/env";
 import { mockSwarmState } from "@/lib/mock/swarm-state";
 
 /**
@@ -10,11 +10,8 @@ export async function POST(request: NextRequest) {
   try {
     // 1. Validate x-super-token header
     const token = request.headers.get("x-super-token");
-    if (!token || token !== env.SWARM_SUPERADMIN_API_KEY) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
+    if (!token || token !== config.SWARM_SUPERADMIN_API_KEY) {
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
     // 2. Parse request body
