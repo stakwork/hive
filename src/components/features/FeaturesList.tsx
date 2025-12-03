@@ -310,8 +310,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   };
 
-  // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
+  // Check if any filters are active (excluding default sort)
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -427,8 +427,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     setStatusFilters([]);
     setPriorityFilters([]);
     setAssigneeFilter("ALL");
-    setSortBy(null);
-    setSortOrder("asc");
+    setSortBy("updatedAt");
+    setSortOrder("desc");
     setSearchQuery("");
     setPage(1);
   };
