@@ -36,11 +36,10 @@ import { formatRelativeOrDate } from "@/lib/date-utils";
 
 // Priority configuration for filtering
 const FEATURE_PRIORITY_LABELS: Record<FeaturePriority, string> = {
-  NONE: "None",
   LOW: "Low",
   MEDIUM: "Medium",
   HIGH: "High",
-  URGENT: "Urgent",
+  CRITICAL: "Critical",
 };
 
 interface FeaturesListProps {
@@ -222,7 +221,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [isCreating, setIsCreating] = useState(false);
   const [newFeatureTitle, setNewFeatureTitle] = useState("");
   const [newFeatureStatus, setNewFeatureStatus] = useState<FeatureStatus>("BACKLOG");
-  const [newFeaturePriority, setNewFeaturePriority] = useState<FeaturePriority>("NONE");
+  const [newFeaturePriority, setNewFeaturePriority] = useState<FeaturePriority>("LOW");
   const [newFeatureAssigneeId, setNewFeatureAssigneeId] = useState<string | null>(null);
   const [newFeatureAssigneeDisplay, setNewFeatureAssigneeDisplay] = useState<{
     id: string;
@@ -552,7 +551,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const handleCancelCreate = () => {
     setNewFeatureTitle("");
     setNewFeatureStatus("BACKLOG");
-    setNewFeaturePriority("NONE");
+    setNewFeaturePriority("LOW");
     setNewFeatureAssigneeId(null);
     setNewFeatureAssigneeDisplay(null);
     setIsCreating(false);
