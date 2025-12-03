@@ -70,7 +70,6 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
-  const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -267,8 +266,7 @@ export default function TaskChatPage() {
                 ide: podResult.ide,
               };
               freshPodId = podResult.podId;
-              console.log(">>> Setting claimedPodId:", freshPodId);
-              setClaimedPodId(freshPodId);
+              console.log(">>> Pod claimed:", freshPodId);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
               toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
@@ -291,7 +289,7 @@ export default function TaskChatPage() {
         window.history.replaceState({}, "", newUrl);
 
         setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls, podId: freshPodId });
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
       } else {
         setStarted(true);
         await sendMessage(msg);
@@ -326,7 +324,6 @@ export default function TaskChatPage() {
       webhook?: string;
       artifact?: Artifact;
       podUrls?: { frontend: string; ide: string } | null;
-      podId?: string | null;
     },
   ) => {
     // Create artifacts array starting with any existing artifact
@@ -431,16 +428,12 @@ export default function TaskChatPage() {
         );
 
         // Check for diffs after agent completes (agent mode only)
-        // Only check if we have a real pod claimed
-        const podIdToUse = options?.podId || claimedPodId;
-
-        if (effectiveWorkspaceId && (options?.taskId || currentTaskId) && podIdToUse) {
+        if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
           try {
             const diffResponse = await fetch("/api/agent/diff", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                podId: podIdToUse,
                 workspaceId: effectiveWorkspaceId,
                 taskId: options?.taskId || currentTaskId,
               }),
@@ -561,7 +554,7 @@ export default function TaskChatPage() {
 
   const handleCommit = async () => {
     if (!workspaceId || !currentTaskId) {
-      console.error("Missing commit requirements:", { workspaceId, claimedPodId, currentTaskId });
+      console.error("Missing commit requirements:", { workspaceId, currentTaskId });
       toast.error("Error", {
         description: `Missing required information to commit. workspaceId: ${!!workspaceId}, taskId: ${!!currentTaskId}`,
       });
@@ -605,15 +598,6 @@ export default function TaskChatPage() {
     if (!workspaceId || !currentTaskId) {
       return;
     }
-    console.log("🔍 Claimed pod ID:", claimedPodId);
-    // Block actual commit in local dev without a pod
-    if (!claimedPodId) {
-      toast("Local Development", {
-        description: "Commit & Push is not available - no pod claimed",
-      });
-      setShowCommitModal(false);
-      return;
-    }
 
     setIsCommitting(true);
 
@@ -624,7 +608,6 @@ export default function TaskChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          podId: claimedPodId,
           workspaceId: workspaceId,
           taskId: currentTaskId,
           commitMessage: finalCommitMessage,
