@@ -43,7 +43,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     },
   },
   swarm: {
-    baseURL: process.env.SWARM_SUPER_ADMIN_URL || "",
+    baseURL: optionalEnvVars.SWARM_SUPER_ADMIN_URL || "",
     apiKey: "", // Added under x-user-token
     timeout: 600000,
     headers: {
