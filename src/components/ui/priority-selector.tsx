@@ -65,6 +65,60 @@ export function PrioritySelector({
 
   const selectedConfig = priorityConfig[value];
 
+  // Hide the selector completely when priority is NONE (for table view)
+  if (value === "NONE") {
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            role="combobox"
+            aria-expanded={open}
+            disabled={disabled}
+            className={cn(
+              "w-[180px] justify-center text-muted-foreground hover:text-foreground",
+              className
+            )}
+          >
+            <span className="text-sm">-</span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[180px] p-0">
+          <Command>
+            <CommandInput placeholder="Search priority..." />
+            <CommandList>
+              <CommandEmpty>No priority found.</CommandEmpty>
+              <CommandGroup>
+                {Object.entries(priorityConfig).map(([priority, config]) => (
+                  <CommandItem
+                    key={priority}
+                    value={priority}
+                    onSelect={() => {
+                      onChange(priority as FeaturePriority);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === priority ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <div className="flex items-center gap-2">
+                      <div className={cn("h-2 w-2 rounded-full", config.dotColor)} />
+                      <span>{config.label}</span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -128,6 +182,11 @@ interface PriorityBadgeProps {
 }
 
 export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
+  // Don't render anything when priority is NONE
+  if (priority === "NONE") {
+    return null;
+  }
+
   const config = priorityConfig[priority];
 
   return (
