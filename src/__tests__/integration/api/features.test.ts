@@ -234,7 +234,7 @@ describe("Features API - Integration Tests", () => {
       expect(data.data).toMatchObject({
         title: "Simple Feature",
         status: FeatureStatus.BACKLOG, // default
-        priority: FeaturePriority.NONE, // default
+        priority: FeaturePriority.LOW, // default
         assigneeId: null,
       });
     });

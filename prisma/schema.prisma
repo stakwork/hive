@@ -777,7 +777,7 @@ model Feature {
   assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   status      FeatureStatus    @default(BACKLOG)
-  priority    FeaturePriority  @default(NONE)
+  priority    FeaturePriority  @default(LOW)
 
   // Audit fields
   createdById String           @map("created_by_id")
@@ -812,11 +812,10 @@ enum FeatureStatus {
 }
 
 enum FeaturePriority {
-  NONE
   LOW
   MEDIUM
   HIGH
-  URGENT
+  CRITICAL
 }
 
 model UserStory {

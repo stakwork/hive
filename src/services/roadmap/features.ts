@@ -190,7 +190,7 @@ export async function createFeature(
       personas: data.personas || [],
       workspaceId: data.workspaceId,
       status: data.status || FeatureStatus.BACKLOG,
-      priority: data.priority || FeaturePriority.NONE,
+      priority: data.priority || FeaturePriority.LOW,
       assigneeId: data.assigneeId || null,
       createdById: userId,
       updatedById: userId,

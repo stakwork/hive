@@ -70,7 +70,7 @@ export interface CreateTestFeatureOptions {
   updatedById: string;
   assigneeId?: string;
   status?: "BACKLOG" | "PLANNED" | "IN_PROGRESS" | "DONE" | "CANCELLED";
-  priority?: "NONE" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  priority?: "LOW" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   requirements?: string;
   architecture?: string;
   personas?: string[];
@@ -90,7 +90,7 @@ export async function createTestFeature(
       updatedById: options.updatedById,
       assigneeId: options.assigneeId || null,
       status: options.status || "BACKLOG",
-      priority: options.priority || "NONE",
+      priority: options.priority || "LOW",
       requirements: options.requirements || null,
       architecture: options.architecture || null,
       personas: options.personas || [],

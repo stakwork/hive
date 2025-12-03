@@ -16,6 +16,7 @@ import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePri
 import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PrioritySelector } from "@/components/ui/priority-selector";
+import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -36,11 +37,10 @@ import { formatRelativeOrDate } from "@/lib/date-utils";
 
 // Priority configuration for filtering
 const FEATURE_PRIORITY_LABELS: Record<FeaturePriority, string> = {
-  NONE: "None",
   LOW: "Low",
   MEDIUM: "Medium",
   HIGH: "High",
-  URGENT: "Urgent",
+  CRITICAL: "Critical",
 };
 
 interface FeaturesListProps {
@@ -78,10 +78,10 @@ function FeatureRow({
         />
       </TableCell>
       <TableCell className="w-[140px]" onClick={(e) => e.stopPropagation()}>
-        <PrioritySelector
-          value={feature.priority}
-          onChange={(priority) => onPriorityUpdate(feature.id, priority)}
-          className="w-full"
+        <FeaturePriorityPopover
+          currentPriority={feature.priority}
+          onUpdate={(priority) => onPriorityUpdate(feature.id, priority)}
+          showLowPriority={true}
         />
       </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
@@ -222,7 +222,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [isCreating, setIsCreating] = useState(false);
   const [newFeatureTitle, setNewFeatureTitle] = useState("");
   const [newFeatureStatus, setNewFeatureStatus] = useState<FeatureStatus>("BACKLOG");
-  const [newFeaturePriority, setNewFeaturePriority] = useState<FeaturePriority>("NONE");
+  const [newFeaturePriority, setNewFeaturePriority] = useState<FeaturePriority>("LOW");
   const [newFeatureAssigneeId, setNewFeatureAssigneeId] = useState<string | null>(null);
   const [newFeatureAssigneeDisplay, setNewFeatureAssigneeDisplay] = useState<{
     id: string;
@@ -310,8 +310,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   };
 
-  // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
+  // Check if any filters are active (excluding default sort)
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -427,8 +427,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     setStatusFilters([]);
     setPriorityFilters([]);
     setAssigneeFilter("ALL");
-    setSortBy(null);
-    setSortOrder("asc");
+    setSortBy("updatedAt");
+    setSortOrder("desc");
     setSearchQuery("");
     setPage(1);
   };
@@ -552,7 +552,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const handleCancelCreate = () => {
     setNewFeatureTitle("");
     setNewFeatureStatus("BACKLOG");
-    setNewFeaturePriority("NONE");
+    setNewFeaturePriority("LOW");
     setNewFeatureAssigneeId(null);
     setNewFeatureAssigneeDisplay(null);
     setIsCreating(false);
