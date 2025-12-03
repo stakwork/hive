@@ -255,6 +255,7 @@ export function FilterDropdownHeader({
               ) : showPriorityBadges && !isAllOption ? (
                 <PriorityBadge
                   priority={option.value as FeaturePriority}
+                  showLowPriority={true}
                 />
               ) : (
                 option.label
