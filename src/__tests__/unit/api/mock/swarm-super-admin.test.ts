@@ -6,6 +6,9 @@ vi.mock("@/config/env", () => ({
   env: {
     SWARM_SUPERADMIN_API_KEY: "test-super-token",
   },
+  config: {
+    SWARM_SUPERADMIN_API_KEY: "test-super-token",
+  },
 }));
 
 describe("Mock Swarm State Manager", () => {
