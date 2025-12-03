@@ -706,7 +706,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                 </button>
               )}
             </div>
-            {hasActiveFilters && viewType === "list" && (
+            {hasActiveFilters && (
               <Button variant="outline" size="sm" onClick={handleClearFilters}>
                 <X className="h-4 w-4 mr-2" />
                 Clear filters
