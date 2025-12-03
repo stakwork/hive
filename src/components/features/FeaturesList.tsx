@@ -16,6 +16,7 @@ import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePri
 import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
 import { StatusPopover } from "@/components/ui/status-popover";
 import { PrioritySelector } from "@/components/ui/priority-selector";
+import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -77,10 +78,9 @@ function FeatureRow({
         />
       </TableCell>
       <TableCell className="w-[140px]" onClick={(e) => e.stopPropagation()}>
-        <PrioritySelector
-          value={feature.priority}
-          onChange={(priority) => onPriorityUpdate(feature.id, priority)}
-          className="w-full"
+        <FeaturePriorityPopover
+          currentPriority={feature.priority}
+          onUpdate={(priority) => onPriorityUpdate(feature.id, priority)}
         />
       </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
