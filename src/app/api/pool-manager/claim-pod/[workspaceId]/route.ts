@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       frontend,
       workspace: podWorkspace,
       processList,
-    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined);
+    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined, taskId || undefined);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {

@@ -42,8 +42,13 @@ interface ProcessInfo {
   cwd?: string;
 }
 
-export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace> {
-  const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspace`;
+export async function getWorkspaceFromPool(
+  poolName: string,
+  poolApiKey: string,
+  taskId?: string,
+): Promise<PodWorkspace> {
+  const baseUrl = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspace`;
+  const url = taskId ? `${baseUrl}?task_id=${encodeURIComponent(taskId)}` : baseUrl;
 
   const response = await fetch(url, {
     method: "GET",
@@ -189,9 +194,10 @@ export async function claimPodAndGetFrontend(
   poolName: string,
   poolApiKey: string,
   services?: ServiceInfo[],
+  taskId?: string,
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
-  // Get workspace from pool
-  const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
+  // Get workspace from pool (pass taskId for agent mode tracking)
+  const workspace = await getWorkspaceFromPool(poolName, poolApiKey, taskId);
 
   console.log(">>> workspace data", workspace);
 
