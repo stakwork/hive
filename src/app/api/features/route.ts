@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { listFeatures, createFeature } from "@/services/roadmap";
-import { FeatureStatus } from "@prisma/client";
+import { FeatureStatus, FeaturePriority } from "@prisma/client";
 import type {
   CreateFeatureRequest,
   FeatureListResponse,
@@ -37,6 +37,26 @@ export async function GET(request: NextRequest) {
       }
 
       statuses = statusValues as FeatureStatus[];
+    }
+
+    // Priority filter params
+    const priorityParam = searchParams.get("priority") || undefined;
+    let priorities: FeaturePriority[] | undefined;
+
+    if (priorityParam) {
+      const priorityValues = priorityParam.split(',').filter(Boolean);
+      const validPriorities = Object.values(FeaturePriority);
+
+      // Validate all priority values
+      const invalidPriorities = priorityValues.filter(p => !validPriorities.includes(p as FeaturePriority));
+      if (invalidPriorities.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid priority values: ${invalidPriorities.join(', ')}` },
+          { status: 400 },
+        );
+      }
+
+      priorities = priorityValues as FeaturePriority[];
     }
 
     // Keep "UNASSIGNED" as string - service layer will convert to null for Prisma
@@ -88,6 +108,7 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       statuses,
+      priorities,
       assigneeId,
       search,
       sortBy,

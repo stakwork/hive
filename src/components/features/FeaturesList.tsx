@@ -268,6 +268,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       if (statusFilters.length > 0) {
         params.append("status", statusFilters.join(','));
       }
+      if (priorityFilters.length > 0) {
+        params.append("priority", priorityFilters.join(','));
+      }
       if (assigneeFilter !== "ALL") {
         params.append("assigneeId", assigneeFilter);
       }
@@ -308,7 +311,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   };
 
   // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -340,7 +343,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page, statusFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery]);
+  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery]);
 
   // Auto-open creation form when no features exist AND no filters are active (only on initial load)
   useEffect(() => {
@@ -363,13 +366,14 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     if (typeof window !== "undefined") {
       const preferences = {
         statusFilters,
+        priorityFilters,
         assigneeFilter,
         sortBy,
         sortOrder,
       };
       localStorage.setItem("features-filters-sort-preference", JSON.stringify(preferences));
     }
-  }, [statusFilters, assigneeFilter, sortBy, sortOrder]);
+  }, [statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder]);
 
   // Save view preference to localStorage
   const handleViewChange = (value: string) => {
@@ -421,6 +425,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   // Clear all filters and sort
   const handleClearFilters = () => {
     setStatusFilters([]);
+    setPriorityFilters([]);
     setAssigneeFilter("ALL");
     setSortBy(null);
     setSortOrder("asc");
