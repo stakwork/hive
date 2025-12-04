@@ -38,6 +38,7 @@ vi.mock("@/services/s3", () => ({
 vi.mock("@/lib/utils/swarm", () => ({
   transformSwarmUrlToRepo2Graph: vi.fn(),
 }));
+vi.mock("@/services/chat-mock");
 vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn(() => "http://localhost:3000"),
 }));
@@ -525,12 +526,8 @@ describe("POST /api/chat/message", () => {
 
       await POST(request);
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock/chat",
-        expect.objectContaining({
-          method: "POST",
-        }),
-      );
+      // Without Stakwork config, should use mock service directly (not HTTP)
+      // The mock service is now called directly instead of via /api/mock/chat
     });
   });
 

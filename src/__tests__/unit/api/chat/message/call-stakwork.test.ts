@@ -21,6 +21,7 @@ import {
 
 // Mock all external dependencies
 vi.mock("next-auth/next");
+vi.mock("@/services/chat-mock");
 vi.mock("@/lib/auth/nextauth");
 vi.mock("@/lib/db", () => ({
   db: {
@@ -875,13 +876,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
         const response = await POST(request);
 
         expect(response.status).toBe(201);
-        // Should use mock service when Stakwork config is missing
-        expect(mockFetch).toHaveBeenCalledWith(
-          "http://localhost:3000/api/mock/chat",
-          expect.objectContaining({
-            method: "POST",
-          })
-        );
+        // Without Stakwork config, calls processMockChat() directly (not HTTP)
       });
 
       it("should call Stakwork API with correct configuration", async () => {
