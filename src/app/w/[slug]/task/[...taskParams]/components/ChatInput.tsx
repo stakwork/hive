@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus } from "lucide-react";
+import { Mic, MicOff, Bot, Workflow, ArrowUp, AlertTriangle, Plus, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
@@ -119,15 +119,18 @@ export function ChatInput({
   const ModeIcon = modeConfig.icon;
 
   // Show simplified ended state for terminal workflow statuses
-  const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
+  const isTerminalState = workflowStatus === WorkflowStatus.COMPLETED ||
+    workflowStatus === WorkflowStatus.HALTED ||
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
 
   const getTerminalMessage = () => {
     if (taskMode === "agent") {
-      return "Session expired.";
+      return "Session ended.";
     }
     switch (workflowStatus) {
+      case WorkflowStatus.COMPLETED:
+        return "Workflow completed.";
       case WorkflowStatus.HALTED:
         return "Workflow halted.";
       case WorkflowStatus.FAILED:
@@ -140,6 +143,10 @@ export function ChatInput({
   };
 
   if (isTerminalState) {
+    const isCompleted = workflowStatus === WorkflowStatus.COMPLETED;
+    const StatusIcon = isCompleted ? CheckCircle2 : AlertTriangle;
+    const iconColor = isCompleted ? "text-green-500" : "text-amber-500";
+
     return (
       <div className={cn(
         "px-4 py-4 border-t bg-background",
@@ -147,7 +154,7 @@ export function ChatInput({
       )}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500" />
+            <StatusIcon className={cn("h-4 w-4 flex-shrink-0", iconColor)} />
             <span>{getTerminalMessage()}</span>
           </div>
           {workspaceSlug && (
