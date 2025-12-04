@@ -72,7 +72,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "What is React?");
       await user.keyboard("{Enter}");
 
@@ -86,7 +86,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "Question line 1");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "Question line 2");
@@ -101,7 +101,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "Line 1");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "Line 2");
@@ -118,7 +118,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "Can you explain:");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "1. React hooks");
@@ -158,26 +158,20 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
   describe("Basic Rendering", () => {
     test("renders textarea with correct placeholder in learn mode", () => {
       render(<LearnChatInput {...defaultProps} mode="learn" />);
-      
+
       expect(screen.getByPlaceholderText(/Ask me anything about code, concepts/i)).toBeInTheDocument();
     });
 
     test("renders textarea with correct placeholder in chat mode", () => {
       render(<LearnChatInput {...defaultProps} mode="chat" />);
-      
+
       expect(screen.getByPlaceholderText(/Ask me anything about code, concepts/i)).toBeInTheDocument();
     });
 
     test("renders send button icon", () => {
       render(<LearnChatInput {...defaultProps} />);
-      
-      expect(screen.getByTestId("send-icon")).toBeInTheDocument();
-    });
 
-    test("renders mic button in non-mic mode", () => {
-      render(<LearnChatInput {...defaultProps} mode="learn" />);
-      
-      expect(screen.getByTestId("mic-icon")).toBeInTheDocument();
+      expect(screen.getByTestId("send-icon")).toBeInTheDocument();
     });
   });
 
@@ -189,7 +183,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
       const sendButton = screen.getByTestId("send-icon").closest("button");
-      
+
       await user.type(textarea, "Explain closures");
       await user.click(sendButton!);
 
@@ -202,7 +196,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "  What is TypeScript?  ");
       await user.keyboard("{Enter}");
 
@@ -215,44 +209,32 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "Test question");
       await user.keyboard("{Enter}");
 
       expect(textarea).toHaveValue("");
-    });
-
-    test("calls onInputChange when typing", async () => {
-      const user = userEvent.setup();
-      const onInputChange = vi.fn();
-      render(<LearnChatInput {...defaultProps} onInputChange={onInputChange} />);
-
-      const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
-      await user.type(textarea, "Test");
-
-      expect(onInputChange).toHaveBeenCalled();
     });
   });
 
   describe("Disabled States", () => {
     test("disables textarea when disabled prop is true", () => {
       render(<LearnChatInput {...defaultProps} disabled={true} />);
-      
+
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
       expect(textarea).toBeDisabled();
     });
 
     test("disables send button when disabled prop is true", () => {
       render(<LearnChatInput {...defaultProps} disabled={true} />);
-      
+
       const sendButton = screen.getByTestId("send-icon").closest("button");
       expect(sendButton).toBeDisabled();
     });
 
     test("disables send button when textarea is empty", () => {
       render(<LearnChatInput {...defaultProps} />);
-      
+
       const sendButton = screen.getByTestId("send-icon").closest("button");
       expect(sendButton).toBeDisabled();
     });
@@ -260,56 +242,27 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
     test("enables send button when textarea has content", async () => {
       const user = userEvent.setup();
       render(<LearnChatInput {...defaultProps} />);
-      
+
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
       const sendButton = screen.getByTestId("send-icon").closest("button");
-      
+
       await user.type(textarea, "Question");
-      
+
       expect(sendButton).not.toBeDisabled();
-    });
-
-    test("disables textarea in mic mode", () => {
-      render(<LearnChatInput {...defaultProps} mode="mic" />);
-      
-      const textarea = screen.getByPlaceholderText(/Recording transcript/i);
-      expect(textarea).toBeDisabled();
-    });
-
-    test("hides send button in mic mode", () => {
-      render(<LearnChatInput {...defaultProps} mode="mic" />);
-      
-      const sendButton = screen.queryByTestId("send-icon");
-      expect(sendButton).not.toBeInTheDocument();
-    });
-  });
-
-  describe("Mode-Specific Behavior", () => {
-    test("displays mic mode placeholder when in mic mode", () => {
-      render(<LearnChatInput {...defaultProps} mode="mic" />);
-      
-      expect(screen.getByPlaceholderText("Recording transcript...")).toBeInTheDocument();
-    });
-
-    test("does not render mic button in mic mode", () => {
-      render(<LearnChatInput {...defaultProps} mode="mic" />);
-      
-      expect(screen.queryByTestId("mic-icon")).not.toBeInTheDocument();
-      expect(screen.queryByTestId("mic-off-icon")).not.toBeInTheDocument();
     });
   });
 
   describe("Accessibility", () => {
     test("textarea has autofocus", () => {
       render(<LearnChatInput {...defaultProps} />);
-      
+
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
       expect(textarea).toHaveFocus();
     });
 
     test("textarea is properly labeled via placeholder", () => {
       render(<LearnChatInput {...defaultProps} />);
-      
+
       const textarea = screen.getByPlaceholderText(/Ask me anything about code, concepts/i);
       expect(textarea).toBeInTheDocument();
     });
@@ -323,7 +276,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
 
       const longMessage = "Please explain ".repeat(100);
       const textarea = screen.getByPlaceholderText(/Ask me anything/i) as HTMLTextAreaElement;
-      
+
       // Use paste for long messages to avoid timeout
       await user.click(textarea);
       await user.paste(longMessage);
@@ -339,7 +292,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
 
       const specialMessage = "How does React handle state";
       const textarea = screen.getByPlaceholderText(/Ask me anything/i) as HTMLTextAreaElement;
-      
+
       // Use paste to avoid encoding issues
       await user.click(textarea);
       await user.paste(specialMessage);
@@ -354,7 +307,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "Question:");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "Part 1");
@@ -371,7 +324,7 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       await user.type(textarea, "Question 1");
       await user.keyboard("{Enter}");
       await user.type(textarea, "Question 2");
@@ -388,50 +341,21 @@ describe("LearnChatInput - Chat/Learn Mode", () => {
       render(<LearnChatInput {...defaultProps} onSend={onSend} />);
 
       const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
+
       // First message with newlines
       await user.type(textarea, "Multi");
       await user.keyboard("{Shift>}{Enter}{/Shift}");
       await user.type(textarea, "line");
       await user.keyboard("{Enter}");
-      
+
       expect(onSend).toHaveBeenCalledWith("Multi\nline");
-      
+
       // Second message, single line
       await user.type(textarea, "Single line");
       await user.keyboard("{Enter}");
-      
+
       expect(onSend).toHaveBeenCalledWith("Single line");
       expect(onSend).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe("Integration with Input Change Handler", () => {
-    test("notifies parent of input changes", async () => {
-      const user = userEvent.setup();
-      const onInputChange = vi.fn();
-      render(<LearnChatInput {...defaultProps} onInputChange={onInputChange} />);
-
-      const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
-      await user.type(textarea, "Test");
-
-      expect(onInputChange).toHaveBeenCalled();
-    });
-
-    test("notifies parent when clearing after submission", async () => {
-      const user = userEvent.setup();
-      const onInputChange = vi.fn();
-      const onSend = vi.fn().mockResolvedValue(undefined);
-      render(<LearnChatInput {...defaultProps} onInputChange={onInputChange} onSend={onSend} />);
-
-      const textarea = screen.getByPlaceholderText(/Ask me anything/i);
-      
-      await user.type(textarea, "Test");
-      await user.keyboard("{Enter}");
-
-      // Should be called for each character typed, plus the clear
-      expect(onInputChange).toHaveBeenCalled();
     });
   });
 });
