@@ -17,13 +17,15 @@ import { Node } from '../types';
 // Node distance and size controls
 const NODE_CONFIG = {
   // Distance controls
-  contributorDistance: 35,
+  contributorDistance: 350,
+  githubRepoDistance: 25,
   fileDistance: 55,
   statsDistance: 40,
 
   // Size controls
-  centralNodeSize: 1.6,
-  contributorNodeSize: 1.5,
+  centralNodeSize: 5.6,
+  contributorNodeSize: 10.5,
+  githubRepoNodeSize: 10.2,
   fileNodeSize: { width: 4, height: 2.5, depth: 0.3 },
 
   // Animation controls
@@ -34,6 +36,7 @@ const NODE_CONFIG = {
   centralNodeScale: 2.0,
   lineOpacity: {
     contributors: 0.25,
+    githubRepos: 0.3,
     files: 0.2,
     stats: 0.9
   },
@@ -51,18 +54,18 @@ const CAMERA_CONFIG = {
   orbitStartDelay: 2.0, // Additional delay after animation starts to begin orbiting
   distancingDelay: 2.0, // Additional delay after orbiting starts to begin zooming out
   filesShowDelay: 3.0, // When file nodes become visible (visual rendering delay)
-  directoriesLoadDelay: 8, // When directories load
+  directoriesLoadDelay: 8.0, // When directories load
   filesLoadDelay: 10, // When files load (2 seconds after directories)
 
   // Node visibility timing (in seconds)
 
   // Camera movement timing
-  initialFocusDistance: 50, // Initial camera distance from scene
+  initialFocusDistance: NODE_CONFIG.contributorDistance * 2, // Initial camera distance from scene
 
   // Camera animation parameters
-  orbitSpeed: 0.1, // How fast the camera orbits
-  baseRadius: 50, // Starting radius for orbit
-  radiusGrowthExponent: 1.8, // Controls acceleration curve (higher = faster acceleration)
+  orbitSpeed: 0.01, // How fast the camera orbits
+  baseRadius: NODE_CONFIG.contributorDistance * 2, // Starting radius for orbit
+  radiusGrowthExponent: 1.6, // Controls acceleration curve (higher = faster acceleration)
   radiusGrowthMultiplier: 25, // Overall scale of zoom out
   heightVariationAmplitude: 50, // Up/down movement amplitude
   heightVariationSpeed: 0.5 // Speed of up/down movement
@@ -72,7 +75,7 @@ const CAMERA_CONFIG = {
 // GITHUB ICON TEXTURE
 // --------------------------------------------------------
 
-function createGitHubIconTexture() {
+function createGitHubIconTexture(base64Icon?: string) {
   // SSR-safe fallback
   if (typeof document === 'undefined') {
     const data = new Uint8Array([255, 255, 255, 255]);
@@ -81,18 +84,25 @@ function createGitHubIconTexture() {
     return tex;
   }
 
-  // Load the actual GitHub image
   const loader = new THREE.TextureLoader();
+
+  // Use base64 icon if available, otherwise fallback to default
+  const imageSource = base64Icon ? base64Icon : '/gitimage.png';
+
+  console.log('imageSource', imageSource);
+
   const tex = loader.load(
-    '/gitimage.png',
+    imageSource,
     (texture) => {
       texture.anisotropy = 8;
       texture.flipY = false;
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
       texture.needsUpdate = true;
     },
     undefined,
     (error) => {
-      console.warn('Failed to load GitHub image, using fallback:', error);
+      console.warn('Failed to load repository icon, using fallback:', error);
     }
   );
 
@@ -104,6 +114,7 @@ function createGitHubIconTexture() {
 // --------------------------------------------------------
 
 const avatarCache = new Map<string, THREE.Texture>();
+const repoIconCache = new Map<string, THREE.Texture>();
 
 function getAvatarTexture(color: number, avatarUrl?: string) {
   const key = avatarUrl || `color-${color}`;
@@ -165,6 +176,7 @@ const gitseePosition = new THREE.Vector3(0, 0, 0);
 export function RepositoryScene() {
   const repoRef = useRef<THREE.Group>(null);
   const contributorRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const githubRepoRefs = useRef<(THREE.Mesh | null)[]>([]);
   const fileRefs = useRef<(THREE.Mesh | null)[]>([]);
   const directoryRefs = useRef<(THREE.Mesh | null)[]>([]);
   const startTimeRef = useRef<number | null>(null);
@@ -188,9 +200,7 @@ export function RepositoryScene() {
   const [showContributors, setShowContributors] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
 
-  const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const nodeTypes = useDataStore((s) => s.nodeTypes);
-  const dataInitial = useDataStore((s) => s.dataInitial);
   const { workspace } = useWorkspace();
   const { camera } = useThree();
 
@@ -207,12 +217,14 @@ export function RepositoryScene() {
       try {
         const params = new URLSearchParams({
           id: workspace.id,
-          node_type: JSON.stringify(["GithubRepo", "Contributor", "stars"]),
-          endpoint: 'graph/search?limit=100&sort_by=date_added_to_graph'
+          node_type: JSON.stringify(["GitHubRepo", "Contributor", "Stars"]),
+          endpoint: 'graph/search?limit=100&top_node_count=100&sort_by=date_added_to_graph'
         });
 
         const response = await fetch(`/api/swarm/jarvis/nodes?${params}`);
         const result = await response.json();
+
+        console.log('result-here', result);
 
         if (result.success && result.data) {
           setJarvisData(result.data);
@@ -282,6 +294,7 @@ export function RepositoryScene() {
 
     const latestTimeoutId = setTimeout(async () => {
       try {
+        setIsOnboarding(false);
         const response = await fetch(`/api/swarm/jarvis/nodes?id=${workspace.id}&endpoint=graph/search/latest?limit=5000&top_node_count=5000&sort_by=date_added_to_graph`);
         const result = await response.json();
 
@@ -372,6 +385,42 @@ export function RepositoryScene() {
     });
   }, [jarvisData]);
 
+  const githubRepoData = useMemo(() => {
+    if (!jarvisData?.nodes) return [];
+
+    const nodes = jarvisData.nodes
+      .filter((n) => n.node_type === 'GitHubRepo')
+      .slice(0, 8);
+
+    const radius = NODE_CONFIG.githubRepoDistance;
+    const count = nodes.length || 1;
+
+    return nodes.map((n, i) => {
+      const angle = (i / count) * Math.PI * 2 + Math.PI / 4; // Offset from contributors
+      const target = new THREE.Vector3(
+        Math.cos(angle) * radius,
+        2 + (i % 2) * 3, // Staggered Y levels above center
+        Math.sin(angle) * radius
+      );
+
+      const iconKey = n.properties?.icon as string || 'default';
+      let texture = repoIconCache.get(iconKey);
+
+      if (!texture) {
+        texture = createGitHubIconTexture(n.properties?.icon as string);
+        repoIconCache.set(iconKey, texture);
+      }
+
+      return {
+        name: (n.properties?.name as string) || `Repository ${i}`,
+        icon: n.properties?.icon as string,
+        color: 0x22d3ee,
+        target,
+        texture,
+      };
+    });
+  }, [jarvisData]);
+
   const filesData = useMemo(() => {
     const distance = NODE_CONFIG.fileDistance;
 
@@ -437,7 +486,7 @@ export function RepositoryScene() {
   const statsData = useMemo(() => {
     if (!jarvisData?.nodes) return [];
 
-    const repoNode = jarvisData.nodes.find((n) => n.node_type === 'GithubRepo');
+    const repoNode = jarvisData.nodes.find((n) => n.node_type === 'GitHubRepo');
     const starsNode = jarvisData.nodes.find((n) => n.node_type === 'stars');
 
     return [
@@ -471,6 +520,15 @@ export function RepositoryScene() {
         return new Float32Array([0, 0, 0, x, y, z]);
       }),
     [contributorData]
+  );
+
+  const githubRepoLines = useMemo(
+    () =>
+      githubRepoData.map((repo) => {
+        const { x, y, z } = repo.target;
+        return new Float32Array([0, 0, 0, x, y, z]);
+      }),
+    [githubRepoData]
   );
 
   const fileLines = useMemo(
@@ -578,6 +636,16 @@ export function RepositoryScene() {
       mesh.position.lerp(tempVec, 0.05);
     });
 
+    // github repositories gently move (no rotation)
+    githubRepoRefs.current.forEach((mesh, i) => {
+      if (!mesh) return;
+      const repo = githubRepoData[i];
+
+      tempVec.copy(repo.target);
+      // tempVec.y += Math.sin(t * 0.8 + i * 0.8) * NODE_CONFIG.floatingAmplitude * 1.2;
+      mesh.position.lerp(tempVec, 0.04);
+    });
+
     // files rotate
     fileRefs.current.forEach((mesh) => {
       if (!mesh) return;
@@ -602,58 +670,71 @@ export function RepositoryScene() {
     }
 
     if (jarvisData?.nodes) {
-      const repoNode = jarvisData.nodes.find((n) => n.node_type === 'GithubRepo');
+      const repoNode = jarvisData.nodes.find((n) => n.node_type === 'GitHubRepo');
       if (repoNode?.properties?.name) {
         return repoNode.properties.name as string;
       }
     }
 
-    const fallbackRepoNode = repositoryNodes.find((n) => n.node_type === 'GitHubRepo');
-    return (fallbackRepoNode?.properties?.name as string | undefined) || 'Repository';
-  }, [workspace, repositoryNodes, jarvisData]);
+    return 'Repository';
+  }, [workspace, jarvisData]);
+
+  // Get repository icon from node data
+  const repoIcon = useMemo(() => {
+    if (jarvisData?.nodes) {
+      const repoNode = jarvisData.nodes.find((n) => n.node_type === 'GitHubRepo');
+      return repoNode?.properties?.icon as string | undefined;
+    }
+
+    return undefined;
+  }, [jarvisData]);
 
   // GitHub icon texture (memoized)
-  const githubIconTexture = useMemo(() => createGitHubIconTexture(), []);
+  const githubIconTexture = useMemo(() => createGitHubIconTexture(repoIcon), [repoIcon]);
 
   // --------------------------------------------------------
   // RENDER
   // --------------------------------------------------------
 
-  if (!jarvisData?.nodes && repositoryNodes.length === 0) return null;
+  if (!jarvisData?.nodes) return null;
 
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
       {/* CENTRAL NODE - GitHub Repository Icon */}
       <Billboard ref={repoRef}>
         {/* Background layer for contrast */}
-        <mesh scale={[0.5, 0.5, 0.5]} position={[0, 0, -0.1]}>
-          <planeGeometry args={[NODE_CONFIG.centralNodeSize * 2.2, NODE_CONFIG.centralNodeSize * 2.2]} />
-          <meshStandardMaterial
-            color={0x0d1117}
-            emissive={0x21262d}
-            emissiveIntensity={0.3}
-            transparent
-            opacity={0.9}
-          />
-        </mesh>
-
         {/* GitHub icon plane */}
-        <mesh scale={[0.5, 0.5, 0.5]} rotation={[Math.PI, 0, 0]}>
-          <planeGeometry args={[NODE_CONFIG.centralNodeSize * 2, NODE_CONFIG.centralNodeSize * 2]} />
+        {/* <mesh scale={[0.5, 0.5, 0.5]} rotation={[Math.PI, 0, 0]}>
+          <circleGeometry args={[NODE_CONFIG.centralNodeSize, NODE_CONFIG.centralNodeSize]} />
           <meshStandardMaterial
             map={githubIconTexture}
             transparent
             opacity={1.0}
             side={THREE.DoubleSide}
           />
+        </mesh> */}
+
+        <mesh
+          // ref={(m) => (githubRepoRefs.current[i] = m)}
+          position={[0, 0, 0]}
+          scale={[0.8, 0.8, 0.8]}
+        >
+          <circleGeometry args={[NODE_CONFIG.githubRepoNodeSize, 48]} />
+          <meshBasicMaterial
+            map={githubRepoData[0].texture}
+            transparent
+            opacity={0.98}
+            side={THREE.DoubleSide}
+          />
         </mesh>
+
       </Billboard>
 
       {/* CENTER LABEL */}
       <Billboard>
         <Text
-          position={[0, 4.2, 0]}
-          fontSize={1.5}
+          position={[0, -24, 0]}
+          fontSize={20.5}
           color="#ffffff"
           outlineWidth={0.05}
           anchorX="center"
@@ -691,8 +772,8 @@ export function RepositoryScene() {
             </mesh>
 
             <Text
-              position={[c.target.x, c.target.y - 2.2, c.target.z]}
-              fontSize={0.9}
+              position={[c.target.x, c.target.y - 22.2, c.target.z]}
+              fontSize={9}
               color="#e5e7eb"
               anchorX="center"
               anchorY="middle"
@@ -702,6 +783,37 @@ export function RepositoryScene() {
             </Text>
           </Billboard>
         ))}
+
+      {/* GITHUB REPOSITORIES */}
+      {/* {showOuterNodes &&
+        githubRepoData.map((repo, i) => (
+          <Billboard key={`github-repo-${i}`}>
+            <line>
+              <bufferGeometry>
+                <bufferAttribute
+                  attach="attributes-position"
+                  args={[githubRepoLines[i], 3]}
+                />
+              </bufferGeometry>
+              <lineBasicMaterial color={repo.color} transparent opacity={NODE_CONFIG.lineOpacity.githubRepos} />
+            </line>
+
+            <mesh
+              ref={(m) => (githubRepoRefs.current[i] = m)}
+              position={[0, 0, 0]}
+              scale={[0.8, 0.8, 0.8]}
+            >
+              <circleGeometry args={[NODE_CONFIG.githubRepoNodeSize, 48]} />
+              <meshBasicMaterial
+                map={repo.texture}
+                transparent
+                opacity={0.98}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+
+          </Billboard>
+        ))} */}
 
       {/* FILES */}
       {showOuterNodes && showFiles && NODE_CONFIG.showFiles &&

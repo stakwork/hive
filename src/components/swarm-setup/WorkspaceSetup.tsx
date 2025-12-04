@@ -50,6 +50,16 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       return;
     }
 
+
+    fetch("/api/gitsee/trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repositoryUrl: repositoryUrl,
+        workspaceId: workspaceId,
+      }),
+    });
+
     // Secondary guard: prevent duplicate calls within same lifecycle
     if (ingestionStarted.current) {
       console.log("startIngestion skipped (already started)");
@@ -194,15 +204,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
               ],
               swarmId: swarmData.data.id,
               swarmStatus: "ACTIVE",
-            });
-
-            fetch("/api/gitsee/trigger", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                repositoryUrl: repositoryUrl,
-                workspaceId: workspaceId,
-              }),
             });
 
             setIsOnboarding(true);
