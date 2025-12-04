@@ -21,6 +21,14 @@ if (!USE_MOCKS) {
       throw new Error(`Missing required environment variable: ${key}`);
     }
   }
+
+  // Validate AWS/S3 environment variables when not using mocks
+  if (!process.env.AWS_ROLE_ARN) {
+    throw new Error('Missing required environment variable: AWS_ROLE_ARN');
+  }
+  if (!process.env.S3_BUCKET_NAME) {
+    throw new Error('Missing required environment variable: S3_BUCKET_NAME');
+  }
 }
 
 export const env = requiredEnvVars;
