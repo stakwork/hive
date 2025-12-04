@@ -112,11 +112,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Get services from swarm
     const services = workspace.swarm.services as Array<{ name: string; port: number; scripts?: Record<string, string> }> | null | undefined;
 
+    // Only pass taskId as user_info in agent mode (goose=true)
+    const userInfo = shouldIncludeGoose && taskId ? taskId : undefined;
+
     const {
       frontend,
       workspace: podWorkspace,
       processList,
-    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined);
+    } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined, userInfo);
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {

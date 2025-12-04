@@ -17,6 +17,7 @@ interface MockPod {
   username: string;
   claimedAt?: Date;
   workspaceId?: string;
+  userInfo?: string;
 }
 
 interface MockPool {
@@ -218,6 +219,16 @@ class MockPoolStateManager {
     }
 
     pod.environmentVariables = { ...pod.environmentVariables, ...envVars };
+    return true;
+  }
+
+  updatePodUserInfo(poolName: string, podId: string, userInfo: string): boolean {
+    const pod = this.getPod(poolName, podId);
+    if (!pod) {
+      return false;
+    }
+
+    pod.userInfo = userInfo;
     return true;
   }
 

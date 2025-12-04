@@ -84,7 +84,12 @@ export async function getPodFromPool(podId: string, poolApiKey: string): Promise
   return data as PodWorkspace;
 }
 
-async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
+async function markWorkspaceAsUsed(
+  poolName: string,
+  workspaceId: string,
+  poolApiKey: string,
+  userInfo?: string,
+): Promise<void> {
   const markUsedUrl = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
 
   console.log(`>>> Marking workspace as used: POST ${markUsedUrl}`);
@@ -95,7 +100,7 @@ async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolAp
       Authorization: `Bearer ${poolApiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(userInfo ? { user_info: userInfo } : {}),
   });
 
   if (!response.ok) {
@@ -189,14 +194,15 @@ export async function claimPodAndGetFrontend(
   poolName: string,
   poolApiKey: string,
   services?: ServiceInfo[],
+  userInfo?: string,
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Get workspace from pool
   const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
 
   console.log(">>> workspace data", workspace);
 
-  // Mark the workspace as used
-  await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey);
+  // Mark the workspace as used (pass userInfo for tracking, e.g. taskId in agent mode)
+  await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey, userInfo);
 
   let frontend: string | undefined;
   let processList: ProcessInfo[] | undefined;
