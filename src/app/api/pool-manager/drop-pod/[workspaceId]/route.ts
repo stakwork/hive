@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { dropPod, getPodFromPool, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { dropPod, getPodFromPool, getPodUsage, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -28,10 +28,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
-    // Check for "latest" and "podId" query parameters
+    // Check for "latest", "podId", and "taskId" query parameters
     const { searchParams } = new URL(request.url);
     const shouldResetRepositories = searchParams.get("latest") === "true";
     const podId = searchParams.get("podId");
+    const taskId = searchParams.get("taskId");
 
     // podId is required - we must know which specific pod to drop
     if (!podId) {
@@ -84,6 +85,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     console.log(">>> Dropping pod with ID:", podId);
 
+    // If taskId is provided, verify the pod is still assigned to this task
+    if (taskId) {
+      try {
+        const podUsage = await getPodUsage(poolId as string, podId, poolApiKeyPlain);
+
+        if (podUsage.user_info !== taskId) {
+          console.log(`>>> Pod ${podId} user_info (${podUsage.user_info}) does not match taskId (${taskId})`);
+          return NextResponse.json(
+            { error: "Pod has been reassigned to another task", reassigned: true },
+            { status: 409 },
+          );
+        }
+
+        console.log(`>>> Pod ${podId} ownership verified for task ${taskId}`);
+      } catch (error) {
+        console.error("Error verifying pod ownership:", error);
+        return NextResponse.json({ error: "Failed to verify pod ownership" }, { status: 500 });
+      }
+    }
+
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
       // Fetch workspace details to get port mappings and password
@@ -110,10 +131,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Now drop the pod
     await dropPod(poolId as string, podId, poolApiKeyPlain);
 
+    // If taskId was provided, clear the pod-related fields on the task
+    let taskCleared = false;
+    if (taskId) {
+      try {
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            podId: null,
+            agentUrl: null,
+            agentPassword: null,
+          },
+        });
+        taskCleared = true;
+        console.log(`>>> Cleared pod fields for task ${taskId}`);
+      } catch (error) {
+        console.error("Error clearing task pod fields:", error);
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
         message: "Pod dropped successfully",
+        ...(taskId && { taskCleared }),
       },
       { status: 200 },
     );

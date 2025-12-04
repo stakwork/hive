@@ -302,6 +302,33 @@ export async function dropPod(poolName: string, workspaceId: string, poolApiKey:
   await markWorkspaceAsUnused(poolName, workspaceId, poolApiKey);
 }
 
+export interface PodUsage {
+  usage_status: "used" | "unused";
+  user_info: string | null;
+  workspace_id: string;
+}
+
+export async function getPodUsage(poolName: string, podId: string, poolApiKey: string): Promise<PodUsage> {
+  const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${podId}/usage`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${poolApiKey}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Failed to get pod usage: ${response.status} - ${errorText}`);
+    throw new Error(`Failed to get pod usage: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data as PodUsage;
+}
+
 export async function updatePodRepositories(
   controlPortUrl: string,
   password: string,
