@@ -1,11 +1,11 @@
 import type { HighlightChunk } from '@/stores/graphStore.types'
-import { useControlStore } from '@/stores/useControlStore'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
-import { Html, Line } from '@react-three/drei'
+import { Edges, Html, ScreenSizer } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { Group, Mesh, MeshBasicMaterial, Sphere, Vector3 } from 'three'
+import * as THREE from 'three'
+import { Group, MeshBasicMaterial, Vector3 } from 'three'
 
 // Simplified CalloutLabel component - clean box design
 const CalloutLabel = ({
@@ -23,8 +23,6 @@ const CalloutLabel = ({
   onUnhover?: () => void;
   onClick?: (nodeId: string) => void;
 }) => {
-  const [hovered, setHovered] = useState(false);
-
   const labelHeight = 32;
   const lineLength = 60;
   const maxWidth = 250;
@@ -33,12 +31,10 @@ const CalloutLabel = ({
   const displayTitle = title.slice(0, 60);
 
   const onPointerOver = () => {
-    setHovered(true);
     if (node && onHover) onHover(node);
   }
 
   const onPointerOut = () => {
-    setHovered(false);
     if (onUnhover) onUnhover();
   }
 
@@ -88,553 +84,197 @@ const CalloutLabel = ({
   );
 };
 
-const PULSE_SPEED = 3
+// Simple configuration
+const HIGHLIGHT_DURATION = 30000 // 30 seconds
+const PULSE_SPEED = 2
 const BASE_SCALE = 0.8
-const PULSE_AMPLITUDE = 0.1
-const HIGHLIGHT_DURATION = 25000
+const PULSE_AMPLITUDE = 0.15
 
-// Edge animation speed controls
-const EDGE_ANIMATION_CONFIG = {
-  chunkEdgeDelay: 0.5,      // Delay between chunk edges (in seconds)
-  connectedEdgeDelay: 0.5,  // Delay between connected edges (in seconds)
-  wavePause: 1.0,           // Pause between chunk and connected waves (in seconds)
-  growthDuration: 1.0,      // How long each edge takes to grow (in seconds)
+// Edge configuration
+const EDGE_CONFIG = {
+  color: '#08f6fb',
+  width: 0.5,
+  opacity: 0.6,
 }
 
-// Camera animation configuration
-const CAMERA_CONFIG = {
-  speed: 1.0, // Animation duration multiplier (lower = faster)
-  radius: 200, // View radius around target
-  trajectory: {
-    type: 'spiral' as 'direct' | 'arc' | 'spiral',
-    arcHeight: 0.3, // For arc trajectory (0-1, height of arc)
-    spiralRotations: 0.5, // For spiral trajectory
-  }
-}
-
-// NEURON_PULSE highlight configuration
-const NEURON_PULSE = {
-  color: '#7DDCFF', // Electric green
-  pulseSpeed: PULSE_SPEED,
-  amplitude: PULSE_AMPLITUDE,
-}
-
-// Colors
 const COLORS = {
-  pulse: NEURON_PULSE.color,
-  particle: '#7DDCFF',
-  labelBorder: '#7DDCFF',
+  highlight: '#7DDCFF',
+  line: EDGE_CONFIG.color,
   text: '#FFFFFF',
-}
-
-interface CameraConfig {
-  speed: number
-  radius: number
-  trajectory: {
-    type: 'direct' | 'arc' | 'spiral'
-    arcHeight?: number
-    spiralRotations?: number
-  }
 }
 
 interface ChunkLayerProps {
   chunk: HighlightChunk
-  cameraConfig?: Partial<CameraConfig>
 }
 
-// Camera trajectory helpers
-const animateCamera = {
-  direct: (cameraControls: any, target: Vector3, radius: number) => {
-    const sphere = new Sphere(target, radius)
-    cameraControls.fitToSphere(sphere, true)
-  },
-
-  arc: (cameraControls: any, target: Vector3, radius: number, arcHeight: number = 0.3) => {
-    const currentPos = cameraControls.getPosition(new Vector3())
-
-    // Calculate arc midpoint
-    const midPoint = new Vector3()
-      .addVectors(currentPos, target)
-      .multiplyScalar(0.5)
-
-    const distance = currentPos.distanceTo(target)
-    midPoint.y += distance * arcHeight
-
-    // First move to arc peak, then to target
-    const tempTarget = midPoint.clone()
-    tempTarget.y -= radius
-
-    cameraControls.setLookAt(
-      midPoint.x, midPoint.y, midPoint.z,
-      tempTarget.x, tempTarget.y, tempTarget.z,
-      true
-    ).then(() => {
-      const finalSphere = new Sphere(target, radius)
-      cameraControls.fitToSphere(finalSphere, true)
-    })
-  },
-
-  spiral: (cameraControls: any, target: Vector3, radius: number, rotations: number = 1) => {
-    const currentPos = cameraControls.getPosition(new Vector3())
-    const distance = currentPos.distanceTo(target)
-
-    // Create spiral path points
-    const steps = 20
-    const angleStep = (Math.PI * 2 * rotations) / steps
-
-    let currentStep = 0
-    const spiralStep = () => {
-      if (currentStep >= steps) {
-        const finalSphere = new Sphere(target, radius)
-        cameraControls.fitToSphere(finalSphere, true)
-        return
-      }
-
-      const progress = currentStep / steps
-      const angle = angleStep * currentStep
-      const spiralRadius = distance * (1 - progress) + radius * progress
-
-      const spiralX = target.x + Math.cos(angle) * spiralRadius
-      const spiralZ = target.z + Math.sin(angle) * spiralRadius
-      const spiralY = currentPos.y + (target.y - currentPos.y) * progress
-
-      cameraControls.setLookAt(
-        spiralX, spiralY, spiralZ,
-        target.x, target.y, target.z,
-        false
-      )
-
-      currentStep++
-      setTimeout(spiralStep, 50) // 50ms between steps
-    }
-
-    spiralStep()
-  }
-}
-
-export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customConfig }) => {
+export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const groupRef = useRef<Group>(null)
-  const particlesGroupRef = useRef<Group>(null)
+  const edgeMeshRef = useRef<THREE.Mesh>(null)
+  const htmlRef = useRef<THREE.Group>(null)
   const timeRef = useRef(0)
+  const edgePositionsRef = useRef<Float32Array>(new Float32Array())
+  const chunkCenterRef = useRef<Vector3>(new Vector3())
 
+  const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
 
-
-
-  const simulation = useSimulationStore((s) => s.simulation)
   const removeHighlightChunk = useGraphStore((s) => s.removeHighlightChunk)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
-  const linksNormalized = useDataStore((s) => s.linksNormalized)
-  const cameraControlsRef = useControlStore((s) => s.cameraControlsRef)
-  const automaticAnimationsDisabled = useControlStore((s) => s.automaticAnimationsDisabled)
+  const simulation = useSimulationStore((s) => s.simulation)
 
   // Auto-remove this chunk after duration
   useEffect(() => {
     const timer = setTimeout(() => {
       removeHighlightChunk(chunk.chunkId)
     }, HIGHLIGHT_DURATION)
-
     return () => clearTimeout(timer)
   }, [chunk.chunkId, removeHighlightChunk])
 
-  // Track chunk nodes state
-  const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
-  const hasCameraMoved = useRef(false)
-  const cameraAnimationRef = useRef<{ isAnimating: boolean; startTime?: number }>({ isAnimating: false })
-  const lastValidPositionsTime = useRef<number | null>(null)
-
-  // Edge animation state
-  const [edgeAnimations, setEdgeAnimations] = useState<Map<string, { progress: number; delay: number }>>(new Map())
-  const edgeAnimationStartTime = useRef<number | null>(null)
-  const frameTimeRef = useRef<number>(0)
-
-  // Initialize nodes from nodesNormalized
+  // Initialize nodes from normalized data
   useEffect(() => {
-    const foundNodes = chunk.ref_ids
+    // Include all chunk nodes plus the source node if specified
+    const allRefIds = [...chunk.ref_ids]
+    if (chunk.sourceNodeRefId && !allRefIds.includes(chunk.sourceNodeRefId)) {
+      allRefIds.push(chunk.sourceNodeRefId)
+    }
+
+    const foundNodes = allRefIds
       .map(id => nodesNormalized.get(id))
-      .filter(Boolean) as NodeExtended[]
-
+      .filter((node): node is NodeExtended => Boolean(node))
     setChunkNodes(foundNodes)
+  }, [chunk.ref_ids, chunk.sourceNodeRefId, nodesNormalized])
 
-    // Initialize edge animations if we have a source node
-    if (chunk.sourceNodeRefId && foundNodes.length > 1) {
-      const sourceNode = foundNodes.find(node => node.ref_id === chunk.sourceNodeRefId)
-      if (sourceNode) {
-        const otherNodes = foundNodes.filter(node => node.ref_id !== chunk.sourceNodeRefId)
-        const connectedNodes = getConnectedNodes(chunk.ref_ids)
-        const newAnimations = new Map<string, { progress: number; delay: number }>()
+  // Create edge geometry for thick lines (similar to EdgeCpu)
+  const { edgeGeometry, edgeMaterial } = useMemo(() => {
+    if (chunkNodes.length === 0) return { edgeGeometry: null, edgeMaterial: null }
 
-        let delayIndex = 0
+    const edgeCount = chunkNodes.length
+    const vCount = edgeCount * 4 // 4 vertices per edge for thick lines
+    const iCount = edgeCount * 6 // 6 indices per edge (2 triangles)
 
-        // First wave: Animate to chunk nodes
-        otherNodes.forEach((node) => {
-          const edgeKey = `chunk-${chunk.sourceNodeRefId}-${node.ref_id}`
-          newAnimations.set(edgeKey, {
-            progress: 0,
-            delay: delayIndex * EDGE_ANIMATION_CONFIG.chunkEdgeDelay
-          })
-          delayIndex++
-        })
+    const positions = new Float32Array(vCount * 3)
+    const aStart = new Float32Array(vCount * 3)
+    const aEnd = new Float32Array(vCount * 3)
+    const aSide = new Float32Array(vCount)
+    const aT = new Float32Array(vCount)
+    const indices = new Uint32Array(iCount)
 
-        // Second wave: Animate to connected nodes (with longer delay)
-        connectedNodes.forEach((node) => {
-          const edgeKey = `connected-${chunk.sourceNodeRefId}-${node.ref_id}`
-          newAnimations.set(edgeKey, {
-            progress: 0,
-            delay: delayIndex * EDGE_ANIMATION_CONFIG.connectedEdgeDelay + EDGE_ANIMATION_CONFIG.wavePause
-          })
-          delayIndex++
-        })
+    edgePositionsRef.current = { aStart, aEnd }
 
-        console.log(`Initializing ${otherNodes.length} chunk edges + ${connectedNodes.length} connected edges`)
-        setEdgeAnimations(newAnimations)
-        edgeAnimationStartTime.current = null // Will be set in useFrame
-      }
-    }
-  }, [nodesNormalized, chunk.ref_ids, chunk.sourceNodeRefId, linksNormalized])
+    // Set up geometry attributes
+    for (let e = 0; e < edgeCount; e++) {
+      const v = e * 4
+      const i = e * 6
 
-  // Helper function to find connected nodes from links
-  const getConnectedNodes = (nodeIds: string[]): NodeExtended[] => {
-    const connectedNodeIds = new Set<string>()
+      aSide[v] = -1
+      aSide[v + 1] = +1
+      aSide[v + 2] = -1
+      aSide[v + 3] = +1
 
-    // Find all links where source or target is in our node list
-    Array.from(linksNormalized.values()).forEach(link => {
-      if (nodeIds.includes(link.source) && !nodeIds.includes(link.target)) {
-        connectedNodeIds.add(link.target)
-      }
-      if (nodeIds.includes(link.target) && !nodeIds.includes(link.source)) {
-        connectedNodeIds.add(link.source)
-      }
-    })
+      aT[v] = 0
+      aT[v + 1] = 0
+      aT[v + 2] = 1
+      aT[v + 3] = 1
 
-    // Convert node IDs to NodeExtended objects
-    const connectedNodes: NodeExtended[] = []
-    connectedNodeIds.forEach(nodeId => {
-      const node = nodesNormalized.get(nodeId)
-      if (node) {
-        connectedNodes.push(node)
-      }
-    })
-
-    return connectedNodes
-  }
-
-  // Update node positions from simulation and handle camera movement
-  useFrame((_, delta) => {
-    if (!simulation || chunkNodes.length === 0) return
-
-    // Update frame time for animations
-    frameTimeRef.current += delta
-
-    const simulationNodes = simulation.nodes() || []
-    const updatedNodes = chunkNodes.map(chunkNode => {
-      const simulationNode = simulationNodes.find((node: NodeExtended) => node.ref_id === chunkNode.ref_id)
-      if (simulationNode) {
-        return {
-          ...chunkNode,
-          x: simulationNode.x,
-          y: simulationNode.y,
-          z: simulationNode.z,
-        }
-      }
-      return chunkNode
-    })
-
-    // Only update if positions have changed
-    const positionsChanged = updatedNodes.some((node, i) =>
-      node.x !== chunkNodes[i]?.x ||
-      node.y !== chunkNodes[i]?.y ||
-      node.z !== chunkNodes[i]?.z
-    )
-
-    if (positionsChanged) {
-      setChunkNodes(updatedNodes)
-      // Update timestamp for valid positions
-      lastValidPositionsTime.current = Date.now()
+      indices[i] = v
+      indices[i + 1] = v + 2
+      indices[i + 2] = v + 1
+      indices[i + 3] = v + 2
+      indices[i + 4] = v + 3
+      indices[i + 5] = v + 1
     }
 
-    // Move camera to fit all chunk nodes once when positions are available
-    // Skip if automatic animations are disabled due to user interaction
-    if (cameraControlsRef && !hasCameraMoved.current && chunkNodes.length > 0 && !automaticAnimationsDisabled) {
-      console.log('Camera debug - checking chunk nodes:', {
-        chunkNodesCount: chunkNodes.length,
-        hasCameraMoved: hasCameraMoved.current,
-        cameraControlsRef: !!cameraControlsRef,
-        automaticAnimationsDisabled
-      })
+    const geometry = new THREE.BufferGeometry()
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geometry.setAttribute('aStart', new THREE.BufferAttribute(aStart, 3))
+    geometry.setAttribute('aEnd', new THREE.BufferAttribute(aEnd, 3))
+    geometry.setAttribute('aSide', new THREE.BufferAttribute(aSide, 1))
+    geometry.setAttribute('aT', new THREE.BufferAttribute(aT, 1))
 
-      // Check if all nodes have valid positions
-      const nodesWithPositions = chunkNodes.filter(node =>
-        typeof node.x === 'number' && !isNaN(node.x) &&
-        typeof node.y === 'number' && !isNaN(node.y) &&
-        typeof node.z === 'number' && !isNaN(node.z)
-      )
-
-      console.log('Camera debug - positions:', {
-        totalNodes: chunkNodes.length,
-        nodesWithPositions: nodesWithPositions.length,
-        positions: nodesWithPositions.map(n => ({ id: n.ref_id, x: n.x, y: n.y, z: n.z }))
-      })
-
-      if (nodesWithPositions.length > 0 && nodesWithPositions.length >= Math.min(chunkNodes.length, 1)) {
-        const config: CameraConfig = {
-          ...CAMERA_CONFIG,
-          ...customConfig,
-          trajectory: {
-            ...CAMERA_CONFIG.trajectory,
-            ...customConfig?.trajectory,
-          }
-        }
-
-        // Calculate bounding sphere for all chunk nodes
-        const positions = nodesWithPositions.map(node => new Vector3(node.x!, node.y!, node.z!))
-
-        // Calculate center point
-        const center = new Vector3(0, 0, 0)
-        positions.forEach(pos => center.add(pos))
-        center.divideScalar(positions.length)
-
-        // Calculate radius to encompass all nodes
-        let maxDistance = 0
-        positions.forEach(pos => {
-          const distance = pos.distanceTo(center)
-          maxDistance = Math.max(maxDistance, distance)
-        })
-
-        // Ensure minimum radius for very close nodes or single nodes
-        const minRadius = 150 // Minimum radius for good visibility
-        const padding = Math.max(100, maxDistance * 0.3) // Dynamic padding based on spread
-        const radius = Math.max(config.radius, maxDistance + padding, minRadius)
-
-        // Validate center and radius before proceeding
-        if (isNaN(center.x) || isNaN(center.y) || isNaN(center.z) || isNaN(radius)) {
-          console.warn('Camera debug - invalid center or radius calculated, skipping camera movement', { center, radius })
-          return
-        }
-        const boundingSphere = new Sphere(center, radius)
-
-        console.log('Camera debug - moving camera:', {
-          center: { x: center.x, y: center.y, z: center.z },
-          radius,
-          maxDistance,
-          trajectoryType: config.trajectory.type,
-          boundingSphere: { center: boundingSphere.center, radius: boundingSphere.radius }
-        })
-
-        // Set camera animation speed
-        if (cameraControlsRef.smoothTime) {
-          cameraControlsRef.smoothTime = config.speed
-        }
-
-        // Execute trajectory based on configuration
-        switch (config.trajectory.type) {
-          case 'arc':
-            console.log('Using arc trajectory')
-            animateCamera.arc(cameraControlsRef, center, radius, config.trajectory.arcHeight)
-            break
-          case 'spiral':
-            console.log('Using spiral trajectory')
-            animateCamera.spiral(cameraControlsRef, center, radius, config.trajectory.spiralRotations)
-            break
-          case 'direct':
-          default:
-            console.log('Using direct trajectory (fitToSphere)')
-            cameraControlsRef.fitToSphere(boundingSphere, true)
-            break
-        }
-
-        hasCameraMoved.current = true
-        cameraAnimationRef.current = { isAnimating: true, startTime: Date.now() }
-        console.log('Camera debug - movement triggered successfully')
-      }
-    } else if (cameraControlsRef && !hasCameraMoved.current && chunkNodes.length > 0 && automaticAnimationsDisabled) {
-      console.log('🚫 Camera animation skipped - automatic animations disabled due to user interaction')
-    }
-
-    // Animate edge growth
-    if (edgeAnimations.size > 0) {
-      // Initialize animation start time on first frame
-      if (edgeAnimationStartTime.current === null) {
-        edgeAnimationStartTime.current = frameTimeRef.current
-        console.log('Edge animation started at frame time:', frameTimeRef.current)
-      }
-
-      const elapsed = frameTimeRef.current - edgeAnimationStartTime.current
-      let hasUpdates = false
-
-      const newAnimations = new Map(edgeAnimations)
-
-      newAnimations.forEach((animation, edgeKey) => {
-        const timeSinceStart = elapsed - animation.delay
-        if (timeSinceStart > 0) {
-          // Animation duration: configurable
-          const animationDuration = EDGE_ANIMATION_CONFIG.growthDuration
-          const newProgress = Math.min(1, timeSinceStart / animationDuration)
-
-          if (Math.abs(newProgress - animation.progress) > 0.01) { // Avoid tiny updates
-            // Ease-out cubic for smooth animation
-            const easedProgress = 1 - Math.pow(1 - newProgress, 3)
-            newAnimations.set(edgeKey, { ...animation, progress: easedProgress })
-            hasUpdates = true
-
-            // Debug log for first few updates
-            if (animation.progress < 0.1) {
-              console.log(`Edge ${edgeKey}: delay=${animation.delay}s, elapsed=${elapsed.toFixed(2)}s, timeSinceStart=${timeSinceStart.toFixed(2)}s, progress=${easedProgress.toFixed(2)}`)
-            }
-          }
-        }
-      })
-
-      if (hasUpdates) {
-        setEdgeAnimations(newAnimations)
-      }
-    }
-  })
-
-  // Calculate chunk center
-  const chunkCenter = useMemo(() => {
-    if (chunkNodes.length === 0) return null
-
-    const hasValidPosition = (node: NodeExtended) =>
-      Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z)
-
-    // If chunk.sourceNodeRefId is provided, use that node's position as center
-    if (chunk.sourceNodeRefId) {
-      const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId)
-      if (sourceNode && hasValidPosition(sourceNode)) {
-        return [
-          sourceNode.x,
-          sourceNode.y,
-          sourceNode.z,
-        ] as [number, number, number]
-      }
-    }
-
-    const positionedNodes = chunkNodes.filter(hasValidPosition)
-
-    if (positionedNodes.length === 0) {
-      return null
-    }
-
-    // Otherwise, calculate center as average of valid node positions
-    const sum = positionedNodes.reduce(
-      (acc, n) => {
-        acc.x += n.x
-        acc.y += n.y
-        acc.z += n.z
-        return acc
+    const material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uColor: { value: new THREE.Color(EDGE_CONFIG.color) },
+        uOpacity: { value: EDGE_CONFIG.opacity },
+        uLineWidth: { value: EDGE_CONFIG.width },
+        uResolution: { value: new THREE.Vector2(1, 1) },
       },
-      { x: 0, y: 0, z: 0 }
-    )
+      vertexShader: `
+        uniform vec2 uResolution;
+        uniform float uLineWidth;
 
-    return [
-      sum.x / positionedNodes.length,
-      sum.y / positionedNodes.length,
-      sum.z / positionedNodes.length,
-    ] as [number, number, number]
-  }, [chunkNodes, chunk.sourceNodeRefId])
+        attribute vec3 aStart;
+        attribute vec3 aEnd;
+        attribute float aSide;
+        attribute float aT;
 
-  // Helper function to get animated line points
-  const getAnimatedLinePoints = (sourceNode: NodeExtended, targetNode: NodeExtended, progress: number): [number, number, number][] => {
-    const hasValidPosition = (node: NodeExtended) =>
-      Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z)
+        void main() {
+          vec4 sc = projectionMatrix * modelViewMatrix * vec4(aStart, 1.0);
+          vec4 ec = projectionMatrix * modelViewMatrix * vec4(aEnd, 1.0);
 
-    if (!hasValidPosition(sourceNode) || !hasValidPosition(targetNode)) {
-      return []
-    }
+          vec4 clip = mix(sc, ec, aT);
 
-    const startPoint: [number, number, number] = [sourceNode.x, sourceNode.y, sourceNode.z]
-    const endPoint: [number, number, number] = [targetNode.x, targetNode.y, targetNode.z]
+          vec2 sN = sc.xy / sc.w;
+          vec2 eN = ec.xy / ec.w;
+          vec2 dir = normalize(eN - sN);
+          vec2 normal = vec2(-dir.y, dir.x);
 
-    if (progress <= 0) {
-      return [startPoint, startPoint] // Line hasn't started growing
-    }
+          float aspect = uResolution.x / uResolution.y;
+          normal.x *= aspect;
 
-    if (progress >= 1) {
-      return [startPoint, endPoint] // Line is fully grown
-    }
+          vec2 offset = normal * aSide * uLineWidth / uResolution.y * 2.0;
 
-    // Interpolate the end point based on progress
-    const currentEndPoint: [number, number, number] = [
-      startPoint[0] + (endPoint[0] - startPoint[0]) * progress,
-      startPoint[1] + (endPoint[1] - startPoint[1]) * progress,
-      startPoint[2] + (endPoint[2] - startPoint[2]) * progress,
-    ]
+          vec2 ndc = clip.xy / clip.w;
+          ndc += offset;
 
-    return [startPoint, currentEndPoint]
-  }
+          clip.xy = ndc * clip.w;
+          gl_Position = clip;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
 
-  // Particle system
-  const particles = useRef<
-    { node: NodeExtended; mesh: Mesh; t: number; speed: number }[]
-  >([])
-
-  // Initialize particles
-  useEffect(() => {
-    if (!particlesGroupRef.current) return
-
-    particles.current = []
-    particlesGroupRef.current.clear()
-
-    console.log(chunkNodes)
-
-    // chunkNodes.forEach((node) => {
-    //   for (let i = 0; i < 2; i++) {
-    //     const mesh = new Mesh(
-    //       new SphereGeometry(particleRadius, 16, 16),
-    //       new MeshBasicMaterial({
-    //         color: COLORS.particle,
-    //         transparent: true,
-    //         opacity: 0.9,
-    //         depthWrite: false,
-    //       })
-    //     )
-
-    //     particlesGroupRef.current!.add(mesh)
-
-    //     particles.current.push({
-    //       node,
-    //       mesh,
-    //       t: Math.random(),
-    //       speed: particleSpeed,
-    //     })
-    //   }
-    // })
-  }, [chunkNodes])
-
-  // Animate particles
-  useFrame((_, delta) => {
-    if (!particlesGroupRef.current || !chunkCenter) return
-
-    const center = new Vector3(...chunkCenter)
-
-    particles.current.forEach((p) => {
-      p.t += delta * p.speed * 0.5
-
-      if (p.t > 1) p.t = 0
-
-      const start = new Vector3(p.node.x, p.node.y, p.node.z)
-      const pos = start.clone().lerp(center, p.t)
-
-      p.mesh.position.copy(pos)
-
-      const fade = Math.sin(p.t * Math.PI)
-        ; (p.mesh.material as MeshBasicMaterial).opacity = 0.2 + fade * 0.8
+        void main() {
+          gl_FragColor = vec4(uColor, uOpacity);
+        }
+      `,
     })
-  })
 
-  // Pulse animation for spheres
+    return { edgeGeometry: geometry, edgeMaterial: material }
+  }, [chunkNodes.length])
+
+  // Update positions and animation
   useFrame(({ clock }) => {
-    if (!groupRef.current || chunkNodes.length === 0) return
+    if (!simulation || !groupRef.current || chunkNodes.length === 0) return
 
     timeRef.current = clock.getElapsedTime()
 
+    // Get current simulation positions
+    const simulationNodes = simulation.nodes() || []
+    const nodePositions: Vector3[] = []
+
+    // Update group positions and collect positions for center calculation
     groupRef.current.children.forEach((child, index) => {
       if (child instanceof Group) {
-        const pulseFactor = Math.sin(timeRef.current * NEURON_PULSE.pulseSpeed + index * 0.5) * NEURON_PULSE.amplitude
+        // Update position from simulation
+        const chunkNode = chunkNodes[index]
+        if (chunkNode) {
+          const simulationNode = simulationNodes.find((node: NodeExtended) => node.ref_id === chunkNode.ref_id)
+          if (simulationNode) {
+            const pos = new Vector3(simulationNode.x, simulationNode.y, simulationNode.z)
+            child.position.copy(pos)
+            nodePositions.push(pos)
+          }
+        }
+
+        // Pulse animation
+        const pulseFactor = Math.sin(timeRef.current * PULSE_SPEED + index * 0.5) * PULSE_AMPLITUDE
         const scale = BASE_SCALE + pulseFactor
         child.scale.setScalar(scale)
 
-        // Fade out effect as we approach auto-clear
+        // Simple fade out near end of duration
         const elapsed = Date.now() - chunk.timestamp
         const fadeStart = HIGHLIGHT_DURATION * 0.8
         if (elapsed > fadeStart) {
@@ -642,146 +282,151 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk, cameraConfig: customCo
           const opacity = Math.max(0.1, 1 - fadeProgress)
 
           child.children.forEach(mesh => {
-            if (mesh instanceof Mesh && mesh.material instanceof MeshBasicMaterial) {
+            if ('material' in mesh && mesh.material instanceof MeshBasicMaterial) {
               mesh.material.opacity = opacity
             }
           })
         }
       }
     })
+
+    // Calculate positions and update edges
+    if (nodePositions.length > 0 && edgeGeometry && edgePositionsRef.current) {
+      // Calculate center position for edges
+      const center = new Vector3()
+      if (chunk.sourceNodeRefId) {
+        // Use source node position if specified
+        const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId)
+        if (sourceNode) {
+          const simulationNode = simulationNodes.find((node: NodeExtended) => node.ref_id === sourceNode.ref_id)
+          if (simulationNode) {
+            center.set(simulationNode.x, simulationNode.y, simulationNode.z)
+          }
+        }
+      } else {
+        // Calculate average position
+        nodePositions.forEach(pos => center.add(pos))
+        center.divideScalar(nodePositions.length)
+      }
+
+      chunkCenterRef.current.copy(center)
+
+      // Calculate label position (prefer source node position)
+      const labelPosition = new Vector3()
+      if (chunk.sourceNodeRefId) {
+        // Use source node position for label
+        const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId)
+        if (sourceNode) {
+          const simulationNode = simulationNodes.find((node: NodeExtended) => node.ref_id === sourceNode.ref_id)
+          if (simulationNode) {
+            labelPosition.set(simulationNode.x, simulationNode.y, simulationNode.z)
+          }
+        }
+      } else {
+        // Use center position if no source node
+        labelPosition.copy(center)
+      }
+
+      // Update thick line edge positions
+      const { aStart, aEnd } = edgePositionsRef.current as any
+      nodePositions.forEach((nodePos, i) => {
+        const v = i * 4 // 4 vertices per edge
+
+        // Set start and end positions for all 4 vertices of this edge
+        for (let k = 0; k < 4; k++) {
+          const idx = v + k
+          // Start point (node position)
+          aStart[idx * 3] = nodePos.x
+          aStart[idx * 3 + 1] = nodePos.y
+          aStart[idx * 3 + 2] = nodePos.z
+          // End point (center position)
+          aEnd[idx * 3] = center.x
+          aEnd[idx * 3 + 1] = center.y
+          aEnd[idx * 3 + 2] = center.z
+        }
+      })
+
+      edgeGeometry.attributes.aStart.needsUpdate = true
+      edgeGeometry.attributes.aEnd.needsUpdate = true
+
+      // Update resolution for proper line width
+      if (edgeMaterial && 'uniforms' in edgeMaterial) {
+        edgeMaterial.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight)
+      }
+
+      // Update HTML label position at source node or center
+      if (htmlRef.current) {
+        htmlRef.current.position.copy(labelPosition)
+      }
+    }
   })
 
-  if (chunkNodes.length === 0) return null
+  const validNodes = chunkNodes
+
+  if (validNodes.length === 0) return null
+
+  console.log('Valid nodes debug:', validNodes)
 
   return (
     <>
       {/* HIGHLIGHT SPHERES */}
       <group ref={groupRef} name={`chunk-${chunk.chunkId}`}>
-        {chunkNodes
-          .filter((node) => Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z))
-          .map((node, nodeIndex) => (
-            <group
-              key={`chunk-${chunk.chunkId}-node-${node.ref_id}-${nodeIndex}`}
-              position={[node.x, node.y, node.z]}
+        {validNodes.map((node, nodeIndex) => (
+          <group
+            key={`chunk-${chunk.chunkId}-node-${node.ref_id}-${nodeIndex}`}
+            position={[0, 0, 0]}
+          >
+            <ScreenSizer
+              scale={0.5} // scale factor
             >
               <mesh>
-                <sphereGeometry args={[25, 32, 16]} />
+                <octahedronGeometry args={[10, 0]} /> {/* diamond / rhombus */}
                 <meshBasicMaterial
-                  color={NEURON_PULSE.color}
+                  color="transparent"
                   transparent
-                  opacity={0.6}
-                  depthWrite={false}
+                  opacity={0}
+                />
+
+                <Edges
+                  color={COLORS.highlight}
+                  threshold={1}   // lower = more edges
+                  linewidth={2}
                 />
               </mesh>
-            </group>
-          ))}
+            </ScreenSizer>
+          </group>
+        ))}
       </group>
 
-      {/* PARTICLES */}
-      <group ref={particlesGroupRef} />
-
       {/* CHUNK LABEL */}
-      {chunkCenter && chunk.title && (
-        <Html
-          position={chunkCenter}
-          center
-          zIndexRange={[100, 101]}
-          // occlude="blending"
-          style={{
-            transition: 'opacity 0.2s',
-            pointerEvents: 'none',
-            willChange: 'transform'
-          }}
-        >
-          <CalloutLabel
-            title={chunk.title}
-            baseColor={COLORS.labelBorder}
-            node={chunk.sourceNodeRefId ? chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId) : undefined}
-          />
-        </Html>
+      {chunk.title && (
+        <group ref={htmlRef} position={[0, 0, 0]}>
+          <Html
+            center
+            zIndexRange={[100, 101]}
+            style={{
+              transition: 'opacity 0.2s',
+              pointerEvents: 'none',
+              willChange: 'transform'
+            }}
+          >
+            <CalloutLabel
+              title={chunk.title}
+              baseColor={COLORS.highlight}
+              node={chunk.sourceNodeRefId ? validNodes.find(node => node.ref_id === chunk.sourceNodeRefId) : undefined}
+            />
+          </Html>
+        </group>
       )}
 
-      {/* CHUNK LINES */}
-      {chunk.sourceNodeRefId ? (
-        // Animated edges growing from source node
-        (() => {
-          const sourceNode = chunkNodes.find(node => node.ref_id === chunk.sourceNodeRefId && Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z))
-          if (!sourceNode) return null
-
-          const otherNodes = chunkNodes.filter(node =>
-            node.ref_id !== chunk.sourceNodeRefId &&
-            Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z)
-          )
-          const connectedNodes = getConnectedNodes(chunk.ref_ids)
-          const allEdges: React.JSX.Element[] = []
-
-          // Chunk edges (bright green)
-          otherNodes.forEach((targetNode, nodeIndex) => {
-            const edgeKey = `chunk-${chunk.sourceNodeRefId}-${targetNode.ref_id}`
-            const animation = edgeAnimations.get(edgeKey)
-            const progress = animation?.progress || 0
-            // const opacity = 0.7 * Math.min(1, progress + 0.2)
-
-            const points = getAnimatedLinePoints(sourceNode, targetNode, progress)
-            if (points.length) {
-              allEdges.push(
-                <Line
-                  key={`chunk-edge-${chunk.chunkId}-${edgeKey}-${nodeIndex}`}
-                  points={points}
-                  color={COLORS.pulse} // Bright green for chunk edges
-                  opacity={0.2}
-                  transparent
-                  lineWidth={2.0}
-                  depthWrite={false}
-                />
-              )
-            }
-          })
-
-          // Connected edges (dimmer blue)
-          connectedNodes.forEach((targetNode, nodeIndex) => {
-            const edgeKey = `connected-${chunk.sourceNodeRefId}-${targetNode.ref_id}`
-            const animation = edgeAnimations.get(edgeKey)
-            const progress = animation?.progress || 0
-            const opacity = 0.4 * Math.min(1, progress + 0.2)
-
-            const points = getAnimatedLinePoints(sourceNode, targetNode, progress)
-            if (points.length) {
-              allEdges.push(
-                <Line
-                  key={`connected-edge-${chunk.chunkId}-${edgeKey}-${nodeIndex}`}
-                  points={points}
-                  color="#4A90E2" // Blue for connected edges
-                  opacity={opacity}
-                  transparent
-                  lineWidth={1.2}
-                  depthWrite={false}
-                />
-              )
-            }
-          })
-
-          return allEdges
-        })()
-      ) : (
-        // Fallback to center-based lines if no source node
-        chunkCenter &&
-        chunkNodes.map((node, nodeIndex) => (
-          Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z) ? (
-            <Line
-              key={`chunk-line-${chunk.chunkId}-${node.ref_id}-${nodeIndex}`}
-              points={[
-                [node.x, node.y, node.z],
-                chunkCenter,
-              ]}
-              color={COLORS.pulse}
-              opacity={0.55}
-              transparent
-              lineWidth={1.2}
-              depthWrite={false}
-            />
-          ) : null
-        ))
+      {/* DYNAMIC THICK EDGES */}
+      {edgeGeometry && edgeMaterial && (
+        <mesh
+          ref={edgeMeshRef}
+          geometry={edgeGeometry}
+          material={edgeMaterial}
+          frustumCulled={false}
+        />
       )}
     </>
   )
