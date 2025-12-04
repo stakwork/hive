@@ -113,8 +113,14 @@ export default function TaskChatPage() {
     (update: TaskTitleUpdateEvent) => {
       // Only update if it's for the current task
       if (update.taskId === currentTaskId) {
-        console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
-        setTaskTitle(update.newTitle);
+        if (update.newTitle !== undefined) {
+          console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
+          setTaskTitle(update.newTitle);
+        }
+        if ('podId' in update) {
+          console.log(`Task podId updated: ${update.podId}`);
+          setPodId(update.podId ?? null);
+        }
       }
     },
     [currentTaskId],
