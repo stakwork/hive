@@ -179,6 +179,7 @@ class MockPoolStateManager {
     pod.environmentVariables = {};
     pod.claimedAt = undefined;
     pod.workspaceId = undefined;
+    pod.userInfo = undefined;
 
     return true;
   }
