@@ -311,6 +311,7 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
           workflowStatus: true,
           stakworkProjectId: true,
           mode: true,
+          podId: true,
           workspace: {
             select: {
               id: true,
