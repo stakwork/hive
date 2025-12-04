@@ -30,8 +30,6 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   const [scrollToTopTrigger, setScrollToTopTrigger] = useState(0);
   const { processStream } = useStreamProcessor<LearnMessage>({
     toolProcessors: learnToolProcessors,
-    hiddenTools: ["final_answer"],
-    hiddenToolTextIds: { final_answer: "final-answer" },
   });
   const hasReceivedContentRef = useRef(false);
   const hasLoadedFeatureRef = useRef(false);
@@ -41,7 +39,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
 
     try {
       const response = await fetch(
-        `/api/learnings/features/${encodeURIComponent(featureId)}?workspace=${encodeURIComponent(workspaceSlug)}`
+        `/api/learnings/features/${encodeURIComponent(featureId)}?workspace=${encodeURIComponent(workspaceSlug)}`,
       );
 
       if (!response.ok) {
@@ -73,7 +71,8 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
       console.error("Error fetching feature documentation:", error);
       const errorMessage: LearnMessage = {
         id: (Date.now() + 1).toString(),
-        content: "I'm sorry, but I encountered an error while fetching the feature documentation. Please try again later.",
+        content:
+          "I'm sorry, but I encountered an error while fetching the feature documentation. Please try again later.",
         role: "assistant",
         timestamp: new Date(),
         isError: true,
@@ -141,7 +140,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
             // Extract from current message if not already set
             if (!ref_id && updatedMessage.toolCalls) {
               const askQuestionCall = updatedMessage.toolCalls.find(
-                (call) => call.toolName === ASK_QUESTION_TOOL && call.status === "output-available"
+                (call) => call.toolName === ASK_QUESTION_TOOL && call.status === "output-available",
               );
               if (askQuestionCall?.output && typeof askQuestionCall.output === "object") {
                 const askResponse = askQuestionCall.output as AskQuestionResponse;
@@ -162,7 +161,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
         {
           role: "assistant" as const,
           timestamp: new Date(),
-        }
+        },
       );
     } catch (error) {
       console.error("Error calling ask API:", error);
@@ -202,10 +201,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
       </div>
       {!isMobile && (
         <div className="fixed top-1 right-1 h-full">
-          <LearnSidebar
-            workspaceSlug={workspaceSlug}
-            onFeatureClick={handleFeatureClick}
-          />
+          <LearnSidebar workspaceSlug={workspaceSlug} onFeatureClick={handleFeatureClick} />
         </div>
       )}
     </div>
