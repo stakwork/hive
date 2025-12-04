@@ -15,6 +15,7 @@ interface TestEnvDefaults {
   STAKWORK_CUSTOMERS_EMAIL: string;
   STAKWORK_CUSTOMERS_PASSWORD: string;
   API_TOKEN: string;
+  USE_MOCKS: string;
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
@@ -30,6 +31,7 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
   STAKWORK_CUSTOMERS_EMAIL: "c@test.local",
   STAKWORK_CUSTOMERS_PASSWORD: "secret",
   API_TOKEN: "test-api-token",
+  USE_MOCKS: "true",
 };
 
 /**
