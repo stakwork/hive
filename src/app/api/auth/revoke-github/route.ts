@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { getGitHubApplicationsApiUrl } from "@/config/services";
 
 export const runtime = "nodejs";
 
@@ -36,8 +37,9 @@ export async function POST() {
     // Revoke the GitHub OAuth access token
     if (account.access_token) {
       try {
+        const revokeUrl = getGitHubApplicationsApiUrl("/applications/revoke");
         const response = await fetch(
-          "https://api.github.com/applications/revoke",
+          revokeUrl,
           {
             method: "DELETE",
             headers: {

@@ -42,6 +42,16 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
       Accept: "application/vnd.github.v3+json",
     },
   },
+  githubApplications: {
+    baseURL: USE_MOCKS
+      ? `${MOCK_BASE}/api/mock/github`
+      : "https://api.github.com",
+    apiKey: "",
+    timeout: parseInt(process.env.API_TIMEOUT || "10000"),
+    headers: {
+      Accept: "application/vnd.github.v3+json",
+    },
+  },
   swarm: {
     baseURL: optionalEnvVars.SWARM_SUPER_ADMIN_URL || "",
     apiKey: "", // Added under x-user-token
@@ -91,4 +101,13 @@ export function getServiceConfig(
     throw new Error(`Unknown service: ${serviceName}`);
   }
   return config;
+}
+
+/**
+ * Get GitHub Applications API URL with proper routing
+ * Routes to mock endpoint when USE_MOCKS=true, otherwise uses real GitHub API
+ */
+export function getGitHubApplicationsApiUrl(path: string): string {
+  const config = serviceConfigs.githubApplications;
+  return `${config.baseURL}${path}`;
 }
