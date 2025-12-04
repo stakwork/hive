@@ -5,8 +5,8 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getQuickAskMessages } from "@/lib/constants/prompt";
-import { askTools, listConcepts } from "@/lib/ai/askTools";
-import { streamText, hasToolCall, ModelMessage } from "ai";
+import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
+import { streamText, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
@@ -96,7 +96,8 @@ export async function GET(request: NextRequest) {
         model,
         tools,
         messages,
-        stopWhen: hasToolCall("final_answer"),
+        stopWhen: createHasEndMarkerCondition(),
+        stopSequences: ["[END_OF_ANSWER]"],
         onStepFinish: (sf) => logStep(sf.content),
       });
       return result.toUIMessageStreamResponse();

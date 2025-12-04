@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { StopCondition, tool, ToolSet } from "ai";
 import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
@@ -92,10 +92,23 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       },
     }),
     web_search,
-    final_answer: tool({
-      description: "Provide the final answer to the user. YOU **MUST** CALL THIS TOOL",
-      inputSchema: z.object({ answer: z.string() }),
-      execute: async ({ answer }: { answer: string }) => answer,
-    }),
+    // final_answer: tool({
+    //   description: "Provide the final answer to the user. YOU **MUST** CALL THIS TOOL",
+    //   inputSchema: z.object({ answer: z.string() }),
+    //   execute: async ({ answer }: { answer: string }) => answer,
+    // }),
+  };
+}
+
+export function createHasEndMarkerCondition<T extends ToolSet>(): StopCondition<T> {
+  return ({ steps }) => {
+    for (const step of steps) {
+      for (const item of step.content) {
+        if (item.type === "text" && item.text?.includes("[END_OF_ANSWER]")) {
+          return true;
+        }
+      }
+    }
+    return false;
   };
 }
