@@ -32,6 +32,9 @@ export function LearnChatInput({
     const message = input.trim();
     setInput("");
     await onSend(message);
+
+    // Keep focus on input after sending
+    textareaRef.current?.focus();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
