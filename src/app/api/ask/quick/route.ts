@@ -4,8 +4,8 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
-import { askTools } from "@/lib/ai/askTools";
+import { getQuickAskMessages } from "@/lib/constants/prompt";
+import { askTools, listConcepts } from "@/lib/ai/askTools";
 import { streamText, hasToolCall, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
@@ -15,9 +15,9 @@ type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
 export async function GET(request: NextRequest) {
   try {
-  const context = getMiddlewareContext(request);
-  const userOrResponse = requireAuth(context);
-  if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { searchParams } = new URL(request.url);
     const question = searchParams.get("question");
@@ -81,10 +81,8 @@ export async function GET(request: NextRequest) {
     const model = await getModel(provider, apiKey, workspaceSlug);
     const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat, apiKey);
 
-    const messages: ModelMessage[] = [
-      { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },
-      { role: "user", content: question },
-    ];
+    const concepts = await listConcepts(baseSwarmUrl, decryptedSwarmApiKey);
+    const messages: ModelMessage[] = getQuickAskMessages(question, concepts);
 
     console.log("🤖 Creating generateText with:", {
       model: model?.modelId,

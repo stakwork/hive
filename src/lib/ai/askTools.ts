@@ -4,6 +4,17 @@ import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "aieo";
 
+export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
+  const r = await fetch(`${swarmUrl}/gitree/features`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": swarmApiKey,
+    },
+  });
+  return await r.json();
+}
+
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string, pat: string, apiKey: string) {
   const { owner: repoOwner, repo: repoName } = parseOwnerRepo(repoUrl);
   const web_search = getProviderTool("anthropic", apiKey, "webSearch");
@@ -14,16 +25,7 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       inputSchema: z.object({}),
       execute: async () => {
         try {
-          const res = await fetch(`${swarmUrl}/gitree/features`, {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-token": swarmApiKey,
-            },
-          });
-          if (!res.ok) return "Could not retrieve features";
-          const data = await res.json();
-          return data;
+          return await listConcepts(swarmUrl, swarmApiKey);
         } catch (e) {
           console.error("Error retrieving features:", e);
           return "Could not retrieve features";
