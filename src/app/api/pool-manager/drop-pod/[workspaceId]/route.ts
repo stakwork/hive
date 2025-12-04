@@ -10,17 +10,6 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
-
     const { workspaceId } = await params;
 
     // Validate required fields
@@ -39,15 +28,50 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
     }
 
-    // Verify user has access to the workspace
+    // Check for API token authentication (used by Stakwork/external services)
+    const apiToken = request.headers.get("x-api-token");
+    const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
+
+    if (!isApiTokenAuth) {
+      // Fall back to session-based authentication
+      const session = await getServerSession(authOptions);
+
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      }
+
+      // Verify user has access to the workspace
+      const workspaceAccess = await db.workspace.findFirst({
+        where: { id: workspaceId },
+        include: {
+          members: {
+            where: { userId },
+            select: { role: true },
+          },
+        },
+      });
+
+      if (!workspaceAccess) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+
+      const isOwner = workspaceAccess.ownerId === userId;
+      const isMember = workspaceAccess.members.length > 0;
+
+      if (!isOwner && !isMember) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+    }
+
+    // Fetch workspace with swarm and repositories
     const workspace = await db.workspace.findFirst({
       where: { id: workspaceId },
       include: {
-        owner: true,
-        members: {
-          where: { userId },
-          select: { role: true },
-        },
         swarm: true,
         repositories: true,
       },
@@ -59,13 +83,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (process.env.MOCK_BROWSER_URL) {
       return NextResponse.json({ success: true, message: "Pod dropped successfully" }, { status: 200 });
-    }
-
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Check if workspace has a swarm
