@@ -45,6 +45,10 @@ const CAMERA_CONFIG = {
   directoriesLoadDelay: 5, // When directories load
   filesLoadDelay: 7, // When files load (2 seconds after directories)
 
+  // Node visibility timing (in seconds)
+  contributorsShowDelay: 1.5, // When contributor nodes become visible
+  filesShowDelay: 3.0, // When file nodes become visible (visual rendering delay)
+
   // Camera movement timing
   initialFocusDistance: 50, // Initial camera distance from scene
   cameraAnimationStartDelay: 1.0, // How long to wait before any camera movement starts
@@ -177,6 +181,8 @@ export function RepositoryScene() {
   const [hasCameraFocused, setHasCameraFocused] = useState(false);
   const [cameraOrbitActive, setCameraOrbitActive] = useState(false);
   const [cameraDistancingActive, setCameraDistancingActive] = useState(false);
+  const [showContributors, setShowContributors] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
 
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const nodeTypes = useDataStore((s) => s.nodeTypes);
@@ -319,6 +325,16 @@ export function RepositoryScene() {
       setTimeout(() => {
         setCameraDistancingActive(true);
       }, (CAMERA_CONFIG.cameraAnimationStartDelay + CAMERA_CONFIG.distancingDelay) * 1000);
+
+      // Show contributors after delay
+      setTimeout(() => {
+        setShowContributors(true);
+      }, CAMERA_CONFIG.contributorsShowDelay * 1000);
+
+      // Show files after delay
+      setTimeout(() => {
+        setShowFiles(true);
+      }, CAMERA_CONFIG.filesShowDelay * 1000);
     }
   }, [jarvisData, hasCameraFocused, gitseePosition, camera, cameraControlsRef]);
 
@@ -646,7 +662,7 @@ export function RepositoryScene() {
       </Billboard>
 
       {/* CONTRIBUTORS */}
-      {showOuterNodes &&
+      {showOuterNodes && showContributors &&
         contributorData.map((c, i) => (
           <Billboard key={`contrib-${i}`}>
             <line>
@@ -686,7 +702,7 @@ export function RepositoryScene() {
         ))}
 
       {/* FILES */}
-      {showOuterNodes &&
+      {showOuterNodes && showFiles &&
         filesData.map((f, i) => (
           <Billboard key={`file-${i}`}>
             <line>
