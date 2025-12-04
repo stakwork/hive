@@ -1,7 +1,7 @@
 "use client";
 
-import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { GitLeaksWidget } from "@/components/dashboard/git-leaks-widget";
+import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
@@ -39,7 +39,7 @@ function DashboardInner() {
   const tempGitHubRepoRef = 'temp-github-repo';
 
   useGraphPolling({
-    enabled: activeFilterTab === 'all',
+    enabled: false && activeFilterTab === 'all',
     interval: 5000
   });
 
