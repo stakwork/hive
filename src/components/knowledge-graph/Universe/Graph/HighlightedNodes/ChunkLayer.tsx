@@ -112,7 +112,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const edgeMeshRef = useRef<THREE.Mesh>(null)
   const htmlRef = useRef<THREE.Group>(null)
   const timeRef = useRef(0)
-  const edgePositionsRef = useRef<Float32Array>(new Float32Array())
+  const edgePositionsRef = useRef<{ aStart: Float32Array; aEnd: Float32Array } | null>(null)
   const chunkCenterRef = useRef<Vector3>(new Vector3())
 
   const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
@@ -328,7 +328,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       }
 
       // Update thick line edge positions
-      const { aStart, aEnd } = edgePositionsRef.current as any
+      const { aStart, aEnd } = edgePositionsRef.current
       nodePositions.forEach((nodePos, i) => {
         const v = i * 4 // 4 vertices per edge
 
