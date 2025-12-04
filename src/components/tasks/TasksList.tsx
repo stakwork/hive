@@ -15,6 +15,8 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
+import { FilterButton, TaskFilter } from "./FilterButton";
+import { ActiveFilters } from "./ActiveFilters";
 import { useEffect, useState } from "react";
 import { Search, X } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -40,6 +42,21 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
+  // Filter state with localStorage persistence
+  const [filters, setFilters] = useState<TaskFilter>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tasks-filter-preference");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {};
+        }
+      }
+    }
+    return {};
+  });
+
   // showArchived is true when activeTab is "archived"
   const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
     workspaceId,
@@ -47,7 +64,8 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     true,
     10,
     activeTab === "archived",
-    debouncedSearchQuery
+    debouncedSearchQuery,
+    filters
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -65,6 +83,23 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
   const handleClearSearch = () => {
     setSearchQuery("");
+  };
+
+  const handleFilterChange = (newFilters: TaskFilter) => {
+    setFilters(newFilters);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tasks-filter-preference", JSON.stringify(newFilters));
+    }
+  };
+
+  const handleRemoveFilter = (category: keyof TaskFilter, value: string) => {
+    const currentValues = filters[category] || [];
+    const newValues = currentValues.filter((v) => v !== value);
+    const newFilters = {
+      ...filters,
+      [category]: newValues.length > 0 ? newValues : undefined,
+    };
+    handleFilterChange(newFilters);
   };
 
   // Refresh task list when global notification count changes
@@ -106,25 +141,31 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
         </CardHeader>
 
         <CardContent>
-          {/* Search Bar */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full rounded-md border border-gray-300 py-2 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={handleClearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
+          {/* Search and Filter Bar */}
+          <div className="flex gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="w-full rounded-md border border-gray-300 py-2 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={handleClearSearch}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <FilterButton filters={filters} onFilterChange={handleFilterChange} />
           </div>
+
+          {/* Active Filters */}
+          <ActiveFilters filters={filters} onRemoveFilter={handleRemoveFilter} />
 
           <TabsContent value="active" className="mt-4 space-y-3">
             {tasks.length === 0 ? (

@@ -8,6 +8,12 @@ import { WorkflowStatus } from "@/lib/chat";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 
+export interface TaskFilter {
+  workflowStatus?: string[];
+  sourceType?: string[];
+  mode?: string[];
+}
+
 // SessionStorage key for persisting current page across navigation
 export const TASKS_PAGE_STORAGE_KEY = (workspaceId: string) => `tasks_page_${workspaceId}`;
 
@@ -99,7 +105,8 @@ export function useWorkspaceTasks(
   includeNotifications: boolean = false,
   pageLimit: number = 5,
   showArchived: boolean = false,
-  search?: string
+  search?: string,
+  filters?: TaskFilter
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -122,7 +129,20 @@ export function useWorkspaceTasks(
     try {
       const archivedParam = showArchived ? '&includeArchived=true' : '';
       const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}`;
+      
+      // Build filter parameters
+      let filterParams = '';
+      if (filters?.workflowStatus && filters.workflowStatus.length > 0) {
+        filterParams += `&workflowStatus=${filters.workflowStatus.join(',')}`;
+      }
+      if (filters?.sourceType && filters.sourceType.length > 0) {
+        filterParams += `&sourceTypes=${filters.sourceType.join(',')}`;
+      }
+      if (filters?.mode && filters.mode.length > 0) {
+        filterParams += `&modes=${filters.mode.join(',')}`;
+      }
+      
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${filterParams}`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -150,7 +170,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
