@@ -17,9 +17,9 @@ import { Node } from '../types';
 // Node distance and size controls
 const NODE_CONFIG = {
   // Distance controls
-  contributorDistance: 30,
-  fileDistance: 40,
-  statsDistance: 30,
+  contributorDistance: 35,
+  fileDistance: 55,
+  statsDistance: 40,
 
   // Size controls
   centralNodeSize: 1.6,
@@ -36,27 +36,31 @@ const NODE_CONFIG = {
     contributors: 0.25,
     files: 0.2,
     stats: 0.9
-  }
+  },
+
+  // Enable/disable node types
+  showStats: false,
+  showFiles: false
 };
 
 // Camera and timing configuration
 const CAMERA_CONFIG = {
   // Data loading timing (in seconds)
-  directoriesLoadDelay: 5, // When directories load
-  filesLoadDelay: 7, // When files load (2 seconds after directories)
+  contributorsShowDelay: 2.5, // When contributor nodes become visible
+  cameraAnimationStartDelay: 4.0, // How long to wait before any camera movement starts
+  orbitStartDelay: 2.0, // Additional delay after animation starts to begin orbiting
+  distancingDelay: 2.0, // Additional delay after orbiting starts to begin zooming out
+  filesShowDelay: 3.0, // When file nodes become visible (visual rendering delay)
+  directoriesLoadDelay: 8, // When directories load
+  filesLoadDelay: 10, // When files load (2 seconds after directories)
 
   // Node visibility timing (in seconds)
-  contributorsShowDelay: 1.5, // When contributor nodes become visible
-  filesShowDelay: 3.0, // When file nodes become visible (visual rendering delay)
 
   // Camera movement timing
   initialFocusDistance: 50, // Initial camera distance from scene
-  cameraAnimationStartDelay: 1.0, // How long to wait before any camera movement starts
-  orbitStartDelay: 1.0, // Additional delay after animation starts to begin orbiting
-  distancingDelay: 1.0, // Additional delay after orbiting starts to begin zooming out
 
   // Camera animation parameters
-  orbitSpeed: 0.4, // How fast the camera orbits
+  orbitSpeed: 0.1, // How fast the camera orbits
   baseRadius: 50, // Starting radius for orbit
   radiusGrowthExponent: 1.8, // Controls acceleration curve (higher = faster acceleration)
   radiusGrowthMultiplier: 25, // Overall scale of zoom out
@@ -277,10 +281,8 @@ export function RepositoryScene() {
     }, CAMERA_CONFIG.filesLoadDelay * 1000);
 
     const latestTimeoutId = setTimeout(async () => {
-      setIsOnboarding(false);
-
       try {
-        const response = await fetch(`/api/swarm/jarvis/nodes?id=${workspace.id}&endpoint=graph/search?limit=5000&top_node_count=5000&sort_by=date_added_to_graph`);
+        const response = await fetch(`/api/swarm/jarvis/nodes?id=${workspace.id}&endpoint=graph/search/latest?limit=5000&top_node_count=5000&sort_by=date_added_to_graph`);
         const result = await response.json();
 
         if (result.success && result.data) {
@@ -356,7 +358,7 @@ export function RepositoryScene() {
       const angle = (i / count) * Math.PI * 2;
       const target = new THREE.Vector3(
         Math.cos(angle) * radius,
-        (Math.random() - 0.5) * 3,
+        -8 + (i % 3) * 3, // Staggered Y levels below the repository
         Math.sin(angle) * radius
       );
 
@@ -384,7 +386,7 @@ export function RepositoryScene() {
         const radius = distance + (Math.random() - 0.5) * 5; // Add some variation
         const pos = new THREE.Vector3(
           Math.cos(angle) * radius,
-          (Math.random() - 0.5) * 8,
+          -6 + (i % 4) * 4, // Staggered Y levels for files
           Math.sin(angle) * radius
         );
 
@@ -414,13 +416,13 @@ export function RepositoryScene() {
       .filter((n) => n.node_type === 'Directory')
       .slice(0, 8); // Limit to 8 directories
 
-    const distance = NODE_CONFIG.fileDistance * 0.7; // Closer than files
+    const distance = NODE_CONFIG.fileDistance * 0.75; // Closer than files but with proper spacing
 
     return directories.map((dir, i) => {
       const angle = (i / directories.length) * Math.PI * 2 + Math.PI / 8; // Offset from files
       const pos = new THREE.Vector3(
         Math.cos(angle) * distance,
-        (Math.random() - 0.5) * 6,
+        -4 + (i % 3) * 3, // Staggered Y levels for directories
         Math.sin(angle) * distance
       );
 
@@ -702,7 +704,7 @@ export function RepositoryScene() {
         ))}
 
       {/* FILES */}
-      {showOuterNodes && showFiles &&
+      {showOuterNodes && showFiles && NODE_CONFIG.showFiles &&
         filesData.map((f, i) => (
           <Billboard key={`file-${i}`}>
             <line>
@@ -782,7 +784,7 @@ export function RepositoryScene() {
         ))}
 
       {/* STATS */}
-      {showOuterNodes && false &&
+      {showOuterNodes && NODE_CONFIG.showStats &&
         statsData.map((s, i) => {
           const dotPos = new THREE.Vector3(s.pos.x * 0.65, s.pos.y * 0.65, s.pos.z);
 
@@ -892,14 +894,14 @@ export function RepositoryScene() {
         ref={spotLightRef}
         position={[gitseePosition.x + 10, gitseePosition.y + 5, gitseePosition.z]}
         angle={0.15}
-        color="lime"
+        color="white"
         penumbra={1}
         intensity={5}
       />
 
       <pointLight
         intensity={500}
-        color="lime"
+        color="white"
         position={[gitseePosition.x, gitseePosition.y, gitseePosition.z]}
       />
     </group>

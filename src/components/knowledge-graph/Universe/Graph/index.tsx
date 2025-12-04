@@ -7,7 +7,7 @@ import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useSto
 import { useFrame } from '@react-three/fiber'
 import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
-import { Box3, Group, Sphere, Vector3 } from 'three'
+import { Group, Vector3 } from 'three'
 import { Line2 } from 'three-stdlib'
 import { RepositoryScene } from '../GitSeeScene'
 import { EdgesGPU } from './Connections/EdgeCpu'
