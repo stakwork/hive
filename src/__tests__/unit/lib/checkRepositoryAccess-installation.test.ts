@@ -9,20 +9,6 @@ import {
   createTestUserWithGitHubTokens,
 } from "@/__tests__/support/fixtures/github-repository-permissions";
 
-// Mock serviceConfigs to use real GitHub URL instead of mock
-vi.mock("@/config/services", () => ({
-  serviceConfigs: {
-    github: {
-      baseURL: "https://api.github.com",
-      apiKey: "",
-      timeout: 10000,
-      headers: {
-        Accept: "application/vnd.github.v3+json",
-      },
-    },
-  },
-}));
-
 /**
  * Unit tests for installation-scoped checkRepositoryAccess function
  * 
