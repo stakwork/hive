@@ -1,6 +1,8 @@
+import { ModelMessage } from "ai";
+
 // System prompt for the quick ask learning assistant
 export const QUICK_ASK_SYSTEM_PROMPT = `
-You are a source code learning assistant. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Aim for your answer to be about a paragraph. Your answer should be concise, practical, and easy to understand —- do not provide lengthy explanations or deep dives.
+You are a source code learning assistant. Your job is to provide a quick, clear, and actionable answer to the user's question, in a conversational tone. Your answer should be SHORT, like ONE paragraph: concise, practical, and easy to understand —- a bullet point list is fine, but do NOT provide lengthy explanations or deep dives.
 
 Try to match the tone of the user. If the question is highly technical (mentioning specific things in the code), then you can answer with more technical language and examples (or function names, endpoints names, etc). But the the user prompt is not technical, then you should answer in clear, plain language.
 
@@ -8,6 +10,38 @@ You have access to tools called list_concepts and learn_concept. list_concepts f
 
 You must always call the final_answer tool to deliver your answer to the user.`;
 
+export function getQuickAskMessages(question: string, concepts: Record<string, unknown>): ModelMessage[] {
+  return [
+    { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },
+    { role: "user", content: question },
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "list-1",
+          toolName: "list_concepts",
+          input: {},
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "list-1",
+          toolName: "list_concepts",
+          output: {
+            type: "json",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            value: concepts as any,
+          },
+        },
+      ],
+    },
+  ];
+}
 // System prompt for generating user journeys/flows from feature details
 export const GENERATE_STORIES_SYSTEM_PROMPT = `
 You are a product management assistant helping to generate brief user journey flows for software features.
