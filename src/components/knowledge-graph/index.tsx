@@ -155,9 +155,36 @@ const GraphComponentInner = ({
 
         case 'tasks':
           // Fetch latest 10 tasks from tasks API
+          requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=1000`;
+          const tasksResponse = await fetch(requestUrl, { signal: abortController.signal });
+          const tasksData = await tasksResponse.json();
 
-          requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent("graph/search?limit=1000&top_node_count=1000&node_type=[\"Task\"]")}`
-          break;
+          if (tasksData.success && Array.isArray(tasksData.data)) {
+            // Transform tasks to graph nodes
+            const taskNodes = tasksData.data.map((task: any) => ({
+              ref_id: task.id,
+              node_type: 'Task',
+              name: task.title,
+              label: task.title,
+              properties: {
+                name: task.title,
+                description: task.description,
+                status: task.status,
+                priority: task.priority,
+              } as any,
+              x: 0,
+              y: 0,
+              z: 0,
+              edge_count: 0,
+            }));
+
+            addNewNode({
+              nodes: taskNodes,
+              edges: [],
+            });
+          }
+          setNodesLoading(false);
+          return;
 
         default:
           requestUrl = propEndpoint
