@@ -14,20 +14,14 @@ const requiredEnvVars = {
   //ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
 } as const;
 
-// Validate environment variables (skip in mock mode)
-if (!USE_MOCKS) {
+// Validate environment variables at runtime (skip in mock mode)
+export function validateEnvVars(): void {
+  if (USE_MOCKS) return;
+  
   for (const [key, value] of Object.entries(requiredEnvVars)) {
     if (!value) {
       throw new Error(`Missing required environment variable: ${key}`);
     }
-  }
-
-  // Validate AWS/S3 environment variables when not using mocks
-  if (!process.env.AWS_ROLE_ARN) {
-    throw new Error('Missing required environment variable: AWS_ROLE_ARN');
-  }
-  if (!process.env.S3_BUCKET_NAME) {
-    throw new Error('Missing required environment variable: S3_BUCKET_NAME');
   }
 }
 
