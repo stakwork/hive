@@ -8,8 +8,9 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
   const { owner: repoOwner, repo: repoName } = parseOwnerRepo(repoUrl);
   const web_search = getProviderTool("anthropic", apiKey, "webSearch");
   return {
-    get_features: tool({
-      description: "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
+    list_concepts: tool({
+      description:
+        "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -29,14 +30,15 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
         }
       },
     }),
-    read_feature_documentation: tool({
-      description: "Fetch detailed documentation for a specific feature by ID. Returns complete feature details including documentation, related PRs, and commits.",
+    learn_concept: tool({
+      description:
+        "Fetch detailed documentation for a specific feature by ID. Returns complete feature details including documentation, related PRs, and commits.",
       inputSchema: z.object({
-        featureId: z.string().describe("The ID of the feature to retrieve documentation for"),
+        conceptId: z.string().describe("The ID of the feature to retrieve documentation for"),
       }),
-      execute: async ({ featureId }: { featureId: string }) => {
+      execute: async ({ conceptId }: { conceptId: string }) => {
         try {
-          const res = await fetch(`${swarmUrl}/gitree/features/${encodeURIComponent(featureId)}`, {
+          const res = await fetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
