@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, ReactNode, useContext } from 'react';
+import React, { createContext, ReactNode, useContext } from 'react';
 
 interface StoreContextType {
   storeId: string
