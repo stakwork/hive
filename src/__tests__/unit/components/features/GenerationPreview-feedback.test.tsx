@@ -118,8 +118,8 @@ describe('GenerationPreview Feedback Integration Tests', () => {
         target: { value: 'Add more details' },
       });
 
-      // Submit via Enter key
-      fireEvent.keyPress(feedbackInput, { key: 'Enter', code: 'Enter' });
+      // Submit via Enter key - use keyPress event as defined in component
+      fireEvent.keyPress(feedbackInput, { key: 'Enter', code: 'Enter', charCode: 13 });
 
       // Verify handler was called
       expect(onProvideFeedback).toHaveBeenCalledWith('Add more details');

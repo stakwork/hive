@@ -18,7 +18,7 @@ export default defineConfig({
     } : undefined,
     include:
       testSuite === "integration"
-        ? ["src/__tests__/integration/**/*.test.ts"]
+        ? ["src/__tests__/integration/**/*.test.{ts,tsx}"]
         : testSuite === "api"
         ? ["src/__tests__/api/**/*.test.ts"]
         : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
