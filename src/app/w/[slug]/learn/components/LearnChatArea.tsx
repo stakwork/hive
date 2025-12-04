@@ -1,6 +1,5 @@
 "use client";
 
-import { ModeToggle } from "@/components/ModeToggle";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { generateConversationPDF } from "@/lib/pdf-utils";
@@ -15,11 +14,6 @@ interface LearnChatAreaProps {
   messages: LearnMessage[];
   onSend: (message: string) => Promise<void>;
   isLoading?: boolean;
-  onInputChange?: (input: string) => void;
-  mode: "learn" | "chat" | "mic";
-  onModeChange: (mode: "learn" | "chat" | "mic") => void;
-  onRefetchLearnings?: () => void;
-  showMicMode?: boolean;
   workspaceSlug?: string;
   scrollToTopTrigger?: number;
 }
@@ -28,11 +22,6 @@ export function LearnChatArea({
   messages,
   onSend,
   isLoading = false,
-  onInputChange,
-  mode,
-  onModeChange,
-  onRefetchLearnings,
-  showMicMode = false,
   workspaceSlug,
   scrollToTopTrigger = 0,
 }: LearnChatAreaProps) {
@@ -112,7 +101,6 @@ export function LearnChatArea({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <ModeToggle mode={mode} onModeChange={onModeChange} showMicMode={showMicMode} />
             {hasValidConversation && (
               <TooltipProvider>
                 <Tooltip>
@@ -182,9 +170,6 @@ export function LearnChatArea({
         <LearnChatInput
           onSend={onSend}
           disabled={isLoading}
-          onInputChange={onInputChange}
-          onRefetchLearnings={onRefetchLearnings}
-          mode={mode}
           workspaceSlug={workspaceSlug}
         />
       </div>

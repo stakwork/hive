@@ -4,55 +4,52 @@ import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import { getProviderTool } from "aieo";
 
-async function fetchLearnings(swarmUrl: string, swarmApiKey: string, q: string, limit: number = 3) {
-  const res = await fetch(`${swarmUrl}/learnings?limit=${limit}&question=${encodeURIComponent(q)}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-token": swarmApiKey,
-    },
-  });
-  return res.ok ? await res.json() : [];
-}
-
-async function askQuestion(swarmUrl: string, swarmApiKey: string, q: string) {
-  const res = await fetch(`${swarmUrl}/ask?question=${encodeURIComponent(q)}&forceCache=true`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-token": swarmApiKey,
-    },
-  });
-  return res.ok ? await res.json() : {};
-}
-
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string, pat: string, apiKey: string) {
   const { owner: repoOwner, repo: repoName } = parseOwnerRepo(repoUrl);
   const web_search = getProviderTool("anthropic", apiKey, "webSearch");
   return {
-    get_learnings: tool({
-      description: "Fetch previous learnings from the knowledge base.",
-      inputSchema: z.object({
-        question: z.string().describe("The user's query"),
-        limit: z.number().optional().default(3),
-      }),
-      execute: async ({ question, limit }: { question: string; limit?: number }) => {
+    get_features: tool({
+      description: "Fetch a list of features/concepts from the codebase knowledge base. Returns features with metadata including name, description, PR/commit counts, last updated time, and whether documentation exists.",
+      inputSchema: z.object({}),
+      execute: async () => {
         try {
-          return await fetchLearnings(swarmUrl, swarmApiKey, question, limit || 3);
+          const res = await fetch(`${swarmUrl}/gitree/features`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-token": swarmApiKey,
+            },
+          });
+          if (!res.ok) return "Could not retrieve features";
+          const data = await res.json();
+          return data;
         } catch (e) {
-          console.error("Error retrieving learnings:", e);
-          return "Could not retrieve learnings";
+          console.error("Error retrieving features:", e);
+          return "Could not retrieve features";
         }
       },
     }),
-    ask_question: tool({
-      description:
-        "Fetch a learning + answer from the knowledge base. Always use a hint if possible! Only use a prompt if there is no appropriate hint.",
+    read_feature_documentation: tool({
+      description: "Fetch detailed documentation for a specific feature by ID. Returns complete feature details including documentation, related PRs, and commits.",
       inputSchema: z.object({
-        question: z.string().describe("The exact text of a Hint or Prompt from the get_learnings tool response."),
+        featureId: z.string().describe("The ID of the feature to retrieve documentation for"),
       }),
-      execute: async ({ question }: { question: string }) => {
-        return await askQuestion(swarmUrl, swarmApiKey, question);
+      execute: async ({ featureId }: { featureId: string }) => {
+        try {
+          const res = await fetch(`${swarmUrl}/gitree/features/${encodeURIComponent(featureId)}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-token": swarmApiKey,
+            },
+          });
+          if (!res.ok) return { error: "Feature not found" };
+          const data = await res.json();
+          return data;
+        } catch (e) {
+          console.error("Error retrieving feature documentation:", e);
+          return "Could not retrieve feature documentation";
+        }
       },
     }),
     recent_commits: tool({
