@@ -4,7 +4,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
+import { getQuickAskPrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { streamText, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
@@ -84,36 +84,7 @@ export async function POST(request: NextRequest) {
 
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const modelMessages: ModelMessage[] = [
-      // System prompt
-      { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },
-      // Pre-filled list_concepts tool call
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "list-1",
-            toolName: "list_concepts",
-            input: {},
-          },
-        ],
-      },
-      // Pre-filled list_concepts tool result
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "list-1",
-            toolName: "list_concepts",
-            output: {
-              type: "json",
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              value: concepts as any,
-            },
-          },
-        ],
-      },
+      ...getQuickAskPrefixMessages(concepts),
       // Conversation history (convert from LearnMessage to ModelMessage format)
       ...messages.map((msg: { role: string; content: string }) => ({
         role: msg.role as "user" | "assistant",
