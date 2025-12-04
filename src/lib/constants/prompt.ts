@@ -10,10 +10,9 @@ You have access to tools called list_concepts and learn_concept. list_concepts f
 
 When you are done print "[END_OF_ANSWER]"`;
 
-export function getQuickAskMessages(question: string, concepts: Record<string, unknown>): ModelMessage[] {
+export function getQuickAskPrefixMessages(concepts: Record<string, unknown>): ModelMessage[] {
   return [
     { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },
-    { role: "user", content: question },
     {
       role: "assistant",
       content: [

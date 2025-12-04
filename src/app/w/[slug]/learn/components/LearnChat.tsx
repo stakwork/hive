@@ -84,13 +84,14 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
   };
 
   useEffect(() => {
+    // Only run on initial mount if there's a feature_id in the URL
     const featureId = searchParams.get("feature_id");
     if (featureId && !hasLoadedFeatureRef.current) {
       hasLoadedFeatureRef.current = true;
       loadFeatureById(featureId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, workspaceSlug]);
+  }, []); // Empty deps - only run on mount
 
   const handleSend = async (content: string) => {
     if (!content.trim()) return;
@@ -102,14 +103,29 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
       timestamp: new Date(),
     };
 
+    // Filter out the initial greeting message and include the new user message
+    const conversationHistory = [
+      ...messages.filter(
+        (m) => !(m.role === "assistant" && m.content.startsWith("Hello! I'm your learning assistant")),
+      ),
+      userMessage,
+    ];
+
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
     hasReceivedContentRef.current = false;
 
     try {
-      const apiEndpoint = `/api/ask/quick?question=${encodeURIComponent(content.trim())}&workspace=${encodeURIComponent(workspaceSlug)}`;
-
-      const response = await fetch(apiEndpoint);
+      const response = await fetch(`/api/ask/quick`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: conversationHistory,
+          workspaceSlug,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -184,7 +200,7 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     params.set("feature_id", featureId);
     router.push(`?${params.toString()}`, { scroll: false });
 
-    // Load the feature
+    // Load the feature immediately
     await loadFeatureById(featureId, featureName);
   };
 
