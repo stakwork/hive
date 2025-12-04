@@ -45,7 +45,7 @@ beforeAll(async () => {
     console.error("Failed to setup test database schema:", error);
     throw error;
   }
-});
+}, 30000); 
 
 // Reset database before each test to ensure clean state.
 // No afterEach needed - beforeEach provides full isolation.
