@@ -2,11 +2,12 @@
 
 import { SwarmSetupHandler } from "@/components/swarm-setup/SwarmSetupHandler";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { StoreProvider } from "@/stores/StoreProvider";
 import { useState } from "react";
 import { Dashboard } from "./dashboard";
 
 export default function DashboardPage() {
-  const { workspace } = useWorkspace();
+  const { workspace, id } = useWorkspace();
   const [servicesStarted, setServicesStarted] = useState(false);
 
   console.log("/w/[slug]/page =====>", {
@@ -23,11 +24,17 @@ export default function DashboardPage() {
 
   const showDashboard = setupCompleted || (hasSwarmId && servicesStarted);
 
-  return (
-    <div className="h-full relative flex flex-col">
-      <SwarmSetupHandler onServicesStarted={setServicesStarted} />
+  if (!id) {
+    return null;
+  }
 
-      {showDashboard && <Dashboard />}
-    </div>
+  return (
+    <StoreProvider storeId={`workspace-${id}`}>
+      <div className="h-full relative flex flex-col">
+        <SwarmSetupHandler onServicesStarted={setServicesStarted} />
+
+        {showDashboard && <Dashboard />}
+      </div>
+    </StoreProvider>
   );
 }

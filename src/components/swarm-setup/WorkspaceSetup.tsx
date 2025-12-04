@@ -1,11 +1,12 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
-import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useDataStore } from "@/stores/useStores";
 import { getRepositoryDefaultBranch } from "@/utils/getRepositoryDefaultBranch";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 interface WorkspaceSetupProps {
   repositoryUrl: string;
@@ -14,6 +15,7 @@ interface WorkspaceSetupProps {
 
 export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSetupProps) {
   const { workspace, slug, id: workspaceId, updateWorkspace } = useWorkspace();
+  const setIsOnboarding = useDataStore((s) => s.setIsOnboarding);
   const [error, setError] = useState<string | null>(null);
   const ingestRefId = workspace?.ingestRefId;
   const hasStakworkCustomer = workspace?.hasKey;
@@ -203,6 +205,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
               }),
             });
 
+            setIsOnboarding(true);
+
           }
 
         } catch (error) {
@@ -220,7 +224,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
     // Update the previous value for next comparison
     prevShouldCreateSwarmRef.current = shouldCreateSwarm;
-  }, [workspace, workspaceId, slug, swarmId, repositoryUrl, toast, updateWorkspace]); // Direct dependencies only
+  }, [workspace, workspaceId, slug, swarmId, repositoryUrl, toast, updateWorkspace, setIsOnboarding]); // Direct dependencies only
 
   // Step 2: Start ingestion when swarm is ready
   useEffect(() => {

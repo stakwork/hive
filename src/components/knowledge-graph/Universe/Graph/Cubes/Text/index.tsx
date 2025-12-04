@@ -4,10 +4,8 @@ import { Billboard } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
 import { removeEmojis } from '@Universe/utils/removeEmojisFromText'
 import { removeLeadingMentions } from '@Universe/utils/removeLeadingMentions'
-import { truncateText } from '@Universe/utils/truncateText'
 import { memo, useEffect, useRef, useState } from 'react'
 import { Group, Mesh, Texture, TextureLoader } from 'three'
-import { TextWithBackground } from './TextWithBackgound'
 
 type Props = {
   node: NodeExtended
@@ -78,9 +76,9 @@ export const TextNode = memo(
             />
           </mesh> */}
 
-          {sanitizedNodeName && (
+          {/* {sanitizedNodeName && (
             <TextWithBackground ref={backgroundRef} id={node.ref_id} text={truncateText(sanitizedNodeName, 150)} />
-          )}
+          )} */}
         </mesh>
       </Billboard>
     )

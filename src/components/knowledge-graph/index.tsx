@@ -75,6 +75,7 @@ const GraphComponentInner = ({
   const currentRequestRef = useRef<AbortController | null>(null);
   const isInitialMountRef = useRef(true);
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
+  const isOnboarding = useDataStore((s) => s.isOnboarding);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
@@ -231,6 +232,8 @@ const GraphComponentInner = ({
 
   // Load data when filter changes
   useEffect(() => {
+
+    if (isOnboarding) return;
     const hasExistingData = dataInitial?.nodes && dataInitial.nodes.length > 0;
 
     if (isInitialMountRef.current) {
@@ -248,7 +251,7 @@ const GraphComponentInner = ({
       fetchFilteredData(activeFilterTab, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilterTab]);
+  }, [activeFilterTab, isOnboarding]);
 
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
