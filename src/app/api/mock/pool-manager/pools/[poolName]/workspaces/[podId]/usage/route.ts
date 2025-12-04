@@ -28,6 +28,7 @@ export async function GET(
     mockPoolState.getOrCreatePool(poolName);
 
     const pod = mockPoolState.getPod(poolName, podId);
+
     if (pod === undefined) {
       return NextResponse.json(
         { error: "Pod not found" },

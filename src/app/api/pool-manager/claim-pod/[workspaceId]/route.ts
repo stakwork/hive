@@ -55,11 +55,29 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // If using custom local Goose URL, return mock URLs instead of claiming a real pod
     if (process.env.CUSTOM_GOOSE_URL) {
       const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
+      const mockPodId = "local-dev";
+
+      // Still save podId and agentUrl to task in dev mode
+      if (taskId && shouldIncludeGoose) {
+        try {
+          await db.task.update({
+            where: { id: taskId },
+            data: {
+              podId: mockPodId,
+              agentUrl: process.env.CUSTOM_GOOSE_URL,
+            },
+          });
+          console.log(`✅ Stored mock podId ${mockPodId} for task ${taskId}`);
+        } catch (error) {
+          console.error("Failed to store mock pod info:", error);
+        }
+      }
+
       return NextResponse.json(
         {
           success: true,
           message: "Using local Goose instance (no pod claimed)",
-          podId: "local-dev",
+          podId: mockPodId,
           frontend: mockFrontend,
           control: null,
           ide: null,
