@@ -144,15 +144,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           <span>{formatRelativeTime(task.createdAt)}</span>
         </div>
 
-        {/* Optional: Agent badge */}
-        {!hideWorkflowStatus && task.mode === "agent" && (
-          <Badge variant="secondary" className="gap-1 h-5">
-            <Bot className="w-3 h-3" />
-            Agent
-          </Badge>
-        )}
-
-        {/* Pod indicator */}
+        {/* Pod indicator - shows when pod is active */}
         {task.podId && (
           <TooltipProvider>
             <Tooltip>
@@ -166,6 +158,14 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        )}
+
+        {/* Optional: Agent badge */}
+        {!hideWorkflowStatus && task.mode === "agent" && (
+          <Badge variant="secondary" className="gap-1 h-5">
+            <Bot className="w-3 h-3" />
+            Agent
+          </Badge>
         )}
 
         {/* Optional: Task Coordinator badge */}
