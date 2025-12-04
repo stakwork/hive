@@ -16,10 +16,7 @@ interface LearnSidebarProps {
   onFeatureClick?: (featureId: string, featureName: string) => void;
 }
 
-export function LearnSidebar({
-  workspaceSlug,
-  onFeatureClick,
-}: LearnSidebarProps) {
+export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProps) {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [isFeaturesLoading, setIsFeaturesLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -104,12 +101,7 @@ export function LearnSidebar({
 
   return (
     <div className="w-80 bg-background border-l border-border flex flex-col fixed top-0 right-0 h-full">
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-medium text-muted-foreground">Features</h2>
-        </div>
-        <p className="text-xs text-muted-foreground/70">Browse features and concepts from your codebase</p>
-      </div>
+      <div className="p-2"></div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {/* Features Section */}
@@ -117,13 +109,16 @@ export function LearnSidebar({
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
             <button
               onClick={() => setIsFeaturesCollapsed(!isFeaturesCollapsed)}
-              className="flex items-center gap-2 mb-3 w-full hover:opacity-70 transition-opacity"
+              className="flex flex-col items-start gap-2 mb-3 w-full hover:opacity-70 transition-opacity"
             >
-              <Box className="w-4 h-4 text-muted-foreground" />
-              <h3 className="font-medium text-muted-foreground">Concepts</h3>
-              <ChevronDown
-                className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${isFeaturesCollapsed ? "-rotate-90" : ""}`}
-              />
+              <div className="flex items-center gap-2 w-full">
+                <Box className="w-4 h-4 text-muted-foreground" />
+                <h3 className="font-medium text-muted-foreground">Concepts</h3>
+                <ChevronDown
+                  className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${isFeaturesCollapsed ? "-rotate-90" : ""}`}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground/70">Browse features from your codebase</p>
             </button>
             <AnimatePresence>
               {!isFeaturesCollapsed && (
@@ -177,12 +172,7 @@ export function LearnSidebar({
             {lastProcessed ? `Last processed: ${formatRelativeTime(lastProcessed)}` : "Never processed"}
           </p>
         </div>
-        <Button
-          size="sm"
-          onClick={handleSeedKnowledge}
-          disabled={isSeeding || isProcessing}
-          className="w-full"
-        >
+        <Button size="sm" onClick={handleSeedKnowledge} disabled={isSeeding || isProcessing} className="w-full">
           {isSeeding || isProcessing ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin mr-2" />
