@@ -103,6 +103,8 @@ export interface MockToken {
   scope: string;
   token_type: "bearer";
   created_at: Date;
+  revoked?: boolean;
+  revokedAt?: string;
 }
 
 export interface MockBranch {
@@ -299,7 +301,42 @@ class MockGitHubStateManager {
   }
 
   getTokenByCode(code: string): MockToken | undefined {
-    return this.tokens.get(code);
+    const token = this.tokens.get(code);
+    if (token && !token.revoked) {
+      return token;
+    }
+    return undefined;
+  }
+
+  /**
+   * Revoke a token by access token value
+   * Returns true if token was found and revoked, false otherwise
+   */
+  revokeToken(accessToken: string): boolean {
+    for (const [code, token] of this.tokens.entries()) {
+      if (token.access_token === accessToken) {
+        // Return false if token is already revoked
+        if (token.revoked) {
+          return false;
+        }
+        token.revoked = true;
+        token.revokedAt = new Date().toISOString();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if a token is revoked
+   */
+  isTokenRevoked(accessToken: string): boolean {
+    for (const token of this.tokens.values()) {
+      if (token.access_token === accessToken) {
+        return token.revoked === true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -572,3 +609,8 @@ class MockGitHubStateManager {
 
 // Export singleton instance
 export const mockGitHubState = new MockGitHubStateManager();
+
+// Export class for type checking and getInstance pattern
+export const MockGitHubState = {
+  getInstance: () => mockGitHubState
+};
