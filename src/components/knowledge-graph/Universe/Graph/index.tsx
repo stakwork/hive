@@ -1,11 +1,13 @@
 import { deepEqual } from '@/lib/utils/deepEqual'
 import { getStoreBundle } from '@/stores/createStoreFactory'
 import { useStoreId } from '@/stores/StoreProvider'
+import { useControlStore } from '@/stores/useControlStore'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
+import { useFrame } from '@react-three/fiber'
 import { NodeExtended } from '@Universe/types'
 import { useEffect, useRef } from 'react'
-import { Group } from 'three'
+import { Box3, Group, Sphere, Vector3 } from 'three'
 import { Line2 } from 'three-stdlib'
 import { RepositoryScene } from '../GitSeeScene'
 import { EdgesGPU } from './Connections/EdgeCpu'
@@ -32,19 +34,20 @@ export type NodePosition = {
 }
 
 export const Graph = () => {
-  const { dataInitial, dataNew, resetDataNew } = useDataStore((s) => s)
+  const { dataInitial, dataNew, resetDataNew, isOnboarding, setIsOnboarding } = useDataStore((s) => s)
   const groupRef = useRef<Group>(null)
   const { normalizedSchemasByType } = useSchemaStore((s) => s)
   const prevRadius = useRef(0)
   const storeId = useStoreId()
-
-
+  const nodePositionsNormalized = getStoreBundle(storeId).simulation.getState().nodePositionsNormalized
+  const lerpVec = useRef(new Vector3())
 
   const linksPositionRef = useRef(new Map<string, LinkPosition>())
-  const nodesPositionRef = useRef(new Map<string, NodePosition>())
   const justWokeUpRef = useRef(false)
 
   const { graphStyle, setGraphRadius, activeFilterTab } = useGraphStore((s) => s)
+  const cameraControlsRef = useControlStore((s) => s.cameraControlsRef)
+  const automaticAnimationsDisabled = useControlStore((s) => s.automaticAnimationsDisabled)
 
   const {
     simulation,
@@ -132,8 +135,93 @@ export const Graph = () => {
     setForces()
   }, [graphStyle, setForces, simulation, isSleeping])
 
+  // Onboarding: smoothly lerp node positions from current to simulation targets each frame
+  useFrame(() => {
+    if (!isOnboarding || !simulation || !groupRef.current) return
+
+    const gr = groupRef.current.getObjectByName('simulation-3d-group__nodes') as Group
+    const grPoints = groupRef.current.getObjectByName('simulation-3d-group__node-points') as Group
+    const grConnections = groupRef.current.getObjectByName('simulation-3d-group__connections') as Group
+
+    if (gr && grPoints) {
+      const nodes = simulation.nodes()
+      const maxLength = Math.max(gr.children.length)
+
+      for (let index = 0; index < maxLength; index += 1) {
+        const simulationNode = nodes[index]
+
+        if (simulationNode) {
+          const target = lerpVec.current.set(simulationNode.fx || simulationNode.x || 0, simulationNode.fy || simulationNode.y || 0, simulationNode.fz || simulationNode.z || 0)
+
+          if (gr.children[index]) {
+            gr.children[index].position.lerp(target, 0.01)
+          }
+
+          if (grPoints.children[0]?.children[index]) {
+            grPoints.children[0].children[index].position.lerp(target, 0.01)
+          }
+
+          const applied = gr.children[index]?.position || target
+          nodePositionsNormalized.set(simulationNode.ref_id, { x: applied.x, y: applied.y, z: applied.z || 0 })
+        }
+      }
+    }
+
+    linksPositionRef.current.clear()
+
+    dataInitial?.links.forEach((link) => {
+      const sourceId = typeof link.source === 'string' ? link.source : (link.source as any)?.ref_id
+      const targetId = typeof link.target === 'string' ? link.target : (link.target as any)?.ref_id
+
+      const sourceNode = sourceId ? nodePositionsNormalized.get(sourceId) : { x: 0, y: 0, z: 0 }
+      const targetNode = targetId ? nodePositionsNormalized.get(targetId) : { x: 0, y: 0, z: 0 }
+
+      const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
+      const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
+
+      linksPositionRef.current.set(link.ref_id, {
+        sx: sx || 0,
+        sy: sy || 0,
+        sz: sz || 0,
+        tx: tx || 0,
+        ty: ty || 0,
+        tz: tz || 0,
+      })
+    })
+
+    if (grConnections) {
+      grConnections.children.forEach((g, i) => {
+        const r = g.children[0]
+        const text = g.children[1]
+
+        if (r instanceof Line2) {
+          const Line = r as Line2
+          const link = dataInitial?.links[i]
+
+          if (link) {
+            const sourceNode = (link.source as any).ref_id ? nodePositionsNormalized.get((link.source as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+            const targetNode = (link.target as any).ref_id ? nodePositionsNormalized.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+
+            if (!sourceNode || !targetNode) {
+              return
+            }
+
+            const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
+            const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
+
+            text.position.set((sx + tx) / 2, (sy + ty) / 2, (sz + tz) / 2)
+            Line.geometry.setPositions([sx, sy, sz, tx, ty, tz])
+            const { material } = Line
+            material.transparent = true
+            material.opacity = 0.3
+          }
+        }
+      })
+    }
+  })
+
   useEffect(() => {
-    if (!simulation) {
+    if (!simulation || isOnboarding) {
       return
     }
 
@@ -160,8 +248,6 @@ export const Graph = () => {
 
 
             if (simulationNode) {
-              nodesPositionRef.current.set(simulationNode.ref_id, { x: simulationNode.x, y: simulationNode.y, z: simulationNode.z || 0 })
-
               if (gr.children[index]) {
                 gr.children[index].position.set(simulationNode.x, simulationNode.y, simulationNode.z)
               }
@@ -169,6 +255,8 @@ export const Graph = () => {
               if (grPoints.children[0].children[index]) {
                 grPoints.children[0].children[index].position.set(simulationNode.x, simulationNode.y, simulationNode.z)
               }
+
+              nodePositionsNormalized.set(simulationNode.ref_id, { x: simulationNode.x, y: simulationNode.y, z: simulationNode.z || 0 })
             }
           }
         }
@@ -180,16 +268,11 @@ export const Graph = () => {
           const sourceId = typeof link.source === 'string' ? link.source : (link.source as any)?.ref_id
           const targetId = typeof link.target === 'string' ? link.target : (link.target as any)?.ref_id
 
-
-
-
-          const sourceNode = sourceId ? nodesPositionRef.current.get(sourceId) : { x: 0, y: 0, z: 0 }
-          const targetNode = targetId ? nodesPositionRef.current.get(targetId) : { x: 0, y: 0, z: 0 }
-
+          const sourceNode = sourceId ? nodePositionsNormalized.get(sourceId) : { x: 0, y: 0, z: 0 }
+          const targetNode = targetId ? nodePositionsNormalized.get(targetId) : { x: 0, y: 0, z: 0 }
 
           const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
           const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
-
 
           // Set positions for the link
           linksPositionRef.current.set(link.ref_id, {
@@ -200,7 +283,6 @@ export const Graph = () => {
             ty: ty || 0,
             tz: tz || 0,
           })
-
         })
 
         if (grConnections) {
@@ -214,8 +296,8 @@ export const Graph = () => {
               const link = dataInitial?.links[i]
 
               if (link) {
-                const sourceNode = (link.source as any).ref_id ? nodesPositionRef.current.get((link.source as any).ref_id as string) : { x: 0, y: 0, z: 0 }
-                const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+                const sourceNode = (link.source as any).ref_id ? nodePositionsNormalized.get((link.source as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+                const targetNode = (link.target as any).ref_id ? nodePositionsNormalized.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
                   return
@@ -254,7 +336,7 @@ export const Graph = () => {
         i.fy = i.y
 
         i.fz = i.z || 0
-        nodesPositionRef.current.set(i.ref_id, { x: i.x, y: i.y, z: i.z || 0 })
+        nodePositionsNormalized.set(i.ref_id, { x: i.x, y: i.y, z: i.z || 0 })
       })
 
       if (groupRef?.current) {
@@ -283,8 +365,8 @@ export const Graph = () => {
         dataInitial?.links.forEach((link) => {
           const sourceId = typeof link.source === 'string' ? link.source : (link.source as any)?.ref_id
           const targetId = typeof link.target === 'string' ? link.target : (link.target as any)?.ref_id
-          const sourceNode = sourceId ? nodesPositionRef.current.get(sourceId) : { x: 0, y: 0, z: 0 }
-          const targetNode = targetId ? nodesPositionRef.current.get(targetId) : { x: 0, y: 0, z: 0 }
+          const sourceNode = sourceId ? nodePositionsNormalized.get(sourceId) : { x: 0, y: 0, z: 0 }
+          const targetNode = targetId ? nodePositionsNormalized.get(targetId) : { x: 0, y: 0, z: 0 }
 
           const { x: sx, y: sy, z: sz } = sourceNode || { x: 0, y: 0, z: 0 }
           const { x: tx, y: ty, z: tz } = targetNode || { x: 0, y: 0, z: 0 }
@@ -311,8 +393,8 @@ export const Graph = () => {
               const link = dataInitial?.links[i]
 
               if (link) {
-                const sourceNode = (link.source as any).ref_id ? nodesPositionRef.current.get((link.source as any).ref_id as string) : { x: 0, y: 0, z: 0 }
-                const targetNode = (link.target as any).ref_id ? nodesPositionRef.current.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+                const sourceNode = (link.source as any).ref_id ? nodePositionsNormalized.get((link.source as any).ref_id as string) : { x: 0, y: 0, z: 0 }
+                const targetNode = (link.target as any).ref_id ? nodePositionsNormalized.get((link.target as any).ref_id as string) : { x: 0, y: 0, z: 0 }
 
                 if (!sourceNode || !targetNode) {
                   return
@@ -364,6 +446,7 @@ export const Graph = () => {
     resetDataNew,
     updateSimulationVersion,
     setSimulationInProgress,
+    isOnboarding,
   ])
 
   // if (!simulation) {
@@ -381,14 +464,14 @@ export const Graph = () => {
       <group>
         <Cubes />
 
-        {/* <Connections linksPosition={linksPositionRef.current} /> */}
         <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
-      <HighlightedNodesLayer />
-      {(!dataInitial?.nodes || dataInitial.nodes.length === 0) && <RepositoryScene />}
+      {false && <HighlightedNodesLayer />}
+      {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
       <NodeDetailsPanel />
+
     </group>
   )
 }

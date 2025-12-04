@@ -34,6 +34,7 @@ export interface SimulationStore {
   simulationVersion: number
   simulationInProgress: boolean
   isSleeping: boolean
+  nodePositionsNormalized: Map<string, { x: number; y: number; z: number }>
   simulationCreate: (nodes: Node[]) => void
   removeSimulation: () => void
   addNodesAndLinks: (nodes: Node[], links: Link[], replace: boolean) => void
@@ -54,6 +55,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   simulationVersion: 0,
   simulationInProgress: false,
   isSleeping: false,
+  nodePositionsNormalized: new Map(),
   resetSimulation: () => {
     const { simulation } = get()
     if (!simulation) {
