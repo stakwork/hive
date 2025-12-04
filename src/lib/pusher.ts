@@ -9,8 +9,21 @@ let pusherServerInstance: Pusher | any;
 
 if (config.USE_MOCKS) {
   // Use mock Pusher in development/testing
-  const { MockPusherServer } = require("./pusher-mock");
-  pusherServerInstance = new MockPusherServer();
+  try {
+    const { MockPusherServer } = require("./pusher-mock");
+    pusherServerInstance = new MockPusherServer();
+  } catch (error) {
+    console.warn("Failed to load pusher-mock, falling back to real Pusher:", error);
+    const PusherModule = require("pusher");
+    const PusherClass = PusherModule.default || PusherModule;
+    pusherServerInstance = new PusherClass({
+      appId: process.env.PUSHER_APP_ID || "mock-app-id",
+      key: process.env.PUSHER_KEY || "mock-key",
+      secret: process.env.PUSHER_SECRET || "mock-secret",
+      cluster: process.env.PUSHER_CLUSTER || "mt1",
+      useTLS: true,
+    });
+  }
 } else {
   // Use real Pusher in production
   const PusherModule = require("pusher");

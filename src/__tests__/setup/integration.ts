@@ -52,9 +52,16 @@ beforeAll(async () => {
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
   await resetDatabase();
-  // Reset Pusher mock state between tests
-  const { mockPusherState } = await import("@/lib/mock/pusher-state");
-  mockPusherState.reset();
+  // Reset Pusher mock state between tests (only if using mocks)
+  if (process.env.USE_MOCKS === "true") {
+    try {
+      const { mockPusherState } = await import("@/lib/mock/pusher-state");
+      mockPusherState.reset();
+    } catch (error) {
+      // Ignore if mock state doesn't exist (older branches)
+      console.warn("Could not reset Pusher mock state:", error);
+    }
+  }
 });
 
 afterEach(() => {
