@@ -143,10 +143,10 @@ export async function GET(request: NextRequest) {
 
     const vanityAddress = getSwarmVanityAddress(swarm.name);
 
-    let jarvisUrl = `https://${vanityAddress}:8444`;
-    let apiKey = swarm.swarmApiKey;
-    if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
-    if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
+    const jarvisUrl = `https://${vanityAddress}:8444`;
+    const apiKey = swarm.swarmApiKey;
+    // if (process.env.CUSTOM_SWARM_URL) jarvisUrl = `${process.env.CUSTOM_SWARM_URL}:8444`;
+    // if (process.env.CUSTOM_SWARM_API_KEY) apiKey = process.env.CUSTOM_SWARM_API_KEY;
 
     // Append node_type to endpoint if provided
     let finalEndpoint = endpoint;
