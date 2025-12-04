@@ -152,6 +152,7 @@ export async function GET(request: NextRequest) {
           workflowStatus: true,
           sourceType: true,
           mode: true,
+          podId: true,
           stakworkProjectId: true,
           testFilePath: true,
           testFileUrl: true,

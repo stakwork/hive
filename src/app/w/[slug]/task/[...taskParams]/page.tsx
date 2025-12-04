@@ -66,6 +66,8 @@ export default function TaskChatPage() {
   // });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
+  const [podId, setPodId] = useState<string | null>(null);
+  const [isReleasingPod, setIsReleasingPod] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
@@ -111,8 +113,14 @@ export default function TaskChatPage() {
     (update: TaskTitleUpdateEvent) => {
       // Only update if it's for the current task
       if (update.taskId === currentTaskId) {
-        console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
-        setTaskTitle(update.newTitle);
+        if (update.newTitle !== undefined) {
+          console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
+          setTaskTitle(update.newTitle);
+        }
+        if ('podId' in update) {
+          console.log(`Task podId updated: ${update.podId}`);
+          setPodId(update.podId ?? null);
+        }
       }
     },
     [currentTaskId],
@@ -194,6 +202,11 @@ export default function TaskChatPage() {
         if (result.data.task?.title) {
           setTaskTitle(result.data.task.title);
         }
+
+        // Set podId from API response
+        if (result.data.task?.podId) {
+          setPodId(result.data.task.podId);
+        }
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
@@ -266,6 +279,7 @@ export default function TaskChatPage() {
                 ide: podResult.ide,
               };
               freshPodId = podResult.podId;
+              setPodId(freshPodId);
               console.log(">>> Pod claimed:", freshPodId);
             } else {
               console.error("Failed to claim pod:", await podResponse.text());
@@ -552,6 +566,44 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleReleasePod = async () => {
+    if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
+
+    setIsReleasingPod(true);
+    try {
+      const response = await fetch(
+        `/api/pool-manager/drop-pod/${effectiveWorkspaceId}?podId=${podId}&taskId=${currentTaskId}`,
+        { method: "POST" }
+      );
+
+      const data = await response.json();
+
+      if (response.status === 409 && data.reassigned) {
+        toast.error("Pod already released", {
+          description: "This pod is no longer connected to this task.",
+        });
+        setPodId(null);
+        setWorkflowStatus(WorkflowStatus.COMPLETED);
+      } else if (!response.ok) {
+        toast.error("Failed to release pod", {
+          description: data.error || "An error occurred",
+        });
+      } else {
+        toast.success("Pod released", {
+          description: "The pod has been released successfully.",
+        });
+        setPodId(null);
+        setWorkflowStatus(WorkflowStatus.COMPLETED);
+      }
+    } catch {
+      toast.error("Failed to release pod", {
+        description: "Network error occurred",
+      });
+    } finally {
+      setIsReleasingPod(false);
+    }
+  };
+
   const handleCommit = async () => {
     if (!workspaceId || !currentTaskId) {
       console.error("Missing commit requirements:", { workspaceId, currentTaskId });
@@ -768,6 +820,9 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    podId={podId}
+                    onReleasePod={handleReleasePod}
+                    isReleasingPod={isReleasingPod}
                   />
                 )}
               </div>
@@ -789,6 +844,9 @@ export default function TaskChatPage() {
                       onCommit={handleCommit}
                       isCommitting={isGeneratingCommitInfo || isCommitting}
                       taskMode={taskMode}
+                      podId={podId}
+                      onReleasePod={handleReleasePod}
+                      isReleasingPod={isReleasingPod}
                     />
                   </div>
                 </ResizablePanel>
@@ -821,6 +879,9 @@ export default function TaskChatPage() {
                 onCommit={handleCommit}
                 isCommitting={isGeneratingCommitInfo || isCommitting}
                 taskMode={taskMode}
+                podId={podId}
+                onReleasePod={handleReleasePod}
+                isReleasingPod={isReleasingPod}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -856,6 +917,9 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    podId={podId}
+                    onReleasePod={handleReleasePod}
+                    isReleasingPod={isReleasingPod}
                   />
                 )}
               </div>
@@ -880,6 +944,9 @@ export default function TaskChatPage() {
                       stakworkProjectId={stakworkProjectId}
                       workspaceSlug={slug}
                       taskMode={taskMode}
+                      podId={podId}
+                      onReleasePod={handleReleasePod}
+                      isReleasingPod={isReleasingPod}
                     />
                   </div>
                 </ResizablePanel>
@@ -915,6 +982,9 @@ export default function TaskChatPage() {
                 stakworkProjectId={stakworkProjectId}
                 workspaceSlug={slug}
                 taskMode={taskMode}
+                podId={podId}
+                onReleasePod={handleReleasePod}
+                isReleasingPod={isReleasingPod}
               />
             </div>
           )}

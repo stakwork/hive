@@ -2,13 +2,14 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Save, Monitor } from "lucide-react";
+import { ArrowLeft, Save, Monitor, Server, ServerOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import type { WorkflowStatus, Artifact, ChatMessage } from "@/lib/chat";
@@ -30,6 +31,9 @@ interface AgentChatAreaProps {
   showPreview?: boolean;
   onTogglePreview?: () => void;
   taskMode?: string;
+  podId?: string | null;
+  onReleasePod?: () => Promise<void>;
+  isReleasingPod?: boolean;
 }
 
 export function AgentChatArea({
@@ -49,6 +53,9 @@ export function AgentChatArea({
   showPreview = false,
   onTogglePreview,
   taskMode,
+  podId,
+  onReleasePod,
+  isReleasingPod = false,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -152,6 +159,31 @@ export function AgentChatArea({
                 >
                   <Monitor className="w-4 h-4" />
                 </Button>
+              )}
+
+              {/* Pod Indicator with Release */}
+              {podId && onReleasePod && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onReleasePod}
+                        disabled={isReleasingPod}
+                        className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
+                      >
+                        <span className="relative w-4 h-4">
+                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" />
+                          <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
+                        </span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isReleasingPod ? "Releasing pod..." : "Release pod"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
 
               {/* Save Button */}

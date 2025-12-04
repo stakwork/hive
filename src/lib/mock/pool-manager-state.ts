@@ -119,6 +119,9 @@ class MockPoolStateManager {
         "3001": podUrl,
         "5173": podUrl,
         "8080": podUrl,
+        // Real pod ports for control and goose
+        "15552": podUrl, // CONTROL port
+        "15551": podUrl, // GOOSE port
       },
       repositories: [],
       branches: [],
@@ -179,6 +182,7 @@ class MockPoolStateManager {
     pod.environmentVariables = {};
     pod.claimedAt = undefined;
     pod.workspaceId = undefined;
+    pod.userInfo = undefined;
 
     return true;
   }
