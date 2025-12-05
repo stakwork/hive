@@ -4,6 +4,12 @@ import { getToken } from "next-auth/jwt";
 import { MIDDLEWARE_HEADERS, resolveRouteAccess } from "@/config/middleware";
 import { verifyCookie, isLandingPageEnabled, LANDING_COOKIE_NAME } from "@/lib/auth/landing-cookie";
 import type { ApiError } from "@/types/errors";
+import {
+  checkRateLimit,
+  createRateLimitHeaders,
+  createRateLimitResponse,
+  extractRateLimitIdentifier,
+} from "@/lib/rate-limit";
 // Environment validation - fail fast if required secrets are missing
 if (!process.env.NEXTAUTH_SECRET) {
   throw new Error("NEXTAUTH_SECRET is required for middleware authentication");
@@ -87,8 +93,38 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
-    // System and webhook routes bypass all authentication checks
-    if (routeAccess === "webhook" || routeAccess === "system") {
+    // Apply rate limiting for webhook routes
+    if (routeAccess === "webhook") {
+      const identifier = extractRateLimitIdentifier(request);
+      const rateLimitResult = await checkRateLimit(identifier, "webhook");
+
+      if (!rateLimitResult.success) {
+        console.warn(
+          `[Rate Limit] Request blocked for ${pathname} (identifier: ${identifier})`
+        );
+        return createRateLimitResponse(rateLimitResult);
+      }
+
+      // Add rate limit headers to successful webhook requests
+      const response = NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+      const rateLimitHeaders = createRateLimitHeaders(rateLimitResult);
+      Object.entries(rateLimitHeaders).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+
+      // Continue with rest of middleware processing
+      // (will be merged with other headers below)
+      requestHeaders.set("x-rate-limit-checked", "true");
+      
+      return continueRequest(requestHeaders, routeAccess);
+    }
+    
+    // System routes bypass all authentication checks
+    if (routeAccess === "system") {
       return continueRequest(requestHeaders, routeAccess);
     }
 
