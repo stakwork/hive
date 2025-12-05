@@ -282,12 +282,66 @@ export default function TaskChatPage() {
               setPodId(freshPodId);
               console.log(">>> Pod claimed:", freshPodId);
             } else {
+              // Pod claim failed - archive the task and redirect back to task list
               console.error("Failed to claim pod:", await podResponse.text());
-              toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
+              
+              try {
+                // Archive the task
+                await fetch(`/api/tasks/${newTaskId}`, {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    archived: true,
+                  }),
+                });
+                
+                toast.error("No pods available", { 
+                  description: "Task archived. Please try again later when capacity is available." 
+                });
+                
+                // Redirect back to task list
+                window.location.href = `/w/${slug}/tasks`;
+                return;
+              } catch (archiveError) {
+                console.error("Error archiving task:", archiveError);
+                toast.error("Error", { 
+                  description: "Failed to claim pod and couldn't archive task. Please contact support." 
+                });
+                return;
+              }
             }
           } catch (error) {
+            // Network or other error during pod claim
             console.error("Error claiming pod:", error);
-            toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
+            
+            try {
+              // Archive the task
+              await fetch(`/api/tasks/${newTaskId}`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  archived: true,
+                }),
+              });
+              
+              toast.error("Pod claim error", { 
+                description: "Task archived. Please try again later." 
+              });
+              
+              // Redirect back to task list
+              window.location.href = `/w/${slug}/tasks`;
+              return;
+            } catch (archiveError) {
+              console.error("Error archiving task:", archiveError);
+              toast.error("Error", { 
+                description: "Failed to claim pod and couldn't archive task. Please contact support." 
+              });
+              return;
+            }
           }
         }
 
