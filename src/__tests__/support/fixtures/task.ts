@@ -14,6 +14,7 @@ export interface CreateTestTaskOptions {
   phaseId?: string;
   priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   order?: number;
+  dependsOnTaskIds?: string[];
 }
 
 export interface CreateTestChatMessageOptions {
@@ -41,6 +42,7 @@ export async function createTestTask(
       featureId: options.featureId || null,
       phaseId: options.phaseId || null,
       order: options.order !== undefined ? options.order : 0,
+      dependsOnTaskIds: options.dependsOnTaskIds || [],
     },
   });
 }
