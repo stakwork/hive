@@ -405,6 +405,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
         repoUrl,
         baseBranch,
         autoMergePr,
+        janitorType: task.janitorType,
       });
 
       if (stakworkData.success) {
@@ -486,6 +487,7 @@ export async function callStakworkAPI(params: {
   history?: Record<string, unknown>[];
   autoMergePr?: boolean;
   webhook?: string;
+  janitorType?: JanitorType | null;
 }) {
   const {
     taskId,
@@ -510,6 +512,7 @@ export async function callStakworkAPI(params: {
     history = [],
     autoMergePr,
     webhook,
+    janitorType,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -557,6 +560,9 @@ export async function callStakworkAPI(params: {
   }
   if (featureContext !== undefined) {
     vars.featureContext = featureContext;
+  }
+  if (janitorType !== undefined && janitorType !== null) {
+    vars.janitorType = janitorType;
   }
 
   // Get workflow ID (replicating workflow selection logic)
