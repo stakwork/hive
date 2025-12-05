@@ -112,6 +112,7 @@ export const selectors = {
     connectRepoButton: 'button:has-text("Connect Repository")',
     taskListContainer: '[data-testid="task-card"]',
     recentTasksHeading: 'text=/Recent Tasks|Tasks/i',
+    emptyStateText: 'text=/No tasks created yet/i',
   },
 
   // Dashboard
@@ -174,6 +175,12 @@ export const selectors = {
   calls: {
     startCallButton: 'button:has-text("Start Call")',
     callRecordingsCard: 'text=/Call Recordings/i',
+  },
+
+  // Learn
+  learn: {
+    learningAssistantHeading: 'h1:has-text("Learning Assistant")',
+    chatInput: 'textarea',
   },
 
   // Common UI elements
