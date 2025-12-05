@@ -565,6 +565,60 @@ describe('ChatMessage', () => {
         expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
       });
     });
+
+    it('maintains hover state during parent re-renders (memoization test)', async () => {
+      const message = createTestMessage({
+        workflowUrl: 'https://example.com/workflow/123',
+        message: 'Test message content',
+      });
+
+      const { rerender } = render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      const messageElement = screen.getByText(/test message content/i).closest('div');
+      expect(messageElement).toBeInTheDocument();
+
+      // Hover over the element
+      fireEvent.mouseEnter(messageElement!);
+      
+      await waitFor(() => {
+        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
+      });
+
+      // Simulate parent re-render with identical props (should not reset hover state)
+      rerender(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Verify hover state is still active after re-render
+      await waitFor(() => {
+        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
+      });
+
+      // Simulate another parent re-render (e.g., from polling)
+      rerender(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      // Verify hover state persists
+      expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-100');
+
+      // Verify hover out still works
+      fireEvent.mouseLeave(messageElement!);
+      await waitFor(() => {
+        expect(screen.getByTestId('workflow-url-link')).toHaveClass('opacity-0');
+      });
+    });
   });
 
   describe('Animation Integration', () => {

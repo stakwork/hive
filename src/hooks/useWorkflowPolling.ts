@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { deepEqual } from '@/lib/utils/deepEqual';
 
 export interface WorkflowData {
   workflowData: {
@@ -18,6 +19,7 @@ export const useWorkflowPolling = (
   const [workflowData, setWorkflowData] = useState<WorkflowData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const previousDataRef = useRef<WorkflowData | null>(null);
 
   const fetchWorkflowData = useCallback(async () => {
     if (!projectId) return;
@@ -33,7 +35,12 @@ export const useWorkflowPolling = (
       }
 
       const data: WorkflowData = await response.json();
-      setWorkflowData(data);
+      
+      // Only update state if data has actually changed (prevents unnecessary re-renders)
+      if (!deepEqual(previousDataRef.current, data)) {
+        previousDataRef.current = data;
+        setWorkflowData(data);
+      }
 
       // Stop polling if workflow is completed
       if (data.status === "completed" && intervalRef.current) {

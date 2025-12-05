@@ -541,7 +541,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleArtifactAction = async (messageId: string, action: Option, webhook: string) => {
+  const handleArtifactAction = useCallback(async (messageId: string, action: Option, webhook: string) => {
     // console.log("Action triggered:", action);
 
     // Find the original message that contains artifacts
@@ -555,7 +555,7 @@ export default function TaskChatPage() {
         webhook: webhook,
       });
     }
-  };
+  }, [messages, sendMessage, setIsChainVisible]);
 
   const handleDebugMessage = async (_message: string, debugArtifact?: Artifact) => {
     if (debugArtifact) {
