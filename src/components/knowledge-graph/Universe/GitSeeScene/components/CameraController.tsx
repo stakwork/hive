@@ -2,8 +2,8 @@ import { useControlStore } from '@/stores/useControlStore';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import type { GitSeeDataPhase } from '../hooks/useGitSeeData';
 
+type GitSeeDataPhase = 'loading' | 'repo-ready' | 'directories-ready' | 'files-ready' | 'complete';
 interface CameraControllerProps {
   dataPhase: GitSeeDataPhase;
   gitseePosition: THREE.Vector3;
