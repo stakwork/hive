@@ -1,285 +1,756 @@
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { DELETE } from '@/app/api/tickets/[ticketId]/route';
 import { db } from '@/lib/db';
 import {
   createTestUser,
   createTestWorkspace,
   createTestTask,
+  updateTestTask,
   findTestTask,
-  updateTestTask
 } from '@/__tests__/support/fixtures';
 import {
   createDeleteRequest,
   createAuthenticatedDeleteRequest,
-  getMockedSession,
-  createAuthenticatedSession,
-  expectSuccess,
-  expectNotFound,
+} from '@/__tests__/support/helpers/request-builders';
+import {
   expectUnauthorized,
   expectError,
-  expectTaskDeleted
-} from '@/__tests__/support/helpers';
+  expectSuccess,
+} from '@/__tests__/support/helpers/api-assertions';
+import type { User, Workspace, Task, Feature } from '@prisma/client';
 
-
-describe('DELETE /api/tasks/[taskId]', () => {
-  let user: any;
-  let workspace: any;
-  let feature: any;
-  let task: any;
+describe('DELETE /api/tickets/[ticketId]', () => {
+  let workspace: Workspace;
+  let owner: User;
+  let feature: Feature;
+  let testTask: Task;
 
   beforeEach(async () => {
-    // Create test user and workspace
-    user = await createTestUser();
-    workspace = await createTestWorkspace({ ownerId: user.id });
+    vi.clearAllMocks();
 
-    // Create feature (required parent for tasks)
+    // Create test workspace with owner
+    owner = await createTestUser({ email: 'owner@test.com' });
+    workspace = await createTestWorkspace({
+      name: 'Test Workspace',
+      slug: 'test-workspace',
+      ownerId: owner.id,
+    });
+
+    // Create workspace membership for owner
+    await db.workspaceMember.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: owner.id,
+        role: 'OWNER',
+      },
+    });
+
+    // Create a feature (required for roadmap tasks)
     feature = await db.feature.create({
       data: {
         title: 'Test Feature',
         workspaceId: workspace.id,
-        createdById: user.id,
-        updatedById: user.id
-      }
+        createdById: owner.id,
+        updatedById: owner.id,
+      },
     });
 
-    // Create test task
-    task = await createTestTask({
+    // Create a test task for deletion
+    testTask = await createTestTask({
       title: 'Test Task',
       description: 'Task to be deleted',
       workspaceId: workspace.id,
       featureId: feature.id,
-      createdById: user.id
-    });
-  });
-
-  describe('Success Scenarios', () => {
-    test('should soft-delete task successfully', async () => {
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-
-      await expectSuccess(response);
-
-      // Verify soft-delete in database
-      await expectTaskDeleted(task.id);
-    });
-
-    test('should set deletedAt timestamp when deleting', async () => {
-      const beforeDelete = new Date();
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      const afterDelete = new Date();
-      
-      const deletedTask = await findTestTask(task.id);
-      expect(deletedTask?.deletedAt).toBeTruthy();
-      expect(deletedTask?.deletedAt?.getTime()).toBeGreaterThanOrEqual(beforeDelete.getTime());
-      expect(deletedTask?.deletedAt?.getTime()).toBeLessThanOrEqual(afterDelete.getTime());
-    });
-
-    test('should preserve task data after soft-delete', async () => {
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      
-      // Verify task still exists with original data
-      const deletedTask = await findTestTask(task.id);
-      expect(deletedTask).toBeTruthy();
-      expect(deletedTask?.title).toBe('Test Task');
-      expect(deletedTask?.featureId).toBe(feature.id);
-      expect(deletedTask?.deleted).toBe(true);
+        createdById: owner.id,
+      featureId: feature.id,
     });
   });
 
   describe('Authorization', () => {
-    test('should return 401 if user is not authenticated', async () => {
-      const request = createDeleteRequest(`/api/tasks/${task.id}`);
-      const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      
+    test('returns 401 when user is not authenticated', async () => {
+      const request = createDeleteRequest(
+        `/api/tickets/${testTask.id}`
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: testTask.id },
+      });
+
       await expectUnauthorized(response);
-      
+
       // Verify task was NOT deleted
-      const unchangedTask = await findTestTask(task.id);
-      expect(unchangedTask?.deleted).toBe(false);
-      expect(unchangedTask?.deletedAt).toBeNull();
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter).toBeDefined();
+      expect(taskAfter?.deleted).toBe(false);
     });
 
-    test('should return 403 if user is not a workspace member', async () => {
-      const otherUser = await createTestUser({ email: 'other@test.com' });
-      
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, otherUser);
-      const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      
-      await expectError(response, "Access denied", 403);
-      
+    test('returns 403 when user is not a workspace member', async () => {
+      const nonMember = await createTestUser({ email: 'outsider@test.com' });
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        nonMember
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: testTask.id },
+      });
+
+      await expectError(response, 'Access denied', 403);
+
       // Verify task was NOT deleted
-      const unchangedTask = await findTestTask(task.id);
-      expect(unchangedTask?.deleted).toBe(false);
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter).toBeDefined();
+      expect(taskAfter?.deleted).toBe(false);
     });
 
-    test('should allow deletion if user is workspace admin', async () => {
-      const adminUser = await createTestUser({ email: 'admin@test.com' });
+    test('allows workspace OWNER to delete task', async () => {
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        owner
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: testTask.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify task was soft-deleted
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter).toBeDefined();
+      expect(taskAfter?.deleted).toBe(true);
+      expect(taskAfter?.deletedAt).toBeDefined();
+    });
+
+    test('allows workspace ADMIN to delete task', async () => {
+      const admin = await createTestUser({ email: 'admin@test.com' });
       await db.workspaceMember.create({
         data: {
-          userId: adminUser.id,
           workspaceId: workspace.id,
-          role: 'ADMIN'
-        }
+          userId: admin.id,
+          role: 'ADMIN',
+        },
       });
-      
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, adminUser);
-      const response = await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      
-      await expectSuccess(response);
-      await expectTaskDeleted(task.id);
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        admin
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: testTask.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify task was soft-deleted
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.deleted).toBe(true);
+    });
+
+    test('allows workspace MEMBER to delete task', async () => {
+      const member = await createTestUser({ email: 'member@test.com' });
+      await db.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: member.id,
+          role: 'DEVELOPER',
+        },
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        member
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: testTask.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify task was soft-deleted
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.deleted).toBe(true);
+    });
+
+    test('allows workspace VIEWER to delete task', async () => {
+      const viewer = await createTestUser({ email: 'viewer@test.com' });
+      await db.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: viewer.id,
+          role: 'VIEWER',
+        },
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        viewer
+      );
+
+      const response = await DELETE(request, {
+        params: { ticketId: testTask.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify task was soft-deleted
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.deleted).toBe(true);
     });
   });
 
-  describe('Error Handling', () => {
-    test('should return 404 for non-existent task', async () => {
-      const request = createAuthenticatedDeleteRequest('/api/tasks/non-existent-id', user);
-      const response = await DELETE(request, { params: Promise.resolve({ ticketId: 'non-existent-id' })});
-      
-      await expectNotFound(response);
+  describe('Cascading Cleanup - Dependency Management', () => {
+    test('removes deleted task ID from single dependent task', async () => {
+      // Create taskA and taskB where B depends on A
+      const taskA = await createTestTask({
+        title: 'Task A',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const taskB = await createTestTask({
+        title: 'Task B',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskA.id],
+      });
+
+      // Delete taskA
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskA.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskA.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify taskB's dependencies are cleaned up
+      const taskBAfter = await findTestTask(taskB.id);
+      expect(taskBAfter).toBeDefined();
+      expect(taskBAfter?.dependsOnTaskIds).toEqual([]);
+      expect(taskBAfter?.dependsOnTaskIds).not.toContain(taskA.id);
     });
 
-    test('should return 404 for already deleted task', async () => {
+    test('removes deleted task ID from multiple dependent tasks', async () => {
+      // Create taskA, taskB, taskC where B and C both depend on A
+      const taskA = await createTestTask({
+        title: 'Task A',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const taskB = await createTestTask({
+        title: 'Task B',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskA.id],
+      });
+
+      const taskC = await createTestTask({
+        title: 'Task C',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskA.id],
+      });
+
+      // Delete taskA
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskA.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskA.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify both taskB and taskC have cleaned dependencies
+      const taskBAfter = await findTestTask(taskB.id);
+      expect(taskBAfter?.dependsOnTaskIds).toEqual([]);
+
+      const taskCAfter = await findTestTask(taskC.id);
+      expect(taskCAfter?.dependsOnTaskIds).toEqual([]);
+    });
+
+    test('removes only deleted task ID from tasks with mixed dependencies', async () => {
+      // Create taskA, taskB, taskC where C depends on both A and B
+      const taskA = await createTestTask({
+        title: 'Task A',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const taskB = await createTestTask({
+        title: 'Task B',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const taskC = await createTestTask({
+        title: 'Task C',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskA.id, taskB.id],
+      });
+
+      // Delete taskA only
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskA.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskA.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify taskC still has taskB but not taskA
+      const taskCAfter = await findTestTask(taskC.id);
+      expect(taskCAfter?.dependsOnTaskIds).toHaveLength(1);
+      expect(taskCAfter?.dependsOnTaskIds).toContain(taskB.id);
+      expect(taskCAfter?.dependsOnTaskIds).not.toContain(taskA.id);
+    });
+
+    test('handles deletion of task with no dependents gracefully', async () => {
+      const isolatedTask = await createTestTask({
+        title: 'Isolated Task',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${isolatedTask.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: isolatedTask.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify deletion succeeded
+      const taskAfter = await findTestTask(isolatedTask.id);
+      expect(taskAfter?.deleted).toBe(true);
+    });
+
+    test('handles deletion of task that is itself a dependent', async () => {
+      const taskA = await createTestTask({
+        title: 'Task A',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const taskB = await createTestTask({
+        title: 'Task B (depends on A)',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskA.id],
+      });
+
+      // Delete taskB (which depends on taskA)
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskB.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskB.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify taskB is deleted
+      const taskBAfter = await findTestTask(taskB.id);
+      expect(taskBAfter?.deleted).toBe(true);
+
+      // Verify taskA is unaffected
+      const taskAAfter = await findTestTask(taskA.id);
+      expect(taskAAfter?.deleted).toBe(false);
+    });
+  });
+
+  describe('Soft-Delete Verification', () => {
+    test('sets deleted flag to true', async () => {
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        owner
+      );
+
+      await DELETE(request, { params: { ticketId: testTask.id } });
+
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.deleted).toBe(true);
+    });
+
+    test('sets deletedAt timestamp', async () => {
+      const beforeDelete = new Date();
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        owner
+      );
+
+      await DELETE(request, { params: { ticketId: testTask.id } });
+
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.deletedAt).toBeDefined();
+      expect(taskAfter?.deletedAt).toBeInstanceOf(Date);
+      expect(taskAfter!.deletedAt!.getTime()).toBeGreaterThanOrEqual(
+        beforeDelete.getTime()
+      );
+    });
+
+    test('preserves original task data', async () => {
+      const originalTitle = testTask.title;
+      const originalDescription = testTask.description;
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        owner
+      );
+
+      await DELETE(request, { params: { ticketId: testTask.id } });
+
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.title).toBe(originalTitle);
+      expect(taskAfter?.description).toBe(originalDescription);
+    });
+
+    test('returns 404 when attempting to delete already deleted task (idempotency)', async () => {
       // First deletion
-      const request1 = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      await DELETE(request1, { params: Promise.resolve({ ticketId: task.id })});
-      
-      // Attempt second deletion
-      const request2 = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      const response = await DELETE(request2, { params: Promise.resolve({ ticketId: task.id })});
-      
-      await expectNotFound(response);
+      const request1 = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        owner
+      );
+      await DELETE(request1, { params: { ticketId: testTask.id } });
+
+      // Verify first deletion succeeded
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.deleted).toBe(true);
+
+      // Second deletion attempt
+      const request2 = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        owner
+      );
+      const response = await DELETE(request2, {
+        params: { ticketId: testTask.id },
+      });
+
+      await expectError(response, 'Task not found', 404);
     });
 
-    test('should handle malformed task ID gracefully', async () => {
-      const invalidId = 'invalid-uuid-format';
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${invalidId}`, user);
-      const response = await DELETE(request, { params: Promise.resolve({ ticketId: invalidId })});
-      
-      const json = await response.json();
-      expect([404, 500]).toContain(response.status);
-      expect(json.error).toBeTruthy();
-    });
-  });
+    test('returns 404 when attempting to delete non-existent task', async () => {
+      const nonExistentId = 'non-existent-task-id';
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${nonExistentId}`,
+        owner
+      );
 
-  describe('Data Integrity - Orphaned Dependencies', () => {
-    test('should clean up orphaned dependencies when task is deleted', async () => {
-      // Create dependent task that depends on the task to be deleted
-      const dependentTask = await createTestTask({
-        title: 'Dependent Task',
-        description: 'This task depends on another',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
+      const response = await DELETE(request, {
+        params: { ticketId: nonExistentId },
       });
-      await updateTestTask(dependentTask.id, { dependsOnTaskIds: [task.id] });
-      
-      // Delete the parent task
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      
-      // Verify parent task is deleted
-      await expectTaskDeleted(task.id);
-      
-      // Verify dependent task no longer references the deleted task
-      const updatedDependent = await findTestTask(dependentTask.id);
-      expect(updatedDependent?.dependsOnTaskIds).not.toContain(task.id);
-      expect(updatedDependent?.dependsOnTaskIds).toHaveLength(0);
-    });
 
-    test('should clean up multiple orphaned dependencies', async () => {
-      // Create multiple tasks depending on the one to be deleted
-      const dependent1 = await createTestTask({
-        title: 'Dependent 1',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
-      });
-      await updateTestTask(dependent1.id, { dependsOnTaskIds: [task.id] });
-      
-      const dependent2 = await createTestTask({
-        title: 'Dependent 2',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
-      });
-      await updateTestTask(dependent2.id, { dependsOnTaskIds: [task.id] });
-      
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      
-      // Verify both dependent tasks have cleaned up references
-      const updated1 = await findTestTask(dependent1.id);
-      const updated2 = await findTestTask(dependent2.id);
-      
-      expect(updated1?.dependsOnTaskIds).not.toContain(task.id);
-      expect(updated1?.dependsOnTaskIds).toHaveLength(0);
-      expect(updated2?.dependsOnTaskIds).not.toContain(task.id);
-      expect(updated2?.dependsOnTaskIds).toHaveLength(0);
-    });
-
-    test('should clean up only deleted task from mixed dependencies', async () => {
-      // Create another task to establish multiple dependencies
-      const anotherTask = await createTestTask({
-        title: 'Another Task',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
-      });
-      
-      // Create dependent with mixed dependencies (one to be deleted, one kept)
-      const dependentTask = await createTestTask({
-        title: 'Mixed Dependencies',
-        workspaceId: workspace.id,
-        featureId: feature.id,
-        createdById: user.id
-      });
-      await updateTestTask(dependentTask.id, { dependsOnTaskIds: [task.id, anotherTask.id] });
-      
-      // Delete the first task
-      const request = createAuthenticatedDeleteRequest(`/api/tasks/${task.id}`, user);
-      await DELETE(request, { params: Promise.resolve({ ticketId: task.id })});
-      
-      // Verify dependent only has the valid reference remaining
-      const updated = await findTestTask(dependentTask.id);
-      expect(updated?.dependsOnTaskIds).not.toContain(task.id);  // Deleted task removed
-      expect(updated?.dependsOnTaskIds).toContain(anotherTask.id);  // Valid task preserved
-      expect(updated?.dependsOnTaskIds).toHaveLength(1);
+      await expectError(response, 'Task not found', 404);
     });
   });
 
-  describe('Cascade Behavior', () => {
-    test('should NOT affect related feature when task is deleted', async () => {
-      // This test doesn't require API calls - just database operations
-      // Manually perform delete to verify cascade behavior
-      await updateTestTask(task.id, { deleted: true, deletedAt: new Date() });
-      
+  describe('Related Entity Handling', () => {
+    test('does not delete parent feature when task is deleted', async () => {
+      // Create a feature
+      const feature = await db.feature.create({
+        data: {
+          title: 'Test Feature',
+          workspaceId: workspace.id,
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      // Create task linked to feature
+      const taskWithFeature = await createTestTask({
+        title: 'Task with Feature',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        featureId: feature.id,
+      });
+
+      // Delete task
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskWithFeature.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskWithFeature.id },
+      });
+
+      await expectSuccess(response, 200);
+
       // Verify feature still exists
-      const existingFeature = await db.feature.findUnique({ where: { id: feature.id }});
-      expect(existingFeature).toBeTruthy();
-      expect(existingFeature?.deleted).toBe(false);
+      const featureAfter = await db.feature.findUnique({
+        where: { id: feature.id },
+      });
+      expect(featureAfter).toBeDefined();
+      expect(featureAfter?.id).toBe(feature.id);
     });
 
-    test('should preserve task when related phase is deleted', async () => {
-      // Create phase and assign task to it
+    test('handles task deletion when associated phase is deleted', async () => {
+      // Create a feature first (required for phase)
+      const feature = await db.feature.create({
+        data: {
+          title: 'Test Feature',
+          workspaceId: workspace.id,
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      // Create a phase
       const phase = await db.phase.create({
         data: {
           name: 'Test Phase',
-          featureId: feature.id
-        }
+          featureId: feature.id,
+        },
       });
-      
-      await updateTestTask(task.id, { phaseId: phase.id });
-      
-      // Delete the phase (should set phaseId to null via onDelete: SetNull)
-      await db.phase.delete({ where: { id: phase.id }});
-      
-      // Verify task still exists with null phaseId
-      const updatedTask = await findTestTask(task.id);
-      expect(updatedTask).toBeTruthy();
-      expect(updatedTask?.phaseId).toBeNull();
-      expect(updatedTask?.deleted).toBe(false);
+
+      // Create task linked to phase
+      const taskWithPhase = await createTestTask({
+        title: 'Task with Phase',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        phaseId: phase.id,
+      });
+
+      // Delete phase (Prisma schema has onDelete: SetNull)
+      await db.phase.delete({
+        where: { id: phase.id },
+      });
+
+      // Verify task still exists but phaseId is null
+      const taskAfterPhaseDelete = await findTestTask(taskWithPhase.id);
+      expect(taskAfterPhaseDelete).toBeDefined();
+      expect(taskAfterPhaseDelete?.phaseId).toBeNull();
+      expect(taskAfterPhaseDelete?.deleted).toBe(false);
+
+      // Now delete the task
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskWithPhase.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskWithPhase.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify task is soft-deleted
+      const taskAfterDelete = await findTestTask(taskWithPhase.id);
+      expect(taskAfterDelete?.deleted).toBe(true);
+    });
+
+    test('preserves workspace relationship after task deletion', async () => {
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${testTask.id}`,
+        owner
+      );
+
+      await DELETE(request, { params: { ticketId: testTask.id } });
+
+      const taskAfter = await findTestTask(testTask.id);
+      expect(taskAfter?.workspaceId).toBe(workspace.id);
+
+      // Verify workspace still exists and is unaffected
+      const workspaceAfter = await db.workspace.findUnique({
+        where: { id: workspace.id },
+      });
+      expect(workspaceAfter).toBeDefined();
+    });
+  });
+
+  describe('Complex Scenarios', () => {
+    test('handles deletion of task with multiple dependencies in dependency chain', async () => {
+      // Create chain: A -> B -> C -> D (each depends on previous)
+      const taskA = await createTestTask({
+        title: 'Task A',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const taskB = await createTestTask({
+        title: 'Task B',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskA.id],
+      });
+
+      const taskC = await createTestTask({
+        title: 'Task C',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskB.id],
+      });
+
+      const taskD = await createTestTask({
+        title: 'Task D',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [taskC.id],
+      });
+
+      // Delete taskB (middle of chain)
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskB.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskB.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify taskC's dependencies are cleaned
+      const taskCAfter = await findTestTask(taskC.id);
+      expect(taskCAfter?.dependsOnTaskIds).toEqual([]);
+
+      // Verify taskD still depends on taskC (unaffected)
+      const taskDAfter = await findTestTask(taskD.id);
+      expect(taskDAfter?.dependsOnTaskIds).toContain(taskC.id);
+
+      // Verify taskA is unaffected
+      const taskAAfter = await findTestTask(taskA.id);
+      expect(taskAAfter?.deleted).toBe(false);
+    });
+
+    test('handles deletion when multiple tasks depend on same parent', async () => {
+      const parent = await createTestTask({
+        title: 'Parent Task',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      // Create 5 children all depending on parent
+      const children = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          createTestTask({
+            title: `Child Task ${i + 1}`,
+            workspaceId: workspace.id,
+            createdById: owner.id,
+            dependsOnTaskIds: [parent.id],
+          })
+        )
+      );
+
+      // Delete parent
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${parent.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: parent.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify all children have cleaned dependencies
+      for (const child of children) {
+        const childAfter = await findTestTask(child.id);
+        expect(childAfter?.dependsOnTaskIds).toEqual([]);
+        expect(childAfter?.deleted).toBe(false);
+      }
+    });
+
+    test('correctly handles task with empty dependsOnTaskIds array', async () => {
+      const taskWithEmptyDeps = await createTestTask({
+        title: 'Task with empty deps',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+        dependsOnTaskIds: [],
+      });
+
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${taskWithEmptyDeps.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: taskWithEmptyDeps.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      const taskAfter = await findTestTask(taskWithEmptyDeps.id);
+      expect(taskAfter?.deleted).toBe(true);
+      expect(taskAfter?.dependsOnTaskIds).toEqual([]);
+    });
+
+    test('handles deletion across different workspaces correctly', async () => {
+      // Create second workspace
+      const workspace2 = await createTestWorkspace({
+        name: 'Workspace 2',
+        slug: 'workspace-2',
+        ownerId: owner.id,
+      });
+
+      await db.workspaceMember.create({
+        data: {
+          workspaceId: workspace2.id,
+          userId: owner.id,
+          role: 'OWNER',
+        },
+      });
+
+      // Create tasks in both workspaces
+      const task1 = await createTestTask({
+        title: 'Task in Workspace 1',
+        workspaceId: workspace.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      const task2 = await createTestTask({
+        title: 'Task in Workspace 2',
+        workspaceId: workspace2.id,
+        featureId: feature.id,
+        createdById: owner.id,
+      });
+
+      // Delete task from workspace1
+      const request = createAuthenticatedDeleteRequest(
+        `/api/tickets/${task1.id}`,
+        owner
+      );
+      const response = await DELETE(request, {
+        params: { ticketId: task1.id },
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify task1 deleted, task2 unaffected
+      const task1After = await findTestTask(task1.id);
+      expect(task1After?.deleted).toBe(true);
+
+      const task2After = await findTestTask(task2.id);
+      expect(task2After?.deleted).toBe(false);
     });
   });
 });

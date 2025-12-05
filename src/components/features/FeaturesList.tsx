@@ -84,6 +84,9 @@ function FeatureRow({
           showLowPriority={true}
         />
       </TableCell>
+      <TableCell className="w-[150px] text-muted-foreground text-sm">
+        {feature.createdBy?.name || "Unknown"}
+      </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
@@ -96,9 +99,6 @@ function FeatureRow({
       </TableCell>
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
         {new Date(feature.createdAt).toLocaleDateString()}
-      </TableCell>
-      <TableCell className="w-[150px] text-muted-foreground text-sm">
-        {feature.createdBy?.name || "Unknown"}
       </TableCell>
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
         <ActionMenu
@@ -671,10 +671,10 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                   <TableHead className="w-[300px]">Title</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[120px]">Priority</TableHead>
+                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[180px]">Assigned</TableHead>
                   <TableHead className="w-[150px] text-right">Updated At</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -690,6 +690,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
+                    <TableCell className="w-[150px]">
+                      <Skeleton className="h-4 w-32" />
+                    </TableCell>
                     <TableCell className="w-[180px]">
                       <Skeleton className="h-6 w-32" />
                     </TableCell>
@@ -698,9 +701,6 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     </TableCell>
                     <TableCell className="w-[150px] text-right">
                       <Skeleton className="h-4 w-24 ml-auto" />
-                    </TableCell>
-                    <TableCell className="w-[150px]">
-                      <Skeleton className="h-4 w-32" />
                     </TableCell>
                     <TableCell className="w-[50px]"></TableCell>
                   </TableRow>
@@ -866,6 +866,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showPriorityBadges={true}
                     />
                   </TableHead>
+                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[180px]">
                     <FilterDropdownHeader
                       label="Assigned"
@@ -894,7 +895,6 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       align="right"
                     />
                   </TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>

@@ -50,9 +50,10 @@ export function formatRelativeOrDate(date: string | Date): string {
  * Example: "Nov 1, 2023"
  */
 export function formatFeatureDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
   });
 }

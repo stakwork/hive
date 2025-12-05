@@ -1,6 +1,7 @@
 "use client";
 
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { AIButton } from "@/components/ui/ai-button";
@@ -14,8 +15,9 @@ import { useImageUpload } from "@/hooks/useImageUpload";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
+import { isClarifyingQuestions, type ClarifyingQuestionsResponse } from "@/types/stakwork";
 import { Edit, Eye } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SaveIndicator } from "./SaveIndicator";
 
 interface GeneratedContent {
@@ -167,6 +169,20 @@ export function AITextareaSection({
     isErrorState
   );
 
+  // Detect if the content is clarifying questions from StakWork
+  const parsedContent = useMemo(() => {
+    if (!aiGeneration.content) return null;
+    try {
+      const parsed = JSON.parse(aiGeneration.content);
+      if (isClarifyingQuestions(parsed)) {
+        return { type: "questions" as const, data: parsed as ClarifyingQuestionsResponse };
+      }
+    } catch {
+      // Not JSON, treat as regular content
+    }
+    return { type: "content" as const, data: aiGeneration.content };
+  }, [aiGeneration.content]);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -210,9 +226,15 @@ export function AITextareaSection({
         </p>
       )}
 
-      {aiGeneration.content ? (
+      {parsedContent?.type === "questions" ? (
+        <ClarifyingQuestionsPreview
+          questions={parsedContent.data.content}
+          onSubmit={(formattedAnswers) => handleProvideFeedback(formattedAnswers)}
+          isLoading={aiGeneration.isLoading}
+        />
+      ) : parsedContent?.type === "content" ? (
         <GenerationPreview
-          content={aiGeneration.content}
+          content={parsedContent.data}
           source={aiGeneration.source || "quick"}
           onAccept={handleAccept}
           onReject={handleReject}
