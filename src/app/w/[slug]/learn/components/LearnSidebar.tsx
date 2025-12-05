@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { RefreshCw, Sprout, Box, ChevronDown } from "lucide-react";
+import { RefreshCw, Sprout, Box, ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CreateFeatureModal } from "./CreateFeatureModal";
 
 interface Feature {
   id: string;
@@ -23,6 +24,7 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
   const [isFeaturesCollapsed, setIsFeaturesCollapsed] = useState(false);
   const [lastProcessed, setLastProcessed] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchFeatures = async () => {
@@ -99,6 +101,21 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
     return "just now";
   };
 
+  const handleFeatureCreated = async () => {
+    // Re-fetch features to show the newly created one
+    try {
+      const url = `/api/learnings/features?workspace=${encodeURIComponent(workspaceSlug)}`;
+      const response = await fetch(url);
+
+      if (response.ok) {
+        const data = await response.json();
+        setFeatures(data.features || []);
+      }
+    } catch (error) {
+      console.error("Error fetching features after creation:", error);
+    }
+  };
+
   return (
     <div className="w-80 bg-background border-l border-border flex flex-col fixed top-0 right-0 h-full">
       <div className="p-2"></div>
@@ -172,17 +189,35 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
             {lastProcessed ? `Last processed: ${formatRelativeTime(lastProcessed)}` : "Never processed"}
           </p>
         </div>
-        <Button size="sm" onClick={handleSeedKnowledge} disabled={isSeeding || isProcessing} className="w-full">
-          {isSeeding || isProcessing ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-              Processing...
-            </>
-          ) : (
-            "Process"
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={handleSeedKnowledge} disabled={isSeeding || isProcessing} className="flex-1">
+            {isSeeding || isProcessing ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                Processing...
+              </>
+            ) : (
+              "Process"
+            )}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsCreateModalOpen(true)}
+            disabled={isSeeding || isProcessing}
+            className="px-3"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
+
+      <CreateFeatureModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        workspaceSlug={workspaceSlug}
+        onFeatureCreated={handleFeatureCreated}
+      />
     </div>
   );
 }
