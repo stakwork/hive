@@ -6,9 +6,9 @@ import { config } from "@/config/env";
 import { ChatRole, ChatStatus, ArtifactType, type ContextTag, type Artifact, type ChatMessage } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
 import { getS3Service } from "@/services/s3";
-import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
+import { processMockChat, type MockChatRequest } from "@/services/chat-mock";
 
 export const runtime = "nodejs";
 
@@ -74,32 +74,28 @@ async function callMock(
   request?: NextRequest,
   history?: Record<string, unknown>[],
 ) {
-  const baseUrl = getBaseUrl(request?.headers.get("host"));
-
   try {
-    const response = await fetch(`${baseUrl}/api/mock/chat`, {
-      method: "POST",
-      body: JSON.stringify({
-        taskId,
-        message,
-        userId,
-        artifacts,
-        history: history || [],
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    const mockRequest: MockChatRequest = {
+      taskId,
+      message,
+      userId,
+      artifacts: artifacts.map((a) => ({
+        type: a.type,
+        title: "",
+        content: JSON.stringify(a.content || {}),
+      })),
+      history: history || [],
+    };
 
-    if (!response.ok) {
-      console.error(`Failed to send message to mock server: ${response.statusText}`);
-      return { success: false, error: response.statusText };
+    const result = await processMockChat(mockRequest);
+
+    if (!result.success) {
+      throw new Error(result.error || "Mock chat processing failed");
     }
 
-    const result = await response.json();
-    return { success: true, data: result };
+    return { success: true, data: result.data };
   } catch (error) {
-    console.error("Error calling mock server:", error);
+    console.error("Error processing mock chat:", error);
     return { success: false, error: String(error) };
   }
 }

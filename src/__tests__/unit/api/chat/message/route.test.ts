@@ -41,6 +41,7 @@ vi.mock("@/lib/utils", async () => {
 vi.mock("@/lib/utils/swarm", () => ({
   transformSwarmUrlToRepo2Graph: vi.fn(),
 }));
+vi.mock("@/services/chat-mock");
 
 // Import mocked modules after vi.mock declarations
 import { getServerSession } from "next-auth/next";
@@ -50,6 +51,7 @@ import { config } from "@/config/env";
 import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { processMockChat } from "@/services/chat-mock";
 
 describe("POST /api/chat/message - callStakwork Unit Tests", () => {
   const mockUserId = "user-123";
@@ -565,13 +567,8 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
 
       expect(response.status).toBe(201);
       expect(data.success).toBe(true);
-      // Without Stakwork config, should use mock service (calls /api/mock endpoint)
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock/chat",
-        expect.objectContaining({
-          method: "POST",
-        }),
-      );
+      // Without Stakwork config, should use mock service directly (not HTTP)
+      expect(processMockChat).toHaveBeenCalled();
     });
 
     it("should validate STAKWORK_WORKFLOW_ID is present when using Stakwork", async () => {

@@ -7,8 +7,8 @@ import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { ChatRole, ChatStatus } from "@/lib/chat";
 import { getS3Service } from "@/services/s3";
-import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { processMockChat } from "@/services/chat-mock";
 import {
   DEFAULT_MOCK_IDS,
   createMockTask,
@@ -40,24 +40,20 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/config/env");
 vi.mock("@/services/s3");
-vi.mock("@/lib/utils", () => ({
-  getBaseUrl: vi.fn(),
-  cn: vi.fn(),
-  formatRelativeTime: vi.fn(),
-  getRelativeUrl: vi.fn(),
-}));
 vi.mock("@/lib/utils/swarm");
+vi.mock("@/services/chat-mock");
 
 /**
  * Unit Tests for callMock Function (Chat Message Variant)
  *
  * Tests the callMock function which handles mock chat processing when Stakwork is not enabled.
- * This function makes HTTP calls to /api/mock/chat to simulate AI responses.
+ * After refactoring, this function now calls processMockChat() service directly instead of
+ * making HTTP calls to /api/mock/chat.
  *
  * Test Coverage:
- * 1. HTTP Call Construction - proper payload formation, headers, URL construction
+ * 1. Service Call Construction - proper payload formation and parameters
  * 2. Response Handling - success/error responses, data extraction
- * 3. Error Handling - network failures, invalid responses
+ * 3. Error Handling - service failures, invalid responses
  * 4. Integration - proper invocation through POST route handler
  */
 describe("callMock Function - Chat Message Processing", () => {
@@ -66,8 +62,6 @@ describe("callMock Function - Chat Message Processing", () => {
   const mockWorkspaceId = "workspace-789";
   const mockWorkspaceSlug = "test-workspace";
   const mockMessageId = "message-abc";
-
-  let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,7 +77,6 @@ describe("callMock Function - Chat Message Processing", () => {
     vi.mocked(config).STAKWORK_WORKFLOW_ID = undefined;
 
     // Mock utility functions
-    vi.mocked(getBaseUrl).mockReturnValue("http://localhost:3000");
     vi.mocked(transformSwarmUrlToRepo2Graph).mockReturnValue("http://test-swarm.com:3355");
 
     // Mock S3 service
@@ -106,13 +99,20 @@ describe("callMock Function - Chat Message Processing", () => {
       slug: mockWorkspaceSlug,
     } as any);
 
-    // Mock fetch globally
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    // Mock processMockChat service
+    vi.mocked(processMockChat).mockResolvedValue({
+      success: true,
+      data: {
+        id: "mock-response-123",
+        role: "assistant",
+        content: "Mock AI response",
+        createdAt: new Date().toISOString(),
+      },
+    });
   });
 
-  describe("HTTP Call Construction", () => {
-    it("should make POST request to /api/mock/chat endpoint", async () => {
+  describe("Service Call Construction", () => {
+    it("should call processMockChat service with correct parameters", async () => {
       const mockChatMessage = createMockChatMessage({
         id: mockMessageId,
         taskId: mockTaskId,
@@ -121,12 +121,6 @@ describe("callMock Function - Chat Message Processing", () => {
 
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
-
-      // Mock successful response from /api/mock/chat
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ message: "Mock response", success: true }),
-      } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -142,18 +136,18 @@ describe("callMock Function - Chat Message Processing", () => {
 
       await POST(request);
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock/chat",
+      expect(processMockChat).toHaveBeenCalledWith(
         expect.objectContaining({
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          taskId: mockTaskId,
+          message: "Test message",
+          userId: mockUserId,
+          artifacts: expect.any(Array),
+          history: expect.any(Array),
         }),
       );
     });
 
-    it("should include taskId, message, userId, artifacts, and history in payload", async () => {
+    it("should include taskId, message, userId, artifacts, and history in service call", async () => {
       const mockChatMessage = createMockChatMessage({
         id: mockMessageId,
         taskId: mockTaskId,
@@ -180,11 +174,6 @@ describe("callMock Function - Chat Message Processing", () => {
         } as any,
       ]);
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ message: "Mock response", success: true }),
-      } as Response);
-
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
         body: JSON.stringify({
@@ -200,17 +189,18 @@ describe("callMock Function - Chat Message Processing", () => {
 
       await POST(request);
 
-      expect(mockFetch).toHaveBeenCalled();
-      const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      expect(processMockChat).toHaveBeenCalled();
+      const callArgs = vi.mocked(processMockChat).mock.calls[0][0];
 
-      expect(requestBody).toMatchObject({
+      expect(callArgs).toMatchObject({
         taskId: mockTaskId,
         message: "Test message",
         userId: mockUserId,
         artifacts: expect.any(Array),
         history: expect.any(Array),
       });
+      expect(callArgs.artifacts).toHaveLength(1);
+      expect(callArgs.artifacts[0].type).toBe("code");
     });
 
     it("should include chat history excluding current message", async () => {
@@ -246,11 +236,6 @@ describe("callMock Function - Chat Message Processing", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue(historyMessages as any);
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ message: "Mock response", success: true }),
-      } as Response);
-
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
         body: JSON.stringify({
@@ -265,17 +250,16 @@ describe("callMock Function - Chat Message Processing", () => {
 
       await POST(request);
 
-      const fetchCall = mockFetch.mock.calls[0];
-      const requestBody = JSON.parse(fetchCall[1].body as string);
+      const callArgs = vi.mocked(processMockChat).mock.calls[0][0];
 
-      expect(requestBody.history).toHaveLength(2);
-      expect(requestBody.history[0].id).toBe("hist-1");
-      expect(requestBody.history[1].id).toBe("hist-2");
+      expect(callArgs.history).toHaveLength(2);
+      expect(callArgs.history[0]).toHaveProperty("id", "hist-1");
+      expect(callArgs.history[1]).toHaveProperty("id", "hist-2");
     });
   });
 
   describe("Response Handling", () => {
-    it("should return success when mock server responds with 200 OK", async () => {
+    it("should return success when mock service responds successfully", async () => {
       const mockChatMessage = createMockChatMessage({
         id: mockMessageId,
         taskId: mockTaskId,
@@ -285,10 +269,15 @@ describe("callMock Function - Chat Message Processing", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ message: "Mock AI response", success: true, data: { response: "Hello!" } }),
-      } as Response);
+      vi.mocked(processMockChat).mockResolvedValue({
+        success: true,
+        data: {
+          id: "mock-123",
+          role: "assistant",
+          content: "Mock AI response",
+          createdAt: new Date().toISOString(),
+        },
+      });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -308,13 +297,13 @@ describe("callMock Function - Chat Message Processing", () => {
       expect(response.status).toBe(201);
       expect(responseData.success).toBe(true);
       expect(responseData.workflow).toMatchObject({
-        message: "Mock AI response",
-        success: true,
-        data: { response: "Hello!" },
+        id: "mock-123",
+        role: "assistant",
+        content: "Mock AI response",
       });
     });
 
-    it("should extract and return response data from mock server", async () => {
+    it("should extract and return response data from mock service", async () => {
       const mockChatMessage = createMockChatMessage({
         id: mockMessageId,
         taskId: mockTaskId,
@@ -324,16 +313,18 @@ describe("callMock Function - Chat Message Processing", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
 
-      const mockServerResponse = {
-        message: "Mock response text",
-        artifacts: [{ type: "code", content: "test" }],
-        timestamp: "2024-01-01T00:00:00Z",
+      const mockServiceResponse = {
+        id: "mock-456",
+        role: "assistant" as const,
+        content: "Mock response text",
+        createdAt: "2024-01-01T00:00:00Z",
+        artifacts: [{ id: "art-1", type: "code", title: "test.ts", content: "test" }],
       };
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => mockServerResponse,
-      } as Response);
+      vi.mocked(processMockChat).mockResolvedValue({
+        success: true,
+        data: mockServiceResponse,
+      });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -350,12 +341,12 @@ describe("callMock Function - Chat Message Processing", () => {
       const response = await POST(request);
       const responseData = await response.json();
 
-      expect(responseData.workflow).toEqual(mockServerResponse);
+      expect(responseData.workflow).toEqual(mockServiceResponse);
     });
   });
 
   describe("Error Handling", () => {
-    it("should handle network errors gracefully", async () => {
+    it("should handle service errors gracefully", async () => {
       const mockChatMessage = createMockChatMessage({
         id: mockMessageId,
         taskId: mockTaskId,
@@ -365,7 +356,10 @@ describe("callMock Function - Chat Message Processing", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
 
-      mockFetch.mockRejectedValue(new Error("Network error"));
+      vi.mocked(processMockChat).mockResolvedValue({
+        success: false,
+        error: "Service error occurred",
+      });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -382,53 +376,14 @@ describe("callMock Function - Chat Message Processing", () => {
       const response = await POST(request);
       const responseData = await response.json();
 
-      // Should still return a successful response (201) but workflow will be undefined
-      // because callMock returns {success: false, error: "..."} with no data property
-      expect(response.status).toBe(201);
-      expect(responseData.success).toBe(true);
-      expect(responseData.message).toBeDefined();
-      // When callMock fails, stakworkData.data is undefined, so workflow is undefined
-      expect(responseData.workflow).toBeUndefined();
-    });
-
-    it("should handle non-OK responses from mock server", async () => {
-      const mockChatMessage = createMockChatMessage({
-        id: mockMessageId,
-        taskId: mockTaskId,
-        message: "Test message",
-      });
-
-      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
-      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
-
-      mockFetch.mockResolvedValue({
-        ok: false,
-        statusText: "Internal Server Error",
-      } as Response);
-
-      const request = new NextRequest("http://localhost:3000/api/chat/message", {
-        method: "POST",
-        body: JSON.stringify({
-          taskId: mockTaskId,
-          message: "Test message",
-        }),
-        headers: {
-          "content-type": "application/json",
-          host: "localhost:3000",
-        },
-      });
-
-      const response = await POST(request);
-      const responseData = await response.json();
-
-      // When fetch fails, callMock returns {success: false, error: "..."} with no data
+      // Should still return 201 but workflow will be undefined due to error
       expect(response.status).toBe(201);
       expect(responseData.success).toBe(true);
       expect(responseData.message).toBeDefined();
       expect(responseData.workflow).toBeUndefined();
     });
 
-    it("should handle malformed JSON responses", async () => {
+    it("should handle service exceptions", async () => {
       const mockChatMessage = createMockChatMessage({
         id: mockMessageId,
         taskId: mockTaskId,
@@ -438,12 +393,7 @@ describe("callMock Function - Chat Message Processing", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => {
-          throw new Error("Invalid JSON");
-        },
-      } as Response);
+      vi.mocked(processMockChat).mockRejectedValue(new Error("Unexpected error"));
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -460,7 +410,42 @@ describe("callMock Function - Chat Message Processing", () => {
       const response = await POST(request);
       const responseData = await response.json();
 
-      // When JSON parsing fails, callMock returns {success: false, error: "..."} with no data
+      expect(response.status).toBe(201);
+      expect(responseData.success).toBe(true);
+      expect(responseData.message).toBeDefined();
+      expect(responseData.workflow).toBeUndefined();
+    });
+
+    it("should handle service returning invalid response structure", async () => {
+      const mockChatMessage = createMockChatMessage({
+        id: mockMessageId,
+        taskId: mockTaskId,
+        message: "Test message",
+      });
+
+      vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
+      vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
+
+      vi.mocked(processMockChat).mockResolvedValue({
+        success: true,
+        // Missing data property
+      } as any);
+
+      const request = new NextRequest("http://localhost:3000/api/chat/message", {
+        method: "POST",
+        body: JSON.stringify({
+          taskId: mockTaskId,
+          message: "Test message",
+        }),
+        headers: {
+          "content-type": "application/json",
+          host: "localhost:3000",
+        },
+      });
+
+      const response = await POST(request);
+      const responseData = await response.json();
+
       expect(response.status).toBe(201);
       expect(responseData.success).toBe(true);
       expect(responseData.message).toBeDefined();
@@ -479,11 +464,6 @@ describe("callMock Function - Chat Message Processing", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ message: "Mock response", success: true }),
-      } as Response);
-
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
         body: JSON.stringify({
@@ -498,14 +478,11 @@ describe("callMock Function - Chat Message Processing", () => {
 
       await POST(request);
 
-      // Verify callMock was invoked (fetch to /api/mock/chat)
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3000/api/mock/chat",
-        expect.any(Object),
-      );
+      // Verify processMockChat was called
+      expect(processMockChat).toHaveBeenCalled();
     });
 
-    it("should save chat message before calling mock server", async () => {
+    it("should save chat message before calling mock service", async () => {
       const mockChatMessage = createMockChatMessage({
         id: mockMessageId,
         taskId: mockTaskId,
@@ -514,11 +491,6 @@ describe("callMock Function - Chat Message Processing", () => {
 
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ message: "Mock response", success: true }),
-      } as Response);
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -551,10 +523,15 @@ describe("callMock Function - Chat Message Processing", () => {
       vi.mocked(db.chatMessage.create).mockResolvedValue(mockChatMessage);
       vi.mocked(db.chatMessage.findMany).mockResolvedValue([]);
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ message: "Mock AI response", success: true }),
-      } as Response);
+      vi.mocked(processMockChat).mockResolvedValue({
+        success: true,
+        data: {
+          id: "mock-789",
+          role: "assistant",
+          content: "Mock AI response",
+          createdAt: new Date().toISOString(),
+        },
+      });
 
       const request = new NextRequest("http://localhost:3000/api/chat/message", {
         method: "POST",
@@ -581,8 +558,9 @@ describe("callMock Function - Chat Message Processing", () => {
       });
       expect(responseData).toHaveProperty("workflow");
       expect(responseData.workflow).toMatchObject({
-        message: "Mock AI response",
-        success: true,
+        id: "mock-789",
+        role: "assistant",
+        content: "Mock AI response",
       });
     });
   });
