@@ -151,7 +151,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Prepare logger if custom Goose URL is set
-  const logger = process.env.CUSTOM_GOOSE_URL
+  // const logger = process.env.CUSTOM_GOOSE_URL
+  const logger = true
     ? {
         debug: () => {},
         // debug: (message: string, ...args: unknown[]) => {
