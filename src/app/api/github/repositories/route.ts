@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { serviceConfigs } from "@/config/services";
 import axios from "axios";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ export async function GET() {
     const pat = githubProfile.token;
 
     // Fetch repositories from GitHub API
-    const response = await axios.get("https://api.github.com/user/repos", {
+    const response = await axios.get(`${serviceConfigs.github.baseURL}/user/repos`, {
       headers: {
         Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",

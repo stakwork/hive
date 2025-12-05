@@ -1,4 +1,5 @@
 import { authOptions } from "@/lib/auth/nextauth";
+import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
     console.log("Making GitHub API request with GitHub App token");
 
     // Make direct repository API call (same as original purpose)
-    const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
+    const res = await axios.get(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}`, {
       headers: {
         Authorization: authHeader,
         Accept: "application/vnd.github.v3+json",

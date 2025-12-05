@@ -84,7 +84,12 @@ export async function getPodFromPool(podId: string, poolApiKey: string): Promise
   return data as PodWorkspace;
 }
 
-async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
+async function markWorkspaceAsUsed(
+  poolName: string,
+  workspaceId: string,
+  poolApiKey: string,
+  userInfo?: string,
+): Promise<void> {
   const markUsedUrl = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${workspaceId}/mark-used`;
 
   console.log(`>>> Marking workspace as used: POST ${markUsedUrl}`);
@@ -95,7 +100,7 @@ async function markWorkspaceAsUsed(poolName: string, workspaceId: string, poolAp
       Authorization: `Bearer ${poolApiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({}),
+    body: JSON.stringify(userInfo ? { user_info: userInfo } : {}),
   });
 
   if (!response.ok) {
@@ -133,6 +138,14 @@ async function markWorkspaceAsUnused(poolName: string, workspaceId: string, pool
 }
 
 async function getProcessList(controlPortUrl: string, password: string): Promise<ProcessInfo[]> {
+  // In mock mode, return fake process list (no real pod to call)
+  if (process.env.USE_MOCKS === "true") {
+    return [
+      { pid: 12345, name: "goose", status: "online", port: "15551", pm_uptime: 123456, cwd: "/home/jovyan/workspace" },
+      { pid: 12346, name: "frontend", status: "online", port: "3000", pm_uptime: 123456, cwd: "/home/jovyan/workspace" },
+    ];
+  }
+
   const jlistUrl = `${controlPortUrl}/jlist`;
   const response = await fetch(jlistUrl, {
     method: "GET",
@@ -189,14 +202,15 @@ export async function claimPodAndGetFrontend(
   poolName: string,
   poolApiKey: string,
   services?: ServiceInfo[],
+  userInfo?: string,
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Get workspace from pool
   const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
 
   console.log(">>> workspace data", workspace);
 
-  // Mark the workspace as used
-  await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey);
+  // Mark the workspace as used (pass userInfo for tracking, e.g. taskId in agent mode)
+  await markWorkspaceAsUsed(poolName, workspace.id, poolApiKey, userInfo);
 
   let frontend: string | undefined;
   let processList: ProcessInfo[] | undefined;
@@ -294,6 +308,33 @@ export async function claimPodAndGetFrontend(
 
 export async function dropPod(poolName: string, workspaceId: string, poolApiKey: string): Promise<void> {
   await markWorkspaceAsUnused(poolName, workspaceId, poolApiKey);
+}
+
+export interface PodUsage {
+  usage_status: "used" | "unused";
+  user_info: string | null;
+  workspace_id: string;
+}
+
+export async function getPodUsage(poolName: string, podId: string, poolApiKey: string): Promise<PodUsage> {
+  const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspaces/${podId}/usage`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${poolApiKey}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Failed to get pod usage: ${response.status} - ${errorText}`);
+    throw new Error(`Failed to get pod usage: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data as PodUsage;
 }
 
 export async function updatePodRepositories(

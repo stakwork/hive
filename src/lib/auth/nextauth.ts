@@ -494,10 +494,11 @@ export async function getGithubUsernameAndPAT(
     return null;
   }
 
-  // Check for mock user (case insensitive, supports subdomains)
-  if (user.email?.toLowerCase().includes("@mock.dev")) {
-    console.log(`[getGithubUsernameAndPAT] Mock user detected: ${user.email}, skipping GitHub auth`);
-    return null;
+  // Mock users now have full GitHub records created by ensureMockWorkspaceForUser
+  // so we continue with the normal lookup flow instead of returning null
+  const isMockUser = user.email?.toLowerCase().includes("@mock.dev");
+  if (isMockUser) {
+    console.log(`[getGithubUsernameAndPAT] Mock user detected: ${user.email}, continuing with mock GitHub records`);
   }
 
   console.log(`[getGithubUsernameAndPAT] User found: ${user.email}`);

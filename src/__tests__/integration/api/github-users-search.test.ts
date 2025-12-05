@@ -18,6 +18,9 @@ import { createTestUser } from "@/__tests__/support/fixtures/user";
 // Mock axios for GitHub API calls
 vi.mock("axios");
 
+// Import serviceConfigs from the correct module
+import { serviceConfigs } from "@/config/services";
+
 const mockAxios = axios as vi.Mocked<typeof axios>;
 
 describe("GitHub Users Search API Integration Tests", () => {
@@ -114,7 +117,7 @@ describe("GitHub Users Search API Integration Tests", () => {
 
       // Verify GitHub API was called with decrypted token
       expect(mockAxios.get).toHaveBeenCalledWith(
-        "https://api.github.com/search/users",
+        `${serviceConfigs.github.baseURL}/search/users`,
         {
           headers: {
             Authorization: "token github_pat_test_token",
@@ -250,7 +253,7 @@ describe("GitHub Users Search API Integration Tests", () => {
 
       // Verify axios was called with decrypted token
       expect(mockAxios.get).toHaveBeenCalledWith(
-        "https://api.github.com/search/users",
+        `${serviceConfigs.github.baseURL}/search/users`,
         expect.objectContaining({
           headers: expect.objectContaining({
             Authorization: "token github_pat_test_token",

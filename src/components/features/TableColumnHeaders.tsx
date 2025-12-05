@@ -24,7 +24,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { FeatureStatus } from "@prisma/client";
+import { PriorityBadge } from "@/components/ui/priority-selector";
+import type { FeatureStatus, FeaturePriority } from "@prisma/client";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -88,6 +89,7 @@ interface FilterDropdownHeaderProps {
   showSearch?: boolean;
   multiSelect?: boolean;
   showStatusBadges?: boolean; // New prop to render StatusBadge
+  showPriorityBadges?: boolean; // New prop to render PriorityBadge
   showAvatars?: boolean; // New prop to render user avatars
 }
 
@@ -99,6 +101,7 @@ export function FilterDropdownHeader({
   showSearch = false,
   multiSelect = false,
   showStatusBadges = false,
+  showPriorityBadges = false,
   showAvatars = false,
 }: FilterDropdownHeaderProps) {
   const [open, setOpen] = useState(false);
@@ -248,6 +251,11 @@ export function FilterDropdownHeader({
                 <StatusBadge
                   statusType="feature"
                   status={option.value as FeatureStatus}
+                />
+              ) : showPriorityBadges && !isAllOption ? (
+                <PriorityBadge
+                  priority={option.value as FeaturePriority}
+                  showLowPriority={true}
                 />
               ) : (
                 option.label

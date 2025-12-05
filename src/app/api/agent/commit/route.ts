@@ -23,13 +23,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { podId, workspaceId, taskId, commitMessage, branchName } = body;
+    const { workspaceId, taskId, commitMessage, branchName } = body;
 
     // Validate required fields
-    if (!podId) {
-      return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
-    }
-
     if (!workspaceId) {
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
@@ -45,6 +41,18 @@ export async function POST(request: NextRequest) {
     if (!branchName) {
       return NextResponse.json({ error: "Missing required field: branchName" }, { status: 400 });
     }
+
+    // Fetch podId from task record
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { podId: true },
+    });
+
+    if (!task?.podId) {
+      return NextResponse.json({ error: "No pod assigned to this task" }, { status: 400 });
+    }
+
+    const podId = task.podId;
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({

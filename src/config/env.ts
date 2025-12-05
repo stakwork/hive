@@ -28,6 +28,10 @@ export const env = requiredEnvVars;
 // Optional environment variables with defaults
 // URLs resolve to mock endpoints when USE_MOCKS=true
 export const optionalEnvVars = {
+  // GitHub OAuth token exchange URL (used by GitHub App callback)
+  GITHUB_OAUTH_TOKEN_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/github/oauth/access_token`
+    : "https://github.com/login/oauth/access_token",
   STAKWORK_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/stakwork`
     : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
@@ -39,12 +43,16 @@ export const optionalEnvVars = {
   POOL_MANAGER_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/pool-manager`
     : process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
+  SWARM_SUPER_ADMIN_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/swarm-super-admin`
+    : process.env.SWARM_SUPER_ADMIN_URL,
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
   USE_MOCKS,
+  MOCK_BASE,
 } as const;
 
 // Combined environment configuration

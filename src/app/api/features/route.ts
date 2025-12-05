@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { listFeatures, createFeature } from "@/services/roadmap";
-import { FeatureStatus } from "@prisma/client";
+import { FeatureStatus, FeaturePriority } from "@prisma/client";
 import type {
   CreateFeatureRequest,
   FeatureListResponse,
@@ -39,6 +39,26 @@ export async function GET(request: NextRequest) {
       statuses = statusValues as FeatureStatus[];
     }
 
+    // Priority filter params
+    const priorityParam = searchParams.get("priority") || undefined;
+    let priorities: FeaturePriority[] | undefined;
+
+    if (priorityParam) {
+      const priorityValues = priorityParam.split(',').filter(Boolean);
+      const validPriorities = Object.values(FeaturePriority);
+
+      // Validate all priority values
+      const invalidPriorities = priorityValues.filter(p => !validPriorities.includes(p as FeaturePriority));
+      if (invalidPriorities.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid priority values: ${invalidPriorities.join(', ')}` },
+          { status: 400 },
+        );
+      }
+
+      priorities = priorityValues as FeaturePriority[];
+    }
+
     // Keep "UNASSIGNED" as string - service layer will convert to null for Prisma
     const assigneeId = searchParams.get("assigneeId") || undefined;
 
@@ -46,7 +66,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
 
     // Sort params
-    const sortBy = searchParams.get("sortBy") as "title" | "createdAt" | undefined;
+    const sortBy = searchParams.get("sortBy") as "title" | "createdAt" | "updatedAt" | undefined;
     const sortOrder = searchParams.get("sortOrder") as "asc" | "desc" | undefined;
 
     if (!workspaceId) {
@@ -67,9 +87,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate sortBy if provided
-    if (sortBy && !["title", "createdAt"].includes(sortBy)) {
+    if (sortBy && !["title", "createdAt", "updatedAt"].includes(sortBy)) {
       return NextResponse.json(
-        { error: "Invalid sortBy parameter. Must be 'title' or 'createdAt'" },
+        { error: "Invalid sortBy parameter. Must be 'title', 'createdAt', or 'updatedAt'" },
         { status: 400 },
       );
     }
@@ -88,6 +108,7 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       statuses,
+      priorities,
       assigneeId,
       search,
       sortBy,

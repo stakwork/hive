@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ExternalLink, Monitor } from "lucide-react";
+import { ArrowLeft, ExternalLink, Monitor, Server, ServerOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
@@ -11,6 +11,7 @@ import { ChatInput } from "./ChatInput";
 import { getAgentIcon } from "@/lib/icons";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,10 @@ interface ChatAreaProps {
   showPreviewToggle?: boolean;
   showPreview?: boolean;
   onTogglePreview?: () => void;
+  taskMode?: string;
+  podId?: string | null;
+  onReleasePod?: () => Promise<void>;
+  isReleasingPod?: boolean;
 }
 
 export function ChatArea({
@@ -53,6 +58,10 @@ export function ChatArea({
   showPreviewToggle = false,
   showPreview = false,
   onTogglePreview,
+  taskMode,
+  podId,
+  onReleasePod,
+  isReleasingPod = false,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -161,6 +170,31 @@ export function ChatArea({
                 </Button>
               )}
 
+              {/* Pod Indicator with Release */}
+              {podId && onReleasePod && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onReleasePod}
+                        disabled={isReleasingPod}
+                        className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
+                      >
+                        <span className="relative w-4 h-4">
+                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" />
+                          <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
+                        </span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isReleasingPod ? "Releasing pod..." : "Release pod"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
               {/* Stakwork Project Link */}
               {stakworkProjectId && (
                 <Link
@@ -240,6 +274,8 @@ export function ChatArea({
         onRemoveDebugAttachment={onRemoveDebugAttachment}
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
+        taskMode={taskMode}
+        workspaceSlug={workspaceSlug}
       />
     </motion.div>
   );

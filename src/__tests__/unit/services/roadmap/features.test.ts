@@ -68,7 +68,7 @@ describe("createFeature", () => {
     personas: [],
     workspaceId: mockWorkspaceId,
     status: FeatureStatus.BACKLOG,
-    priority: FeaturePriority.NONE,
+    priority: FeaturePriority.LOW,
     assigneeId: null,
     createdById: mockUserId,
     updatedById: mockUserId,
@@ -304,13 +304,13 @@ describe("createFeature", () => {
       await createFeature(mockUserId, {
         title: "Test Feature",
         workspaceId: mockWorkspaceId,
-        priority: FeaturePriority.NONE,
+        priority: FeaturePriority.LOW,
       });
 
       expect(db.feature.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            priority: FeaturePriority.NONE,
+            priority: FeaturePriority.LOW,
           }),
         })
       );
@@ -368,13 +368,13 @@ describe("createFeature", () => {
       await createFeature(mockUserId, {
         title: "Test Feature",
         workspaceId: mockWorkspaceId,
-        priority: FeaturePriority.URGENT,
+        priority: FeaturePriority.CRITICAL,
       });
 
       expect(db.feature.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            priority: FeaturePriority.URGENT,
+            priority: FeaturePriority.CRITICAL,
           }),
         })
       );
@@ -587,7 +587,7 @@ describe("createFeature", () => {
       expect(db.feature.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            priority: FeaturePriority.NONE,
+            priority: FeaturePriority.LOW,
           }),
         })
       );
@@ -640,7 +640,7 @@ describe("createFeature", () => {
           personas: [],
           workspaceId: mockWorkspaceId,
           status: FeatureStatus.BACKLOG,
-          priority: FeaturePriority.NONE,
+          priority: FeaturePriority.LOW,
           assigneeId: null,
           createdById: mockUserId,
           updatedById: mockUserId,

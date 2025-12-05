@@ -1,5 +1,7 @@
 import { ServiceConfig } from "@/types";
-import { optionalEnvVars } from "./env";
+import { optionalEnvVars, config } from "./env";
+
+const { USE_MOCKS, MOCK_BASE } = config;
 
 // Service endpoint configurations
 // Note: poolManager and stakwork baseURLs come from env.ts which handles USE_MOCKS routing
@@ -31,7 +33,19 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     },
   },
   github: {
-    baseURL: "https://api.github.com",
+    baseURL: USE_MOCKS
+      ? `${MOCK_BASE}/api/mock/github`
+      : "https://api.github.com",
+    apiKey: "",
+    timeout: parseInt(process.env.API_TIMEOUT || "10000"),
+    headers: {
+      Accept: "application/vnd.github.v3+json",
+    },
+  },
+  githubApplications: {
+    baseURL: USE_MOCKS
+      ? `${MOCK_BASE}/api/mock/github`
+      : "https://api.github.com",
     apiKey: "",
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
     headers: {
@@ -39,7 +53,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
     },
   },
   swarm: {
-    baseURL: process.env.SWARM_SUPER_ADMIN_URL || "",
+    baseURL: optionalEnvVars.SWARM_SUPER_ADMIN_URL || "",
     apiKey: "", // Added under x-user-token
     timeout: 600000,
     headers: {
@@ -87,4 +101,13 @@ export function getServiceConfig(
     throw new Error(`Unknown service: ${serviceName}`);
   }
   return config;
+}
+
+/**
+ * Get GitHub Applications API URL with proper routing
+ * Routes to mock endpoint when USE_MOCKS=true, otherwise uses real GitHub API
+ */
+export function getGitHubApplicationsApiUrl(path: string): string {
+  const config = serviceConfigs.githubApplications;
+  return `${config.baseURL}${path}`;
 }

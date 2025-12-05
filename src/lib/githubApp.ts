@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { config } from "@/config/env";
+import { config, optionalEnvVars } from "@/config/env";
+import { serviceConfigs } from "@/config/services";
 import { EncryptionService } from "@/lib/encryption";
 
 export interface AppInstallationStatus {
@@ -20,7 +21,7 @@ export interface RefreshTokenResponse {
  * Refresh a GitHub App user access token using the refresh token
  */
 async function refreshUserToken(refreshToken: string): Promise<RefreshTokenResponse> {
-  const response = await fetch("https://github.com/login/oauth/access_token", {
+  const response = await fetch(optionalEnvVars.GITHUB_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -227,11 +228,11 @@ export async function checkRepositoryAccess(
 
     console.log(
       "[REPO ACCESS] Making GitHub API request to:",
-      `https://api.github.com/user/installations/${installationId}/repositories`,
+      `${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories`,
     );
 
     // Fetch repositories accessible by this installation
-    const response = await fetch(`https://api.github.com/user/installations/${installationId}/repositories`, {
+    const response = await fetch(`${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories`, {
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${tokens.accessToken}`,

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
 import type { FeatureWithDetails } from "@/types/roadmap";
 import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS } from "@/types/roadmap";
+import { PriorityBadge } from "@/components/ui/priority-selector";
 
 interface FeatureCardProps {
   feature: FeatureWithDetails;
@@ -32,11 +33,14 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h4 className="text-sm font-medium line-clamp-1 min-w-0">{feature.title}</h4>
         </div>
-        {!hideStatus && (
-          <Badge className={`${FEATURE_STATUS_COLORS[feature.status]} flex-shrink-0`}>
-            {FEATURE_STATUS_LABELS[feature.status]}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <PriorityBadge priority={feature.priority} />
+          {!hideStatus && (
+            <Badge className={FEATURE_STATUS_COLORS[feature.status]}>
+              {FEATURE_STATUS_LABELS[feature.status]}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-4 text-xs text-muted-foreground">

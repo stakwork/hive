@@ -7,8 +7,10 @@ import {
   type ContextTag,
   type Artifact,
   type ChatMessage,
+  type IDEContent,
+  type BrowserContent,
 } from "@/lib/chat";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export const fetchCache = "force-no-store";
 
@@ -87,6 +89,67 @@ export async function POST(request: NextRequest) {
         content: artifact.content as unknown,
       })) as Artifact[],
     };
+
+    // Extract podId from IDE or Browser artifacts and store on task
+    if (taskId) {
+      const podIdArtifact = artifacts.find(
+        (a: ArtifactRequest) =>
+          (a.type === ArtifactType.IDE || a.type === ArtifactType.BROWSER) &&
+          (a.content as IDEContent | BrowserContent | undefined)?.podId,
+      );
+      if (podIdArtifact) {
+        const podId = (podIdArtifact.content as IDEContent | BrowserContent)?.podId;
+        if (podId) {
+          try {
+            const updatedTask = await db.task.update({
+              where: { id: taskId },
+              data: { podId },
+              include: {
+                workspace: {
+                  select: { slug: true },
+                },
+              },
+            });
+            console.log(`✅ Stored podId ${podId} from artifact for task ${taskId}`);
+
+            // Broadcast podId update to both channels for real-time UI updates
+            const podUpdatePayload = {
+              taskId,
+              podId,
+              timestamp: new Date(),
+            };
+
+            // Send to task channel (for task detail page)
+            try {
+              const taskChannelName = getTaskChannelName(taskId);
+              await pusherServer.trigger(
+                taskChannelName,
+                PUSHER_EVENTS.TASK_TITLE_UPDATE,
+                podUpdatePayload,
+              );
+            } catch (pusherError) {
+              console.error("Failed to broadcast podId update to task channel:", pusherError);
+            }
+
+            // Send to workspace channel (for task list)
+            if (updatedTask.workspace?.slug) {
+              try {
+                const workspaceChannelName = getWorkspaceChannelName(updatedTask.workspace.slug);
+                await pusherServer.trigger(
+                  workspaceChannelName,
+                  PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+                  podUpdatePayload,
+                );
+              } catch (pusherError) {
+                console.error("Failed to broadcast podId update to workspace channel:", pusherError);
+              }
+            }
+          } catch (error) {
+            console.error("Failed to store podId from artifact:", error);
+          }
+        }
+      }
+    }
 
     if (taskId) {
       try {

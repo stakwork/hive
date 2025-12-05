@@ -93,7 +93,7 @@ export class WebhookService extends BaseServiceClass {
 
   private async detectRepositoryDefaultBranch(token: string, owner: string, repo: string): Promise<string | null> {
     try {
-      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      const response = await fetch(`${this.config.baseURL}/repos/${owner}/${repo}`, {
         headers: {
           Authorization: `token ${token}`,
           Accept: "application/vnd.github.v3+json",
@@ -244,7 +244,7 @@ export class WebhookService extends BaseServiceClass {
     hookId: number,
   ): Promise<boolean> {
     try {
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`, {
+      const res = await fetch(`${this.config.baseURL}/repos/${owner}/${repo}/hooks/${hookId}`, {
         method: "GET",
         headers: {
           Authorization: `token ${token}`,
@@ -267,7 +267,7 @@ export class WebhookService extends BaseServiceClass {
     events: string[];
     active: boolean;
   }): Promise<{ id: number }> {
-    const res = await fetch(`https://api.github.com/repos/${params.owner}/${params.repo}/hooks`, {
+    const res = await fetch(`${this.config.baseURL}/repos/${params.owner}/${params.repo}/hooks`, {
       method: "POST",
       headers: {
         Authorization: `token ${params.token}`,
@@ -298,7 +298,7 @@ export class WebhookService extends BaseServiceClass {
   }
 
   private async deleteHook(token: string, owner: string, repo: string, hookId: number): Promise<void> {
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`, {
+    const res = await fetch(`${this.config.baseURL}/repos/${owner}/${repo}/hooks/${hookId}`, {
       method: "DELETE",
       headers: {
         Authorization: `token ${token}`,

@@ -1,10 +1,12 @@
+import { serviceConfigs } from "@/config/services";
+
 export async function listRepoHooks(
   token: string,
   owner: string,
   repo: string,
 ): Promise<Array<{ id: number; config?: { url?: string } }>> {
   const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/hooks?per_page=100`,
+    `${serviceConfigs.github.baseURL}/repos/${owner}/${repo}/hooks?per_page=100`,
     {
       method: "GET",
       headers: {
@@ -27,7 +29,7 @@ export async function createRepoHook(params: {
   active: boolean;
 }): Promise<{ id: number }> {
   const res = await fetch(
-    `https://api.github.com/repos/${params.owner}/${params.repo}/hooks`,
+    `${serviceConfigs.github.baseURL}/repos/${params.owner}/${params.repo}/hooks`,
     {
       method: "POST",
       headers: {
@@ -66,7 +68,7 @@ export async function updateRepoHook(params: {
   active: boolean;
 }): Promise<void> {
   const res = await fetch(
-    `https://api.github.com/repos/${params.owner}/${params.repo}/hooks/${params.hookId}`,
+    `${serviceConfigs.github.baseURL}/repos/${params.owner}/${params.repo}/hooks/${params.hookId}`,
     {
       method: "PATCH",
       headers: {
@@ -93,7 +95,7 @@ export async function deleteRepoHook(
   hookId: number,
 ): Promise<void> {
   const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`,
+    `${serviceConfigs.github.baseURL}/repos/${owner}/${repo}/hooks/${hookId}`,
     {
       method: "DELETE",
       headers: {

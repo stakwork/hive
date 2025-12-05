@@ -34,6 +34,12 @@ export async function POST(
       );
     }
 
+    // Parse request body for user_info
+    const body = await request.json().catch(() => ({}));
+    if (body.user_info) {
+      mockPoolState.updatePodUserInfo(poolName, podId, body.user_info);
+    }
+
     // Pod is already marked as in_use when claimed, just return success
     return NextResponse.json({
       success: true,

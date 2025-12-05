@@ -4,30 +4,29 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
-import { QUICK_ASK_SYSTEM_PROMPT } from "@/lib/constants/prompt";
-import { askTools } from "@/lib/ai/askTools";
-import { streamText, hasToolCall, ModelMessage } from "ai";
+import { getQuickAskPrefixMessages } from "@/lib/constants/prompt";
+import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
+import { streamText, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "aieo";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-  const context = getMiddlewareContext(request);
-  const userOrResponse = requireAuth(context);
-  if (userOrResponse instanceof NextResponse) return userOrResponse;
+    const context = getMiddlewareContext(request);
+    const userOrResponse = requireAuth(context);
+    if (userOrResponse instanceof NextResponse) return userOrResponse;
 
-    const { searchParams } = new URL(request.url);
-    const question = searchParams.get("question");
-    const workspaceSlug = searchParams.get("workspace");
+    const body = await request.json();
+    const { messages, workspaceSlug } = body;
 
-    if (!question) {
-      throw validationError("Missing required parameter: question");
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      throw validationError("Missing required parameter: messages (must be a non-empty array)");
     }
     if (!workspaceSlug) {
-      throw validationError("Missing required parameter: workspace");
+      throw validationError("Missing required parameter: workspaceSlug");
     }
 
     const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
@@ -81,24 +80,32 @@ export async function GET(request: NextRequest) {
     const model = await getModel(provider, apiKey, workspaceSlug);
     const tools = askTools(baseSwarmUrl, decryptedSwarmApiKey, repoUrl, pat, apiKey);
 
-    const messages: ModelMessage[] = [
-      { role: "system", content: QUICK_ASK_SYSTEM_PROMPT },
-      { role: "user", content: question },
+    const concepts = await listConcepts(baseSwarmUrl, decryptedSwarmApiKey);
+
+    // Construct messages array with system prompt, pre-filled concepts, and conversation history
+    const modelMessages: ModelMessage[] = [
+      ...getQuickAskPrefixMessages(concepts),
+      // Conversation history (convert from LearnMessage to ModelMessage format)
+      ...messages.map((msg: { role: string; content: string }) => ({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      })),
     ];
 
     console.log("🤖 Creating generateText with:", {
       model: model?.modelId,
       toolsCount: Object.keys(tools).length,
-      messagesCount: messages.length,
-      question: question,
+      messagesCount: modelMessages.length,
+      conversationLength: messages.length,
     });
 
     try {
       const result = streamText({
         model,
         tools,
-        messages,
-        stopWhen: hasToolCall("final_answer"),
+        messages: modelMessages,
+        stopWhen: createHasEndMarkerCondition(),
+        stopSequences: ["[END_OF_ANSWER]"],
         onStepFinish: (sf) => logStep(sf.content),
       });
       return result.toUIMessageStreamResponse();

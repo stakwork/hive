@@ -290,7 +290,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       const request = createAuthenticatedPatchRequest(
         `http://localhost:3000/api/features/${feature.id}`,
-        { priority: FeaturePriority.URGENT },
+        { priority: FeaturePriority.CRITICAL },
         user
       );
 
@@ -301,7 +301,7 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Assert
       const data = await expectSuccess(response, 200);
-      expect(data.data.priority).toBe(FeaturePriority.URGENT);
+      expect(data.data.priority).toBe(FeaturePriority.CRITICAL);
     });
 
     test("updates feature assignee", async () => {

@@ -396,6 +396,7 @@ model Task {
   // Agent URLs and credentials (encrypted)
   agentUrl      String? @map("agent_url")
   agentPassword String? @map("agent_password") // Encrypted pod password
+  podId         String? @map("pod_id")
 
   // Bounty code for external bounty platforms
   bountyCode String? @unique @map("bounty_code")
@@ -776,7 +777,7 @@ model Feature {
   assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   status      FeatureStatus    @default(BACKLOG)
-  priority    FeaturePriority  @default(NONE)
+  priority    FeaturePriority  @default(LOW)
 
   // Audit fields
   createdById String           @map("created_by_id")
@@ -811,11 +812,10 @@ enum FeatureStatus {
 }
 
 enum FeaturePriority {
-  NONE
   LOW
   MEDIUM
   HIGH
-  URGENT
+  CRITICAL
 }
 
 model UserStory {

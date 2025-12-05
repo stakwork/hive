@@ -1,4 +1,5 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { serviceConfigs } from "@/config/services";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
 
     const { owner, repo } = parseOwnerRepo(repoUrl);
 
-    const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
+    const res = await axios.get(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}`, {
       headers: {
         Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
     const repoData = res.data;
     const default_branch = repoData.default_branch;
 
-    const commitNumberRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits`, {
+    const commitNumberRes = await axios.get(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}/commits`, {
       headers: {
         Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",
@@ -81,7 +82,7 @@ export async function GET(request: Request) {
     const sinceDate = oneWeekAgo.toISOString();
 
     // Fetch commits from the last week
-    const lastWeekCommitsRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits`, {
+    const lastWeekCommitsRes = await axios.get(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}/commits`, {
       headers: {
         Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",

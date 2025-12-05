@@ -1,6 +1,7 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
+import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth/next";
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
         // User has app tokens, so we can check installation status via API
         try {
           // Check if owner is user or org
-          const userResponse = await fetch(`https://api.github.com/users/${githubOwner}`, {
+          const userResponse = await fetch(`${serviceConfigs.github.baseURL}/users/${githubOwner}`, {
             headers: {
               Authorization: `Bearer ${appTokens.accessToken}`,
               Accept: "application/vnd.github.v3+json",
@@ -129,14 +130,14 @@ export async function POST(request: NextRequest) {
             // Check installation based on type
             let installationResponse;
             if (ownerType === "org") {
-              installationResponse = await fetch(`https://api.github.com/orgs/${githubOwner}/installation`, {
+              installationResponse = await fetch(`${serviceConfigs.github.baseURL}/orgs/${githubOwner}/installation`, {
                 headers: {
                   Authorization: `Bearer ${appTokens.accessToken}`,
                   Accept: "application/vnd.github.v3+json",
                 },
               });
             } else {
-              installationResponse = await fetch(`https://api.github.com/users/${githubOwner}/installation`, {
+              installationResponse = await fetch(`${serviceConfigs.github.baseURL}/users/${githubOwner}/installation`, {
                 headers: {
                   Authorization: `Bearer ${appTokens.accessToken}`,
                   Accept: "application/vnd.github.v3+json",

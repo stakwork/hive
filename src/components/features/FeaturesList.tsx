@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useState, useRef, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useState, useRef, forwardRef, useImperativeHandle, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, List, LayoutGrid, Trash2, X, Search } from "lucide-react";
+import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { FeatureWithDetails, FeatureListResponse, FeatureStatus } from "@/types/roadmap";
+import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePriority } from "@/types/roadmap";
 import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
 import { StatusPopover } from "@/components/ui/status-popover";
+import { PrioritySelector } from "@/components/ui/priority-selector";
+import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -31,6 +33,15 @@ import {
 } from "@/components/ui/pagination";
 import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
+import { formatRelativeOrDate } from "@/lib/date-utils";
+
+// Priority configuration for filtering
+const FEATURE_PRIORITY_LABELS: Record<FeaturePriority, string> = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+  CRITICAL: "Critical",
+};
 
 interface FeaturesListProps {
   workspaceId: string;
@@ -40,6 +51,7 @@ function FeatureRow({
   feature,
   workspaceSlug,
   onStatusUpdate,
+  onPriorityUpdate,
   onAssigneeUpdate,
   onDelete,
   onClick,
@@ -47,6 +59,7 @@ function FeatureRow({
   feature: FeatureWithDetails;
   workspaceSlug: string;
   onStatusUpdate: (featureId: string, status: FeatureStatus) => Promise<void>;
+  onPriorityUpdate: (featureId: string, priority: FeaturePriority) => Promise<void>;
   onAssigneeUpdate: (featureId: string, assigneeId: string | null) => Promise<void>;
   onDelete: (featureId: string) => Promise<void>;
   onClick: () => void;
@@ -56,12 +69,19 @@ function FeatureRow({
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[300px] font-medium truncate">{feature.title}</TableCell>
+      <TableCell className="w-[280px] font-medium truncate">{feature.title}</TableCell>
       <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
           statusType="feature"
           currentStatus={feature.status}
           onUpdate={(status) => onStatusUpdate(feature.id, status)}
+        />
+      </TableCell>
+      <TableCell className="w-[140px]" onClick={(e) => e.stopPropagation()}>
+        <FeaturePriorityPopover
+          currentPriority={feature.priority}
+          onUpdate={(priority) => onPriorityUpdate(feature.id, priority)}
+          showLowPriority={true}
         />
       </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
@@ -70,6 +90,9 @@ function FeatureRow({
           currentAssignee={feature.assignee}
           onSelect={(assigneeId) => onAssigneeUpdate(feature.id, assigneeId)}
         />
+      </TableCell>
+      <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
+        {formatRelativeOrDate(feature.updatedAt)}
       </TableCell>
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
         {new Date(feature.createdAt).toLocaleDateString()}
@@ -145,19 +168,34 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     return "ALL";
   });
 
-  const [sortBy, setSortBy] = useState<"title" | "createdAt" | null>(() => {
+  const [priorityFilters, setPriorityFilters] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("features-filters-sort-preference");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          return parsed.sortBy || null;
+          return parsed.priorityFilters || [];
         } catch {
-          return null;
+          return [];
         }
       }
     }
-    return null;
+    return [];
+  });
+
+  const [sortBy, setSortBy] = useState<"title" | "createdAt" | "updatedAt" | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-filters-sort-preference");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.sortBy || "updatedAt";
+        } catch {
+          return "updatedAt";
+        }
+      }
+    }
+    return "updatedAt";
   });
 
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() => {
@@ -166,16 +204,25 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          return parsed.sortOrder || "asc";
+          return parsed.sortOrder || "desc";
         } catch {
-          return "asc";
+          return "desc";
         }
       }
     }
-    return "asc";
+    return "desc";
   });
 
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // State for showing/hiding canceled features with localStorage persistence
+  const [showCanceled, setShowCanceled] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-show-canceled-preference");
+      return saved === "true"; // Default to false (hide canceled)
+    }
+    return false;
+  });
 
   // Debounce search query to reduce API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -184,6 +231,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [isCreating, setIsCreating] = useState(false);
   const [newFeatureTitle, setNewFeatureTitle] = useState("");
   const [newFeatureStatus, setNewFeatureStatus] = useState<FeatureStatus>("BACKLOG");
+  const [newFeaturePriority, setNewFeaturePriority] = useState<FeaturePriority>("LOW");
   const [newFeatureAssigneeId, setNewFeatureAssigneeId] = useState<string | null>(null);
   const [newFeatureAssigneeDisplay, setNewFeatureAssigneeDisplay] = useState<{
     id: string;
@@ -229,6 +277,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       if (statusFilters.length > 0) {
         params.append("status", statusFilters.join(','));
       }
+      if (priorityFilters.length > 0) {
+        params.append("priority", priorityFilters.join(','));
+      }
       if (assigneeFilter !== "ALL") {
         params.append("assigneeId", assigneeFilter);
       }
@@ -268,8 +319,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   };
 
-  // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
+  // Check if any filters are active (excluding default sort)
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -301,7 +352,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page, statusFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery]);
+  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery]);
 
   // Auto-open creation form when no features exist AND no filters are active (only on initial load)
   useEffect(() => {
@@ -324,13 +375,27 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     if (typeof window !== "undefined") {
       const preferences = {
         statusFilters,
+        priorityFilters,
         assigneeFilter,
         sortBy,
         sortOrder,
       };
       localStorage.setItem("features-filters-sort-preference", JSON.stringify(preferences));
     }
-  }, [statusFilters, assigneeFilter, sortBy, sortOrder]);
+  }, [statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder]);
+
+  // Save show canceled preference to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("features-show-canceled-preference", showCanceled.toString());
+    }
+  }, [showCanceled]);
+
+  // Toggle show/hide canceled features
+  const handleToggleCanceled = async () => {
+    const newValue = !showCanceled;
+    setShowCanceled(newValue);
+  };
 
   // Save view preference to localStorage
   const handleViewChange = (value: string) => {
@@ -355,13 +420,19 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     setPage(1);
   };
 
+  const handlePriorityFiltersChange = (priorities: string | string[]) => {
+    const priorityArray = Array.isArray(priorities) ? priorities : [priorities];
+    setPriorityFilters(priorityArray);
+    setPage(1);
+  };
+
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     setPage(1);
   };
 
   // Handle sort changes - reset to page 1 when changing sort field
-  const handleSort = (field: "title" | "createdAt", order: "asc" | "desc" | null) => {
+  const handleSort = (field: "title" | "createdAt" | "updatedAt", order: "asc" | "desc" | null) => {
     if (order === null) {
       setSortBy(null);
     } else {
@@ -376,9 +447,10 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   // Clear all filters and sort
   const handleClearFilters = () => {
     setStatusFilters([]);
+    setPriorityFilters([]);
     setAssigneeFilter("ALL");
-    setSortBy(null);
-    setSortOrder("asc");
+    setSortBy("updatedAt");
+    setSortOrder("desc");
     setSearchQuery("");
     setPage(1);
   };
@@ -398,6 +470,25 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       setFeatures((prev) => prev.map((f) => (f.id === featureId ? { ...f, status } : f)));
     } catch (error) {
       console.error("Failed to update status:", error);
+      throw error;
+    }
+  };
+
+  const handleUpdatePriority = async (featureId: string, priority: FeaturePriority) => {
+    try {
+      const response = await fetch(`/api/features/${featureId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update priority");
+      }
+
+      setFeatures((prev) => prev.map((f) => (f.id === featureId ? { ...f, priority } : f)));
+    } catch (error) {
+      console.error("Failed to update priority:", error);
       throw error;
     }
   };
@@ -457,6 +548,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           title: newFeatureTitle.trim(),
           workspaceId,
           status: newFeatureStatus,
+          priority: newFeaturePriority,
           assigneeId: newFeatureAssigneeId,
         }),
       });
@@ -482,6 +574,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const handleCancelCreate = () => {
     setNewFeatureTitle("");
     setNewFeatureStatus("BACKLOG");
+    setNewFeaturePriority("LOW");
     setNewFeatureAssigneeId(null);
     setNewFeatureAssigneeDisplay(null);
     setIsCreating(false);
@@ -513,6 +606,14 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     })),
   ];
 
+  const priorityOptions = [
+    { value: "ALL", label: "All Priorities" },
+    ...Object.entries(FEATURE_PRIORITY_LABELS).map(([value, label]) => ({
+      value,
+      label,
+    })),
+  ];
+
   const assigneeOptions = [
     { value: "ALL", label: "All Assignees", image: null, name: null },
     { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
@@ -523,6 +624,13 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       name: member.user.name,
     })),
   ];
+
+  // Filter features to hide cancelled if showCanceled is false - using useMemo for reactivity
+  const filteredFeatures = useMemo(() => {
+    return showCanceled 
+      ? features 
+      : features.filter(feature => feature.status !== "CANCELLED");
+  }, [features, showCanceled]);
 
   return (
     <Card>
@@ -562,7 +670,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                 <TableRow>
                   <TableHead className="w-[300px]">Title</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
+                  <TableHead className="w-[120px]">Priority</TableHead>
                   <TableHead className="w-[180px]">Assigned</TableHead>
+                  <TableHead className="w-[150px] text-right">Updated At</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
                   <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -577,8 +687,14 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
+                    <TableCell className="w-[120px]">
+                      <Skeleton className="h-6 w-20" />
+                    </TableCell>
                     <TableCell className="w-[180px]">
                       <Skeleton className="h-6 w-32" />
+                    </TableCell>
+                    <TableCell className="w-[150px] text-right">
+                      <Skeleton className="h-4 w-24 ml-auto" />
                     </TableCell>
                     <TableCell className="w-[150px] text-right">
                       <Skeleton className="h-4 w-24 ml-auto" />
@@ -601,25 +717,45 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           <>
             {!isCreating && (
           <div className="mb-4 flex items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search features..."
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9 pr-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => handleSearchChange("")}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+            <div className="flex items-center gap-4 flex-1">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search features..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9 pr-9"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => handleSearchChange("")}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleToggleCanceled}
+                className="whitespace-nowrap"
+              >
+                {showCanceled ? (
+                  <>
+                    <EyeOff className="h-4 w-4 mr-2" />
+                    Hide canceled
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4 mr-2" />
+                    Show canceled
+                  </>
+                )}
+              </Button>
             </div>
-            {hasActiveFilters && viewType === "list" && (
+            {hasActiveFilters && (
               <Button variant="outline" size="sm" onClick={handleClearFilters}>
                 <X className="h-4 w-4 mr-2" />
                 Clear filters
@@ -655,6 +791,10 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     currentStatus={newFeatureStatus}
                     onUpdate={async (status) => setNewFeatureStatus(status)}
                   />
+                  <PrioritySelector
+                    value={newFeaturePriority}
+                    onChange={(priority) => setNewFeaturePriority(priority)}
+                  />
                   <AssigneeCombobox
                     workspaceSlug={workspaceSlug}
                     currentAssignee={newFeatureAssigneeDisplay}
@@ -664,6 +804,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     }}
                   />
                 </div>
+
                 <div className="flex items-center justify-end gap-2">
                   <Button variant="ghost" size="sm" onClick={handleCancelCreate} disabled={creating}>
                     Cancel
@@ -714,6 +855,17 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showStatusBadges={true}
                     />
                   </TableHead>
+                  <TableHead className="w-[140px]">
+                    <FilterDropdownHeader
+                      label="Priority"
+                      options={priorityOptions}
+                      value={priorityFilters}
+                      onChange={handlePriorityFiltersChange}
+                      showSearch={false}
+                      multiSelect={true}
+                      showPriorityBadges={true}
+                    />
+                  </TableHead>
                   <TableHead className="w-[180px]">
                     <FilterDropdownHeader
                       label="Assigned"
@@ -722,6 +874,15 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       onChange={handleAssigneeFilterChange}
                       showSearch={true}
                       showAvatars={true}
+                    />
+                  </TableHead>
+                  <TableHead className="w-[150px] text-right">
+                    <SortableColumnHeader
+                      label="Updated At"
+                      field="updatedAt"
+                      currentSort={sortBy === "updatedAt" ? sortOrder : null}
+                      onSort={(order) => handleSort("updatedAt", order)}
+                      align="right"
                     />
                   </TableHead>
                   <TableHead className="w-[150px] text-right">
@@ -738,19 +899,20 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {features.length === 0 ? (
+                {filteredFeatures.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center">
+                    <TableCell colSpan={8} className="h-32 text-center">
                       <p className="text-muted-foreground">No features match your filters</p>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  features.map((feature) => (
+                  filteredFeatures.map((feature) => (
                     <FeatureRow
                       key={feature.id}
                       feature={feature}
                       workspaceSlug={workspaceSlug}
                       onStatusUpdate={handleUpdateStatus}
+                      onPriorityUpdate={handleUpdatePriority}
                       onAssigneeUpdate={handleUpdateAssignee}
                       onDelete={handleDeleteFeature}
                       onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
@@ -763,7 +925,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           ) : null
         ) : (
           <KanbanView
-            items={features}
+            items={filteredFeatures}
             columns={FEATURE_KANBAN_COLUMNS}
             getItemStatus={(feature) => feature.status}
             getItemId={(feature) => feature.id}
@@ -781,7 +943,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           />
         )}
 
-        {viewType === "list" && features.length > 0 && (
+        {viewType === "list" && filteredFeatures.length > 0 && (
           <div className="pt-4">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm text-muted-foreground">

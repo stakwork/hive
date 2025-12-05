@@ -15,6 +15,7 @@ export async function listFeatures({
   page = 1,
   limit = 10,
   statuses,
+  priorities,
   assigneeId,
   search,
   sortBy,
@@ -25,9 +26,10 @@ export async function listFeatures({
   page?: number;
   limit?: number;
   statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
+  priorities?: FeaturePriority[]; // Array of priorities for multi-select filtering
   assigneeId?: string; // String including "UNASSIGNED" special value
   search?: string; // Text search for feature title
-  sortBy?: "title" | "createdAt";
+  sortBy?: "title" | "createdAt" | "updatedAt";
   sortOrder?: "asc" | "desc";
 }) {
   const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
@@ -46,6 +48,11 @@ export async function listFeatures({
   // Handle multiple statuses with Prisma 'in' clause
   if (statuses && statuses.length > 0) {
     whereClause.status = { in: statuses };
+  }
+
+  // Handle multiple priorities with Prisma 'in' clause
+  if (priorities && priorities.length > 0) {
+    whereClause.priority = { in: priorities };
   }
 
   // Handle assigneeId - convert "UNASSIGNED" to null for Prisma query
@@ -68,7 +75,7 @@ export async function listFeatures({
   // Build orderBy clause
   const orderByClause: any = sortBy
     ? { [sortBy]: sortOrder || "asc" }
-    : { createdAt: "desc" };
+    : { updatedAt: "desc" };
 
   const [features, totalCount, totalCountWithoutFilters] = await Promise.all([
     db.feature.findMany({
@@ -183,7 +190,7 @@ export async function createFeature(
       personas: data.personas || [],
       workspaceId: data.workspaceId,
       status: data.status || FeatureStatus.BACKLOG,
-      priority: data.priority || FeaturePriority.NONE,
+      priority: data.priority || FeaturePriority.LOW,
       assigneeId: data.assigneeId || null,
       createdById: userId,
       updatedById: userId,

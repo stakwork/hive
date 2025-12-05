@@ -16,6 +16,9 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 // Mock next-auth for session management
 vi.mock("next-auth/next");
 
+// Import serviceConfigs from the correct module
+import { serviceConfigs } from "@/config/services";
+
 // Mock getUserAppTokens from githubApp
 vi.mock("@/lib/githubApp", () => ({
   getUserAppTokens: vi.fn(),
@@ -83,7 +86,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,
@@ -143,7 +146,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,
@@ -197,7 +200,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,
@@ -252,7 +255,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,
@@ -306,7 +309,7 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true);
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.any(Object)
         );
       });
@@ -353,7 +356,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,
@@ -407,7 +410,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,
@@ -636,7 +639,7 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `https://api.github.com/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
           expect.objectContaining({
             headers: expect.objectContaining({
               Authorization: `Bearer ${accessToken}`,

@@ -1,4 +1,5 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { serviceConfigs } from "@/config/services";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
 
     const { owner, repo } = parseGithubOwnerRepo(repoUrl);
 
-    const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}/branches`, {
+    const res = await axios.get(`${serviceConfigs.github.baseURL}/repos/${owner}/${repo}/branches`, {
       headers: {
         Authorization: `token ${pat}`,
         Accept: "application/vnd.github.v3+json",
