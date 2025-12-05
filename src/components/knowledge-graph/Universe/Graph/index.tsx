@@ -466,7 +466,7 @@ export const Graph = () => {
 
         <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
-      {false && <HighlightedNodesLayer />}
+      {!isOnboarding && <HighlightedNodesLayer />}
       {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
