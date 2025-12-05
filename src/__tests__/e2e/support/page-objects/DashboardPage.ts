@@ -67,7 +67,7 @@ export class DashboardPage {
    */
   async goToRecommendations(): Promise<void> {
     // First expand the Protect section if not already expanded
-    const protectButton = this.page.locator('[data-testid="nav-protect"]');
+    const protectButton = this.page.locator(selectors.navigation.protectButton);
     const recommendationsLink = this.page.locator(selectors.navigation.recommendationsLink).first();
 
     // Check if recommendations link is visible, if not, click Protect to expand
@@ -79,6 +79,44 @@ export class DashboardPage {
 
     await recommendationsLink.click();
     await this.page.waitForURL(/\/w\/.*\/recommendations/, { timeout: 10000 });
+  }
+
+  /**
+   * Navigate to janitors page
+   */
+  async goToJanitors(): Promise<void> {
+    // First expand the Protect section if not already expanded
+    const protectButton = this.page.locator(selectors.navigation.protectButton);
+    const janitorsLink = this.page.locator(selectors.navigation.janitorsLink).first();
+
+    // Check if janitors link is visible, if not, click Protect to expand
+    const isJanitorsVisible = await janitorsLink.isVisible();
+    if (!isJanitorsVisible) {
+      await protectButton.click();
+      await this.page.waitForTimeout(300); // Wait for expand animation
+    }
+
+    await janitorsLink.click();
+    await this.page.waitForURL(/\/w\/.*\/janitors/, { timeout: 10000 });
+  }
+
+  /**
+   * Navigate to testing page
+   */
+  async goToTesting(): Promise<void> {
+    // First expand the Protect section if not already expanded
+    const protectButton = this.page.locator(selectors.navigation.protectButton);
+    const testingLink = this.page.locator(selectors.navigation.testingLink).first();
+
+    // Check if testing link is visible, if not, click Protect to expand
+    const isTestingVisible = await testingLink.isVisible();
+    if (!isTestingVisible) {
+      await protectButton.click();
+      await this.page.waitForTimeout(300); // Wait for expand animation
+    }
+
+    await testingLink.click();
+    await this.page.waitForURL(/\/w\/.*\/testing/, { timeout: 10000 });
   }
 
   /**
