@@ -444,16 +444,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   };
 
-  // Clear all filters and sort
-  const handleClearFilters = () => {
-    setStatusFilters([]);
-    setPriorityFilters([]);
-    setAssigneeFilter("ALL");
-    setSortBy("updatedAt");
-    setSortOrder("desc");
-    setSearchQuery("");
-    setPage(1);
-  };
+
 
   const handleUpdateStatus = async (featureId: string, status: FeatureStatus) => {
     try {
@@ -755,12 +746,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                 )}
               </Button>
             </div>
-            {hasActiveFilters && (
-              <Button variant="outline" size="sm" onClick={handleClearFilters}>
-                <X className="h-4 w-4 mr-2" />
-                Clear filters
-              </Button>
-            )}
+
+
           </div>
         )}
 
