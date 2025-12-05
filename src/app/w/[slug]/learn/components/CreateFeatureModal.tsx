@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Pencil } from "lucide-react";
 
 interface CreateFeatureModalProps {
   isOpen: boolean;
@@ -21,21 +21,24 @@ interface CreateFeatureModalProps {
   onFeatureCreated?: () => void;
 }
 
-export function CreateFeatureModal({
-  isOpen,
-  onClose,
-  workspaceSlug,
-  onFeatureCreated,
-}: CreateFeatureModalProps) {
+export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCreated }: CreateFeatureModalProps) {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+
+  const getTemplateText = () => {
+    const featureName = name.trim() || "this feature";
+    return `Please return to me documentation (in markdown format) of how ${featureName} works in this repo. Include a list of the key files pertaining to this feature.`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name.trim() || !prompt.trim()) {
+    const finalPrompt = isEditingDescription ? prompt : getTemplateText();
+
+    if (!name.trim() || !finalPrompt.trim()) {
       setError("Please fill in all fields");
       return;
     }
@@ -52,7 +55,7 @@ export function CreateFeatureModal({
         body: JSON.stringify({
           workspace: workspaceSlug,
           name: name.trim(),
-          prompt: prompt.trim(),
+          prompt: finalPrompt.trim(),
         }),
       });
 
@@ -83,6 +86,7 @@ export function CreateFeatureModal({
     setName("");
     setPrompt("");
     setError(null);
+    setIsEditingDescription(false);
     onClose();
   };
 
@@ -92,7 +96,8 @@ export function CreateFeatureModal({
         <DialogHeader>
           <DialogTitle>Create New Feature</DialogTitle>
           <DialogDescription>
-            Generate documentation for a specific feature or concept in your codebase.
+            Generate documentation for a specific feature or concept in your codebase. This process can take a few
+            minutes.
           </DialogDescription>
         </DialogHeader>
 
@@ -112,24 +117,46 @@ export function CreateFeatureModal({
             </div>
 
             <div className="grid gap-2">
-              <label htmlFor="prompt" className="text-sm font-medium">
-                Description
-              </label>
-              <Textarea
-                id="prompt"
-                placeholder="What would you like to know about this feature?"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                disabled={isCreating}
-                className="min-h-24"
-              />
+              <div className="flex items-center justify-between">
+                <label htmlFor="prompt" className="text-sm font-medium">
+                  Description
+                </label>
+                {!isEditingDescription && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => {
+                      setPrompt(getTemplateText());
+                      setIsEditingDescription(true);
+                    }}
+                    disabled={isCreating}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+              {isEditingDescription ? (
+                <Textarea
+                  id="prompt"
+                  placeholder="What would you like to know about this feature?"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  disabled={isCreating}
+                  className="min-h-24"
+                />
+              ) : (
+                <div className="rounded-md border border-input bg-background px-3 py-2 text-sm min-h-24 text-foreground/70">
+                  Please document how{" "}
+                  <span className={name.trim() ? "text-foreground" : ""}>{name.trim() || "the feature"}</span>{" "}
+                  {name.trim() && name.trim().endsWith("s") ? "work" : "works"} in this repo. Include a list of the key
+                  files pertaining to this feature.
+                </div>
+              )}
             </div>
 
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
-              </div>
-            )}
+            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
 
             {isCreating && (
               <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
@@ -139,15 +166,10 @@ export function CreateFeatureModal({
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
-              disabled={isCreating}
-            >
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isCreating}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isCreating}>
+            <Button type="submit" disabled={isCreating || !name.trim()}>
               {isCreating ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin mr-2" />
