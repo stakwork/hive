@@ -484,12 +484,16 @@ export default function UserJourneys() {
         renderVideoView()
       ) : frontend ? (
         <div className="space-y-4">
-          <div className="flex items-center justify-end">
-            <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
-              ✕
+          <div className="flex items-center py-[5px]">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCloseBrowser}
+            >
+              Close
             </Button>
           </div>
-          <div className="h-[600px] border rounded-lg overflow-hidden">
+          <div className="h-[calc(100vh-200px)] border rounded-lg overflow-hidden">
             <BrowserArtifactPanel
               artifacts={browserArtifacts}
               ide={false}
