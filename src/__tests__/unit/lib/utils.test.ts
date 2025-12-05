@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cn, formatRelativeTime, getBaseUrl, getRelativeUrl } from "@/lib/utils";
+import { cn, getBaseUrl, getRelativeUrl } from "@/lib/utils";
 
 describe("utils", () => {
   describe("cn", () => {
@@ -43,86 +43,6 @@ describe("utils", () => {
         true && "conditional",
         "final"
       )).toBe("base foo bar active conditional final");
-    });
-  });
-
-  describe("formatRelativeTime", () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date('2024-01-15T12:00:00Z'));
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it.each([
-      { seconds: 0, expected: "just now" },
-      { seconds: 30, expected: "just now" },
-      { seconds: 45, expected: "just now" },
-    ])("should return '$expected' for $seconds seconds ago", ({ seconds, expected }) => {
-      const now = new Date();
-      const date = new Date(now.getTime() - seconds * 1000);
-      expect(formatRelativeTime(date)).toBe(expected);
-    });
-
-    it.each([
-      { minutes: 1, expected: "1 minute ago" },
-      { minutes: 5, expected: "5 minutes ago" },
-      { minutes: 30, expected: "30 minutes ago" },
-      { minutes: 59, expected: "59 minutes ago" },
-    ])("should return '$expected' for $minutes minutes ago", ({ minutes, expected }) => {
-      const now = new Date();
-      const date = new Date(now.getTime() - minutes * 60 * 1000);
-      expect(formatRelativeTime(date)).toBe(expected);
-    });
-
-    it.each([
-      { hours: 1, expected: "1 hour ago" },
-      { hours: 5, expected: "5 hours ago" },
-      { hours: 12, expected: "12 hours ago" },
-      { hours: 23, expected: "23 hours ago" },
-    ])("should return '$expected' for $hours hours ago", ({ hours, expected }) => {
-      const now = new Date();
-      const date = new Date(now.getTime() - hours * 60 * 60 * 1000);
-      expect(formatRelativeTime(date)).toBe(expected);
-    });
-
-    it.each([
-      { days: 1, expected: "1 day ago" },
-      { days: 3, expected: "3 days ago" },
-      { days: 6, expected: "6 days ago" },
-    ])("should return '$expected' for $days days ago", ({ days, expected }) => {
-      const now = new Date();
-      const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-      expect(formatRelativeTime(date)).toBe(expected);
-    });
-
-    it.each([
-      { days: 7 },
-      { days: 30 },
-      { days: 365 },
-    ])("should format dates $days days ago as formatted date string", ({ days }) => {
-      const now = new Date();
-      const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-      const result = formatRelativeTime(date);
-      expect(result).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
-    });
-
-    it("should handle string date inputs", () => {
-      const now = new Date();
-      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-
-      expect(formatRelativeTime(fiveMinutesAgo.toISOString())).toBe("5 minutes ago");
-      expect(formatRelativeTime("2024-01-15T11:55:00Z")).toBe("5 minutes ago");
-    });
-
-    it("should handle future dates", () => {
-      const now = new Date();
-      const futureDate = new Date(now.getTime() + 5 * 60 * 1000);
-
-      const result = formatRelativeTime(futureDate);
-      expect(result).toBe("just now");
     });
   });
 

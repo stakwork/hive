@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 import { ExternalLink, GitBranch, Github, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
@@ -224,7 +224,7 @@ export function RepositoryCard() {
             </div>
             <div className="flex items-center gap-1 text-muted-foreground">
               <RefreshCw className="w-3 h-3" />
-              {formatRelativeTime(repository.updatedAt)}
+              {formatRelativeOrDate(repository.updatedAt)}
             </div>
           </div>
         </div>
