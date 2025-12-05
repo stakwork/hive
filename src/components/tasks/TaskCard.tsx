@@ -11,7 +11,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 
 interface TaskCardProps {
   task: TaskData;
@@ -141,7 +141,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         {/* Date */}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
-          <span>{formatRelativeTime(task.createdAt)}</span>
+          <span>{formatRelativeOrDate(task.createdAt)}</span>
         </div>
 
         {/* Pod indicator - shows when pod is active */}

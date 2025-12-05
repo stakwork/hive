@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Sprout, Box, ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CreateFeatureModal } from "./CreateFeatureModal";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 
 interface Feature {
   id: string;
@@ -84,21 +85,6 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
     } finally {
       setIsSeeding(false);
     }
-  };
-
-  const formatRelativeTime = (isoString: string) => {
-    const now = Date.now();
-    const timestamp = new Date(isoString).getTime();
-    const diffMs = now - timestamp;
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-
-    if (diffDay > 0) return `${diffDay} day${diffDay > 1 ? "s" : ""} ago`;
-    if (diffHour > 0) return `${diffHour} hour${diffHour > 1 ? "s" : ""} ago`;
-    if (diffMin > 0) return `${diffMin} minute${diffMin > 1 ? "s" : ""} ago`;
-    return "just now";
   };
 
   const handleFeatureCreated = async () => {
@@ -187,7 +173,7 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
         </div>
         <div className="mb-3">
           <p className="text-xs text-muted-foreground">
-            {lastProcessed ? `Last processed: ${formatRelativeTime(lastProcessed)}` : "Never processed"}
+            {lastProcessed ? `Last processed: ${formatRelativeOrDate(lastProcessed)}` : "Never processed"}
           </p>
         </div>
         <div className="flex gap-2">

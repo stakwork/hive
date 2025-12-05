@@ -4,7 +4,7 @@ import { Calendar, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 import type { FeatureWithDetails } from "@/types/roadmap";
 import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS } from "@/types/roadmap";
 import { PriorityBadge } from "@/components/ui/priority-selector";
@@ -57,7 +57,7 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
         )}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
-          <span>{formatRelativeTime(feature.createdAt)}</span>
+          <span>{formatRelativeOrDate(feature.createdAt)}</span>
         </div>
       </div>
     </div>
