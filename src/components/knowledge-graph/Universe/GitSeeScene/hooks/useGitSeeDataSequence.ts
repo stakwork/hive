@@ -199,51 +199,51 @@ export const useGitSeeDataSequence = (workspaceId: string | undefined): UseGitSe
 
 
       // Step 2: Fetch directory data
-      try {
-        const directoryResult = await fetchWithRetry(
-          `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['Directory'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
-        );
+      // try {
+      //   const directoryResult = await fetchWithRetry(
+      //     `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['Directory'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
+      //   );
 
-        const directoryNodes = directoryResult.nodes?.filter((n: JarvisNode) => n.node_type === 'Directory') || [];
+      //   const directoryNodes = directoryResult.nodes?.filter((n: JarvisNode) => n.node_type === 'Directory') || [];
 
-        if (directoryNodes.length > 0) {
-          const filteredDirectoryData = { ...directoryResult, nodes: directoryNodes };
-          setDirectoryData(filteredDirectoryData);
-          addNewNode({
-            nodes: directoryNodes as Node[],
-            edges: (directoryResult.edges || []) as Link<string>[],
-          });
-          setPhase((prev) => (prev === 'complete' ? prev : 'directories-ready'));
-          console.log(`✅ Added ${directoryNodes.length} directory nodes to store`);
-        }
-      } catch (dirError) {
-        console.warn('⚠️ Directory data fetch failed, continuing sequence:', dirError);
-        setRetryCount(prev => prev + MAX_RETRIES);
-      }
+      //   if (directoryNodes.length > 0) {
+      //     const filteredDirectoryData = { ...directoryResult, nodes: directoryNodes };
+      //     setDirectoryData(filteredDirectoryData);
+      //     addNewNode({
+      //       nodes: directoryNodes as Node[],
+      //       edges: (directoryResult.edges || []) as Link<string>[],
+      //     });
+      //     setPhase((prev) => (prev === 'complete' ? prev : 'directories-ready'));
+      //     console.log(`✅ Added ${directoryNodes.length} directory nodes to store`);
+      //   }
+      // } catch (dirError) {
+      //   console.warn('⚠️ Directory data fetch failed, continuing sequence:', dirError);
+      //   setRetryCount(prev => prev + MAX_RETRIES);
+      // }
 
 
       // Step 3: Fetch file data
-      try {
-        const fileResult = await fetchWithRetry(
-          `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['File'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
-        );
+      // try {
+      //   const fileResult = await fetchWithRetry(
+      //     `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['File'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
+      //   );
 
-        const fileNodes = fileResult.nodes?.filter((n: JarvisNode) => n.node_type === 'File') || [];
+      //   const fileNodes = fileResult.nodes?.filter((n: JarvisNode) => n.node_type === 'File') || [];
 
-        if (fileNodes.length > 0) {
-          const filteredFileData = { ...fileResult, nodes: fileNodes };
-          setFileData(filteredFileData);
-          addNewNode({
-            nodes: fileNodes as Node[],
-            edges: (fileResult.edges || []) as Link<string>[],
-          });
-          console.log(`✅ Added ${fileNodes.length} file nodes to store`);
-          setPhase((prev) => (prev === 'complete' ? prev : 'files-ready'));
-        }
-      } catch (fileError) {
-        console.warn('⚠️ File data fetch failed, continuing sequence:', fileError);
-        setRetryCount(prev => prev + MAX_RETRIES);
-      }
+      //   if (fileNodes.length > 0) {
+      //     const filteredFileData = { ...fileResult, nodes: fileNodes };
+      //     setFileData(filteredFileData);
+      //     addNewNode({
+      //       nodes: fileNodes as Node[],
+      //       edges: (fileResult.edges || []) as Link<string>[],
+      //     });
+      //     console.log(`✅ Added ${fileNodes.length} file nodes to store`);
+      //     setPhase((prev) => (prev === 'complete' ? prev : 'files-ready'));
+      //   }
+      // } catch (fileError) {
+      //   console.warn('⚠️ File data fetch failed, continuing sequence:', fileError);
+      //   setRetryCount(prev => prev + MAX_RETRIES);
+      // }
 
 
     } catch (error) {
