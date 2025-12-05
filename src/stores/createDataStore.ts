@@ -44,7 +44,7 @@ const defaultData: Omit<
   runningProjectMessages: [],
   filters: defaultFilters,
   repositoryNodes: [],
-  isOnboarding: true,
+  isOnboarding: false,
   queuedSources: null,
   selectedTimestamp: null,
   sources: null,

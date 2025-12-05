@@ -50,6 +50,8 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       return;
     }
 
+    setIsOnboarding(true);
+
 
     fetch("/api/gitsee/trigger", {
       method: "POST",
@@ -93,7 +95,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       setError(error instanceof Error ? error.message : "Failed to start code ingestion");
       toast.error("Ingestion Error", { description: error instanceof Error ? error.message : "Failed to start code ingestion" });
     }
-  }, [workspaceId, swarmId, ingestRefId, toast, updateWorkspace]);
+  }, [workspaceId, swarmId, ingestRefId, toast, updateWorkspace, setIsOnboarding]);
 
   // Step 3: Create Stakwork customer
   const createStakworkCustomer = useCallback(async () => {
