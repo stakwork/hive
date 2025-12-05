@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, Prisma } from "@prisma/client";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
@@ -9,8 +9,8 @@ export const fetchCache = "force-no-store";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as StakworkStatusPayload;
-    const { project_status, task_id } = body;
+    const body = (await request.json()) as StakworkStatusPayload & { thinking_artifacts?: unknown };
+    const { project_status, task_id, thinking_artifacts } = body;
 
     const url = new URL(request.url);
     const taskIdFromQuery = url.searchParams.get("task_id");
@@ -73,12 +73,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Run not found" }, { status: 404 });
       }
 
+      // Prepare update data
+      const updateData: {
+        status: WorkflowStatus;
+        updatedAt: Date;
+        thinkingArtifacts?: Prisma.InputJsonValue;
+      } = {
+        status: workflowStatus,
+        updatedAt: new Date(),
+      };
+
+      // Add thinking artifacts if provided
+      if (thinking_artifacts) {
+        updateData.thinkingArtifacts = thinking_artifacts as Prisma.InputJsonValue;
+      }
+
       const updatedRun = await db.stakworkRun.update({
         where: { id: finalRunId },
-        data: {
-          status: workflowStatus,
-          updatedAt: new Date(),
-        },
+        data: updateData,
       });
 
       // Broadcast via Pusher
@@ -91,6 +103,15 @@ export async function POST(request: NextRequest) {
           featureId: updatedRun.featureId,
           timestamp: new Date(),
         });
+
+        // Broadcast thinking artifacts update if present
+        if (thinking_artifacts) {
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_THINKING_UPDATE, {
+            runId: finalRunId,
+            artifacts: thinking_artifacts,
+            updatedAt: new Date().toISOString(),
+          });
+        }
       } catch (error) {
         console.error("Error broadcasting to Pusher:", error);
       }

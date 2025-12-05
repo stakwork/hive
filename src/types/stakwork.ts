@@ -106,6 +106,15 @@ export type UpdateStakworkRunDecisionInput = z.infer<
 >;
 export type StakworkRunQuery = z.infer<typeof StakworkRunQuerySchema>;
 
+// Thinking Artifacts
+export interface ThinkingArtifact {
+  stepId: string;
+  stepName: string;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  timestamp: string;
+  details?: string;
+}
+
 // API Response types
 export interface StakworkRunResponse {
   id: string;
@@ -119,6 +128,7 @@ export interface StakworkRunResponse {
   dataType: string;
   feedback: string | null;
   decision: StakworkRunDecision | null;
+  thinkingArtifacts?: ThinkingArtifact[] | null;
   createdAt: Date;
   updatedAt: Date;
 }
