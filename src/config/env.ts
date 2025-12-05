@@ -57,8 +57,33 @@ export const optionalEnvVars = {
   MOCK_BASE,
 } as const;
 
+/**
+ * Validates and returns Gemini API key
+ * @throws Error if GEMINI_API_KEY is not set
+ */
+export function getGeminiApiKey(): string {
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error(
+      'GEMINI_API_KEY environment variable is not set. ' +
+      'Please add it to your .env file.'
+    );
+  }
+  
+  return apiKey;
+}
+
+/**
+ * Checks if Gemini API key is configured
+ */
+export function isGeminiConfigured(): boolean {
+  return !!process.env.GEMINI_API_KEY;
+}
+
 // Combined environment configuration
 export const config = {
   ...requiredEnvVars,
   ...optionalEnvVars,
+  geminiApiKey: process.env.GEMINI_API_KEY,
 } as const;
