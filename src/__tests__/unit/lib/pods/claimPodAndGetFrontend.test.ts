@@ -12,13 +12,7 @@ interface ProcessInfo {
   cwd?: string;
 }
 
-// Mock env config before importing modules that use it
-vi.mock('@/lib/env', () => ({
-  config: {
-    POOL_MANAGER_BASE_URL: 'https://pool-manager.example.com',
-    USE_MOCKS: false,
-  },
-}));
+
 
 // Mock global fetch
 const mockFetch = vi.fn();
