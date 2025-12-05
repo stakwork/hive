@@ -22,6 +22,7 @@ export type SidebarFilterWithCount = {
 
 export type DataStore = {
   repositoryNodes: Node[],
+  isOnboarding: boolean
   splashDataLoading: boolean
   abortRequest: boolean
   categoryFilter: NodeType | null
@@ -48,6 +49,7 @@ export type DataStore = {
   nodeTypeOrder: NodeTypeOrderItem[] | null
 
   setTrendingTopics: (trendingTopics: Trending[]) => void
+  setIsOnboarding: (isOnboarding: boolean) => void
   resetDataNew: () => void
   setStats: (stats: TStats) => void
   setSidebarFilter: (filter: string) => void
@@ -75,6 +77,7 @@ export type DataStore = {
 
 const defaultData: Omit<
   DataStore,
+  | 'setIsOnboarding'
   | 'setRepositoryNodes'
   | 'setTrendingTopics'
   | 'setStats'
@@ -105,6 +108,7 @@ const defaultData: Omit<
   runningProjectMessages: [],
   filters: defaultFilters,
   repositoryNodes: [],
+  isOnboarding: false,
   queuedSources: null,
   selectedTimestamp: null,
   sources: null,
@@ -259,22 +263,24 @@ export const useDataStore = create<DataStore>()(
       })
     },
 
-    resetData: () => {
-      set({
-        dataInitial: null,
-        sidebarFilter: 'all',
-        sidebarFilters: [],
-        sidebarFilterCounts: [],
-        dataNew: null,
-        runningProjectId: '',
-        nodeTypes: [],
-        nodesNormalized: new Map<string, NodeExtended>(),
-        linksNormalized: new Map<string, Link>(),
-        nodeLinksNormalized: {},
-      })
+  resetData: () => {
+    set({
+      dataInitial: null,
+      sidebarFilter: 'all',
+      sidebarFilters: [],
+      sidebarFilterCounts: [],
+      dataNew: null,
+      runningProjectId: '',
+      isOnboarding: false,
+      nodeTypes: [],
+      nodesNormalized: new Map<string, NodeExtended>(),
+      linksNormalized: new Map<string, Link>(),
+      nodeLinksNormalized: {},
+    })
     },
 
     resetDataNew: () => set({ dataNew: null }),
+    setIsOnboarding: (isOnboarding) => set({ isOnboarding }),
     setFilters: (filters: Partial<FilterParams>) => {
       set((state) => ({ filters: { ...state.filters, ...filters, skip: 0 } }))
     },

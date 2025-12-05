@@ -108,6 +108,7 @@ export const createSimulationStore = (
     simulationVersion: 0,
     simulationInProgress: false,
     isSleeping: false,
+    nodePositionsNormalized: new Map(),
 
     simulationCreate: (nodes) => {
       // Initialize with nodes but stop immediately.
@@ -316,6 +317,9 @@ export const createSimulationStore = (
           n.fx = pos.x;
           n.fy = pos.y;
           n.fz = pos.z;
+          n.x = pos.x;
+          n.y = pos.y;
+          n.z = pos.z;
         }
       });
 

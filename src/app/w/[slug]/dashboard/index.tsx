@@ -35,11 +35,12 @@ function DashboardInner() {
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
+  const isOnboarding = useDataStore((s) => s.isOnboarding);
 
   const tempGitHubRepoRef = 'temp-github-repo';
 
   useGraphPolling({
-    enabled: activeFilterTab === 'all',
+    enabled: !isOnboarding && activeFilterTab === 'all',
     interval: 5000
   });
 

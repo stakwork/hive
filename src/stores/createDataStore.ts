@@ -13,6 +13,7 @@ const repositoryNodeTypes = ['GitHubRepo', 'Commits', 'Stars', 'Issues', 'Age', 
 
 const defaultData: Omit<
   DataStore,
+  | 'setIsOnboarding'
   | 'setTrendingTopics'
   | 'setStats'
   | 'setSidebarFilter'
@@ -43,6 +44,7 @@ const defaultData: Omit<
   runningProjectMessages: [],
   filters: defaultFilters,
   repositoryNodes: [],
+  isOnboarding: false,
   queuedSources: null,
   selectedTimestamp: null,
   sources: null,
@@ -198,6 +200,7 @@ export const createDataStore = () =>
           sidebarFilters: [],
           sidebarFilterCounts: [],
           repositoryNodes: [],
+          isOnboarding: false,
           dataNew: null,
           runningProjectId: '',
           nodeTypes: [],
@@ -242,6 +245,7 @@ export const createDataStore = () =>
       resetRunningProjectMessages: () => set({ runningProjectMessages: [] }),
       setAbortRequests: (abortRequest) => set({ abortRequest }),
       finishLoading: () => set({ splashDataLoading: false }),
+      setIsOnboarding: (isOnboarding) => set({ isOnboarding }),
       setNodeTypeOrder: (nodeTypeOrder: NodeTypeOrderItem[] | null) => {
         const { dataInitial } = get()
 
@@ -262,5 +266,3 @@ export const createDataStore = () =>
       setRepositoryNodes: (repositoryNodes) => set({ repositoryNodes }),
     }))
   );
-
-
