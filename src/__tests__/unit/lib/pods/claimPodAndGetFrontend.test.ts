@@ -27,6 +27,7 @@ global.fetch = mockFetch;
 describe('claimPodAndGetFrontend', () => {
   const mockPoolName = 'test-pool';
   const mockPoolApiKey = 'test-api-key-secure-123';
+  const originalUseMocks = process.env.USE_MOCKS;
 
   const mockWorkspace: PodWorkspace = {
     id: 'workspace-abc123',
@@ -73,11 +74,15 @@ describe('claimPodAndGetFrontend', () => {
   ];
 
   beforeEach(() => {
+    // Override USE_MOCKS for this test suite - we want to test real fetch behavior
+    process.env.USE_MOCKS = 'false';
     mockFetch.mockClear();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
+    // Restore original USE_MOCKS value
+    process.env.USE_MOCKS = originalUseMocks;
     vi.restoreAllMocks();
   });
 

@@ -24,8 +24,6 @@ vi.mock("pusher-js", () => {
 import Pusher from "pusher";
 import PusherClient from "pusher-js";
 import {
-  pusherServer,
-  getPusherClient,
   getTaskChannelName,
   getWorkspaceChannelName,
   PUSHER_EVENTS,
@@ -41,6 +39,7 @@ describe("pusher.ts", () => {
     // Reset environment variables to a clean state
     process.env = {
       ...originalEnv,
+      USE_MOCKS: "false", // Test real Pusher by default
       PUSHER_APP_ID: "test-app-id",
       PUSHER_KEY: "test-key",
       PUSHER_SECRET: "test-secret",
@@ -57,7 +56,7 @@ describe("pusher.ts", () => {
     process.env = originalEnv;
   });
 
-  describe("pusherServer", () => {
+  describe("pusherServer - Real Pusher Mode", () => {
     it("should create a Pusher instance with correct configuration", async () => {
       // Re-import after environment setup
       const { pusherServer: testPusherServer } = await import("@/lib/pusher");
@@ -109,7 +108,25 @@ describe("pusher.ts", () => {
     });
   });
 
-  describe("getPusherClient", () => {
+  describe("pusherServer - Mock Mode", () => {
+    beforeEach(() => {
+      process.env.USE_MOCKS = "true";
+      vi.resetModules();
+    });
+
+    it("should use MockPusherServer when USE_MOCKS=true", async () => {
+      const { pusherServer: testPusherServer } = await import("@/lib/pusher");
+      
+      // Should NOT call real Pusher constructor
+      expect(Pusher).not.toHaveBeenCalled();
+      
+      // Should have trigger method
+      expect(testPusherServer.trigger).toBeDefined();
+      expect(typeof testPusherServer.trigger).toBe("function");
+    });
+  });
+
+  describe("getPusherClient - Real Pusher Mode", () => {
     beforeEach(() => {
       // Clear modules to reset the internal _pusherClient variable
       vi.resetModules();
@@ -199,6 +216,38 @@ describe("pusher.ts", () => {
       expect(typeof client.bind).toBe("function");
       expect(typeof client.unbind).toBe("function");
       expect(typeof client.disconnect).toBe("function");
+    });
+  });
+
+  describe("getPusherClient - Mock Mode", () => {
+    beforeEach(() => {
+      process.env.USE_MOCKS = "true";
+      vi.resetModules();
+    });
+
+    it("should use MockPusherClient when USE_MOCKS=true", async () => {
+      const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
+      
+      const client = testGetPusherClient();
+      
+      // Should NOT call real PusherClient constructor
+      expect(PusherClient).not.toHaveBeenCalled();
+      
+      // Should have expected methods
+      expect(client.subscribe).toBeDefined();
+      expect(client.disconnect).toBeDefined();
+      expect(typeof client.subscribe).toBe("function");
+      expect(typeof client.disconnect).toBe("function");
+    });
+
+    it("should implement lazy initialization in mock mode", async () => {
+      const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
+      
+      const client1 = testGetPusherClient();
+      const client2 = testGetPusherClient();
+      
+      // Should return same instance
+      expect(client1).toBe(client2);
     });
   });
 
@@ -349,7 +398,9 @@ describe("pusher.ts", () => {
       expect(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE).toBe("workspace-task-title-update");
     });
 
-    it("should have all exports available", () => {
+    it("should have all exports available", async () => {
+      const { pusherServer, getPusherClient } = await import("@/lib/pusher");
+      
       expect(pusherServer).toBeDefined();
       expect(getPusherClient).toBeDefined();
       expect(getTaskChannelName).toBeDefined();
