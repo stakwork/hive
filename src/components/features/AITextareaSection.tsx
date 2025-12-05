@@ -4,6 +4,7 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
+import { ThinkingArtifactsDisplay } from "@/components/features/ThinkingArtifactsDisplay";
 import { AIButton } from "@/components/ui/ai-button";
 import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
@@ -61,7 +62,7 @@ export function AITextareaSection({
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
 
   const { workspace } = useWorkspace();
-  const { latestRun, refetch } = useStakworkGeneration({
+  const { latestRun, thinkingArtifacts, refetch } = useStakworkGeneration({
     featureId,
     type: "ARCHITECTURE",
     enabled: type === "architecture",
@@ -224,6 +225,11 @@ export function AITextareaSection({
         <p className="text-sm text-muted-foreground">
           {description}
         </p>
+      )}
+
+      {/* Show thinking artifacts when loading or when artifacts exist */}
+      {type === "architecture" && (isLoadingState || thinkingArtifacts.length > 0) && (
+        <ThinkingArtifactsDisplay artifacts={thinkingArtifacts} />
       )}
 
       {parsedContent?.type === "questions" ? (
