@@ -15,11 +15,11 @@ interface TestEnvDefaults {
   STAKWORK_CUSTOMERS_EMAIL: string;
   STAKWORK_CUSTOMERS_PASSWORD: string;
   API_TOKEN: string;
+  USE_MOCKS: string;
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
-  TOKEN_ENCRYPTION_KEY:
-    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+  TOKEN_ENCRYPTION_KEY: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
   TOKEN_ENCRYPTION_KEY_ID: "k-test",
   STAKWORK_API_KEY: "test-stakwork",
   POOL_MANAGER_API_KEY: "test-pool",
@@ -30,6 +30,7 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
   STAKWORK_CUSTOMERS_EMAIL: "c@test.local",
   STAKWORK_CUSTOMERS_PASSWORD: "secret",
   API_TOKEN: "test-api-token",
+  USE_MOCKS: "false",
 };
 
 /**

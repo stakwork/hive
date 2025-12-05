@@ -139,10 +139,17 @@ async function markWorkspaceAsUnused(poolName: string, workspaceId: string, pool
 
 async function getProcessList(controlPortUrl: string, password: string): Promise<ProcessInfo[]> {
   // In mock mode, return fake process list (no real pod to call)
-  if (process.env.USE_MOCKS === "true") {
+  if (process.env.USE_MOCKS === "true" && process.env.NODE_ENV !== "test") {
     return [
       { pid: 12345, name: "goose", status: "online", port: "15551", pm_uptime: 123456, cwd: "/home/jovyan/workspace" },
-      { pid: 12346, name: "frontend", status: "online", port: "3000", pm_uptime: 123456, cwd: "/home/jovyan/workspace" },
+      {
+        pid: 12346,
+        name: "frontend",
+        status: "online",
+        port: "3000",
+        pm_uptime: 123456,
+        cwd: "/home/jovyan/workspace",
+      },
     ];
   }
 
