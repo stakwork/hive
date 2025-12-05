@@ -24,8 +24,8 @@ const NODE_CONFIG = {
 
   // Size controls
   centralNodeSize: 5.6,
-  contributorNodeSize: 10.5,
-  githubRepoNodeSize: 10.2,
+  contributorNodeSize: 10,
+  githubRepoNodeSize: 10,
   fileNodeSize: { width: 4, height: 2.5, depth: 0.3 },
 
   // Animation controls
@@ -50,17 +50,18 @@ const NODE_CONFIG = {
 const CAMERA_CONFIG = {
   // Data loading timing (in seconds)
   contributorsShowDelay: 2.5, // When contributor nodes become visible
-  cameraAnimationStartDelay: 4.0, // How long to wait before any camera movement starts
+  cameraAnimationStartDelay: 40.0, // How long to wait before any camera movement starts
   orbitStartDelay: 2.0, // Additional delay after animation starts to begin orbiting
   distancingDelay: 2.0, // Additional delay after orbiting starts to begin zooming out
   filesShowDelay: 3.0, // When file nodes become visible (visual rendering delay)
-  directoriesLoadDelay: 8.0, // When directories load
-  filesLoadDelay: 10, // When files load (2 seconds after directories)
+  directoriesLoadDelay: 80.0, // When directories load
+  filesLoadDelay: 100, // When files load (2 seconds after directories)
 
   // Node visibility timing (in seconds)
 
   // Camera movement timing
   initialFocusDistance: NODE_CONFIG.contributorDistance * 2, // Initial camera distance from scene
+  maxZoomOutDistance: 2500, // Maximum distance camera can zoom out to
 
   // Camera animation parameters
   orbitSpeed: 0.01, // How fast the camera orbits
@@ -294,7 +295,6 @@ export function RepositoryScene() {
 
     const latestTimeoutId = setTimeout(async () => {
       try {
-        setIsOnboarding(false);
         const response = await fetch(`/api/swarm/jarvis/nodes?id=${workspace.id}&endpoint=graph/search/latest?limit=5000&top_node_count=5000&sort_by=date_added_to_graph`);
         const result = await response.json();
 
@@ -371,8 +371,8 @@ export function RepositoryScene() {
       const angle = (i / count) * Math.PI * 2;
       const target = new THREE.Vector3(
         Math.cos(angle) * radius,
-        -8 + (i % 3) * 3, // Staggered Y levels below the repository
-        Math.sin(angle) * radius
+        -35 + (i % 3) * 5, // Moved contributors even lower to avoid overlap
+        Math.sin(angle) * radius + 30 // Added Z offset to spread contributors back
       );
 
       return {
@@ -522,15 +522,6 @@ export function RepositoryScene() {
     [contributorData]
   );
 
-  const githubRepoLines = useMemo(
-    () =>
-      githubRepoData.map((repo) => {
-        const { x, y, z } = repo.target;
-        return new Float32Array([0, 0, 0, x, y, z]);
-      }),
-    [githubRepoData]
-  );
-
   const fileLines = useMemo(
     () =>
       filesData.map((f) => {
@@ -538,15 +529,6 @@ export function RepositoryScene() {
         return new Float32Array([0, 0, 0, x, y, z]);
       }),
     [filesData]
-  );
-
-  const directoryLines = useMemo(
-    () =>
-      directoriesNodes.map((d) => {
-        const { x, y, z } = d.pos;
-        return new Float32Array([0, 0, 0, x, y, z]);
-      }),
-    [directoriesNodes]
   );
 
   // --------------------------------------------------------
@@ -583,7 +565,8 @@ export function RepositoryScene() {
         const distancingStartTime = CAMERA_CONFIG.cameraAnimationStartDelay + CAMERA_CONFIG.distancingDelay;
         const distancingTime = Math.max(0, elapsed - distancingStartTime);
         const radiusGrowth = Math.pow(distancingTime, CAMERA_CONFIG.radiusGrowthExponent) * CAMERA_CONFIG.radiusGrowthMultiplier;
-        currentRadius = initialRadius + radiusGrowth;
+        const targetRadius = initialRadius + radiusGrowth;
+        currentRadius = Math.min(targetRadius, CAMERA_CONFIG.maxZoomOutDistance);
       }
 
       // Height variation for more dynamic movement (only when orbiting)
@@ -626,14 +609,22 @@ export function RepositoryScene() {
 
     const t = elapsed - outerDelay;
 
-    // contributors gently move
+    // contributors gently move with staggered timing
     contributorRefs.current.forEach((mesh, i) => {
       if (!mesh) return;
       const c = contributorData[i];
 
+      // Staggered delay for each contributor (0.3 seconds apart)
+      const contributorDelay = i * 0.3;
+      const contributorTime = Math.max(0, t - contributorDelay);
+
+      // Slower animation speed based on time since their individual start
+      const animationProgress = Math.min(contributorTime * 0.8, 1); // Slower buildup
+      const lerpSpeed = 0.02 * animationProgress; // Much slower lerp speed
+
       tempVec.copy(c.target);
-      tempVec.y += Math.sin(t * 1.2 + i * 0.6) * NODE_CONFIG.floatingAmplitude;
-      mesh.position.lerp(tempVec, 0.05);
+      tempVec.y += Math.sin(contributorTime * 1.2 + i * 0.6) * NODE_CONFIG.floatingAmplitude;
+      mesh.position.lerp(tempVec, lerpSpeed);
     });
 
     // github repositories gently move (no rotation)
@@ -679,19 +670,6 @@ export function RepositoryScene() {
     return 'Repository';
   }, [workspace, jarvisData]);
 
-  // Get repository icon from node data
-  const repoIcon = useMemo(() => {
-    if (jarvisData?.nodes) {
-      const repoNode = jarvisData.nodes.find((n) => n.node_type === 'GitHubRepo');
-      return repoNode?.properties?.icon as string | undefined;
-    }
-
-    return undefined;
-  }, [jarvisData]);
-
-  // GitHub icon texture (memoized)
-  const githubIconTexture = useMemo(() => createGitHubIconTexture(repoIcon), [repoIcon]);
-
   // --------------------------------------------------------
   // RENDER
   // --------------------------------------------------------
@@ -702,27 +680,18 @@ export function RepositoryScene() {
     <group ref={groupRef} position={[0, 0, 0]}>
       {/* CENTRAL NODE - GitHub Repository Icon */}
       <Billboard ref={repoRef}>
-        {/* Background layer for contrast */}
-        {/* GitHub icon plane */}
-        {/* <mesh scale={[0.5, 0.5, 0.5]} rotation={[Math.PI, 0, 0]}>
-          <circleGeometry args={[NODE_CONFIG.centralNodeSize, NODE_CONFIG.centralNodeSize]} />
-          <meshStandardMaterial
-            map={githubIconTexture}
-            transparent
-            opacity={1.0}
-            side={THREE.DoubleSide}
-          />
-        </mesh> */}
 
         <mesh
           // ref={(m) => (githubRepoRefs.current[i] = m)}
           position={[0, 0, 0]}
           scale={[0.8, 0.8, 0.8]}
+          rotation={[Math.PI, 0, 0]}
         >
-          <circleGeometry args={[NODE_CONFIG.githubRepoNodeSize, 48]} />
+          <circleGeometry args={[NODE_CONFIG.githubRepoNodeSize - 2, 48]} />
           <meshBasicMaterial
             map={githubRepoData[0].texture}
-            transparent
+            color={"#fff"}
+            // transparent
             opacity={0.98}
             side={THREE.DoubleSide}
           />
@@ -784,37 +753,6 @@ export function RepositoryScene() {
           </Billboard>
         ))}
 
-      {/* GITHUB REPOSITORIES */}
-      {/* {showOuterNodes &&
-        githubRepoData.map((repo, i) => (
-          <Billboard key={`github-repo-${i}`}>
-            <line>
-              <bufferGeometry>
-                <bufferAttribute
-                  attach="attributes-position"
-                  args={[githubRepoLines[i], 3]}
-                />
-              </bufferGeometry>
-              <lineBasicMaterial color={repo.color} transparent opacity={NODE_CONFIG.lineOpacity.githubRepos} />
-            </line>
-
-            <mesh
-              ref={(m) => (githubRepoRefs.current[i] = m)}
-              position={[0, 0, 0]}
-              scale={[0.8, 0.8, 0.8]}
-            >
-              <circleGeometry args={[NODE_CONFIG.githubRepoNodeSize, 48]} />
-              <meshBasicMaterial
-                map={repo.texture}
-                transparent
-                opacity={0.98}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-
-          </Billboard>
-        ))} */}
-
       {/* FILES */}
       {showOuterNodes && showFiles && NODE_CONFIG.showFiles &&
         filesData.map((f, i) => (
@@ -851,46 +789,6 @@ export function RepositoryScene() {
               maxWidth={14}
             >
               {f.name}
-            </Text>
-          </Billboard>
-        ))}
-
-      {/* DIRECTORIES */}
-      {showOuterNodes &&
-        directoriesNodes.map((d, i) => (
-          <Billboard key={`directory-${i}`}>
-            <line>
-              <bufferGeometry>
-                <bufferAttribute
-                  attach="attributes-position"
-                  args={[directoryLines[i], 3]}
-                />
-              </bufferGeometry>
-              <lineBasicMaterial color={0x8b5cf6} transparent opacity={0.3} />
-            </line>
-
-            <mesh ref={(m) => (directoryRefs.current[i] = m)} position={d.pos}>
-              <octahedronGeometry args={[2.5, 0]} />
-              <meshStandardMaterial
-                color={0x8b5cf6}
-                emissive={0x6d28d9}
-                emissiveIntensity={0.4}
-                metalness={0.3}
-                roughness={0.6}
-                transparent
-                opacity={0.9}
-              />
-            </mesh>
-
-            <Text
-              position={[d.pos.x, d.pos.y - 3.5, d.pos.z]}
-              fontSize={0.8}
-              color="#c4b5fd"
-              anchorX="center"
-              anchorY="middle"
-              maxWidth={14}
-            >
-              📁 {d.name}
             </Text>
           </Billboard>
         ))}
