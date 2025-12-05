@@ -6,6 +6,10 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { awsCredentialsProvider } from '@vercel/functions/oidc'
+import { config } from '@/config/env'
+import { getMockS3Service, S3MockWrapper } from '@/lib/mock/s3-wrapper'
+
+const USE_MOCKS = config.USE_MOCKS
 
 const IMAGE_MAGIC_NUMBERS: Record<string, number[]> = {
   'image/jpeg': [0xff, 0xd8, 0xff],
@@ -27,7 +31,7 @@ export class S3Service {
     const roleArn = process.env.AWS_ROLE_ARN
 
     if (!roleArn) {
-      throw new Error('AWS_ROLE_ARN environment variable is required')
+      throw new Error('Missing required environment variable: AWS_ROLE_ARN')
     }
 
     this.client = new S3Client({
@@ -37,7 +41,7 @@ export class S3Service {
 
     const bucketName = process.env.S3_BUCKET_NAME
     if (!bucketName) {
-      throw new Error('S3_BUCKET_NAME environment variable is required')
+      throw new Error('Missing required environment variable: S3_BUCKET_NAME')
     }
     this.bucketName = bucketName
   }
@@ -215,8 +219,18 @@ export class S3Service {
 
 // S3 service with lazy initialization to avoid build-time errors
 let _s3Service: S3Service | null = null;
+let _mockS3Service: S3MockWrapper | null = null;
 
-export const getS3Service = (): S3Service => {
+export const getS3Service = (): S3Service | S3MockWrapper => {
+  // Return mock service when USE_MOCKS is enabled
+  if (USE_MOCKS) {
+    if (!_mockS3Service) {
+      _mockS3Service = getMockS3Service();
+    }
+    return _mockS3Service;
+  }
+
+  // Return real S3 service for production
   if (!_s3Service) {
     _s3Service = new S3Service();
   }
