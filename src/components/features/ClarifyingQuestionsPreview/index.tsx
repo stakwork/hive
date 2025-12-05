@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { HelpCircle, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,8 +53,8 @@ export function ClarifyingQuestionsPreview({
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const [showReview, setShowReview] = useState(false);
 
-  const totalSteps = questions.length + 1;
-  const currentStep = showReview ? totalSteps : currentIndex + 1;
+  const totalSteps = questions.length;
+  const currentStep = currentIndex + 1;
   const currentQuestion = questions[currentIndex];
   const isLastQuestion = currentIndex === questions.length - 1;
   const isFirstQuestion = currentIndex === 0;
@@ -120,9 +120,11 @@ export function ClarifyingQuestionsPreview({
               <p className="text-sm font-medium text-foreground">
                 {showReview ? "Review Your Answers" : "Question"}
               </p>
-              <span className="text-xs text-muted-foreground">
-                {currentStep} of {totalSteps}
-              </span>
+              {!showReview && (
+                <span className="text-xs text-muted-foreground">
+                  {currentStep} of {totalSteps}
+                </span>
+              )}
             </div>
           </div>
         </div>
