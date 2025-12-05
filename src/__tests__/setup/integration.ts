@@ -52,6 +52,9 @@ beforeAll(async () => {
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
   await resetDatabase();
+  // Reset Pusher mock state between tests
+  const { mockPusherState } = await import("@/lib/mock/pusher-state");
+  mockPusherState.reset();
 });
 
 afterEach(() => {
