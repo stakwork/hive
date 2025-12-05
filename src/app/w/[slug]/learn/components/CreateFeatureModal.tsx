@@ -29,8 +29,9 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
   const [isEditingDescription, setIsEditingDescription] = useState(false);
 
   const getTemplateText = () => {
-    const featureName = name.trim() || "this feature";
-    return `Please return to me documentation (in markdown format) of how ${featureName} works in this repo. Include a list of the key files pertaining to this feature.`;
+    const conceptName = name.trim() || "the concept";
+    const verb = name.trim() && name.trim().endsWith("s") ? "work" : "works";
+    return `Please document how ${conceptName} ${verb} in this repo. Include a list of the key files pertaining to this concept.`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -94,18 +95,15 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Create New Feature</DialogTitle>
-          <DialogDescription>
-            Generate documentation for a specific feature or concept in your codebase. This process can take a few
-            minutes.
-          </DialogDescription>
+          <DialogTitle>Create New Concept</DialogTitle>
+          <DialogDescription>Generate documentation for a specific feature of your codebase.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <label htmlFor="name" className="text-sm font-medium">
-                Feature Name
+                Concept Name
               </label>
               <Input
                 id="name"
@@ -140,7 +138,7 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
               {isEditingDescription ? (
                 <Textarea
                   id="prompt"
-                  placeholder="What would you like to know about this feature?"
+                  placeholder="What would you like to know about this concept?"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   disabled={isCreating}
@@ -149,9 +147,9 @@ export function CreateFeatureModal({ isOpen, onClose, workspaceSlug, onFeatureCr
               ) : (
                 <div className="rounded-md border border-input bg-background px-3 py-2 text-sm min-h-24 text-foreground/70">
                   Please document how{" "}
-                  <span className={name.trim() ? "text-foreground" : ""}>{name.trim() || "the feature"}</span>{" "}
+                  <span className={name.trim() ? "text-foreground" : ""}>{name.trim() || "the concept"}</span>{" "}
                   {name.trim() && name.trim().endsWith("s") ? "work" : "works"} in this repo. Include a list of the key
-                  files pertaining to this feature.
+                  files pertaining to this concept.
                 </div>
               )}
             </div>

@@ -131,6 +131,7 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
               <div className="flex items-center gap-2 w-full">
                 <Box className="w-4 h-4 text-muted-foreground" />
                 <h3 className="font-medium text-muted-foreground">Concepts</h3>
+                <span className="text-xs text-muted-foreground/60">({features.length})</span>
                 <ChevronDown
                   className={`w-4 h-4 text-muted-foreground ml-auto transition-transform ${isFeaturesCollapsed ? "-rotate-90" : ""}`}
                 />
