@@ -30,7 +30,8 @@ const mockConfig = {
   GITHUB_APP_CLIENT_ID: "test-client-id",
   GITHUB_APP_CLIENT_SECRET: "test-client-secret",
   LOG_LEVEL: "INFO",
-  USE_MOCKS: false,
+  USE_MOCKS: true,
+  MOCK_BASE: "http://localhost:3000",
 };
 
 vi.mock("@/config/env", () => ({
@@ -47,7 +48,8 @@ vi.mock("@/config/env", () => ({
     GITHUB_APP_CLIENT_ID: mockConfig.GITHUB_APP_CLIENT_ID,
     GITHUB_APP_CLIENT_SECRET: mockConfig.GITHUB_APP_CLIENT_SECRET,
     LOG_LEVEL: mockConfig.LOG_LEVEL,
-    USE_MOCKS: false,
+    USE_MOCKS: true,
+    MOCK_BASE: "http://localhost:3000",
   },
 }));
 
