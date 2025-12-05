@@ -188,6 +188,7 @@ export const useGitSeeDataSequence = (workspaceId: string | undefined): UseGitSe
           if (repoNodes.length > 0) {
             const filteredRepoData = { ...repoResult, nodes: repoNodes };
             setRepoData(filteredRepoData);
+            setPhase('repo-ready');
             console.log(`✅ Added ${repoNodes.length} repo nodes to store`);
           }
         }
@@ -196,10 +197,6 @@ export const useGitSeeDataSequence = (workspaceId: string | undefined): UseGitSe
         setRetryCount(prev => prev + MAX_RETRIES);
       }
 
-      if (repoNodes && repoNodes.length > 0) {
-        setPhase('repo-ready');
-        console.log('📊 Phase: repo-ready → fetching directories');
-      }
 
       // Step 2: Fetch directory data
       try {
