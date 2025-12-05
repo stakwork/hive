@@ -7,6 +7,10 @@ vi.mock("@/config/env", () => ({
     SWARM_SUPER_ADMIN_URL: "https://test-swarm-admin.example.com",
     SWARM_SUPERADMIN_API_KEY: "test-super-admin-key-12345",
   },
+  config: {
+    SWARM_SUPER_ADMIN_URL: "https://test-swarm-admin.example.com",
+    SWARM_SUPERADMIN_API_KEY: "test-super-admin-key-12345",
+  },
 }));
 
 describe("fetchSwarmDetails", () => {
