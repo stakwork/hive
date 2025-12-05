@@ -25,6 +25,11 @@ export async function GET(request: NextRequest) {
     const sourceType = searchParams.get("sourceType");
     const includeArchived = searchParams.get("includeArchived");
     const search = searchParams.get("search") || undefined;
+    
+    // New filter parameters
+    const workflowStatusParam = searchParams.get("workflowStatus");
+    const sourceTypesParam = searchParams.get("sourceTypes");
+    const modesParam = searchParams.get("modes");
 
     if (!workspaceId) {
       return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
@@ -103,9 +108,38 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Add sourceType filter if provided
+    // Add sourceType filter if provided (legacy single sourceType parameter)
     if (sourceType && Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
       whereClause.sourceType = sourceType as TaskSourceType;
+    }
+
+    // Add new filter parameters
+    // WorkflowStatus filter
+    if (workflowStatusParam) {
+      const statuses = workflowStatusParam.split(',').filter(s => 
+        Object.values(WorkflowStatus).includes(s as WorkflowStatus)
+      );
+      if (statuses.length > 0) {
+        whereClause.workflowStatus = { in: statuses as WorkflowStatus[] };
+      }
+    }
+
+    // SourceTypes filter (multiple)
+    if (sourceTypesParam) {
+      const sourceTypes = sourceTypesParam.split(',').filter(s => 
+        Object.values(TaskSourceType).includes(s as TaskSourceType)
+      );
+      if (sourceTypes.length > 0) {
+        whereClause.sourceType = { in: sourceTypes as TaskSourceType[] };
+      }
+    }
+
+    // Modes filter
+    if (modesParam) {
+      const modes = modesParam.split(',');
+      if (modes.length > 0) {
+        whereClause.mode = { in: modes };
+      }
     }
 
     // Add search filter if provided
