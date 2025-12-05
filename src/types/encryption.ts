@@ -23,6 +23,7 @@ export type EncryptableField =
   | "swarmApiKey"
   | "swarmPassword"
   | "stakworkApiKey"
+  | "stakworkWebhookSecret"
   | "githubWebhookSecret"
   | "app_access_token"
   | "app_refresh_token"

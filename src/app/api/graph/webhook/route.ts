@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
+import { timingSafeEqual } from "@/lib/encryption";
 import { NextRequest, NextResponse } from "next/server";
 
 export const fetchCache = "force-no-store";
@@ -16,11 +17,14 @@ export async function POST(request: NextRequest) {
   try {
 
     console.log("Graph webhook received");
-    // API Key authentication
+    // API Key authentication with timing-safe comparison
     const apiKey = request.headers.get('x-api-key');
+    const expectedApiKey = process.env.GRAPH_WEBHOOK_API_KEY;
+    
     console.log("apiKey:", apiKey);
-    console.log("process.env.GRAPH_WEBHOOK_API_KEY:", process.env.GRAPH_WEBHOOK_API_KEY);
-    if (!apiKey || apiKey !== process.env.GRAPH_WEBHOOK_API_KEY) {
+    console.log("process.env.GRAPH_WEBHOOK_API_KEY:", expectedApiKey);
+    
+    if (!apiKey || !expectedApiKey || !timingSafeEqual(apiKey, expectedApiKey)) {
       console.error("Invalid or missing API key for graph webhook");
       return NextResponse.json(
         { error: "Unauthorized" },
