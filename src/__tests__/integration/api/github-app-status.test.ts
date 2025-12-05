@@ -804,4 +804,135 @@ describe("GET /api/github/app/status", () => {
       });
     });
   });
+
+  describe("Global repository access checks (no workspace)", () => {
+    it("should check repository access in global context when repositoryUrl is provided", async () => {
+      const { testUser, sourceControlOrg } =
+        await createTestUserWithGitHubTokens({ githubOwner: "testowner" });
+
+      // Mock GitHub API response
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          repositories: [
+            {
+              full_name: "testowner/testrepo",
+              name: "testrepo",
+            },
+          ],
+        }),
+      });
+
+      const request = createGetRequest("http://localhost:3000/api/github/app/status", {
+        repositoryUrl: "https://github.com/testowner/testrepo",
+      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+      vi.mocked(getUserAppTokens).mockResolvedValue({ accessToken: "test-token" });
+      vi.mocked(checkRepositoryAccess).mockResolvedValue(true);
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.hasTokens).toBe(true);
+      expect(data.hasRepoAccess).toBe(true);
+
+      // Verify checkRepositoryAccess was called
+      expect(vi.mocked(checkRepositoryAccess)).toHaveBeenCalledWith(
+        testUser.id,
+        sourceControlOrg.githubInstallationId.toString(),
+        "https://github.com/testowner/testrepo"
+      );
+    });
+
+    it("should return false for repository access when user lacks tokens for the owner", async () => {
+      const { testUser } = await createTestUserWithGitHubTokens();
+
+      const request = createGetRequest("http://localhost:3000/api/github/app/status", {
+        repositoryUrl: "https://github.com/differentowner/repo",
+      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+      vi.mocked(getUserAppTokens)
+        .mockResolvedValueOnce(null) // For differentowner
+        .mockResolvedValueOnce({ accessToken: "test-token" }); // For global check
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.hasTokens).toBe(true); // User has tokens for testowner
+      expect(data.hasRepoAccess).toBe(false); // But not for differentowner
+    });
+
+    it("should return false for repository access when source control org not found", async () => {
+      const { testUser } = await createTestUserWithGitHubTokens({ githubOwner: "testowner" });
+
+      // Delete the source control org to simulate missing installation
+      await db.sourceControlOrg.deleteMany({
+        where: { githubLogin: "testowner" },
+      });
+
+      const request = createGetRequest("http://localhost:3000/api/github/app/status", {
+        repositoryUrl: "https://github.com/testowner/testrepo",
+      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+      vi.mocked(getUserAppTokens).mockResolvedValue({ accessToken: "test-token" });
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.hasRepoAccess).toBe(false);
+    });
+
+    it("should return false for repository access when GitHub API denies access", async () => {
+      const { testUser } = await createTestUserWithGitHubTokens({ githubOwner: "testowner" });
+
+      const request = createGetRequest("http://localhost:3000/api/github/app/status", {
+        repositoryUrl: "https://github.com/testowner/privaterepo",
+      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+      vi.mocked(getUserAppTokens).mockResolvedValue({ accessToken: "test-token" });
+      vi.mocked(checkRepositoryAccess).mockResolvedValue(false);
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.hasTokens).toBe(true);
+      expect(data.hasRepoAccess).toBe(false);
+    });
+
+    it("should handle malformed repository URLs gracefully", async () => {
+      const { testUser } = await createTestUserWithGitHubTokens();
+
+      const request = createGetRequest("http://localhost:3000/api/github/app/status", {
+        repositoryUrl: "invalid-url",
+      });
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+      vi.mocked(getUserAppTokens).mockResolvedValue({ accessToken: "test-token" });
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.hasTokens).toBe(true);
+      expect(data.hasRepoAccess).toBe(false);
+    });
+
+    it("should return hasRepoAccess false when no repositoryUrl is provided", async () => {
+      const { testUser } = await createTestUserWithGitHubTokens();
+
+      const request = createGetRequest("http://localhost:3000/api/github/app/status");
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));
+      vi.mocked(getUserAppTokens).mockResolvedValue({ accessToken: "test-token" });
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.hasTokens).toBe(true);
+      expect(data.hasRepoAccess).toBe(false);
+    });
+  });
 });

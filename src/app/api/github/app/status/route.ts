@@ -251,11 +251,75 @@ export async function GET(request: Request) {
       }
     } else {
       // No workspace specified - check if user has ANY GitHub App tokens
+      // Global token check - can optionally verify repository access
       console.log("[github-app-status] Checking user app tokens (no workspace)", {
         ...requestLogContext,
         action: 'check_user_app_tokens',
       });
 
+      if (repositoryUrl) {
+        try {
+          // Parse repository URL to extract owner
+          const urlParts = repositoryUrl.replace(/\.git$/, "").split("/");
+          const owner = urlParts[urlParts.length - 2];
+          
+          if (owner) {
+            console.log("[github-app-status] Checking global repository access", {
+              ...requestLogContext,
+              action: 'check_global_repo_access',
+              owner,
+            });
+
+            // Get tokens for this specific GitHub owner
+            const userTokens = await getUserAppTokens(session.user.id, owner);
+            
+            if (userTokens) {
+              const { db } = await import("@/lib/db");
+              
+              // Find the installation ID for this owner
+              const sourceControlOrg = await db.sourceControlOrg.findFirst({
+                where: {
+                  githubLogin: {
+                    equals: owner,
+                    mode: "insensitive",
+                  },
+                },
+              });
+
+              console.log("[github-app-status] Source control org lookup result", {
+                ...requestLogContext,
+                owner,
+                hasSourceControlOrg: !!sourceControlOrg,
+                installationId: sourceControlOrg?.githubInstallationId,
+              });
+
+              if (sourceControlOrg?.githubInstallationId) {
+                // Verify repository access using existing function
+                hasRepoAccess = await checkRepositoryAccess(
+                  session.user.id,
+                  sourceControlOrg.githubInstallationId.toString(),
+                  repositoryUrl
+                );
+
+                console.log("[github-app-status] Global repository access check result", {
+                  ...requestLogContext,
+                  owner,
+                  hasRepoAccess,
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error("[github-app-status] Error checking global repository access", {
+            ...requestLogContext,
+            error: error instanceof Error ? error.message : String(error),
+            errorStack: error instanceof Error ? error.stack : undefined,
+          });
+          // Continue with hasRepoAccess = false on error
+        }
+      }
+
+      // Check if user has any tokens
       const apptokens = await getUserAppTokens(session.user.id);
       hasTokens = !!apptokens?.accessToken;
 
@@ -263,6 +327,7 @@ export async function GET(request: Request) {
         ...requestLogContext,
         hasTokens,
         hasAppTokens: !!apptokens,
+        hasRepoAccess,
       });
     }
 
