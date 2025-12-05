@@ -45,13 +45,23 @@ beforeAll(async () => {
     console.error("Failed to setup test database schema:", error);
     throw error;
   }
-});
+}, 30000); 
 
 // Reset database before each test to ensure clean state.
 // No afterEach needed - beforeEach provides full isolation.
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
   await resetDatabase();
+  // Reset Pusher mock state between tests (only if using mocks)
+  if (process.env.USE_MOCKS === "true") {
+    try {
+      const { mockPusherState } = await import("@/lib/mock/pusher-state");
+      mockPusherState.reset();
+    } catch (error) {
+      // Ignore if mock state doesn't exist (older branches)
+      console.warn("Could not reset Pusher mock state:", error);
+    }
+  }
 });
 
 afterEach(() => {

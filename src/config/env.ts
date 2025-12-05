@@ -53,6 +53,19 @@ export const optionalEnvVars = {
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
   USE_MOCKS,
   MOCK_BASE,
+  // Pusher credentials - use mock values when USE_MOCKS is true
+  PUSHER_APP_ID: USE_MOCKS 
+    ? "mock-pusher-app-id" 
+    : process.env.PUSHER_APP_ID,
+  PUSHER_KEY: USE_MOCKS 
+    ? "mock-pusher-key" 
+    : process.env.PUSHER_KEY,
+  PUSHER_SECRET: USE_MOCKS 
+    ? "mock-pusher-secret" 
+    : process.env.PUSHER_SECRET,
+  PUSHER_CLUSTER: USE_MOCKS 
+    ? "mock-cluster" 
+    : process.env.PUSHER_CLUSTER,
 } as const;
 
 // Combined environment configuration

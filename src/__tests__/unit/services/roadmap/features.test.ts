@@ -376,7 +376,7 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             priority: FeaturePriority.CRITICAL,
           }),
-        })
+        }),
       );
     });
   });
