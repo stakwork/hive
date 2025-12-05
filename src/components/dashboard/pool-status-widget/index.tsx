@@ -69,7 +69,7 @@ export function PoolStatusWidget() {
     }
 
     if (poolStatus) {
-      const totalVms = poolStatus.status.usedVms + poolStatus.status.unusedVms;
+      const totalVms = poolStatus.status.runningVms;
       const hasIssues = poolStatus.status.pendingVms > 0 || poolStatus.status.failedVms > 0;
 
       return (
