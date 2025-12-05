@@ -22,6 +22,9 @@ export const selectors = {
     userJourneysLink: '[data-testid="nav-user-journeys"]',
     roadmapLink: '[data-testid="nav-plan"]',
     callsLink: '[data-testid="nav-calls"]',
+    janitorsLink: '[data-testid="nav-janitors"]',
+    testingLink: '[data-testid="nav-testing"]',
+    protectButton: '[data-testid="nav-protect"]',
   },
 
   // Page titles
@@ -33,6 +36,8 @@ export const selectors = {
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
     calls: '[data-testid="page-title"]:has-text("Calls")',
     capacity: '[data-testid="page-title"]:has-text("Capacity")',
+    janitors: '[data-testid="page-title"]:has-text("Janitors")',
+    testing: '[data-testid="page-title"]:has-text("Testing")',
   },
 
   // Page descriptions
