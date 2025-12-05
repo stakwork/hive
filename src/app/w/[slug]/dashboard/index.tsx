@@ -35,35 +35,12 @@ function DashboardInner() {
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
-
-  // useEffect(() => {
-  //   const triggerGitSee = async () => {
-  //     const repositoryUrl = workspace?.repositories?.[0]?.repositoryUrl || '';
-  //     const workspaceId = workspace?.id || '';
-  //     if (!repositoryUrl || !workspaceId) return;
-
-
-  //     try {
-  //       fetch("/api/gitsee/trigger", {
-  //         method: "POST",
-  //         headers: { "Content-Type": "application/json" },
-  //         body: JSON.stringify({
-  //           repositoryUrl: repositoryUrl,
-  //           workspaceId: workspaceId,
-  //         }),
-  //       });
-  //     } catch (error) {
-  //       console.error('Error triggering GitSee:', error);
-  //     }
-  //   }
-  //   triggerGitSee()
-  // }, [workspace])
-
+  const isOnboarding = useDataStore((s) => s.isOnboarding);
 
   const tempGitHubRepoRef = 'temp-github-repo';
 
   useGraphPolling({
-    enabled: false && activeFilterTab === 'all',
+    enabled: !isOnboarding && activeFilterTab === 'all',
     interval: 5000
   });
 
