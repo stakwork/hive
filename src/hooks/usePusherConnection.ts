@@ -5,6 +5,7 @@ import {
   getTaskChannelName,
   getWorkspaceChannelName,
   PUSHER_EVENTS,
+  type MockChannel,
 } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
 
@@ -68,7 +69,7 @@ export function usePusherConnection({
   const [error, setError] = useState<string | null>(null);
 
   // Use refs to avoid circular dependencies
-  const channelRef = useRef<Channel | null>(null);
+  const channelRef = useRef<Channel | MockChannel | null>(null);
   const onMessageRef = useRef(onMessage);
   const onWorkflowStatusUpdateRef = useRef(onWorkflowStatusUpdate);
   const onRecommendationsUpdatedRef = useRef(onRecommendationsUpdated);
