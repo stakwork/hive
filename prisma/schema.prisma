@@ -776,6 +776,10 @@ model Feature {
   assigneeId  String?          @map("assignee_id")
   assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
+  // Diagram fields
+  diagramUrl   String?         @map("diagram_url")
+  diagramS3Key String?         @map("diagram_s3_key")
+
   status      FeatureStatus    @default(BACKLOG)
   priority    FeaturePriority  @default(LOW)
 
@@ -884,6 +888,7 @@ model StakworkRun {
   dataType    String         @default("string") @map("data_type") // "string", "json", "number", etc.
   feedback    String?        // User feedback on result
   decision    StakworkRunDecision? // User decision on result
+  thinkingArtifacts Json?    @map("thinking_artifacts") // Deep research thinking process
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
