@@ -345,7 +345,7 @@ export async function processStakworkRunWebhook(
     feature_id?: string;
   }
 ) {
-  const { result, project_status, project_id, transitions } = webhookData;
+  const { result, project_status, project_id } = webhookData;
   const { workspace_id, feature_id, type } = queryParams;
 
   // Find the run by webhookUrl or projectId
@@ -394,25 +394,6 @@ export async function processStakworkRunWebhook(
       typeof result === "string" ? result : JSON.stringify(result);
   }
 
-  // Extract and format thinking artifacts from transitions
-  let thinkingArtifacts: any = undefined;
-  if (transitions && transitions.length > 0) {
-    thinkingArtifacts = transitions
-      .filter(t => t.log || t.output || t.step_state)
-      .map(t => ({
-        stepId: t.step_id,
-        stepName: t.step_name,
-        log: t.log,
-        output: t.output,
-        stepState: t.step_state,
-      }));
-    
-    // If no valid transitions after filtering, set to undefined to preserve existing
-    if (thinkingArtifacts.length === 0) {
-      thinkingArtifacts = undefined;
-    }
-  }
-
   // Step 1: Atomic update to prevent race conditions
   const updateResult = await db.stakworkRun.updateMany({
     where: {
@@ -423,7 +404,6 @@ export async function processStakworkRunWebhook(
       status,
       result: serializedResult,
       dataType,
-      ...(thinkingArtifacts !== undefined && { thinkingArtifacts }),
       updatedAt: new Date(),
     },
   });
@@ -443,17 +423,6 @@ export async function processStakworkRunWebhook(
       featureId: run.featureId,
       timestamp: new Date(),
     });
-
-    // Broadcast thinking artifacts update if new transitions received
-    if (thinkingArtifacts && thinkingArtifacts.length > 0) {
-      await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_THINKING_UPDATE, {
-        runId: run.id,
-        type: run.type,
-        featureId: run.featureId,
-        artifacts: thinkingArtifacts,
-        timestamp: new Date(),
-      });
-    }
   } catch (error) {
     console.error("Error broadcasting to Pusher:", error);
     // Don't throw - webhook processing succeeded
