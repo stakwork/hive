@@ -782,25 +782,77 @@ describe('useDataStore - addNewNode', () => {
       expect(duration).toBeLessThan(1000);
     });
 
-    test('should maintain O(1) lookup performance with normalized Maps', () => {
+    test('O(1) lookup performance - relative comparison', () => {
       const { addNewNode, nodesNormalized } = useDataStore.getState();
-
-      const mockData = createMockFetchData(1000, 0);
+      
+      // Create a larger dataset to make performance differences more pronounced
+      const nodeCount = 10000;
+      const nodes = [];
+      
+      for (let i = 0; i < nodeCount; i++) {
+        const node = createMockNode({
+          ref_id: `node-${i}`,
+          name: `Node ${i}`,
+        });
+        nodes.push(node);
+      }
+      
+      const mockData = {
+        nodes,
+        edges: [],
+      };
       addNewNode(mockData);
 
-      // Test lookup speed
-      const startTime = performance.now();
-
-      for (let i = 0; i < 100; i++) {
-        const node = nodesNormalized.get(`node-${i}`);
-        expect(node).toBeDefined();
+      // Warm-up to avoid JIT compilation effects
+      for (let i = 0; i < 20; i++) {
+        nodesNormalized.get(`node-${Math.floor(Math.random() * nodeCount)}`);
+        const targetId = `node-${Math.floor(Math.random() * nodeCount)}`;
+        nodes.find(n => n.ref_id === targetId);
       }
 
-      const endTime = performance.now();
-      const duration = endTime - startTime;
+      // Run multiple samples to get median performance (reduces impact of outliers)
+      const samples = 5;
+      const lookupIterations = 500;
+      const searchIterations = 500;
+      const lookupTimes = [];
+      const searchTimes = [];
 
-      // 100 lookups should be fast (< 100ms to account for system load in CI)
-      expect(duration).toBeLessThan(100);
+      for (let sample = 0; sample < samples; sample++) {
+        // Test O(1) lookup performance
+        const lookupStart = performance.now();
+        for (let i = 0; i < lookupIterations; i++) {
+          const node = nodesNormalized.get(`node-${Math.floor(nodeCount / 2)}`);
+          expect(node).toBeDefined();
+        }
+        const lookupEnd = performance.now();
+        lookupTimes.push(lookupEnd - lookupStart);
+
+        // Test O(n) linear search performance
+        const searchStart = performance.now();
+        for (let i = 0; i < searchIterations; i++) {
+          const targetId = `node-${Math.floor(nodeCount / 2)}`;
+          const node = nodes.find(n => n.ref_id === targetId);
+          expect(node).toBeDefined();
+        }
+        const searchEnd = performance.now();
+        searchTimes.push(searchEnd - searchStart);
+      }
+
+      // Use median times to reduce impact of outliers and system noise
+      lookupTimes.sort((a, b) => a - b);
+      searchTimes.sort((a, b) => a - b);
+      const medianLookupTime = lookupTimes[Math.floor(samples / 2)];
+      const medianSearchTime = searchTimes[Math.floor(samples / 2)];
+      const performanceRatio = medianSearchTime / medianLookupTime;
+
+      // Verify Map-based lookup outperforms linear array search
+      // Using median of multiple samples reduces false negatives from system variability
+      expect(performanceRatio).toBeGreaterThan(1.5);
+      
+      // Optional: Log performance metrics for debugging
+      console.log(`O(1) lookup (median): ${medianLookupTime.toFixed(2)}ms for ${lookupIterations} iterations`);
+      console.log(`O(n) search (median): ${medianSearchTime.toFixed(2)}ms for ${searchIterations} iterations`);
+      console.log(`Performance ratio: ${performanceRatio.toFixed(2)}x faster`);
     });
   });
 
