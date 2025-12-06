@@ -34,6 +34,32 @@ function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// Helper to archive task and redirect on pod claim failure
+async function archiveTaskAndRedirect(taskId: string, slug: string, errorTitle: string, errorDescription: string) {
+  try {
+    // Archive the task
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        archived: true,
+      }),
+    });
+    
+    toast.error(errorTitle, { description: errorDescription });
+    
+    // Redirect back to task list
+    window.location.href = `/w/${slug}/tasks`;
+  } catch (archiveError) {
+    console.error("Error archiving task:", archiveError);
+    toast.error("Error", { 
+      description: "Failed to claim pod and couldn't archive task. Please contact support." 
+    });
+  }
+}
+
 export default function TaskChatPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: session } = useSession(); // TODO: Use for authentication when creating tasks
@@ -282,12 +308,26 @@ export default function TaskChatPage() {
               setPodId(freshPodId);
               console.log(">>> Pod claimed:", freshPodId);
             } else {
+              // Pod claim failed - archive the task and redirect back to task list
               console.error("Failed to claim pod:", await podResponse.text());
-              toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
+              await archiveTaskAndRedirect(
+                newTaskId,
+                slug,
+                "No pods available",
+                "Task archived. Please try again later when capacity is available."
+              );
+              return;
             }
           } catch (error) {
+            // Network or other error during pod claim
             console.error("Error claiming pod:", error);
-            toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
+            await archiveTaskAndRedirect(
+              newTaskId,
+              slug,
+              "Pod claim error",
+              "Task archived. Please try again later."
+            );
+            return;
           }
         }
 
