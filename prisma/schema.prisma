@@ -870,24 +870,23 @@ model Phase {
 // =============================================
 
 model StakworkRun {
-  id                 String   @id @default(cuid())
-  webhookUrl         String   @map("webhook_url")
-  projectId          Int?     @map("project_id") // Stakwork project ID
-  type               StakworkRunType
-  featureId          String?  @map("feature_id")
-  feature            Feature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
-  workspaceId        String   @map("workspace_id")
-  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  webhookUrl  String   @map("webhook_url")
+  projectId   Int?     @map("project_id") // Stakwork project ID
+  type        StakworkRunType
+  featureId   String?  @map("feature_id")
+  feature     Feature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  workspaceId String   @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  status             WorkflowStatus @default(PENDING)
-  result             String?        // Stores the actual result
-  dataType           String         @default("string") @map("data_type") // "string", "json", "number", etc.
-  feedback           String?        // User feedback on result
-  decision           StakworkRunDecision? // User decision on result
-  thinkingArtifacts  Json?          @map("thinking_artifacts") // Thinking artifacts from workflow transitions
+  status      WorkflowStatus @default(PENDING)
+  result      String?        // Stores the actual result
+  dataType    String         @default("string") @map("data_type") // "string", "json", "number", etc.
+  feedback    String?        // User feedback on result
+  decision    StakworkRunDecision? // User decision on result
 
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([featureId])

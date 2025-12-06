@@ -21,7 +21,6 @@ vi.mock("@/lib/pusher", () => ({
   PUSHER_EVENTS: {
     STAKWORK_RUN_UPDATE: "stakwork-run-update",
     STAKWORK_RUN_DECISION: "stakwork-run-decision",
-    STAKWORK_RUN_THINKING_UPDATE: "stakwork-run-thinking-update",
   },
 }));
 vi.mock("@/lib/ai/utils", () => ({
@@ -650,111 +649,6 @@ describe("Stakwork Run Service", () => {
       );
 
       expect(result.runId).toBe("run-1");
-    });
-
-    test("should extract and store thinking artifacts from transitions", async () => {
-      const mockRun = {
-        id: "run-1",
-        type: StakworkRunType.ARCHITECTURE,
-        workspace: { slug: "test-workspace" },
-        status: WorkflowStatus.IN_PROGRESS,
-      };
-
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
-
-      const result = await processStakworkRunWebhook(
-        {
-          result: "test result",
-          project_status: "completed",
-          transitions: [
-            {
-              step_id: "step-1",
-              step_name: "Research",
-              log: "Starting research",
-              output: "Found results",
-              step_state: "completed",
-            },
-            {
-              step_id: "step-2",
-              step_name: "Analysis",
-              log: "Analyzing data",
-              step_state: "running",
-            },
-            {
-              step_id: "step-3",
-              step_name: "Empty Step",
-            },
-          ],
-        },
-        { type: "ARCHITECTURE", workspace_id: "ws-1" }
-      );
-
-      expect(db.stakworkRun.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            thinkingArtifacts: [
-              {
-                stepId: "step-1",
-                stepName: "Research",
-                log: "Starting research",
-                output: "Found results",
-                stepState: "completed",
-              },
-              {
-                stepId: "step-2",
-                stepName: "Analysis",
-                log: "Analyzing data",
-                output: undefined,
-                stepState: "running",
-              },
-            ],
-          }),
-        })
-      );
-
-      expect(pusherServer.trigger).toHaveBeenCalledTimes(2);
-      expect(pusherServer.trigger).toHaveBeenCalledWith(
-        "workspace-test-workspace",
-        "stakwork-run-thinking-update",
-        expect.objectContaining({
-          runId: "run-1",
-          artifacts: expect.arrayContaining([
-            expect.objectContaining({
-              stepId: "step-1",
-              stepName: "Research",
-            }),
-          ]),
-        })
-      );
-    });
-
-    test("should not store thinking artifacts when all transitions are empty", async () => {
-      const mockRun = {
-        id: "run-1",
-        workspace: { slug: "test-workspace" },
-        status: WorkflowStatus.IN_PROGRESS,
-      };
-
-      mockedDb.stakworkRun.findFirst = vi.fn().mockResolvedValue(mockRun);
-      mockedDb.stakworkRun.updateMany = vi.fn().mockResolvedValue({ count: 1 });
-      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
-
-      await processStakworkRunWebhook(
-        {
-          result: "test result",
-          transitions: [
-            { step_id: "step-1", step_name: "Empty" },
-            { step_id: "step-2" },
-          ],
-        },
-        { type: "ARCHITECTURE", workspace_id: "ws-1" }
-      );
-
-      const updateCall = mockedDb.stakworkRun.updateMany.mock.calls[0][0];
-      expect(updateCall.data).not.toHaveProperty("thinkingArtifacts");
-      expect(pusherServer.trigger).toHaveBeenCalledTimes(1);
     });
   });
 
