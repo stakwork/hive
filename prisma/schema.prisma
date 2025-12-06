@@ -768,6 +768,8 @@ model Feature {
   brief       String?
   requirements String?
   architecture String?
+  diagramUrl   String?          @map("diagram_url")
+  diagramS3Key String?          @map("diagram_s3_key")
   personas    String[]         @default([])
   workspaceId String           @map("workspace_id")
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
