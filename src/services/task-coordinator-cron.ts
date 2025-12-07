@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getServiceConfig } from "@/config/services";
 import { PoolManagerService } from "@/services/pool-manager";
 import { startTaskWorkflow } from "@/services/task-workflow";
+import { releaseTaskPod } from "@/lib/pods";
 
 export interface TaskCoordinatorExecutionResult {
   success: boolean;
@@ -204,44 +205,60 @@ async function processTicketSweep(
 /**
  * Halt a specific task by updating its workflow status to HALTED
  * Can be called by cron job or manually
+ * @param taskId - The task ID to halt
+ * @param clearPodFields - If true, also clears podId, agentUrl, agentPassword
  */
-export async function haltTask(taskId: string): Promise<void> {
+export async function haltTask(taskId: string, clearPodFields = false): Promise<void> {
   await db.task.update({
     where: { id: taskId },
     data: {
       workflowStatus: "HALTED",
       workflowCompletedAt: new Date(),
+      ...(clearPodFields && {
+        podId: null,
+        agentUrl: null,
+        agentPassword: null,
+      }),
     },
   });
 }
 
 /**
- * Halt agent tasks that have been in IN_PROGRESS status for more than 24 hours
+ * Release stale pods and halt stale IN_PROGRESS tasks
+ *
+ * Two concerns handled:
+ * 1. Release pods: ANY task with podId that's been idle for STALE_TASK_HOURS gets pod released
+ * 2. Halt tasks: Only IN_PROGRESS tasks get their workflowStatus set to HALTED
+ *
+ * This catches "leaked" pods from tasks that completed/failed but didn't release their pod
  */
-export async function haltStaleAgentTasks(): Promise<{
+export async function releaseStaleTaskPods(): Promise<{
   success: boolean;
   tasksHalted: number;
+  podsReleased: number;
   errors: Array<{ taskId: string; error: string }>;
   timestamp: string;
 }> {
   const errors: Array<{ taskId: string; error: string }> = [];
   let tasksHalted = 0;
+  let podsReleased = 0;
 
   try {
-    console.log("[HaltStaleAgentTasks] Starting execution");
+    // Configurable stale task threshold (default: 24 hours)
+    const staleHours = parseInt(process.env.STALE_TASK_HOURS || "24", 10);
+    console.log(`[ReleaseStaleTaskPods] Starting execution (threshold: ${staleHours} hours)`);
 
-    // Calculate the timestamp for 24 hours ago
-    const twentyFourHoursAgo = new Date();
-    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+    // Calculate the threshold timestamp
+    const staleThreshold = new Date();
+    staleThreshold.setHours(staleThreshold.getHours() - staleHours);
 
-    // Find agent tasks that have been in IN_PROGRESS status with no activity for more than 24 hours
-    const staleTasks = await db.task.findMany({
+    // Find ANY task with a pod that's been idle for too long
+    // This catches leaked pods from completed/failed/error tasks too
+    const tasksWithStalePods = await db.task.findMany({
       where: {
-        mode: "agent",
-        status: "IN_PROGRESS",
-        workflowStatus: { not: "HALTED" },
+        podId: { not: null },
         updatedAt: {
-          lt: twentyFourHoursAgo,
+          lt: staleThreshold,
         },
         deleted: false,
       },
@@ -250,19 +267,52 @@ export async function haltStaleAgentTasks(): Promise<{
         title: true,
         workspaceId: true,
         updatedAt: true,
+        podId: true,
+        status: true,
+        workflowStatus: true,
       },
     });
 
-    console.log(`[HaltStaleAgentTasks] Found ${staleTasks.length} stale agent tasks`);
+    console.log(`[ReleaseStaleTaskPods] Found ${tasksWithStalePods.length} tasks with stale pods`);
 
-    // Update each task to HALTED status using the shared haltTask function
-    for (const task of staleTasks) {
+    // Release pods from all stale tasks
+    for (const task of tasksWithStalePods) {
       try {
-        await haltTask(task.id);
-        tasksHalted++;
+        // Determine if this task should also be halted (only IN_PROGRESS tasks)
+        const shouldHalt = task.status === "IN_PROGRESS" && task.workflowStatus !== "HALTED";
+        // If should halt: set to HALTED
+        // If already done/failed/etc: pass null to preserve original workflowStatus
+        const newWorkflowStatus = shouldHalt ? "HALTED" : null;
+
+        const result = await releaseTaskPod({
+          taskId: task.id,
+          podId: task.podId!,
+          workspaceId: task.workspaceId,
+          verifyOwnership: true,
+          resetRepositories: false,
+          clearTaskFields: true,
+          newWorkflowStatus,
+        });
+
+        if (result.podDropped) {
+          podsReleased++;
+        }
+
+        if (shouldHalt && (result.success || result.taskCleared)) {
+          tasksHalted++;
+        }
+
+        console.log(
+          `[ReleaseStaleTaskPods] Processed task ${task.id} (status: ${task.status}, workflowStatus: ${task.workflowStatus}): ` +
+          `pod released: ${result.podDropped}, halted: ${shouldHalt}, reassigned: ${result.reassigned || false}`
+        );
+
+        if (!result.success && result.error) {
+          throw new Error(result.error);
+        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`[HaltStaleAgentTasks] Error halting task ${task.id}:`, errorMessage);
+        console.error(`[ReleaseStaleTaskPods] Error processing task ${task.id}:`, errorMessage);
         errors.push({
           taskId: task.id,
           error: errorMessage,
@@ -271,22 +321,24 @@ export async function haltStaleAgentTasks(): Promise<{
     }
 
     console.log(
-      `[HaltStaleAgentTasks] Execution completed. Halted ${tasksHalted} tasks, ${errors.length} errors`
+      `[ReleaseStaleTaskPods] Execution completed. Released ${podsReleased} pods, halted ${tasksHalted} IN_PROGRESS tasks, ${errors.length} errors`
     );
 
     return {
       success: errors.length === 0,
       tasksHalted,
+      podsReleased,
       errors,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("[HaltStaleAgentTasks] Critical error during execution:", errorMessage);
+    console.error("[ReleaseStaleTaskPods] Critical error during execution:", errorMessage);
 
     return {
       success: false,
       tasksHalted,
+      podsReleased,
       errors: [
         ...errors,
         {
@@ -311,10 +363,10 @@ export async function executeTaskCoordinatorRuns(): Promise<TaskCoordinatorExecu
   try {
     console.log("[TaskCoordinator] Starting execution at", startTime.toISOString());
 
-    // First, halt any stale agent tasks (IN_PROGRESS for >24 hours)
+    // First, release stale pods and halt any stuck IN_PROGRESS tasks
     try {
-      const haltResult = await haltStaleAgentTasks();
-      console.log(`[TaskCoordinator] Halted ${haltResult.tasksHalted} stale agent tasks`);
+      const haltResult = await releaseStaleTaskPods();
+      console.log(`[TaskCoordinator] Released ${haltResult.podsReleased} stale pods, halted ${haltResult.tasksHalted} tasks`);
       if (!haltResult.success) {
         haltResult.errors.forEach(error => {
           errors.push({
