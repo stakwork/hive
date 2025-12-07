@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { dropPod, getPodFromPool, getPodUsage, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { pusherServer, getWorkspaceChannelName } from "@/lib/pusher";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -165,6 +166,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Now drop the pod
     await dropPod(poolId as string, podId, poolApiKeyPlain);
+
+    // Clear podId from any tasks associated with this pod
+    await db.task.updateMany({
+      where: {
+        podId: podId,
+      },
+      data: {
+        podId: null,
+      },
+    });
+
+    // Optionally broadcast Pusher event for real-time UI update
+    if (process.env.PUSHER_APP_ID && workspace.slug) {
+      try {
+        const channelName = getWorkspaceChannelName(workspace.slug);
+        await pusherServer.trigger(
+          channelName,
+          'WORKSPACE_TASK_UPDATE',
+          { action: 'pod-released', podId }
+        );
+      } catch (pusherError) {
+        console.error("Error broadcasting Pusher event:", pusherError);
+        // Don't fail the request if Pusher fails
+      }
+    }
 
     // If taskId was provided, clear the pod-related fields on the task and mark workflow as completed
     let taskCleared = false;

@@ -16,6 +16,7 @@ import {
   createTestSwarm,
 } from "@/__tests__/support/fixtures";
 import { db } from "@/lib/db";
+import { pusherServer } from "@/lib/pusher";
 
 // Mock environment config
 vi.mock("@/config/env", () => ({
@@ -41,8 +42,17 @@ vi.mock("@/lib/encryption", () => ({
   },
 }));
 
+// Mock Pusher
+vi.mock("@/lib/pusher", () => ({
+  pusherServer: {
+    trigger: vi.fn(),
+  },
+  getWorkspaceChannelName: vi.fn((slug: string) => `workspace-${slug}`),
+}));
+
 describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", () => {
   let mockFetch: ReturnType<typeof vi.fn>;
+  let mockPusherTrigger: ReturnType<typeof vi.fn>;
 
   // Helper to setup successful pod drop mocks
   const setupSuccessfulPodDropMocks = (
@@ -94,6 +104,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     vi.clearAllMocks();
     mockFetch = vi.fn();
     global.fetch = mockFetch;
+    mockPusherTrigger = vi.mocked(pusherServer.trigger);
   });
 
   describe("Authentication", () => {
@@ -778,6 +789,285 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       // Should succeed despite repository reset failure
       await expectSuccess(response, 200);
+    });
+  });
+
+  describe("Task podId Cleanup", () => {
+    test("clears podId from all tasks associated with the pod", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "test-swarm",
+        status: "ACTIVE",
+        poolName: "test-pool",
+        poolApiKey: "test-api-key",
+      });
+
+      // Create multiple tasks with the same podId
+      const task1 = await db.task.create({
+        data: {
+          title: "Task 1",
+          workspaceId: workspace.id,
+          status: "IN_PROGRESS",
+          podId: "pod-123",
+          agentUrl: "https://agent.example.com",
+          agentPassword: "password123",
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      const task2 = await db.task.create({
+        data: {
+          title: "Task 2",
+          workspaceId: workspace.id,
+          status: "IN_PROGRESS",
+          podId: "pod-123",
+          agentUrl: "https://agent.example.com",
+          agentPassword: "password123",
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      // Create a task with a different podId
+      const task3 = await db.task.create({
+        data: {
+          title: "Task 3",
+          workspaceId: workspace.id,
+          status: "IN_PROGRESS",
+          podId: "pod-456",
+          agentUrl: "https://agent.example.com",
+          agentPassword: "password456",
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+      setupSuccessfulPodDropMocks(false);
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify task1 and task2 have podId cleared
+      const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
+      const updatedTask2 = await db.task.findUnique({ where: { id: task2.id } });
+      const updatedTask3 = await db.task.findUnique({ where: { id: task3.id } });
+
+      expect(updatedTask1?.podId).toBeNull();
+      expect(updatedTask2?.podId).toBeNull();
+      // Task 3 should still have its podId
+      expect(updatedTask3?.podId).toBe("pod-456");
+    });
+
+    test("clears additional pod fields when taskId is provided", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "test-swarm",
+        status: "ACTIVE",
+        poolName: "test-pool",
+        poolApiKey: "test-api-key",
+      });
+
+      const task = await db.task.create({
+        data: {
+          title: "Test Task",
+          workspaceId: workspace.id,
+          status: "IN_PROGRESS",
+          workflowStatus: "IN_PROGRESS",
+          podId: "pod-123",
+          agentUrl: "https://agent.example.com",
+          agentPassword: "password123",
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+      
+      // Mock getPodUsage to verify ownership
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            user_info: task.id,
+          }),
+          text: async () => JSON.stringify({ user_info: task.id }),
+        })
+        // Mock mark-unused
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+          text: async () => "Success",
+        });
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&taskId=${task.id}`
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.taskCleared).toBe(true);
+
+      // Verify all pod fields and workflowStatus are cleared/updated
+      const updatedTask = await db.task.findUnique({ where: { id: task.id } });
+      expect(updatedTask?.podId).toBeNull();
+      expect(updatedTask?.agentUrl).toBeNull();
+      expect(updatedTask?.agentPassword).toBeNull();
+      expect(updatedTask?.workflowStatus).toBe("COMPLETED");
+    });
+
+    test("handles pod reassignment gracefully", async () => {
+      const { owner, workspace } = await createTestWorkspaceScenario();
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "test-swarm",
+        status: "ACTIVE",
+        poolName: "test-pool",
+        poolApiKey: "test-api-key",
+      });
+
+      const task1 = await db.task.create({
+        data: {
+          title: "Original Task",
+          workspaceId: workspace.id,
+          status: "IN_PROGRESS",
+          podId: "pod-123",
+          agentUrl: "https://agent.example.com",
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      const task2 = await db.task.create({
+        data: {
+          title: "New Task",
+          workspaceId: workspace.id,
+          status: "IN_PROGRESS",
+          createdById: owner.id,
+          updatedById: owner.id,
+        },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+      
+      // Mock getPodUsage to show pod is reassigned to task2
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          user_info: task2.id,
+        }),
+        text: async () => JSON.stringify({ user_info: task2.id }),
+      });
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123&taskId=${task1.id}`
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      // Should return 409 conflict
+      await expectError(response, "Pod has been reassigned to another task", 409);
+
+      // Verify task1 has stale pod fields cleared
+      const updatedTask1 = await db.task.findUnique({ where: { id: task1.id } });
+      expect(updatedTask1?.podId).toBeNull();
+      expect(updatedTask1?.agentUrl).toBeNull();
+      expect(updatedTask1?.agentPassword).toBeNull();
+      expect(updatedTask1?.workflowStatus).toBe("COMPLETED");
+
+      // Verify pod was NOT dropped (only 1 fetch call for getPodUsage)
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test("broadcasts Pusher event when pod is dropped successfully", async () => {
+      // Set PUSHER_APP_ID to enable broadcasting
+      process.env.PUSHER_APP_ID = "test-app-id";
+
+      const { owner, workspace } = await createTestWorkspaceScenario();
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "test-swarm",
+        status: "ACTIVE",
+        poolName: "test-pool",
+        poolApiKey: "test-api-key",
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+      setupSuccessfulPodDropMocks(false);
+      mockPusherTrigger.mockResolvedValueOnce({ ok: true });
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      await expectSuccess(response, 200);
+
+      // Verify Pusher event was broadcast
+      expect(mockPusherTrigger).toHaveBeenCalledWith(
+        `workspace-${workspace.slug}`,
+        'WORKSPACE_TASK_UPDATE',
+        { action: 'pod-released', podId: 'pod-123' }
+      );
+
+      delete process.env.PUSHER_APP_ID;
+    });
+
+    test("continues successfully even if Pusher broadcast fails", async () => {
+      // Set PUSHER_APP_ID to enable broadcasting
+      process.env.PUSHER_APP_ID = "test-app-id";
+
+      const { owner, workspace } = await createTestWorkspaceScenario();
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        name: "test-swarm",
+        status: "ACTIVE",
+        poolName: "test-pool",
+        poolApiKey: "test-api-key",
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
+      setupSuccessfulPodDropMocks(false);
+      mockPusherTrigger.mockRejectedValueOnce(new Error("Pusher error"));
+
+      const request = createPostRequest(
+        `http://localhost:3000/api/pool-manager/drop-pod/${workspace.id}?podId=pod-123`
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: workspace.id }),
+      });
+
+      // Should still succeed despite Pusher failure
+      await expectSuccess(response, 200);
+
+      delete process.env.PUSHER_APP_ID;
     });
   });
 
