@@ -15,7 +15,6 @@ import {
   CheckCircle2,
   ArrowLeft,
   Loader2,
-  X,
 } from "lucide-react";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { useStaktrak } from "@/hooks/useStaktrak";
@@ -39,7 +38,6 @@ export function BrowserArtifactPanel({
   externalTestCode,
   externalTestTitle,
   isMobile = false,
-  onClose,
 }: {
   artifacts: Artifact[];
   ide?: boolean;
@@ -50,7 +48,6 @@ export function BrowserArtifactPanel({
   externalTestCode?: string | null;
   externalTestTitle?: string | null;
   isMobile?: boolean;
-  onClose?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -426,23 +423,6 @@ export function BrowserArtifactPanel({
                         <TooltipContent side="bottom">Open in new tab</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    {onClose && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={onClose}
-                              className="h-8 w-8 p-0"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Close</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
                   </div>
                 </div>
               )}
