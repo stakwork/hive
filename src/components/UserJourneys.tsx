@@ -483,16 +483,22 @@ export default function UserJourneys() {
       {viewMode === "video" ? (
         renderVideoView()
       ) : frontend ? (
-        <div className="h-[600px] border rounded-lg overflow-hidden">
-          <BrowserArtifactPanel
-            artifacts={browserArtifacts}
-            ide={false}
-            workspaceId={id || workspace?.id}
-            onUserJourneySave={saveUserJourneyTest}
-            externalTestCode={replayTestCode}
-            externalTestTitle={replayTitle}
-            onClose={handleCloseBrowser}
-          />
+        <div className="space-y-4">
+          <div className="flex items-center justify-end">
+            <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
+              ✕
+            </Button>
+          </div>
+          <div className="h-[600px] border rounded-lg overflow-hidden">
+            <BrowserArtifactPanel
+              artifacts={browserArtifacts}
+              ide={false}
+              workspaceId={id || workspace?.id}
+              onUserJourneySave={saveUserJourneyTest}
+              externalTestCode={replayTestCode}
+              externalTestTitle={replayTitle}
+            />
+          </div>
         </div>
       ) : (
         <Card>
