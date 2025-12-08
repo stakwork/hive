@@ -99,7 +99,11 @@ export async function middleware(request: NextRequest) {
 
     // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
-      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+      const token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET,
+        secureCookie: request.nextUrl.protocol === "https:" || process.env.NODE_ENV === "production"
+      });
       const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
       const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
       if (!hasValidCookie && !token) {
@@ -118,7 +122,11 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, routeAccess);
     }
 
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+      secureCookie: request.nextUrl.protocol === "https:" || process.env.NODE_ENV === "production"
+    });
     if (!token) {
       if (isApiRoute) {
         return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
