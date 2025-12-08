@@ -1,4 +1,4 @@
-import { Brain, Loader2 } from "lucide-react";
+import { Brain, Loader2, FileImage } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { WorkflowStatus } from "@prisma/client";
 
@@ -11,6 +11,9 @@ interface GenerationControlsProps {
   isQuickGenerating?: boolean;
   disabled?: boolean;
   showDeepThink?: boolean;
+  showGenerateDiagram?: boolean;
+  onGenerateDiagram?: () => void;
+  isGeneratingDiagram?: boolean;
 }
 
 export function GenerationControls({
@@ -22,6 +25,9 @@ export function GenerationControls({
   isQuickGenerating = false,
   disabled = false,
   showDeepThink = true,
+  showGenerateDiagram = false,
+  onGenerateDiagram,
+  isGeneratingDiagram = false,
 }: GenerationControlsProps) {
   const isErrorState =
     status && ["FAILED", "ERROR", "HALTED"].includes(status);
@@ -57,6 +63,26 @@ export function GenerationControls({
             <>
               <Brain className="h-3.5 w-3.5 text-purple-600" />
               <span className="ml-1.5">Deep Research</span>
+            </>
+          )}
+        </Button>
+      )}
+      {showGenerateDiagram && onGenerateDiagram && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onGenerateDiagram}
+          disabled={isGeneratingDiagram || disabled}
+        >
+          {isGeneratingDiagram ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span className="ml-1.5">Generating Diagram...</span>
+            </>
+          ) : (
+            <>
+              <FileImage className="h-3.5 w-3.5" />
+              <span className="ml-1.5">Generate Diagram</span>
             </>
           )}
         </Button>
