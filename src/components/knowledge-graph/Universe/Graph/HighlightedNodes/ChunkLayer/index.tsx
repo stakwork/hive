@@ -1,3 +1,5 @@
+import { useStoreId } from '@/stores/StoreProvider'
+import { getStoreBundle } from '@/stores/createStoreFactory'
 import type { HighlightChunk } from '@/stores/graphStore.types'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
@@ -54,7 +56,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const removeHighlightChunk = useGraphStore((s) => s.removeHighlightChunk)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
   const simulation = useSimulationStore((s) => s.simulation)
-  const nodePositionsNormalized = useSimulationStore((s) => s.nodePositionsNormalized)
+  const storeId = useStoreId()
 
   // Auto-remove this chunk after duration
   useEffect(() => {
@@ -72,40 +74,72 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       allRefIds.push(chunk.sourceNodeRefId)
     }
 
-    // If depth-based discovery is enabled, find connected nodes
-    if (DEPTH_CONFIG.includeConnectedNodes && DEPTH_CONFIG.maxDepth > 1) {
+    // Create hierarchical connections: source → ref_ids → related nodes
+    const hierarchicalConnections: Array<{ from: string; to: string; level: number }> = []
+    const finalNodesByLevel = new Map<number, Set<string>>()
 
+    // Step 1: Create connections from source to ref_ids
+    if (chunk.sourceNodeRefId) {
+      const sourceNodeId = chunk.sourceNodeRefId
+      chunk.ref_ids.forEach(refId => {
+        if (refId !== sourceNodeId) {
+          hierarchicalConnections.push({
+            from: sourceNodeId,
+            to: refId,
+            level: 0 // Source to ref_ids are level 0
+          })
+        }
+      })
+
+      // Add source and ref_ids to level mapping
+      finalNodesByLevel.set(0, new Set([sourceNodeId, ...chunk.ref_ids]))
+    } else {
+      // No source node, just use ref_ids at level 0
+      finalNodesByLevel.set(0, new Set(chunk.ref_ids))
+    }
+
+    // Step 2: If depth discovery is enabled, find related nodes from ref_ids (and source if provided)
+    if (DEPTH_CONFIG.includeConnectedNodes && DEPTH_CONFIG.maxDepth > 1) {
+      const discoverySeeds = [
+        ...chunk.ref_ids,
+        ...(chunk.sourceNodeRefId ? [chunk.sourceNodeRefId] : []),
+      ]
       const depthResult = findConnectedNodesAtDepth(
-        allRefIds,
+        discoverySeeds, // Start discovery from ref_ids plus source if available
         nodesNormalized,
         DEPTH_CONFIG.maxDepth,
-        chunk.sourceNodeRefId,
+        undefined, // No specific source for depth discovery
         DEPTH_CONFIG.useRandomDepth
       )
 
-      // Set the discovered data
-      setDepthConnections(depthResult.connections)
-      setNodesByLevel(depthResult.nodesByLevel)
+      // Add depth connections (ref_ids → related nodes)
+      hierarchicalConnections.push(...depthResult.connections)
 
-      // Use all discovered nodes, but fallback to original if no connected nodes found
-      if (depthResult.allConnectedNodes.size > 0) {
-        allRefIds = Array.from(depthResult.allConnectedNodes)
-      } else {
-        console.warn('No connected nodes found, falling back to original ref_ids')
-        // Fallback to original nodes if no connections discovered
-        allRefIds = [...chunk.ref_ids]
-        if (chunk.sourceNodeRefId && !allRefIds.includes(chunk.sourceNodeRefId)) {
-          allRefIds.push(chunk.sourceNodeRefId)
+      // Merge level mappings (shift depth levels by 1 since ref_ids are level 0)
+      for (const [level, nodes] of depthResult.nodesByLevel.entries()) {
+        if (level > 0) { // Skip level 0 from depth result since we already have our hierarchy
+          const adjustedLevel = level
+          if (!finalNodesByLevel.has(adjustedLevel)) {
+            finalNodesByLevel.set(adjustedLevel, new Set())
+          }
+          for (const node of nodes) {
+            finalNodesByLevel.get(adjustedLevel)!.add(node)
+          }
         }
-        setDepthConnections([])
-        setNodesByLevel(new Map([[0, new Set(allRefIds)]]))
       }
-    } else {
-      console.log('Depth discovery disabled, using original nodes:', allRefIds)
-      // Reset depth data if not using depth discovery
-      setDepthConnections([])
-      setNodesByLevel(new Map([[0, new Set(allRefIds)]]))
+
+      // Update allRefIds to include all discovered nodes
+      const allDiscoveredNodes = new Set(allRefIds)
+      for (const nodeSet of finalNodesByLevel.values()) {
+        for (const node of nodeSet) {
+          allDiscoveredNodes.add(node)
+        }
+      }
+      allRefIds = Array.from(allDiscoveredNodes)
     }
+
+    setDepthConnections(hierarchicalConnections)
+    setNodesByLevel(finalNodesByLevel)
 
     const foundNodes = allRefIds
       .map(id => nodesNormalized.get(id))
@@ -238,6 +272,8 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   useFrame(({ clock }) => {
     if (!simulation || !groupRef.current || chunkNodes.length === 0) return
 
+    const { nodePositionsNormalized } = getStoreBundle(storeId).simulation.getState()
+
     timeRef.current = clock.getElapsedTime()
 
     const nodePositions: Vector3[] = []
@@ -295,6 +331,8 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
     if (nodePositions.length > 0 && edgeGeometry && edgePositionsRef.current && depthConnections.length > 0) {
       // Calculate label position (prefer source node position)
       const labelPosition = new Vector3()
+      let positionFound = false
+
       if (chunk.sourceNodeRefId) {
         // Use source node position for label
         let nodePosition = nodePositionsNormalized.get(chunk.sourceNodeRefId)
@@ -310,9 +348,12 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
         if (nodePosition) {
           labelPosition.set(nodePosition.x, nodePosition.y, nodePosition.z)
+          positionFound = true
         }
-      } else {
-        // Use first ref_id node position if no source node
+      }
+
+      // Fallback to first ref_id if sourceNodeRefId position not found
+      if (!positionFound && chunk.ref_ids.length > 0) {
         const firstRefId = chunk.ref_ids[0]
         if (firstRefId) {
           let nodePosition = nodePositionsNormalized.get(firstRefId)
@@ -328,6 +369,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
           if (nodePosition) {
             labelPosition.set(nodePosition.x, nodePosition.y, nodePosition.z)
+            positionFound = true
           }
         }
       }
@@ -421,7 +463,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
           // Calculate visual properties based on level
           const levelScale = isSourceNode ? 0.6 : Math.max(0.3, 0.5 - (nodeLevel * 0.05)) // Source nodes larger
-          const levelColor = isSourceNode ? '#FFD700' : (nodeLevel === 0 ? COLORS.highlight : '#4FC3F7') // Gold for source, blue variants for levels
+          const levelColor = '#4FC3F7' // Gold for source, blue variants for levels
 
           return (
             <group
