@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
             where: {
               workspaceId: repository.workspaceId,
               repositoryId: repository.id,
-              janitorType: { not: null },
+              sourceType: "JANITOR",
               // Match by stakworkProjectId if extracted from branch name
               ...(branchStakworkProjectId && { stakworkProjectId: branchStakworkProjectId }),
               // Only check recent tasks (created in the last 7 days)
@@ -216,18 +216,18 @@ export async function POST(request: NextRequest) {
             },
             select: {
               id: true,
-              janitorType: true,
+              sourceType: true,
               stakworkProjectId: true,
             },
           });
 
-          if (task?.janitorType) {
+          if (task?.sourceType === "JANITOR") {
             console.log("[GithubWebhook] Found janitor task for PR", {
               delivery,
               workspaceId: repository.workspaceId,
               prNumber,
               taskId: task.id,
-              janitorType: task.janitorType,
+              sourceType: task.sourceType,
             });
 
             // Add janitor label to the PR
