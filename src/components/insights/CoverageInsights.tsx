@@ -265,7 +265,7 @@ export function CoverageInsights() {
                       onSort={toggleSort}
                       className="w-[30%]"
                     />
-                    <TableHead className="w-[40%]">File</TableHead>
+                    <TableHead className="w-[40%]">{params.nodeType === "mock" ? "Description" : "File"}</TableHead>
                     {params.nodeType !== "mock" && (
                       <SortableHeader
                         label="Coverage"
