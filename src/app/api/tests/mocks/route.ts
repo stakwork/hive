@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { config } from "@/config/env";
 import type { MockInventoryResponse } from "@/types/stakgraph";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -32,6 +33,47 @@ export async function GET(request: NextRequest) {
         { success: false, message: "Workspace ID is required" },
         { status: 400 }
       );
+    }
+
+    // Handle local development with mocks
+    const { hostname } = new URL(request.url);
+    const isLocalHost =
+      hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
+
+    if (process.env.NODE_ENV === "development" && isLocalHost) {
+      const baseUrl = config.USE_MOCKS
+        ? `${config.MOCK_BASE}/api/mock/stakgraph`
+        : "http://0.0.0.0:7799";
+
+      const params = new URLSearchParams({
+        limit,
+        offset,
+      });
+
+      if (search) {
+        params.append("search", search);
+      }
+
+      if (mocked !== "all") {
+        params.append("mocked", mocked === "mocked" ? "true" : "false");
+      }
+
+      const url = `${baseUrl}/mocks/inventory?${params.toString()}`;
+      const resp = await fetch(url);
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        return NextResponse.json(
+          { success: false, message: "Failed to fetch mock inventory (dev)", details: data },
+          { status: resp.status },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        data,
+        message: "Mock inventory retrieved successfully",
+      });
     }
 
     // Verify workspace access
