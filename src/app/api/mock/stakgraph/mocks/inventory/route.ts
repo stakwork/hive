@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 /**
  * Mock Stakgraph Mocks Inventory Endpoint
  *
- * Simulates: GET https://{swarm}:7799/mocks/inventory
+ * Simulates: GET https://{swarm}:3355/mocks/inventory
  *
  * Returns mock external services inventory for testing the UI.
  */
@@ -71,7 +71,7 @@ const mockServices = [
   {
     name: "stakgraph",
     ref_id: "fd777eb6-4338-4ff4-8591-851526ff9171",
-    description: "Stakgraph service for code repository ingestion and synchronization, runs on swarm instances at https://{swarmName}:7799",
+    description: "Stakgraph service for code repository ingestion and synchronization, runs on swarm instances at https://{swarmName}:3355",
     linked_files: [
       "stakwork/hive/env.test.example",
       "stakwork/hive/env.example",
