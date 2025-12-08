@@ -3,13 +3,13 @@ import { useEffect, useRef, useState, useCallback } from "react";
 export interface LogEntry {
   timestamp: string;
   projectId: string;
-  chatId: string;
+  chatId?: string;
   message: string;
 }
 
 export const useProjectLogWebSocket = (
   projectId: string | null,
-  chatId: string | null,
+  chatId?: string | null,
   isVerboseLoggingEnabled: boolean = false,
 ) => {
   const wsRef = useRef<WebSocket | null>(null);
@@ -28,7 +28,7 @@ export const useProjectLogWebSocket = (
   }, []);
 
   useEffect(() => {
-    if (!projectId || !chatId) {
+    if (!projectId) {
       return;
     }
 
@@ -71,20 +71,20 @@ export const useProjectLogWebSocket = (
           const logEntry: LogEntry = {
             timestamp: new Date().toISOString(),
             projectId,
-            chatId,
+            ...(chatId && { chatId }),
             message: messageData.message,
           };
 
           addLogEntry(logEntry);
-          console.log("Project Log:", logEntry);
         }
       };
 
-      ws.onerror = (error: Event) =>
-        console.error("WebSocket error123:", error);
+      ws.onerror = () => {
+        // WebSocket connection failed - this is expected on localhost
+      };
 
       ws.onclose = () => {
-        console.log("WebSocket connection closed");
+        // Connection closed
       };
 
       return ws;
