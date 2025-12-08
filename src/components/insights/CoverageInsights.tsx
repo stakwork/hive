@@ -106,13 +106,16 @@ export function CoverageInsights() {
     () =>
       (items as CoverageNodeConcise[]).map((item) => {
         const displayName = item.verb && params.nodeType === "endpoint" ? `${item.verb} ${item.name}` : item.name;
+        // For mocks, use the item.covered value (mapped from mocked field)
+        // For other types, derive from test_count
+        const isCovered = params.nodeType === "mock" ? item.covered : (item.test_count || 0) > 0;
         return {
           key: `${item.name}-${item.file}`,
           name: displayName,
           file: item.file,
           coverage: item.test_count,
           weight: item.weight,
-          covered: (item.test_count || 0) > 0,
+          covered: isCovered,
           bodyLength: item.body_length,
           lineCount: item.line_count,
         };
@@ -263,22 +266,28 @@ export function CoverageInsights() {
                       className="w-[30%]"
                     />
                     <TableHead className="w-[40%]">File</TableHead>
-                    <SortableHeader
-                      label="Coverage"
-                      sortKey="test_count"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
-                      className="w-[12%] text-right"
-                    />
-                    <SortableHeader
-                      label="Lines"
-                      sortKey="line_count"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
-                      className="w-[10%] text-right"
-                    />
+                    {params.nodeType !== "mock" && (
+                      <SortableHeader
+                        label="Coverage"
+                        sortKey="test_count"
+                        currentSort={params.sort}
+                        sortDirection={params.sortDirection}
+                        onSort={toggleSort}
+                        className="w-[12%] text-right"
+                      />
+                    )}
+                    {params.nodeType === "mock" ? (
+                      <TableHead className="w-[10%] text-right">Files</TableHead>
+                    ) : (
+                      <SortableHeader
+                        label="Lines"
+                        sortKey="line_count"
+                        currentSort={params.sort}
+                        sortDirection={params.sortDirection}
+                        onSort={toggleSort}
+                        className="w-[10%] text-right"
+                      />
+                    )}
                     <TableHead className="w-[8%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -292,9 +301,11 @@ export function CoverageInsights() {
                           <TableCell className="w-[40%]">
                             <Skeleton className="h-4 w-full max-w-[300px]" />
                           </TableCell>
-                          <TableCell className="text-right w-[12%]">
-                            <Skeleton className="h-4 w-12 ml-auto" />
-                          </TableCell>
+                          {params.nodeType !== "mock" && (
+                            <TableCell className="text-right w-[12%]">
+                              <Skeleton className="h-4 w-12 ml-auto" />
+                            </TableCell>
+                          )}
                           <TableCell className="text-right w-[10%]">
                             <Skeleton className="h-4 w-12 ml-auto" />
                           </TableCell>
@@ -315,21 +326,34 @@ export function CoverageInsights() {
                           <TableCell className="truncate max-w-[400px] text-muted-foreground text-xs" title={r.file}>
                             {r.file}
                           </TableCell>
-                          <TableCell
-                            className="text-right font-medium tabular-nums"
-                            title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
-                          >
-                            {formatNumber(r.coverage)}
-                          </TableCell>
-                          <TableCell
-                            className="text-right text-muted-foreground tabular-nums text-sm"
-                            title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
-                          >
-                            {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
-                          </TableCell>
+                          {params.nodeType !== "mock" && (
+                            <TableCell
+                              className="text-right font-medium tabular-nums"
+                              title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
+                            >
+                              {formatNumber(r.coverage)}
+                            </TableCell>
+                          )}
+                          {params.nodeType === "mock" ? (
+                            <TableCell
+                              className="text-right font-medium tabular-nums"
+                              title={`${formatNumber(r.coverage)} file${r.coverage !== 1 ? "s" : ""}`}
+                            >
+                              {formatNumber(r.coverage)}
+                            </TableCell>
+                          ) : (
+                            <TableCell
+                              className="text-right text-muted-foreground tabular-nums text-sm"
+                              title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
+                            >
+                              {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
+                            </TableCell>
+                          )}
                           <TableCell className="text-right">
                             <Badge variant={r.covered ? "default" : "outline"}>
-                              {r.covered ? "Tested" : "Untested"}
+                              {params.nodeType === "mock"
+                                ? r.covered ? "Mocked" : "Unmocked"
+                                : r.covered ? "Tested" : "Untested"}
                             </Badge>
                           </TableCell>
                         </TableRow>
