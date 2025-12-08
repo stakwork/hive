@@ -12,7 +12,7 @@ import {
 } from "@/__tests__/support/helpers";
 
 // Mock AI dependencies
-vi.mock("aieo", () => ({
+vi.mock("@/lib/ai/provider", () => ({
   getModel: vi.fn(),
   getApiKeyForProvider: vi.fn(() => "mock-api-key"),
 }));
@@ -28,7 +28,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
 
   describe("POST /api/features/[featureId]/generate - phasesTickets type", () => {
     test("returns streaming response for phasesTickets type", async () => {
-      const { getModel } = await import("aieo");
+      const { getModel } = await import("@/lib/ai/provider");
       const { streamObject } = await import("ai");
 
       // Mock the model and streaming response
@@ -173,7 +173,7 @@ describe("Generate Phases and Tickets API - Integration Tests", () => {
     });
 
     test("includes feature context in AI prompt", async () => {
-      const { getModel } = await import("aieo");
+      const { getModel } = await import("@/lib/ai/provider");
       const { streamObject } = await import("ai");
 
       const mockModel = { modelId: "claude-3-5-sonnet-20241022" };

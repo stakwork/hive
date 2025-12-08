@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { getModel, getApiKeyForProvider } from "aieo";
+import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 

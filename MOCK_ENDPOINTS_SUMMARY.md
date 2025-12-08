@@ -91,3 +91,48 @@ To integrate these endpoints:
 2. **Call Detail Page**: Add a topics section that fetches from `/api/workspaces/[slug]/calls/[ref_id]/topics` and displays the list
 
 See `/docs/JARVIS_MOCK_ENDPOINTS.md` for complete documentation.
+
+## Anthropic Claude API Mock
+
+**Purpose:** Simulates Anthropic Claude API for AI-powered feature extraction, code generation, and chat assistance
+
+**State Manager:** `src/lib/mock/anthropic-state.ts`
+
+**Endpoints:** (2 endpoints)
+
+- Messages API: `POST /api/mock/anthropic/v1/messages` (streaming & non-streaming)
+- Models list: `GET /api/mock/anthropic/v1/models`
+
+**Key Features:**
+
+- Intelligent context-aware responses based on prompts
+- Auto-generates feature specs, user stories, code assistance
+- Supports both streaming and non-streaming modes
+- Pattern-based response generation (no actual LLM)
+- Simulates Vercel AI SDK integration
+
+**State Management:**
+
+```typescript
+// Tracked state
+- conversations: Map<string, MockConversation>
+- requestCounter: number
+- Model configurations for haiku, sonnet, opus
+```
+
+**Response Types:**
+
+- Feature extraction from voice transcripts
+- User story and acceptance criteria generation
+- Phase and milestone planning
+- Wake word detection
+- Commit message generation
+- Code assistance queries
+
+**Integration:**
+
+- Used through `src/lib/ai/provider.ts` wrapper
+- Automatically enabled when `USE_MOCKS=true`
+- All `aieo` library calls route to mock endpoints
+
+**Documentation:** `docs/ANTHROPIC_MOCK_ENDPOINTS.md`
