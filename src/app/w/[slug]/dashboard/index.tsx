@@ -40,7 +40,7 @@ function DashboardInner() {
   const tempGitHubRepoRef = 'temp-github-repo';
 
   useGraphPolling({
-    enabled: !isOnboarding && activeFilterTab === 'all',
+    enabled: false && !isOnboarding && activeFilterTab === 'all',
     interval: 5000
   });
 

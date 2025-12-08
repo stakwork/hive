@@ -4,6 +4,7 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
+import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
 import { AIButton } from "@/components/ui/ai-button";
 import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
@@ -226,7 +227,9 @@ export function AITextareaSection({
         </p>
       )}
 
-      {parsedContent?.type === "questions" ? (
+      {latestRun?.status === "IN_PROGRESS" && latestRun.projectId ? (
+        <DeepResearchProgress projectId={latestRun.projectId} />
+      ) : parsedContent?.type === "questions" ? (
         <ClarifyingQuestionsPreview
           questions={parsedContent.data.content}
           onSubmit={(formattedAnswers) => handleProvideFeedback(formattedAnswers)}

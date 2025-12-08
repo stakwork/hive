@@ -12,6 +12,7 @@ type CoverageStore = {
   limit: number;
   offset: number;
   coverage: "all" | "tested" | "untested";
+  mocked: "all" | "mocked" | "unmocked";
   ignoreDirs: string;
   repo: string;
   unitGlob: string;
@@ -25,6 +26,7 @@ type CoverageStore = {
   setLimit: (n: number) => void;
   setOffset: (n: number) => void;
   setCoverage: (c: "all" | "tested" | "untested") => void;
+  setMocked: (m: "all" | "mocked" | "unmocked") => void;
   setIgnoreDirs: (dirs: string) => void;
   setRepo: (repo: string) => void;
   setUnitGlob: (glob: string) => void;
@@ -42,6 +44,7 @@ export const useCoverageStore = create<CoverageStore>()(
     limit: 10,
     offset: 0,
     coverage: "all",
+    mocked: "all",
     ignoreDirs: "",
     repo: "",
     unitGlob: "",
@@ -62,6 +65,7 @@ export const useCoverageStore = create<CoverageStore>()(
     setLimit: (n) => set({ limit: Math.max(1, Math.min(100, n)), offset: 0 }),
     setOffset: (n) => set({ offset: Math.max(0, n) }),
     setCoverage: (c) => set({ coverage: c, offset: 0 }),
+    setMocked: (m) => set({ mocked: m, offset: 0 }),
     setIgnoreDirs: (dirs) => set({ ignoreDirs: dirs, offset: 0 }),
     setRepo: (repo) => set({ repo, offset: 0 }),
     setUnitGlob: (glob) => set({ unitGlob: glob, offset: 0 }),
