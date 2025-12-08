@@ -7,7 +7,7 @@ import { validateWorkspaceAccess } from "@/services/workspace";
 import { getQuickAskPrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
 import { streamText, ModelMessage } from "ai";
-import { getModel, getApiKeyForProvider } from "aieo";
+import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 

@@ -2,7 +2,7 @@ import { StopCondition, tool, ToolSet } from "ai";
 import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
-import { getProviderTool } from "aieo";
+import { getProviderTool } from "@/lib/ai/provider";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${swarmUrl}/gitree/features`, {
