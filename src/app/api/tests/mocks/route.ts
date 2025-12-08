@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     if (process.env.NODE_ENV === "development" && isLocalHost) {
       const baseUrl = config.USE_MOCKS
         ? `${config.MOCK_BASE}/api/mock/stakgraph`
-        : "http://0.0.0.0:7799";
+        : "http://0.0.0.0:3355";
 
       const params = new URLSearchParams({
         limit,
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     }
 
     const swarmUrlObj = new URL(swarm.swarmUrl);
-    const stakgraphUrl = `https://${swarmUrlObj.hostname}:7799`;
+    const stakgraphUrl = `https://${swarmUrlObj.hostname}:3355`;
 
     // Build query parameters
     const params = new URLSearchParams({

@@ -168,7 +168,7 @@ describe("GET /api/tests/mocks", () => {
 
     expect(swarmApiRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        swarmUrl: "https://test-swarm.sphinx.chat:7799",
+        swarmUrl: "https://test-swarm.sphinx.chat:3355",
         endpoint: expect.stringContaining("/mocks/inventory"),
         method: "GET",
         apiKey: expect.any(String),
