@@ -1,5 +1,9 @@
 import { config } from "@/config/env";
 import { parsePM2Content } from "@/utils/devContainerUtils";
+import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService = EncryptionService.getInstance();
 
 // Re-export constants for external use
 export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
@@ -470,5 +474,210 @@ export function getPortFromPM2Config(pm2ConfigContent: string | undefined, servi
   } catch (error) {
     console.error("Error parsing PM2 config:", error);
     return null;
+  }
+}
+
+export interface ReleaseTaskPodOptions {
+  taskId: string;
+  podId: string;
+  workspaceId: string;
+  verifyOwnership?: boolean;
+  resetRepositories?: boolean;
+  clearTaskFields?: boolean;
+  newWorkflowStatus?: "COMPLETED" | "HALTED" | null; // null = don't change workflowStatus
+}
+
+export interface ReleaseTaskPodResult {
+  success: boolean;
+  podDropped: boolean;
+  taskCleared: boolean;
+  reassigned?: boolean;
+  error?: string;
+}
+
+/**
+ * Release a pod from a task - handles full cleanup flow:
+ * 1. Fetch workspace with swarm config
+ * 2. Decrypt pool API key
+ * 3. Verify pod ownership (optional)
+ * 4. Reset repositories (optional)
+ * 5. Drop pod (mark as unused)
+ * 6. Clear task pod fields (optional)
+ */
+export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<ReleaseTaskPodResult> {
+  const {
+    taskId,
+    podId,
+    workspaceId,
+    verifyOwnership = true,
+    resetRepositories = false,
+    clearTaskFields = true,
+    newWorkflowStatus = "COMPLETED", // null = don't change workflowStatus
+  } = options;
+
+  const result: ReleaseTaskPodResult = {
+    success: false,
+    podDropped: false,
+    taskCleared: false,
+  };
+
+  // Helper to build task update data - only includes workflowStatus if not null
+  const buildTaskUpdateData = () => ({
+    podId: null,
+    agentUrl: null,
+    agentPassword: null,
+    ...(newWorkflowStatus && { workflowStatus: newWorkflowStatus }),
+    ...(newWorkflowStatus === "HALTED" && { workflowCompletedAt: new Date() }),
+  });
+
+  try {
+    console.log(`[releaseTaskPod] Starting release for task ${taskId}, pod ${podId}`);
+
+    // Skip actual API calls in mock environment
+    if (process.env.MOCK_BROWSER_URL) {
+      console.log("[releaseTaskPod] Mock environment detected, skipping pod release");
+      if (clearTaskFields) {
+        await db.task.update({
+          where: { id: taskId },
+          data: buildTaskUpdateData(),
+        });
+        result.taskCleared = true;
+      }
+      result.success = true;
+      result.podDropped = true;
+      return result;
+    }
+
+    // Fetch workspace with swarm config
+    const workspace = await db.workspace.findFirst({
+      where: { id: workspaceId },
+      include: {
+        swarm: true,
+        repositories: true,
+      },
+    });
+
+    if (!workspace) {
+      result.error = "Workspace not found";
+      console.error(`[releaseTaskPod] ${result.error}`);
+      return result;
+    }
+
+    if (!workspace.swarm?.id || !workspace.swarm?.poolApiKey) {
+      console.log(`[releaseTaskPod] No pool config for workspace ${workspaceId}, skipping pod drop`);
+      // Still clear task fields even if we can't drop the pod
+      if (clearTaskFields) {
+        await db.task.update({
+          where: { id: taskId },
+          data: buildTaskUpdateData(),
+        });
+        result.taskCleared = true;
+      }
+      result.success = true;
+      return result;
+    }
+
+    const poolId = workspace.swarm.id;
+    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", workspace.swarm.poolApiKey);
+
+    // Verify pod ownership if requested
+    if (verifyOwnership) {
+      try {
+        const podUsage = await getPodUsage(poolId, podId, poolApiKeyPlain);
+
+        if (podUsage.user_info !== taskId) {
+          console.log(
+            `[releaseTaskPod] Pod ${podId} user_info (${podUsage.user_info}) does not match taskId (${taskId})`
+          );
+          result.reassigned = true;
+
+          // Clear stale reference from this task (but don't drop the pod - it belongs to another task)
+          if (clearTaskFields) {
+            await db.task.update({
+              where: { id: taskId },
+              data: buildTaskUpdateData(),
+            });
+            result.taskCleared = true;
+          }
+          result.success = true;
+          return result;
+        }
+
+        console.log(`[releaseTaskPod] Pod ${podId} ownership verified for task ${taskId}`);
+      } catch (error) {
+        console.error("[releaseTaskPod] Error verifying pod ownership:", error);
+        result.error = "Failed to verify pod ownership";
+        // Still try to clear task fields
+        if (clearTaskFields) {
+          try {
+            await db.task.update({
+              where: { id: taskId },
+              data: buildTaskUpdateData(),
+            });
+            result.taskCleared = true;
+          } catch (updateError) {
+            console.error("[releaseTaskPod] Error clearing task fields:", updateError);
+          }
+        }
+        return result;
+      }
+    }
+
+    // Reset repositories if requested
+    if (resetRepositories) {
+      try {
+        const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
+        const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+
+        if (controlPortUrl) {
+          const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
+          if (repositories.length > 0) {
+            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+            console.log("[releaseTaskPod] Pod repositories reset");
+          }
+        } else {
+          console.log(`[releaseTaskPod] Control port not found, skipping repository reset`);
+        }
+      } catch (error) {
+        console.error("[releaseTaskPod] Error resetting pod repositories:", error);
+        // Continue with pod drop even if repository reset fails
+      }
+    }
+
+    // Drop the pod
+    try {
+      await dropPod(poolId, podId, poolApiKeyPlain);
+      result.podDropped = true;
+      console.log(`[releaseTaskPod] Pod ${podId} dropped successfully`);
+    } catch (error) {
+      console.error("[releaseTaskPod] Error dropping pod:", error);
+      result.error = "Failed to drop pod";
+      // Still try to clear task fields
+    }
+
+    // Clear task pod fields
+    if (clearTaskFields) {
+      try {
+        await db.task.update({
+          where: { id: taskId },
+          data: buildTaskUpdateData(),
+        });
+        result.taskCleared = true;
+        console.log(
+          `[releaseTaskPod] Task ${taskId} pod fields cleared` +
+          (newWorkflowStatus ? `, workflowStatus set to ${newWorkflowStatus}` : "")
+        );
+      } catch (error) {
+        console.error("[releaseTaskPod] Error clearing task pod fields:", error);
+      }
+    }
+
+    result.success = result.podDropped || result.taskCleared;
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[releaseTaskPod] Unexpected error:`, errorMessage);
+    result.error = errorMessage;
+    return result;
   }
 }
