@@ -14,7 +14,7 @@ import {
   WORKSPACE_LIMITS
 } from "@/lib/constants";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestSwarm } from "@/__tests__/support/fixtures/swarm";
+import { createTestSwarm } from "@/__tests__/support/fixtures";
 import { generateUniqueSlug } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 

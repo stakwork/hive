@@ -181,3 +181,48 @@ export async function createTestWorkspaceScenario(
     swarm,
   };
 }
+
+/**
+ * Create a test workspace with swarm and automatic membership for the owner
+ * This is the recommended way to set up workspaces in tests
+ */
+export async function createTestWorkspaceWithSwarm(
+  options: CreateTestWorkspaceOptions & {
+    swarmData?: Partial<CreateTestSwarmOptions>;
+    createMembership?: boolean; // Allow opting out if needed
+  }
+): Promise<{ workspace: Workspace; swarm: Swarm; membership?: WorkspaceMember }> {
+  // Create the workspace
+  const workspace = await createTestWorkspace({
+    ownerId: options.ownerId,
+    name: options.name,
+    description: options.description,
+    slug: options.slug,
+    stakworkApiKey: options.stakworkApiKey,
+    sourceControlOrgId: options.sourceControlOrgId,
+    repositoryDraft: options.repositoryDraft,
+  });
+
+  // Create the swarm for the workspace
+  const swarm = await createTestSwarm({
+    workspaceId: workspace.id,
+    name: options.swarmData?.name,
+    swarmUrl: options.swarmData?.swarmUrl,
+    status: options.swarmData?.status,
+    instanceType: options.swarmData?.instanceType,
+    swarmApiKey: options.swarmData?.swarmApiKey ?? (process.env.TOKEN_ENCRYPTION_KEY ? "test-swarm-api-key" : undefined),
+    containerFilesSetUp: options.swarmData?.containerFilesSetUp,
+  });
+
+  // Always create workspace membership for the owner unless explicitly disabled
+  let membership: WorkspaceMember | undefined;
+  if (options.createMembership !== false) {
+    membership = await createTestMembership({
+      workspaceId: workspace.id,
+      userId: options.ownerId,
+      role: 'OWNER',
+    });
+  }
+
+  return { workspace, swarm, membership };
+}
