@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { validateWorkspaceAccessById } from "@/services/workspace";
 import { config } from "@/config/env";
 import type { MockInventoryResponse } from "@/types/stakgraph";
 
@@ -77,42 +78,33 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify workspace access
-    const workspace = await db.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        members: {
-          some: {
-            userId: session.user.id,
-          },
-        },
-      },
-      include: {
-        swarm: true,
-      },
-    });
-
-    if (!workspace) {
+    const workspaceAccess = await validateWorkspaceAccessById(workspaceId, session.user.id);
+    if (!workspaceAccess.hasAccess) {
       return NextResponse.json(
         { success: false, message: "Workspace not found or access denied" },
+        { status: 403 }
+      );
+    }
+
+    // Look up swarm
+    const swarm = await db.swarm.findFirst({ where: { workspaceId } });
+
+    if (!swarm) {
+      return NextResponse.json(
+        { success: false, message: "Swarm not found" },
         { status: 404 }
       );
     }
 
-    if (!workspace.swarm) {
-      return NextResponse.json(
-        { success: false, message: "No swarm configured for this workspace" },
-        { status: 400 }
-      );
-    }
-
-    if (!workspace.swarm.swarmApiKey) {
+    if (!swarm.swarmUrl || !swarm.swarmApiKey) {
       return NextResponse.json(
         { success: false, message: "Mock data is not available." },
         { status: 400 }
       );
     }
 
-    const stakgraphUrl = `https://${workspace.swarm.name}:7799`;
+    const swarmUrlObj = new URL(swarm.swarmUrl);
+    const stakgraphUrl = `https://${swarmUrlObj.hostname}:7799`;
 
     // Build query parameters
     const params = new URLSearchParams({
@@ -133,7 +125,7 @@ export async function GET(request: NextRequest) {
       swarmUrl: stakgraphUrl,
       endpoint: `/mocks/inventory?${params.toString()}`,
       method: "GET",
-      apiKey: encryptionService.decryptField("swarmApiKey", workspace.swarm.swarmApiKey),
+      apiKey: encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey),
     });
 
     if (!apiResult.ok) {
