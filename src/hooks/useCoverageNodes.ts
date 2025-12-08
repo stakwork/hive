@@ -81,7 +81,7 @@ export function useCoverageNodes() {
             pageSize: limit,
             items: mockData.items.map((item) => ({
               name: item.name,
-              file: item.ref_id,
+              file: item.description,
               ref_id: item.ref_id,
               test_count: item.file_count,
               weight: 0,
