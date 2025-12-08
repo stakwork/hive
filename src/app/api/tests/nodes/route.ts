@@ -8,6 +8,7 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType, NodesResponse } from "@/types/stakgraph";
+import { config } from "@/config/env";
 
 export const runtime = "nodejs";
 
@@ -239,7 +240,11 @@ export async function GET(request: NextRequest) {
     const isLocalHost =
       hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1";
     if (process.env.NODE_ENV === "development" && isLocalHost) {
-      const url = `http://0.0.0.0:7799${endpointPath}`;
+      // Use mock endpoint when USE_MOCKS=true, otherwise try local graph service
+      const baseUrl = config.USE_MOCKS
+        ? `${config.MOCK_BASE}/api/mock/stakgraph`
+        : "http://0.0.0.0:7799";
+      const url = `${baseUrl}${endpointPath}`;
       const resp = await fetch(url);
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {

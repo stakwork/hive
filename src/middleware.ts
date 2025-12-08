@@ -87,6 +87,11 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(MIDDLEWARE_HEADERS.REQUEST_ID, requestId);
 
   try {
+    // Block mock endpoints in production
+    if (pathname.startsWith("/api/mock") && process.env.NODE_ENV === "production") {
+      return respondWithJson({ error: "Not found" }, { status: 404, requestId, authStatus: "blocked" });
+    }
+
     // System and webhook routes bypass all authentication checks
     if (routeAccess === "webhook" || routeAccess === "system") {
       return continueRequest(requestHeaders, routeAccess);
