@@ -77,7 +77,7 @@ describe("GET /api/tests/mocks", () => {
     expect(data.message).toBe("Workspace ID is required");
   });
 
-  it("should return 404 when workspace does not exist or user lacks access", async () => {
+  it("should return 403 when workspace does not exist or user lacks access", async () => {
     const request = new NextRequest(
       new URL(
         "http://localhost:3000/api/tests/mocks?workspaceId=non-existent-id"
@@ -87,12 +87,12 @@ describe("GET /api/tests/mocks", () => {
     const response = await GET(request);
     const data = await response.json();
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
     expect(data.success).toBe(false);
     expect(data.message).toBe("Workspace not found or access denied");
   });
 
-  it("should return 400 when workspace has no swarm configured", async () => {
+  it("should return 404 when workspace has no swarm configured", async () => {
     const request = new NextRequest(
       new URL(
         `http://localhost:3000/api/tests/mocks?workspaceId=${testWorkspace.id}`
@@ -102,15 +102,16 @@ describe("GET /api/tests/mocks", () => {
     const response = await GET(request);
     const data = await response.json();
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(404);
     expect(data.success).toBe(false);
-    expect(data.message).toBe("No swarm configured for this workspace");
+    expect(data.message).toBe("Swarm not found");
   });
 
   it("should fetch mock inventory from stakgraph successfully", async () => {
     const swarm = await db.swarm.create({
       data: {
         name: "test-swarm",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmApiKey: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
@@ -167,7 +168,7 @@ describe("GET /api/tests/mocks", () => {
 
     expect(swarmApiRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        swarmUrl: `https://${swarm.name}:7799`,
+        swarmUrl: "https://test-swarm.sphinx.chat:7799",
         endpoint: expect.stringContaining("/mocks/inventory"),
         method: "GET",
         apiKey: expect.any(String),
@@ -176,9 +177,10 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support pagination with limit and offset", async () => {
-    const swarm = await db.swarm.create({
+    await db.swarm.create({
       data: {
         name: "test-swarm",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmApiKey: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
@@ -216,9 +218,10 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support search filtering", async () => {
-    const swarm = await db.swarm.create({
+    await db.swarm.create({
       data: {
         name: "test-swarm",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmApiKey: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
@@ -256,9 +259,10 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support mocked filter with 'mocked' value", async () => {
-    const swarm = await db.swarm.create({
+    await db.swarm.create({
       data: {
         name: "test-swarm",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmApiKey: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
@@ -296,9 +300,10 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should support mocked filter with 'unmocked' value", async () => {
-    const swarm = await db.swarm.create({
+    await db.swarm.create({
       data: {
         name: "test-swarm",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmApiKey: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
@@ -336,9 +341,10 @@ describe("GET /api/tests/mocks", () => {
   });
 
   it("should not add mocked filter when value is 'all'", async () => {
-    const swarm = await db.swarm.create({
+    await db.swarm.create({
       data: {
         name: "test-swarm",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmApiKey: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
@@ -376,6 +382,7 @@ describe("GET /api/tests/mocks", () => {
     await db.swarm.create({
       data: {
         name: "test-swarm",
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
         swarmApiKey: JSON.stringify({
           data: "encrypted-key",
           iv: "iv",
