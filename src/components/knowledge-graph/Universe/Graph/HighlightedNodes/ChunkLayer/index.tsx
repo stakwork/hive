@@ -55,6 +55,7 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const timeRef = useRef(0)
   const edgePositionsRef = useRef<{ aStart: Float32Array; aEnd: Float32Array } | null>(null)
   const growthTimeRef = useRef(0)
+  const nodeLevelMapRef = useRef<Map<string, number>>(new Map())
 
   const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
   const [depthConnections, setDepthConnections] = useState<Array<{ from: string; to: string; level: number }>>([])
@@ -149,6 +150,11 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
     // Ensure connections are sorted by level for deterministic growth order
     setDepthConnections([...hierarchicalConnections].sort((a, b) => a.level - b.level))
     setNodesByLevel(finalNodesByLevel)
+    const levelMap = new Map<string, number>()
+    for (const [level, ids] of finalNodesByLevel.entries()) {
+      ids.forEach(id => levelMap.set(id, level))
+    }
+    nodeLevelMapRef.current = levelMap
 
     const foundNodes = allRefIds
       .map(id => nodesNormalized.get(id))
@@ -325,6 +331,8 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       console.warn('nodePositionsNormalized is empty, positions may not be ready yet')
     }
 
+    const totalGrowthTime = growthTimeRef.current * EDGE_GROWTH.speed
+
     // Update group positions and collect positions for center calculation
     groupRef.current.children.forEach((child, index) => {
       if (child instanceof Group) {
@@ -348,9 +356,24 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
           }
         }
 
+        // Gated visibility based on growth reaching this node's level
+        let nodeLevel = 0
+        if (chunk.sourceNodeRefId === chunkNode?.ref_id) {
+          nodeLevel = 0
+        } else {
+          nodeLevel = nodeLevelMapRef.current.get(chunkNode.ref_id) ?? 0
+        }
+        const levelStartTime = nodeLevel * EDGE_GROWTH.levelDuration
+        const levelProgress = Math.min(
+          1,
+          Math.max(0, (totalGrowthTime - levelStartTime) / EDGE_GROWTH.levelDuration)
+        )
+
+        child.visible = levelProgress > 0.01
+
         // Pulse animation
         const pulseFactor = Math.sin(timeRef.current * PULSE_SPEED + index * 0.5) * PULSE_AMPLITUDE
-        const scale = BASE_SCALE + pulseFactor
+        const scale = (BASE_SCALE + pulseFactor) * (0.2 + 0.8 * levelProgress) // grow in with level progress
         child.scale.setScalar(scale)
 
         // Simple fade out near end of duration
