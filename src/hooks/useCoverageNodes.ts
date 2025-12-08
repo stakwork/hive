@@ -14,15 +14,15 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob, setSearch } = useCoverageStore();
+  const { nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setMocked, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob, setSearch } = useCoverageStore();
   const hasInitializedIgnoreDirs = useRef(false);
   const hasInitializedUnitGlob = useRef(false);
   const hasInitializedIntegrationGlob = useRef(false);
   const hasInitializedE2eGlob = useRef(false);
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
-    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
+    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({
@@ -31,6 +31,77 @@ export function useCoverageNodes() {
     placeholderData: (prev) => prev,
     queryFn: async () => {
       if (!workspaceId) return null;
+      
+      // Route to mock endpoint for mock node type
+      if (nodeType === "mock") {
+        const mockParams = new URLSearchParams({
+          workspaceId,
+          limit: String(limit),
+          offset: String(offset),
+        });
+
+        if (search) {
+          mockParams.append("search", search);
+        }
+
+        if (mocked && mocked !== "all") {
+          mockParams.append("mocked", mocked);
+        }
+
+        const response = await fetch(`/api/tests/mocks?${mockParams.toString()}`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch mock inventory");
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.message || "Failed to fetch mock inventory");
+        }
+
+        // Transform MockInventoryResponse to match CoverageNodesResponse structure
+        const mockData = result.data as {
+          items: Array<{
+            name: string;
+            ref_id: string;
+            description: string;
+            linked_files: string[];
+            file_count: number;
+            mocked: boolean;
+          }>;
+          total_count: number;
+          total_returned: number;
+        };
+
+        return {
+          success: true,
+          data: {
+            node_type: "mock",
+            pageSize: limit,
+            items: mockData.items.map((item) => ({
+              name: item.name,
+              file: item.description,
+              ref_id: item.ref_id,
+              test_count: item.file_count,
+              weight: 0,
+              covered: item.mocked,
+              line_count: 0,
+              body_length: 0,
+              verb: undefined,
+              description: item.description,
+              mocked: item.mocked,
+            })),
+            total_count: mockData.total_count,
+            total_returned: mockData.total_returned,
+            page: Math.floor(offset / limit) + 1,
+            total_pages: Math.ceil(mockData.total_count / limit),
+            hasNextPage: offset + limit < mockData.total_count,
+          },
+          message: "Mock inventory retrieved successfully",
+        };
+      }
+      
       const qp = new URLSearchParams();
       qp.set("workspaceId", workspaceId);
       qp.set("node_type", nodeType);
@@ -106,6 +177,7 @@ export function useCoverageNodes() {
       limit,
       targetPage,
       coverage,
+      mocked,
       ignoreDirs,
       repo,
       unitGlob,
@@ -167,6 +239,8 @@ export function useCoverageNodes() {
     setSortDirection,
     toggleSort,
     setCoverage,
+    setMocked,
+    mocked,
     ignoreDirs,
     setIgnoreDirs,
     repo,
