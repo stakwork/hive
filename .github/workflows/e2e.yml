@@ -54,6 +54,7 @@ jobs:
 
       - name: Build application
         env:
+          NODE_ENV: development
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
           NEXTAUTH_SECRET: fake_secret
@@ -77,6 +78,7 @@ jobs:
 
       - name: Start application
         env:
+          NODE_ENV: development
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
           NEXTAUTH_URL: http://localhost:3000
           NEXTAUTH_SECRET: fake_secret
