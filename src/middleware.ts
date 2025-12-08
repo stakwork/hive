@@ -9,6 +9,15 @@ if (!process.env.NEXTAUTH_SECRET) {
   throw new Error("NEXTAUTH_SECRET is required for middleware authentication");
 }
 
+// Determine if we should use secure cookies based on request URL
+// NextAuth uses secure cookies (__Secure- prefix) only for HTTPS
+// Always use regular cookies for localhost, regardless of protocol
+function shouldUseSecureCookie(url: URL): boolean {
+  const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const isHttps = url.protocol === "https:";
+  return isHttps && !isLocalhost;
+}
+
 // Generate a unique request ID for tracing using crypto API when available
 function generateRequestId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -99,7 +108,11 @@ export async function middleware(request: NextRequest) {
 
     // Landing page protection (when enabled) for all non-system/webhook routes
     if (isLandingPageEnabled()) {
-      const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+      const token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET,
+        secureCookie: shouldUseSecureCookie(request.nextUrl)
+      });
       const landingCookie = request.cookies.get(LANDING_COOKIE_NAME);
       const hasValidCookie = landingCookie && (await verifyCookie(landingCookie.value));
       if (!hasValidCookie && !token) {
@@ -118,7 +131,11 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, routeAccess);
     }
 
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+      secureCookie: shouldUseSecureCookie(request.nextUrl)
+    });
     if (!token) {
       if (isApiRoute) {
         return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });

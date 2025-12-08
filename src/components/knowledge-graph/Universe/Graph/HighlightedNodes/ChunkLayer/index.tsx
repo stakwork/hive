@@ -28,8 +28,14 @@ const DEPTH_CONFIG = {
 // Edge configuration
 const EDGE_CONFIG = {
   color: '#08f6fb',
-  width: 0.5,
-  opacity: 0.6,
+  width: 1,
+  opacity: 0.3,
+}
+
+// Growth animation configuration
+const EDGE_GROWTH = {
+  levelDuration: 4, // seconds per depth level
+  speed: 8,         // global speed multiplier
 }
 
 const COLORS = {
@@ -48,10 +54,13 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const htmlRef = useRef<THREE.Group>(null)
   const timeRef = useRef(0)
   const edgePositionsRef = useRef<{ aStart: Float32Array; aEnd: Float32Array } | null>(null)
+  const growthTimeRef = useRef(0)
+  const nodeLevelMapRef = useRef<Map<string, number>>(new Map())
 
   const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
   const [depthConnections, setDepthConnections] = useState<Array<{ from: string; to: string; level: number }>>([])
   const [nodesByLevel, setNodesByLevel] = useState<Map<number, Set<string>>>(new Map())
+  const [chunkCreationTime] = useState(Date.now())
 
   const removeHighlightChunk = useGraphStore((s) => s.removeHighlightChunk)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
@@ -138,8 +147,14 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       allRefIds = Array.from(allDiscoveredNodes)
     }
 
-    setDepthConnections(hierarchicalConnections)
+    // Ensure connections are sorted by level for deterministic growth order
+    setDepthConnections([...hierarchicalConnections].sort((a, b) => a.level - b.level))
     setNodesByLevel(finalNodesByLevel)
+    const levelMap = new Map<string, number>()
+    for (const [level, ids] of finalNodesByLevel.entries()) {
+      ids.forEach(id => levelMap.set(id, level))
+    }
+    nodeLevelMapRef.current = levelMap
 
     const foundNodes = allRefIds
       .map(id => nodesNormalized.get(id))
@@ -160,8 +175,10 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
     const aEnd = new Float32Array(vCount * 3)
     const aSide = new Float32Array(vCount)
     const aT = new Float32Array(vCount)
-    const aLevel = new Float32Array(vCount) // Add level attribute for visual differentiation
+    const aLevel = new Float32Array(vCount) // integer level per connection
     const indices = new Uint32Array(iCount)
+
+    const maxLevel = depthConnections.reduce((max, c) => Math.max(max, c.level), 0)
 
     edgePositionsRef.current = { aStart, aEnd }
 
@@ -181,12 +198,11 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       aT[v + 2] = 1
       aT[v + 3] = 1
 
-      // Set level for color/opacity variation
-      const levelValue = connection.level / DEPTH_CONFIG.maxDepth // Normalize level (0-1)
-      aLevel[v] = levelValue
-      aLevel[v + 1] = levelValue
-      aLevel[v + 2] = levelValue
-      aLevel[v + 3] = levelValue
+      // Store integer level for timing; opacity uses uniform maxLevel
+      aLevel[v] = connection.level
+      aLevel[v + 1] = connection.level
+      aLevel[v + 2] = connection.level
+      aLevel[v + 3] = connection.level
 
       indices[i] = v
       indices[i + 1] = v + 2
@@ -213,10 +229,17 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
         uOpacity: { value: EDGE_CONFIG.opacity },
         uLineWidth: { value: EDGE_CONFIG.width },
         uResolution: { value: new THREE.Vector2(1, 1) },
+        uTime: { value: 0 },
+        uGrowthSpeed: { value: EDGE_GROWTH.speed },
+        uLevelDuration: { value: EDGE_GROWTH.levelDuration },
+        uMaxLevel: { value: Math.max(maxLevel, 1) },
       },
       vertexShader: `
         uniform vec2 uResolution;
         uniform float uLineWidth;
+        uniform float uTime;
+        uniform float uGrowthSpeed;
+        uniform float uLevelDuration;
 
         attribute vec3 aStart;
         attribute vec3 aEnd;
@@ -225,14 +248,31 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
         attribute float aLevel;
 
         varying float vLevel;
+        varying float vGrowthProgress;
 
         void main() {
           vLevel = aLevel;
 
+          // Calculate growth progress for sequential level animation
+          float totalTime = uTime * uGrowthSpeed; // Total elapsed time
+          float levelStartTime = aLevel * uLevelDuration; // When this level should start
+
+          float growthProgress = 0.0;
+          if (totalTime >= levelStartTime) {
+            float timeIntoLevel = totalTime - levelStartTime;
+            growthProgress = clamp(timeIntoLevel / uLevelDuration, 0.0, 1.0);
+          }
+
+          // Ease growth for smoother ramp
+          growthProgress = smoothstep(0.0, 1.0, growthProgress);
+          vGrowthProgress = growthProgress;
+
           vec4 sc = projectionMatrix * modelViewMatrix * vec4(aStart, 1.0);
           vec4 ec = projectionMatrix * modelViewMatrix * vec4(aEnd, 1.0);
 
-          vec4 clip = mix(sc, ec, aT);
+          // Animate the end point - lines grow from start to end
+          float animatedT = aT * growthProgress;
+          vec4 clip = mix(sc, ec, animatedT);
 
           vec2 sN = sc.xy / sc.w;
           vec2 eN = ec.xy / ec.w;
@@ -254,13 +294,19 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       fragmentShader: `
         uniform vec3 uColor;
         uniform float uOpacity;
+        uniform float uMaxLevel;
 
         varying float vLevel;
+        varying float vGrowthProgress;
 
         void main() {
           // Fade opacity based on level (deeper levels are more transparent)
-          float levelOpacity = mix(1.0, 0.3, vLevel);
-          gl_FragColor = vec4(uColor, uOpacity * levelOpacity);
+          float levelOpacity = mix(1.0, 0.3, vLevel / max(uMaxLevel, 1.0));
+
+          // Soft fade-in with growth progress
+          float edgeAlpha = smoothstep(0.0, 0.2, vGrowthProgress);
+
+          gl_FragColor = vec4(uColor, uOpacity * levelOpacity * edgeAlpha);
         }
       `,
     })
@@ -274,6 +320,8 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
     const { nodePositionsNormalized } = getStoreBundle(storeId).simulation.getState()
 
+    // Drive growth time based on frame delta for smoother ramp instead of wall clock
+    growthTimeRef.current += clock.getDelta()
     timeRef.current = clock.getElapsedTime()
 
     const nodePositions: Vector3[] = []
@@ -282,6 +330,8 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
     if (chunkNodes.length > 0 && nodePositionsNormalized.size === 0) {
       console.warn('nodePositionsNormalized is empty, positions may not be ready yet')
     }
+
+    const totalGrowthTime = growthTimeRef.current * EDGE_GROWTH.speed
 
     // Update group positions and collect positions for center calculation
     groupRef.current.children.forEach((child, index) => {
@@ -306,9 +356,24 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
           }
         }
 
+        // Gated visibility based on growth reaching this node's level
+        let nodeLevel = 0
+        if (chunk.sourceNodeRefId === chunkNode?.ref_id) {
+          nodeLevel = 0
+        } else {
+          nodeLevel = nodeLevelMapRef.current.get(chunkNode.ref_id) ?? 0
+        }
+        const levelStartTime = nodeLevel * EDGE_GROWTH.levelDuration
+        const levelProgress = Math.min(
+          1,
+          Math.max(0, (totalGrowthTime - levelStartTime) / EDGE_GROWTH.levelDuration)
+        )
+
+        child.visible = levelProgress > 0.01
+
         // Pulse animation
         const pulseFactor = Math.sin(timeRef.current * PULSE_SPEED + index * 0.5) * PULSE_AMPLITUDE
-        const scale = BASE_SCALE + pulseFactor
+        const scale = (BASE_SCALE + pulseFactor) * (0.2 + 0.8 * levelProgress) // grow in with level progress
         child.scale.setScalar(scale)
 
         // Simple fade out near end of duration
@@ -420,9 +485,12 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       edgeGeometry.attributes.aStart.needsUpdate = true
       edgeGeometry.attributes.aEnd.needsUpdate = true
 
-      // Update resolution for proper line width
+      // Update resolution and time for proper line width and animation
       if (edgeMaterial && 'uniforms' in edgeMaterial) {
         edgeMaterial.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight)
+        edgeMaterial.uniforms.uTime.value = growthTimeRef.current
+        edgeMaterial.uniforms.uGrowthSpeed.value = EDGE_GROWTH.speed
+        edgeMaterial.uniforms.uLevelDuration.value = EDGE_GROWTH.levelDuration
       }
 
       // Update HTML label position
