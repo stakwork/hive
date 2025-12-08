@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getModel, getApiKeyForProvider } from "aieo";
+import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { buildFeatureContext, generateWithStreaming } from "@/lib/ai/utils";
