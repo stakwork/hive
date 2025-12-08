@@ -4,6 +4,7 @@ import { GitLeaksWidget } from "@/components/dashboard/git-leaks-widget";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
+import { DashboardChat } from "@/components/dashboard/DashboardChat";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
 import { GraphComponent } from "@/components/knowledge-graph";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
@@ -120,6 +121,9 @@ function DashboardInner() {
           width="w-full"
         />
       </div>
+
+      {/* Dashboard Chat - Fixed at bottom */}
+      <DashboardChat />
     </div>
   );
 }
