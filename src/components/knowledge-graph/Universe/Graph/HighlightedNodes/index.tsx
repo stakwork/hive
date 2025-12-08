@@ -33,7 +33,7 @@ export const HighlightedNodesLayer = memo(() => {
           <ChunkLayer
             key={chunk.chunkId}
             chunk={chunk}
-            // cameraConfig={arcConfig}
+          // cameraConfig={arcConfig}
           />
         )
       })}
