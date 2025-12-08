@@ -66,6 +66,8 @@ export function CoverageInsights() {
     setNodeType,
     toggleSort,
     setCoverage,
+    setMocked,
+    mocked,
     prefetchNext,
     prefetchPrev,
   } = useCoverageNodes();
@@ -134,7 +136,7 @@ export function CoverageInsights() {
               <span className="text-sm font-medium text-muted-foreground">Type:</span>
               <Select
                 value={params.nodeType}
-                onValueChange={(v) => setNodeType(v as "endpoint" | "function" | "class")}
+                onValueChange={(v) => setNodeType(v as "endpoint" | "function" | "class" | "mock")}
               >
                 <SelectTrigger className="h-8 w-[120px] text-xs">
                   <SelectValue />
@@ -149,28 +151,52 @@ export function CoverageInsights() {
                   <SelectItem value="class" className="text-xs">
                     Classes
                   </SelectItem>
+                  <SelectItem value="mock" className="text-xs">
+                    Mocks
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Status:</span>
-              <Select value={params.coverage} onValueChange={(v) => setCoverage(v as "all" | "tested" | "untested")}>
-                <SelectTrigger className="h-8 w-[120px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-xs">
-                    All
-                  </SelectItem>
-                  <SelectItem value="tested" className="text-xs">
-                    Tested
-                  </SelectItem>
-                  <SelectItem value="untested" className="text-xs">
-                    Untested
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <span className="text-sm font-medium text-muted-foreground">
+                {params.nodeType === "mock" ? "Mocked:" : "Status:"}
+              </span>
+              {params.nodeType === "mock" ? (
+                <Select value={mocked} onValueChange={(v) => setMocked(v as "all" | "mocked" | "unmocked")}>
+                  <SelectTrigger className="h-8 w-[120px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">
+                      All
+                    </SelectItem>
+                    <SelectItem value="mocked" className="text-xs">
+                      Mocked
+                    </SelectItem>
+                    <SelectItem value="unmocked" className="text-xs">
+                      Unmocked
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={params.coverage} onValueChange={(v) => setCoverage(v as "all" | "tested" | "untested")}>
+                  <SelectTrigger className="h-8 w-[120px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">
+                      All
+                    </SelectItem>
+                    <SelectItem value="tested" className="text-xs">
+                      Tested
+                    </SelectItem>
+                    <SelectItem value="untested" className="text-xs">
+                      Untested
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="relative">
@@ -184,25 +210,33 @@ export function CoverageInsights() {
               />
             </div>
 
-            <AdvancedFiltersPopover
-              ignoreDirs={ignoreDirs}
-              setIgnoreDirs={setIgnoreDirs}
-              repo={repo}
-              setRepo={setRepo}
-              unitGlob={unitGlob}
-              setUnitGlob={setUnitGlob}
-              integrationGlob={integrationGlob}
-              setIntegrationGlob={setIntegrationGlob}
-              e2eGlob={e2eGlob}
-              setE2eGlob={setE2eGlob}
-            />
+            {params.nodeType !== "mock" && (
+              <AdvancedFiltersPopover
+                ignoreDirs={ignoreDirs}
+                setIgnoreDirs={setIgnoreDirs}
+                repo={repo}
+                setRepo={setRepo}
+                unitGlob={unitGlob}
+                setUnitGlob={setUnitGlob}
+                integrationGlob={integrationGlob}
+                setIntegrationGlob={setIntegrationGlob}
+                e2eGlob={e2eGlob}
+                setE2eGlob={setE2eGlob}
+              />
+            )}
           </div>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between pb-2">
           <CardTitle>
-            {params.nodeType === "endpoint" ? "Endpoints" : params.nodeType === "function" ? "Functions" : "Classes"}
+            {params.nodeType === "endpoint"
+              ? "Endpoints"
+              : params.nodeType === "function"
+                ? "Functions"
+                : params.nodeType === "class"
+                  ? "Classes"
+                  : "Mock Services"}
           </CardTitle>
           {filterLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
