@@ -125,10 +125,7 @@ describe("POST /api/user/voice-signature/enroll", () => {
     );
   });
 
-  // BUG FOUND: This test reveals a bug in production code at line 43 of enroll/route.ts
-  // The validation `!startTimestamp` fails when startTimestamp is 0 (a valid timestamp value)
-  // Should be changed to: if (callRefId && (startTimestamp === undefined || endTimestamp === undefined))
-  it.skip("should successfully enroll voice signature with callRefId and timestamps", async () => {
+  it("should successfully enroll voice signature with callRefId and timestamps", async () => {
     vi.mocked(auth.getServerSession).mockResolvedValue(mockSession as any);
     
     const mockEncryptedData = {

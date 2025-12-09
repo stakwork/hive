@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (callRefId && (!startTimestamp || !endTimestamp)) {
+    if (callRefId && (startTimestamp === undefined || endTimestamp === undefined)) {
       return NextResponse.json(
         { error: "startTimestamp and endTimestamp are required when using callRefId" },
         { status: 400 }
