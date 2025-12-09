@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     const repoDefaultBranch: string | undefined = payload?.repository?.default_branch;
     const allowedBranches = new Set<string>(
-      [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
+      [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[]
     );
 
     // Fetch GitHub credentials early for both push and PR events
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
           let task = null;
           const maxRetries = 3;
           const retryDelayMs = 2000; // 2 seconds between retries
-          
+
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             if (attempt > 0) {
               console.log(`[GithubWebhook] Retry attempt ${attempt}/${maxRetries} after ${retryDelayMs}ms delay`, {
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
                 workspaceId: repository.workspaceId,
                 prNumber,
               });
-              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+              await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
             }
 
             // Look for a janitor task with a PR artifact matching this PR number
@@ -241,21 +241,32 @@ export async function POST(request: NextRequest) {
               select: {
                 id: true,
                 sourceType: true,
-                chatMessages: {
+                _count: {
                   select: {
-                    artifacts: {
+                    chatMessages: {
                       where: {
-                        type: "PULL_REQUEST",
-                      },
-                      select: {
-                        id: true,
-                        content: true,
+                        artifacts: {
+                          some: {
+                            type: "PULL_REQUEST",
+                          },
+                        },
                       },
                     },
                   },
                 },
               },
-            });
+            }) as { id: string; sourceType: string; artifacts?: any } | null;
+            if (task) {
+              const artifacts = await db.artifact.findMany({
+                where: {
+                  message: { taskId: task.id },
+                  type: "PULL_REQUEST",
+                },
+                select: { id: true, content: true },
+              });
+
+              task.artifacts = artifacts.length ? artifacts : null;
+            }
 
             if (task) {
               console.log(`[GithubWebhook] Found task on attempt ${attempt + 1}`, {
@@ -271,13 +282,11 @@ export async function POST(request: NextRequest) {
           if (task?.sourceType === "JANITOR") {
             // Verify the PR artifact matches the exact PR URL
             let prArtifactMatches = false;
-            for (const message of task.chatMessages || []) {
-              for (const artifact of message.artifacts || []) {
-                const artifactContent = artifact.content as { url?: string };
-                if (artifactContent?.url && artifactContent.url.includes(`/pull/${prNumber}`)) {
-                  prArtifactMatches = true;
-                  break;
-                }
+            for (const artifact of task.artifacts || []) {
+              const artifactContent = artifact.content as { url?: string };
+              if (artifactContent?.url && artifactContent.url.includes(`/pull/${prNumber}`)) {
+                prArtifactMatches = true;
+                break;
               }
               if (prArtifactMatches) break;
             }
@@ -354,12 +363,7 @@ export async function POST(request: NextRequest) {
 
         // Store PR data without failing the webhook if this fails
         try {
-          await storePullRequest(
-            payload as PullRequestPayload,
-            repository.id,
-            repository.workspaceId,
-            githubPat,
-          );
+          await storePullRequest(payload as PullRequestPayload, repository.id, repository.workspaceId, githubPat);
         } catch (error) {
           console.error("[GithubWebhook] Failed to store PR, continuing", {
             delivery,
@@ -466,7 +470,7 @@ export async function POST(request: NextRequest) {
       decryptedSwarmApiKey,
       repository.repositoryUrl,
       username && githubPat ? { username, pat: githubPat } : undefined,
-      callbackUrl,
+      callbackUrl
     );
 
     console.log("[GithubWebhook] Async sync response", {
