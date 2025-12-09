@@ -11,7 +11,7 @@ import { config } from "@/config/env";
  */
 export function getStakgraphUrl(swarmName: string): string {
   if (config.USE_MOCKS) {
-    return `${config.MOCK_BASE}/api/mock/stakgraph`;
+    return `/api/mock/stakgraph`;
   }
   return `https://${swarmName}:7799`;
 }

@@ -1,6 +1,5 @@
 // Mock mode - when true, URLs resolve to local mock endpoints
 const USE_MOCKS = process.env.USE_MOCKS === "true";
-const MOCK_BASE = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
 const requiredEnvVars = {
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
@@ -32,10 +31,10 @@ export const env = requiredEnvVars;
 export const optionalEnvVars = {
   // GitHub OAuth token exchange URL (used by GitHub App callback)
   GITHUB_OAUTH_TOKEN_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/github/oauth/access_token`
+    ? `/api/mock/github/oauth/access_token`
     : "https://github.com/login/oauth/access_token",
   STAKWORK_BASE_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/stakwork`
+    ? `/api/mock/stakwork`
     : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
   STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
@@ -43,13 +42,13 @@ export const optionalEnvVars = {
   STAKWORK_TRANSCRIPT_WORKFLOW_ID: process.env.STAKWORK_TRANSCRIPT_WORKFLOW_ID,
   STAKWORK_AI_GENERATION_WORKFLOW_ID: process.env.STAKWORK_AI_GENERATION_WORKFLOW_ID,
   POOL_MANAGER_BASE_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/pool-manager`
+    ? `/api/mock/pool-manager`
     : process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
   SWARM_SUPER_ADMIN_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/swarm-super-admin`
+    ? `/api/mock/swarm-super-admin`
     : process.env.SWARM_SUPER_ADMIN_URL,
   LIVEKIT_CALL_BASE_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/livekit/`
+    ? `/api/mock/livekit/`
     : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
@@ -57,7 +56,6 @@ export const optionalEnvVars = {
   GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
   USE_MOCKS,
-  MOCK_BASE,
 } as const;
 
 /**
