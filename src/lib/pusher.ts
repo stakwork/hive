@@ -1,30 +1,59 @@
-import Pusher from "pusher";
-import PusherClient from "pusher-js";
+import { config } from "@/config/env";
 
-// Server-side Pusher instance for triggering events
-export const pusherServer = new Pusher({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.PUSHER_CLUSTER!,
-  useTLS: true,
-});
+// Type imports
+import type Pusher from "pusher";
+import type PusherClient from "pusher-js";
+
+// Server instance - conditionally use mock or real Pusher
+let pusherServerInstance: Pusher | any;
+
+if (config.USE_MOCKS) {
+  // Use mock Pusher in development/testing
+  const { MockPusherServer } = require("./pusher-mock");
+  pusherServerInstance = new MockPusherServer();
+} else {
+  // Use real Pusher in production
+  const PusherModule = require("pusher");
+  const PusherClass = PusherModule.default || PusherModule;
+  pusherServerInstance = new PusherClass({
+    appId: process.env.PUSHER_APP_ID!,
+    key: process.env.PUSHER_KEY!,
+    secret: process.env.PUSHER_SECRET!,
+    cluster: process.env.PUSHER_CLUSTER!,
+    useTLS: true,
+  });
+}
+
+export const pusherServer = pusherServerInstance;
 
 // Client-side Pusher instance - lazy initialization to avoid build-time errors
-let _pusherClient: PusherClient | null = null;
+let _pusherClient: PusherClient | any = null;
 
-export const getPusherClient = (): PusherClient => {
+export const getPusherClient = (): PusherClient | any => {
   if (!_pusherClient) {
-    if (
-      !process.env.NEXT_PUBLIC_PUSHER_KEY ||
-      !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
-    ) {
-      throw new Error("Pusher environment variables are not configured");
-    }
+    if (config.USE_MOCKS) {
+      // Use mock Pusher client
+      const { MockPusherClient } = require("./pusher-mock");
+      _pusherClient = new MockPusherClient(
+        config.PUSHER_KEY!,
+        { cluster: config.PUSHER_CLUSTER! }
+      );
+    } else {
+      // Use real Pusher client
+      const PusherClientModule = require("pusher-js");
+      const PusherClientClass = PusherClientModule.default || PusherClientModule;
+      
+      if (
+        !process.env.NEXT_PUBLIC_PUSHER_KEY ||
+        !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
+      ) {
+        throw new Error("Pusher environment variables are not configured");
+      }
 
-    _pusherClient = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
-    });
+      _pusherClient = new PusherClientClass(process.env.NEXT_PUBLIC_PUSHER_KEY, {
+        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+      });
+    }
   }
   return _pusherClient;
 };
