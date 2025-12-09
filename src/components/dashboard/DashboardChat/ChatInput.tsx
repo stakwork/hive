@@ -38,7 +38,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
         <input
           ref={inputRef}
           type="text"
-          placeholder="Ask me anything about your codebase..."
+          placeholder="Ask me about your codebase..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
