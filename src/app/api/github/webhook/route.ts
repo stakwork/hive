@@ -185,15 +185,19 @@ export async function POST(request: NextRequest) {
           headBranch,
         });
 
-        // Try to find the associated task by matching date and sourceType
+        // Try to find the associated task by matching PR artifact
         try {
-          console.log("[GithubWebhook] Looking for janitor task", {
+          console.log("[GithubWebhook] Looking for janitor task with matching PR artifact", {
             delivery,
             workspaceId: repository.workspaceId,
+            prNumber,
             headBranch,
           });
 
-          // Look for a task that matches this workspace and is a janitor task
+          // Construct the expected PR URL to match against artifacts
+          const expectedPrUrl = `${repository.repositoryUrl}/pull/${prNumber}`;
+
+          // Look for a janitor task with a PR artifact matching this PR number
           const task = await db.task.findFirst({
             where: {
               workspaceId: repository.workspaceId,
@@ -202,6 +206,19 @@ export async function POST(request: NextRequest) {
               createdAt: {
                 gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
               },
+              chatMessages: {
+                some: {
+                  artifacts: {
+                    some: {
+                      type: "PULL_REQUEST",
+                      content: {
+                        path: ["url"],
+                        string_contains: `/pull/${prNumber}`,
+                      },
+                    },
+                  },
+                },
+              },
             },
             orderBy: {
               createdAt: "desc",
@@ -209,51 +226,88 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               sourceType: true,
+              chatMessages: {
+                select: {
+                  artifacts: {
+                    where: {
+                      type: "PULL_REQUEST",
+                    },
+                    select: {
+                      id: true,
+                      content: true,
+                    },
+                  },
+                },
+              },
             },
           });
 
           if (task?.sourceType === "JANITOR") {
-            console.log("[GithubWebhook] Found janitor task for PR", {
-              delivery,
-              workspaceId: repository.workspaceId,
-              prNumber,
-              taskId: task.id,
-              sourceType: task.sourceType,
-            });
+            // Verify the PR artifact matches the exact PR URL
+            let prArtifactMatches = false;
+            for (const message of task.chatMessages || []) {
+              for (const artifact of message.artifacts || []) {
+                const artifactContent = artifact.content as { url?: string };
+                if (artifactContent?.url && artifactContent.url.includes(`/pull/${prNumber}`)) {
+                  prArtifactMatches = true;
+                  break;
+                }
+              }
+              if (prArtifactMatches) break;
+            }
 
-            // Add janitor label to the PR
-            try {
-              const prService = new PullRequestService(serviceConfigs.github);
-              await prService.addLabelToPullRequest({
-                userId: workspace.ownerId,
-                workspaceSlug: workspace.slug,
-                repositoryUrl: repository.repositoryUrl,
-                prNumber,
-                label: "janitor",
-              });
-
-              console.log("[GithubWebhook] Successfully added janitor label to PR", {
+            if (prArtifactMatches) {
+              console.log("[GithubWebhook] Found janitor task with matching PR artifact", {
                 delivery,
                 workspaceId: repository.workspaceId,
                 prNumber,
                 taskId: task.id,
+                sourceType: task.sourceType,
               });
-            } catch (labelError) {
-              console.error("[GithubWebhook] Failed to add janitor label to PR", {
+
+              // Add janitor label to the PR
+              try {
+                const prService = new PullRequestService(serviceConfigs.github);
+                await prService.addLabelToPullRequest({
+                  userId: workspace.ownerId,
+                  workspaceSlug: workspace.slug,
+                  repositoryUrl: repository.repositoryUrl,
+                  prNumber,
+                  label: "janitor",
+                });
+
+                console.log("[GithubWebhook] Successfully added janitor label to PR", {
+                  delivery,
+                  workspaceId: repository.workspaceId,
+                  prNumber,
+                  taskId: task.id,
+                });
+              } catch (labelError) {
+                console.error("[GithubWebhook] Failed to add janitor label to PR", {
+                  delivery,
+                  workspaceId: repository.workspaceId,
+                  prNumber,
+                  taskId: task.id,
+                  error: labelError,
+                });
+                // Don't fail the webhook if labeling fails
+              }
+            } else {
+              console.log("[GithubWebhook] Task found but PR artifact URL doesn't match", {
                 delivery,
                 workspaceId: repository.workspaceId,
                 prNumber,
                 taskId: task.id,
-                error: labelError,
+                expectedPrUrl,
               });
-              // Don't fail the webhook if labeling fails
             }
           } else {
-            console.log("[GithubWebhook] No janitor task found for PR", {
+            console.log("[GithubWebhook] No janitor task found with matching PR artifact", {
               delivery,
               workspaceId: repository.workspaceId,
               prNumber,
               headBranch,
+              expectedPrUrl,
             });
           }
         } catch (error) {
