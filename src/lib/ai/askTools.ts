@@ -15,6 +15,75 @@ export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promi
   return await r.json();
 }
 
+export async function repoAgent(
+  swarmUrl: string,
+  swarmApiKey: string,
+  params: {
+    repo_url: string;
+    prompt: string;
+    username?: string;
+    pat?: string;
+    commit?: string;
+    branch?: string;
+    toolsConfig?: unknown;
+    jsonSchema?: Record<string, unknown>;
+    model?: string;
+  }
+): Promise<Record<string, string>> {
+  const initiateResponse = await fetch(`${swarmUrl}/repo/agent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": swarmApiKey,
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!initiateResponse.ok) {
+    const errorText = await initiateResponse.text();
+    console.error(`Repo agent initiation error: ${initiateResponse.status} - ${errorText}`);
+    throw new Error("Failed to initiate repo agent");
+  }
+
+  const initiateData = await initiateResponse.json();
+  const requestId = initiateData.request_id;
+
+  if (!requestId) {
+    throw new Error("No request_id returned from repo agent");
+  }
+
+  const maxAttempts = 120;
+  const pollInterval = 5000;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+
+    const progressUrl = `${swarmUrl}/progress?request_id=${encodeURIComponent(requestId)}`;
+    const progressResponse = await fetch(progressUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-token": swarmApiKey,
+      },
+    });
+
+    if (!progressResponse.ok) {
+      console.error(`Progress check failed: ${progressResponse.status}`);
+      continue;
+    }
+
+    const progressData = await progressResponse.json();
+
+    if (progressData.status === "completed") {
+      return progressData.result || {};
+    } else if (progressData.status === "failed") {
+      throw new Error(progressData.error || "Repo agent execution failed");
+    }
+  }
+
+  throw new Error("Repo agent execution timed out. Please try again.");
+}
+
 export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string, pat: string, apiKey: string) {
   const { owner: repoOwner, repo: repoName } = parseOwnerRepo(repoUrl);
   const web_search = getProviderTool("anthropic", apiKey, "webSearch");
@@ -88,6 +157,27 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
         } catch (e) {
           console.error("Error retrieving recent contributions:", e);
           return "Could not retrieve repository map";
+        }
+      },
+    }),
+    repo_agent: tool({
+      description:
+        "Execute an AI agent to analyze the repository and answer the user's question about the codebase. Use this for deep code analysis, ONLY IF THE ANSWER IS NOT AVAILABLE FROM THE learn_concept TOOL. This tool should be a LAST RESORT.",
+      inputSchema: z.object({
+        prompt: z.string().describe("The question or prompt for the repo agent to analyze"),
+      }),
+      execute: async ({ prompt }: { prompt: string }) => {
+        const prompt2 = `${prompt}.\n\nPLEASE BE AS FAST AS POSSIBLE! DO NOT DO A THOROUGH SEARCH OF THE REPO. TRY TO FINISH THE EXPLORATION VERY QUICKLY!`;
+        try {
+          const rr =  await repoAgent(swarmUrl, swarmApiKey, {
+            repo_url: repoUrl,
+            prompt: prompt2,
+            pat,
+          });
+          return rr.content;
+        } catch (e) {
+          console.error("Error executing repo agent:", e);
+          return "Could not execute repo agent";
         }
       },
     }),

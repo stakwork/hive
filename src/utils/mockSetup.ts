@@ -146,8 +146,8 @@ export async function ensureMockWorkspaceForUser(
     // Optional repository seed to satisfy UIs expecting a repository
     await tx.repository.create({
       data: {
-        name: "stakgraph",
-        repositoryUrl: "https://github.com/mock/stakgraph",
+        name: "hive",
+        repositoryUrl: "https://github.com/stakwork/hive",
         branch: "main",
         status: RepositoryStatus.SYNCED,
         workspaceId: workspace.id,
