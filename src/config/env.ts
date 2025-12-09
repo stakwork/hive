@@ -62,9 +62,15 @@ export const optionalEnvVars = {
 
 /**
  * Validates and returns Gemini API key
- * @throws Error if GEMINI_API_KEY is not set
+ * In mock mode, returns a mock API key
+ * @throws Error if GEMINI_API_KEY is not set (only when USE_MOCKS=false)
  */
 export function getGeminiApiKey(): string {
+  // Return mock key when USE_MOCKS is enabled
+  if (USE_MOCKS) {
+    return "mock-gemini-key-12345";
+  }
+  
   const apiKey = process.env.GEMINI_API_KEY;
   
   if (!apiKey) {
@@ -79,8 +85,10 @@ export function getGeminiApiKey(): string {
 
 /**
  * Checks if Gemini API key is configured
+ * Returns true in mock mode
  */
 export function isGeminiConfigured(): boolean {
+  if (USE_MOCKS) return true;
   return !!process.env.GEMINI_API_KEY;
 }
 

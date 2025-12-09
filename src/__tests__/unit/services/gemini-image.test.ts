@@ -5,16 +5,27 @@ import {
   GeminiError,
   GeminiErrorType,
 } from '@/services/gemini-image';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-// Mock the GoogleGenerativeAI module
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn(),
-}));
+import { geminiMockState } from '@/lib/mock/gemini-state';
 
 // Mock the env config
 vi.mock('@/config/env', () => ({
+  config: {
+    USE_MOCKS: false, // Set to false so tests use mocked SDK directly
+    MOCK_BASE: 'http://localhost:3000',
+  },
   getGeminiApiKey: vi.fn(() => 'test-api-key'),
+}));
+
+// Mock the wrapper to return a controllable mock SDK
+const mockGenerateContent = vi.fn();
+const mockGetGenerativeModel = vi.fn(() => ({
+  generateContent: mockGenerateContent,
+}));
+
+vi.mock('@/lib/mock/gemini-wrapper', () => ({
+  getGoogleGenerativeAI: vi.fn(async () => ({
+    getGenerativeModel: mockGetGenerativeModel,
+  })),
 }));
 
 describe('gemini-image service', () => {
@@ -42,26 +53,16 @@ describe('gemini-image service', () => {
   });
   
   describe('generateArchitectureDiagram', () => {
-    let mockGenerateContent: any;
-    let mockGetGenerativeModel: any;
-    
     beforeEach(() => {
       // Reset mocks before each test
       vi.clearAllMocks();
+      mockGenerateContent.mockReset();
+      mockGetGenerativeModel.mockReset();
       
-      // Setup default mock implementation
-      mockGenerateContent = vi.fn();
-      mockGetGenerativeModel = vi.fn(() => ({
+      // Re-setup default mock behavior
+      mockGetGenerativeModel.mockReturnValue({
         generateContent: mockGenerateContent,
-      }));
-      
-      (GoogleGenerativeAI as any).mockImplementation(() => ({
-        getGenerativeModel: mockGetGenerativeModel,
-      }));
-    });
-    
-    afterEach(() => {
-      vi.restoreAllMocks();
+      });
     });
     
     it('should successfully generate an architecture diagram', async () => {
