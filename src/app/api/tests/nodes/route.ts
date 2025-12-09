@@ -242,7 +242,7 @@ export async function GET(request: NextRequest) {
     if (process.env.NODE_ENV === "development" && isLocalHost) {
       // Use mock endpoint when USE_MOCKS=true, otherwise try local graph service
       const baseUrl = config.USE_MOCKS
-        ? `/api/mock/stakgraph`
+        ? `${config.MOCK_BASE}/api/mock/stakgraph`
         : "http://0.0.0.0:7799";
       const url = `${baseUrl}${endpointPath}`;
       const resp = await fetch(url);
