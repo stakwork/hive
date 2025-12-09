@@ -197,50 +197,76 @@ export async function POST(request: NextRequest) {
           // Construct the expected PR URL to match against artifacts
           const expectedPrUrl = `${repository.repositoryUrl}/pull/${prNumber}`;
 
-          // Look for a janitor task with a PR artifact matching this PR number
-          const task = await db.task.findFirst({
-            where: {
-              workspaceId: repository.workspaceId,
-              sourceType: "JANITOR",
-              // Only check recent tasks (created in the last 7 days)
-              createdAt: {
-                gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-              },
-              chatMessages: {
-                some: {
-                  artifacts: {
-                    some: {
-                      type: "PULL_REQUEST",
-                      content: {
-                        path: ["url"],
-                        string_contains: `/pull/${prNumber}`,
+          // Retry logic to wait for artifact to be persisted (race condition with agent creating PR)
+          let task = null;
+          const maxRetries = 3;
+          const retryDelayMs = 2000; // 2 seconds between retries
+          
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            if (attempt > 0) {
+              console.log(`[GithubWebhook] Retry attempt ${attempt}/${maxRetries} after ${retryDelayMs}ms delay`, {
+                delivery,
+                workspaceId: repository.workspaceId,
+                prNumber,
+              });
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            }
+
+            // Look for a janitor task with a PR artifact matching this PR number
+            task = await db.task.findFirst({
+              where: {
+                workspaceId: repository.workspaceId,
+                sourceType: "JANITOR",
+                // Only check recent tasks (created in the last 7 days)
+                createdAt: {
+                  gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+                },
+                chatMessages: {
+                  some: {
+                    artifacts: {
+                      some: {
+                        type: "PULL_REQUEST",
+                        content: {
+                          path: ["url"],
+                          string_contains: `/pull/${prNumber}`,
+                        },
                       },
                     },
                   },
                 },
               },
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-            select: {
-              id: true,
-              sourceType: true,
-              chatMessages: {
-                select: {
-                  artifacts: {
-                    where: {
-                      type: "PULL_REQUEST",
-                    },
-                    select: {
-                      id: true,
-                      content: true,
+              orderBy: {
+                createdAt: "desc",
+              },
+              select: {
+                id: true,
+                sourceType: true,
+                chatMessages: {
+                  select: {
+                    artifacts: {
+                      where: {
+                        type: "PULL_REQUEST",
+                      },
+                      select: {
+                        id: true,
+                        content: true,
+                      },
                     },
                   },
                 },
               },
-            },
-          });
+            });
+
+            if (task) {
+              console.log(`[GithubWebhook] Found task on attempt ${attempt + 1}`, {
+                delivery,
+                workspaceId: repository.workspaceId,
+                prNumber,
+                taskId: task.id,
+              });
+              break;
+            }
+          }
 
           if (task?.sourceType === "JANITOR") {
             // Verify the PR artifact matches the exact PR URL
