@@ -185,27 +185,20 @@ export async function POST(request: NextRequest) {
           headBranch,
         });
 
-        // Try to find the associated task by matching the branch name or stakwork project ID
+        // Try to find the associated task by matching date and sourceType
         try {
-          // Extract stakworkProjectId from branch name (e.g., "enhancement/add-soft-delete-check-1765212419")
-          const branchProjectIdMatch = headBranch.match(/-(\d+)$/);
-          const branchStakworkProjectId = branchProjectIdMatch ? parseInt(branchProjectIdMatch[1], 10) : null;
-
-          console.log("[GithubWebhook] Extracted project ID from branch", {
+          console.log("[GithubWebhook] Looking for janitor task", {
             delivery,
             workspaceId: repository.workspaceId,
             headBranch,
-            branchStakworkProjectId,
           });
 
-          // Look for a task that matches this repository and stakwork project ID
+          // Look for a task that matches this repository and is a janitor task
           const task = await db.task.findFirst({
             where: {
               workspaceId: repository.workspaceId,
               repositoryId: repository.id,
               sourceType: "JANITOR",
-              // Match by stakworkProjectId if extracted from branch name
-              ...(branchStakworkProjectId && { stakworkProjectId: branchStakworkProjectId }),
               // Only check recent tasks (created in the last 7 days)
               createdAt: {
                 gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
@@ -217,7 +210,6 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               sourceType: true,
-              stakworkProjectId: true,
             },
           });
 
