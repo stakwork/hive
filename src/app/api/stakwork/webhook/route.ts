@@ -149,6 +149,11 @@ export async function POST(request: NextRequest) {
     const updatedTask = await db.task.update({
       where: { id: finalTaskId },
       data: updateData,
+      include: {
+        workspace: {
+          select: { slug: true, id: true },
+        },
+      },
     });
 
     // Create PUBLISH_WORKFLOW artifact and update WORKFLOW artifact for workflow_editor tasks when completed
@@ -265,6 +270,28 @@ export async function POST(request: NextRequest) {
       await pusherServer.trigger(channelName, PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, eventPayload);
     } catch (error) {
       console.error("Error broadcasting to Pusher:", error);
+    }
+
+    // Broadcast to workspace channel for real-time task list updates
+    if (updatedTask.workspace?.slug) {
+      try {
+        const workspaceChannelName = getWorkspaceChannelName(updatedTask.workspace.slug);
+        const workspaceEventPayload = {
+          taskId: finalTaskId,
+          workflowStatus,
+          taskTitle: updatedTask.title,
+          workspaceId: updatedTask.workspace.id,
+          timestamp: new Date(),
+        };
+
+        await pusherServer.trigger(
+          workspaceChannelName,
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          workspaceEventPayload,
+        );
+      } catch (error) {
+        console.error("Error broadcasting to workspace channel:", error);
+      }
     }
 
     return NextResponse.json(
