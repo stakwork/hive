@@ -68,7 +68,7 @@ export const CalloutLabel = ({
                     minHeight: `${labelHeight}px`,
                 }}
             >
-                <div className="text-white text-xs font-medium whitespace-nowrap">
+                <div className="text-[#fed106] text-xs font-medium whitespace-nowrap">
                     {displayTitle}
                 </div>
             </div>
