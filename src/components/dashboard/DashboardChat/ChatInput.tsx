@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
 
@@ -12,10 +12,6 @@ interface ChatInputProps {
 export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
