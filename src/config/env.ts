@@ -51,6 +51,9 @@ export const optionalEnvVars = {
   LIVEKIT_CALL_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/livekit/`
     : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
+  GEMINI_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/gemini`
+    : "https://generativelanguage.googleapis.com",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
@@ -65,6 +68,10 @@ export const optionalEnvVars = {
  * @throws Error if GEMINI_API_KEY is not set
  */
 export function getGeminiApiKey(): string {
+  if (USE_MOCKS) {
+    return "mock-gemini-key-12345";
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   
   if (!apiKey) {

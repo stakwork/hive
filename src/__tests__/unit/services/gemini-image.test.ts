@@ -5,16 +5,20 @@ import {
   GeminiError,
   GeminiErrorType,
 } from '@/services/gemini-image';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getGeminiClient } from '@/lib/gemini-wrapper';
 
-// Mock the GoogleGenerativeAI module
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn(),
+// Mock the gemini-wrapper module
+vi.mock('@/lib/gemini-wrapper', () => ({
+  getGeminiClient: vi.fn(),
 }));
 
 // Mock the env config
 vi.mock('@/config/env', () => ({
   getGeminiApiKey: vi.fn(() => 'test-api-key'),
+  config: {
+    USE_MOCKS: false,
+    MOCK_BASE: 'http://localhost:3000',
+  },
 }));
 
 describe('gemini-image service', () => {
@@ -55,9 +59,9 @@ describe('gemini-image service', () => {
         generateContent: mockGenerateContent,
       }));
       
-      (GoogleGenerativeAI as any).mockImplementation(() => ({
+      (getGeminiClient as any).mockReturnValue({
         getGenerativeModel: mockGetGenerativeModel,
-      }));
+      });
     });
     
     afterEach(() => {
@@ -91,7 +95,7 @@ describe('gemini-image service', () => {
       expect(result).toBeInstanceOf(Buffer);
       expect(result.length).toBeGreaterThan(0);
       expect(mockGetGenerativeModel).toHaveBeenCalledWith({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-2.0-flash-exp',
       });
       expect(mockGenerateContent).toHaveBeenCalledWith(
         expect.stringContaining('Convert the following architecture description')
@@ -304,7 +308,7 @@ describe('gemini-image service', () => {
       await generateArchitectureDiagram('Test architecture');
       
       expect(mockGetGenerativeModel).toHaveBeenCalledWith({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-2.0-flash-exp',
       });
     });
   });

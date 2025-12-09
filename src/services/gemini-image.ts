@@ -5,7 +5,7 @@
  * Google's Gemini 2.5 Flash Image model.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getGeminiClient } from '@/lib/gemini-wrapper';
 import { getGeminiApiKey } from '@/config/env';
 
 /**
@@ -104,9 +104,9 @@ export async function generateArchitectureDiagram(text: string): Promise<Buffer>
     const apiKey = getGeminiApiKey();
     
     // Initialize Gemini client
-    const genAI = new GoogleGenerativeAI(apiKey);
+    const genAI = getGeminiClient(apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash-image' 
+      model: 'gemini-2.0-flash-exp' 
     });
     
     // Build prompt

@@ -777,8 +777,9 @@ model Feature {
   assignee    User?            @relation("FeatureAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   // Diagram fields
-  diagramUrl   String?         @map("diagram_url")
-  diagramS3Key String?         @map("diagram_s3_key")
+  diagramUrl         String?   @map("diagram_url")
+  diagramS3Key       String?   @map("diagram_s3_key")
+  diagramGeneratedAt DateTime? @map("diagram_generated_at")
 
   status      FeatureStatus    @default(BACKLOG)
   priority    FeaturePriority  @default(LOW)

@@ -136,3 +136,46 @@ See `/docs/JARVIS_MOCK_ENDPOINTS.md` for complete documentation.
 - All `aieo` library calls route to mock endpoints
 
 **Documentation:** `docs/ANTHROPIC_MOCK_ENDPOINTS.md`
+
+---
+
+## Google Gemini AI Mock
+
+**Purpose:** Simulates Google Gemini AI image generation API
+
+**State Manager:** `src/lib/mock/gemini-state.ts`
+
+**Endpoints:** (1 endpoint)
+
+- Image generation: `POST /api/mock/gemini/v1/models/[model]:generateContent`
+
+**Key Features:**
+
+- Simulates Gemini's image generation with deterministic responses
+- Returns minimal 1x1 PNG (85 bytes) for testing
+- Validates API key format (`mock-gemini-key-*`)
+- Instant response (no actual AI processing)
+- Matches Gemini API response format
+
+**State Management:**
+
+```typescript
+// Tracked state
+- diagrams: Map<string, MockDiagramRequest>
+- Request IDs: mock-gemini-req-1, mock-gemini-req-2, etc.
+```
+
+**Application Integration:**
+
+- Application endpoint: `POST /api/features/[featureId]/diagram`
+- Generates diagrams from feature architecture descriptions
+- Stores diagrams in database (diagramUrl, diagramGeneratedAt fields)
+- Requires authentication and feature access
+
+**Configuration:**
+
+- Uses global `USE_MOCKS` flag
+- API key: `mock-gemini-key-12345`
+- Auto-routes via `getGeminiClient()` wrapper in `src/lib/gemini-wrapper.ts`
+
+**Documentation:** `docs/GEMINI_MOCK_ENDPOINTS.md`
