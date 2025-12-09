@@ -41,6 +41,7 @@ interface AITextareaSectionProps {
   onBlur: (value: string | null) => void;
   rows?: number;
   className?: string;
+  initialDiagramUrl?: string | null;
 }
 
 export function AITextareaSection({
@@ -57,12 +58,13 @@ export function AITextareaSection({
   onBlur,
   rows = 8,
   className,
+  initialDiagramUrl = null,
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [quickGenerating, setQuickGenerating] = useState(false);
   const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
-  const [diagramUrl, setDiagramUrl] = useState<string | null>(null);
+  const [diagramUrl, setDiagramUrl] = useState<string | null>(initialDiagramUrl);
   const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
 
   const { workspace } = useWorkspace();
