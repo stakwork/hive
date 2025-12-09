@@ -199,3 +199,34 @@ export function createAuthenticatedDeleteRequest(
   const baseRequest = createDeleteRequest(url);
   return addMiddlewareHeaders(baseRequest, user);
 }
+
+/**
+ * Creates a POST request with multipart/form-data for file uploads
+ * Used for webhook endpoints that receive files from external services
+ */
+export function createMultipartPostRequest(
+  path: string,
+  files: { name: string; content: Buffer; filename: string }[],
+  headers: Record<string, string> = {}
+): NextRequest {
+  const url = path.startsWith('http') 
+    ? path 
+    : `http://localhost${path.startsWith('/') ? '' : '/'}${path}`;
+  const formData = new FormData();
+
+  // Add files to FormData
+  files.forEach((file) => {
+    const blob = new Blob([file.content], { type: "application/octet-stream" });
+    formData.append(file.name, blob, file.filename);
+  });
+
+  const request = new NextRequest(url, {
+    method: "POST",
+    headers: {
+      ...headers,
+    },
+    body: formData as any,
+  });
+
+  return request;
+}

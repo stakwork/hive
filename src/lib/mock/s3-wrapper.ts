@@ -137,7 +137,7 @@ export class S3MockWrapper {
   ): string {
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 15);
-    return `uploads/${workspaceId}/${swarmId}/${taskId}/recording_${timestamp}_${randomId}.webm`;
+    return `recordings/${workspaceId}/${swarmId}/${taskId}/${timestamp}_${randomId}_recording.webm`;
   }
 
   /**
