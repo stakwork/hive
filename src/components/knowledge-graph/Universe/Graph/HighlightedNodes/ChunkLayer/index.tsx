@@ -13,7 +13,7 @@ import { findConnectedNodesAtDepth } from './utils'
 
 
 // Simple configuration
-const HIGHLIGHT_DURATION = 30000 // 30 seconds
+const HIGHLIGHT_DURATION = 10000 // 30 seconds
 const PULSE_SPEED = 2
 const BASE_SCALE = 0.8
 const PULSE_AMPLITUDE = 0.15
@@ -35,13 +35,13 @@ const EDGE_CONFIG = {
 // Growth animation configuration
 const EDGE_GROWTH = {
   levelDuration: 4, // seconds per depth level
-  speed: 8,         // global speed multiplier
+  speed: 12,         // global speed multiplier
 }
 
 const COLORS = {
   highlight: '#7DDCFF',
   line: EDGE_CONFIG.color,
-  text: '#FFFFFF',
+  text: '#fed106',
 }
 
 interface ChunkLayerProps {
@@ -491,6 +491,17 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
         edgeMaterial.uniforms.uTime.value = growthTimeRef.current
         edgeMaterial.uniforms.uGrowthSpeed.value = EDGE_GROWTH.speed
         edgeMaterial.uniforms.uLevelDuration.value = EDGE_GROWTH.levelDuration
+        // Fade edges out near the end of the highlight duration
+        const edgeFadeStart = HIGHLIGHT_DURATION * 0.8
+        let edgeOpacity = EDGE_CONFIG.opacity
+        if (chunk.timestamp) {
+          const elapsed = Date.now() - chunk.timestamp
+          if (elapsed > edgeFadeStart) {
+            const fadeProgress = (elapsed - edgeFadeStart) / (HIGHLIGHT_DURATION - edgeFadeStart)
+            edgeOpacity = Math.max(0, EDGE_CONFIG.opacity * (1 - fadeProgress))
+          }
+        }
+        edgeMaterial.uniforms.uOpacity.value = edgeOpacity
       }
 
       // Update HTML label position
