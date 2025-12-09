@@ -3,6 +3,19 @@ import { validateFeatureAccess, validateUserStoryAccess, calculateNextOrder } fr
 import { USER_SELECT } from "@/lib/db/selects";
 
 /**
+ * Simple hash function to convert string to integer for advisory locks
+ */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
+}
+
+/**
  * Creates a new user story for a feature
  */
 export async function createUserStory(
@@ -24,32 +37,46 @@ export async function createUserStory(
     throw new Error("User not found");
   }
 
-  const nextOrder = await calculateNextOrder(db.userStory, { featureId });
+  // Use transaction with advisory lock to prevent race condition in concurrent user story creation
+  const userStory = await db.$transaction(async (tx) => {
+    // Use advisory lock based on featureId to serialize order calculation
+    // The lock is automatically released at end of transaction
+    const lockId = Math.abs(hashString(featureId));
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockId})`);
 
-  const userStory = await db.userStory.create({
-    data: {
-      title: data.title.trim(),
-      featureId,
-      order: nextOrder,
-      completed: false,
-      createdById: userId,
-      updatedById: userId,
-    },
-    include: {
-      createdBy: {
-        select: USER_SELECT,
+    // Calculate next order within locked transaction to ensure atomicity
+    const maxOrderItem = await tx.userStory.findFirst({
+      where: { featureId },
+      orderBy: { order: "desc" },
+      select: { order: true },
+    });
+    const nextOrder = (maxOrderItem?.order ?? -1) + 1;
+
+    return await tx.userStory.create({
+      data: {
+        title: data.title.trim(),
+        featureId,
+        order: nextOrder,
+        completed: false,
+        createdById: userId,
+        updatedById: userId,
       },
-      updatedBy: {
-        select: USER_SELECT,
-      },
-      feature: {
-        select: {
-          id: true,
-          title: true,
-          workspaceId: true,
+      include: {
+        createdBy: {
+          select: USER_SELECT,
+        },
+        updatedBy: {
+          select: USER_SELECT,
+        },
+        feature: {
+          select: {
+            id: true,
+            title: true,
+            workspaceId: true,
+          },
         },
       },
-    },
+    });
   });
 
   return userStory;

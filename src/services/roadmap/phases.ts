@@ -4,6 +4,19 @@ import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 
 /**
+ * Simple hash function to convert string to integer for advisory locks
+ */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
+}
+
+/**
  * Gets a phase with its tasks and feature context
  */
 export async function getPhase(phaseId: string, userId: string): Promise<PhaseWithTasks> {
@@ -119,28 +132,42 @@ export async function createPhase(featureId: string, userId: string, data: Creat
     throw new Error("Name is required");
   }
 
-  const nextOrder = await calculateNextOrder(db.phase, { featureId });
+  // Use transaction with advisory lock to prevent race condition in concurrent phase creation
+  const phase = await db.$transaction(async (tx) => {
+    // Use advisory lock based on featureId to serialize order calculation
+    // The lock is automatically released at end of transaction
+    const lockId = Math.abs(hashString(featureId));
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockId})`);
 
-  const phase = await db.phase.create({
-    data: {
-      name: data.name.trim(),
-      description: data.description?.trim() || null,
-      featureId,
-      order: nextOrder,
-    },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      status: true,
-      order: true,
-      featureId: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: { tasks: true },
+    // Calculate next order within locked transaction to ensure atomicity
+    const maxOrderItem = await tx.phase.findFirst({
+      where: { featureId },
+      orderBy: { order: "desc" },
+      select: { order: true },
+    });
+    const nextOrder = (maxOrderItem?.order ?? -1) + 1;
+
+    return await tx.phase.create({
+      data: {
+        name: data.name.trim(),
+        description: data.description?.trim() || null,
+        featureId,
+        order: nextOrder,
       },
-    },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        order: true,
+        featureId: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: { tasks: true },
+        },
+      },
+    });
   });
 
   return phase;

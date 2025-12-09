@@ -674,31 +674,37 @@ export async function updateStakworkRunDecision(
         // Map tempId to real database ID for dependency handling
         const tempIdToRealId: Record<string, string> = {};
 
-        // Create tasks sequentially to handle dependencies
-        for (const task of tasks) {
-          // Map tempId dependencies to real IDs
-          const dependsOnTaskIds = (task.dependsOn || [])
-            .map((tempId: string) => tempIdToRealId[tempId])
-            .filter(Boolean);
+        // Create tasks within transaction to prevent race conditions
+        await db.$transaction(async (tx) => {
+          let currentOrder = 0;
 
-          const createdTask = await db.task.create({
-            data: {
-              title: task.title,
-              description: task.description || null,
-              priority: task.priority,
-              phaseId: defaultPhase.id,
-              featureId: updatedRun.featureId,
-              workspaceId: featureWithPhase.workspace.id,
-              status: 'TODO',
-              dependsOnTaskIds,
-              createdById: userId,
-              updatedById: userId,
-            },
-          });
+          // Create tasks sequentially to handle dependencies and order
+          for (const task of tasks) {
+            // Map tempId dependencies to real IDs
+            const dependsOnTaskIds = (task.dependsOn || [])
+              .map((tempId: string) => tempIdToRealId[tempId])
+              .filter(Boolean);
 
-          // Store mapping for next tasks' dependencies
-          tempIdToRealId[task.tempId] = createdTask.id;
-        }
+            const createdTask = await tx.task.create({
+              data: {
+                title: task.title,
+                description: task.description || null,
+                priority: task.priority,
+                phaseId: defaultPhase.id,
+                featureId: updatedRun.featureId,
+                workspaceId: featureWithPhase.workspace.id,
+                status: 'TODO',
+                order: currentOrder++,
+                dependsOnTaskIds,
+                createdById: userId,
+                updatedById: userId,
+              },
+            });
+
+            // Store mapping for next tasks' dependencies
+            tempIdToRealId[task.tempId] = createdTask.id;
+          }
+        });
         break;
 
       case StakworkRunType.REQUIREMENTS:

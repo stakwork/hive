@@ -1430,5 +1430,61 @@ describe("User Stories API - Integration Tests", () => {
       });
       expect(updatedStory?.order).toBe(3);
     });
+
+    test("handles concurrent story creation with correct sequential order", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      // Create multiple stories concurrently
+      const concurrentRequests = Array.from({ length: 5 }, (_, i) =>
+        POST(
+          createAuthenticatedPostRequest(
+            `http://localhost:3000/api/features/${feature.id}/user-stories`,
+            { title: `Concurrent Story ${i + 1}` },
+            user
+          ),
+          { params: Promise.resolve({ featureId: feature.id }) }
+        )
+      );
+
+      const responses = await Promise.all(concurrentRequests);
+
+      // All should succeed
+      for (const response of responses) {
+        expect(response.status).toBe(201);
+      }
+
+      // Verify all stories were created
+      const stories = await db.userStory.findMany({
+        where: { featureId: feature.id },
+        orderBy: { order: "asc" },
+      });
+
+      expect(stories).toHaveLength(5);
+
+      // With advisory locks, all orders should be unique and sequential
+      const orders = stories.map((s) => s.order);
+      expect(orders.every((o) => o >= 0)).toBe(true);
+
+      // Verify no duplicate orders - advisory locks prevent race conditions
+      const uniqueOrders = new Set(orders);
+      expect(uniqueOrders.size).toBe(5);
+      
+      // Orders should be sequential (0, 1, 2, 3, 4) due to advisory lock serialization
+      expect(orders).toEqual([0, 1, 2, 3, 4]);
+    });
   });
 });
