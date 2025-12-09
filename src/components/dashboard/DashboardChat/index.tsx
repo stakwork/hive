@@ -106,6 +106,10 @@ export function DashboardChat() {
     }
   };
 
+  const handleDeleteMessage = (messageId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+  };
+
   // Only show assistant messages
   const assistantMessages = messages.filter((m) => m.role === "assistant");
 
@@ -113,7 +117,7 @@ export function DashboardChat() {
     <div className="fixed bottom-6 left-0 md:left-64 right-0 z-20 pointer-events-none">
       {/* Message history */}
       {assistantMessages.length > 0 && (
-        <div className="max-h-[300px] overflow-y-auto pb-2 pointer-events-auto">
+        <div className="max-h-[300px] overflow-y-auto pb-2">
           <div className="space-y-2 px-4">
             {assistantMessages.map((message, index) => {
               // Only the last message is streaming
@@ -124,6 +128,7 @@ export function DashboardChat() {
                   key={message.id}
                   message={message}
                   isStreaming={isMessageStreaming}
+                  onDelete={handleDeleteMessage}
                 />
               );
             })}
