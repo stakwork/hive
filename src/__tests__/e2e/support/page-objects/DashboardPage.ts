@@ -86,6 +86,7 @@ export class DashboardPage {
    */
   async goToSettings(): Promise<void> {
     await this.page.locator(selectors.navigation.settingsButton).click();
+    await this.page.waitForURL(/\/w\/.*\/settings/, { timeout: 10000 });
     await expect(this.page.locator(selectors.pageTitle.settings)).toBeVisible();
   }
 
