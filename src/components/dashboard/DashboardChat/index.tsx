@@ -30,8 +30,11 @@ export function DashboardChat() {
       timestamp: new Date(),
     };
 
+    // Create the updated messages array (includes current messages + new user message)
+    const updatedMessages = [...messages, userMessage];
+
     // Add user message to state
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(updatedMessages);
     setIsLoading(true);
     hasReceivedContentRef.current = false;
 
@@ -42,7 +45,7 @@ export function DashboardChat() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage].map((m) => ({
+          messages: updatedMessages.map((m) => ({
             role: m.role,
             content: m.content,
           })),
