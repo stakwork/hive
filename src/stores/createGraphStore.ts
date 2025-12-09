@@ -203,14 +203,23 @@ export const createGraphStore = (
       highlightTimestamp: Date.now(),
       webhookHighlightDepth: depth
     }),
-    addHighlightChunk: (title: string, ref_ids: string[], sourceNodeRefId?: string) => {
+    addHighlightChunk: (title: string, ref_ids: string[], sourceNodeRefId?: string, maxDuration?: number) => {
       const chunkId = crypto.randomUUID()
+      let timeoutId: NodeJS.Timeout | undefined
+
+      if (maxDuration) {
+        timeoutId = setTimeout(() => {
+          get().removeHighlightChunk(chunkId)
+        }, maxDuration)
+      }
+
       const chunk: HighlightChunk = {
         chunkId,
         title,
         ref_ids,
         sourceNodeRefId,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        timeoutId
       }
       const { highlightChunks } = get()
       set({
@@ -221,7 +230,13 @@ export const createGraphStore = (
     },
     removeHighlightChunk: (chunkId: string) => {
       const { highlightChunks } = get()
-      const updatedChunks = highlightChunks.filter(chunk => chunk.chunkId !== chunkId)
+      const chunk = highlightChunks.find(c => c.chunkId === chunkId)
+
+      if (chunk?.timeoutId) {
+        clearTimeout(chunk.timeoutId)
+      }
+
+      const updatedChunks = highlightChunks.filter(c => c.chunkId !== chunkId)
       set({
         highlightChunks: updatedChunks,
         highlightTimestamp: updatedChunks.length > 0 ? Date.now() : null
