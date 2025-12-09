@@ -28,7 +28,7 @@ const DEPTH_CONFIG = {
 // Edge configuration
 const EDGE_CONFIG = {
   color: '#08f6fb',
-  width: 1,
+  width: 0.7,
   opacity: 0.3,
 }
 
@@ -512,25 +512,11 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       <group ref={groupRef} name={`chunk-${chunk.chunkId}`}>
         {validNodes.map((node, nodeIndex) => {
           // Determine node level for visual differentiation
-          let nodeLevel = 0
-          let isSourceNode = false
+          const isSourceNode = chunk.sourceNodeRefId === node.ref_id
 
-          if (chunk.sourceNodeRefId === node.ref_id) {
-            isSourceNode = true
-          } else if (chunk.ref_ids.includes(node.ref_id)) {
-            nodeLevel = 0 // Original ref_ids are level 0
-          } else {
-            // Find the level of this node in the depth structure
-            for (const [level, nodes] of nodesByLevel.entries()) {
-              if (nodes.has(node.ref_id)) {
-                nodeLevel = level
-                break
-              }
-            }
-          }
 
           // Calculate visual properties based on level
-          const levelScale = isSourceNode ? 0.6 : Math.max(0.3, 0.5 - (nodeLevel * 0.05)) // Source nodes larger
+          const levelScale = isSourceNode ? 0.3 : 0.2 // Source nodes larger
           const levelColor = '#4FC3F7' // Gold for source, blue variants for levels
 
           return (
