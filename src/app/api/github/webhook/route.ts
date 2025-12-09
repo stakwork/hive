@@ -193,11 +193,10 @@ export async function POST(request: NextRequest) {
             headBranch,
           });
 
-          // Look for a task that matches this repository and is a janitor task
+          // Look for a task that matches this workspace and is a janitor task
           const task = await db.task.findFirst({
             where: {
               workspaceId: repository.workspaceId,
-              repositoryId: repository.id,
               sourceType: "JANITOR",
               // Only check recent tasks (created in the last 7 days)
               createdAt: {
