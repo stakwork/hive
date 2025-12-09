@@ -222,8 +222,13 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(data).toEqual({ success: true });
 
       // Verify GitHub API was called with decrypted token
+      // Note: URL may be mock endpoint if USE_MOCKS=true in environment
+      const expectedUrl = process.env.USE_MOCKS === "true"
+        ? expect.stringContaining("/api/mock/github/applications/revoke")
+        : "https://api.github.com/applications/revoke";
+      
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.github.com/applications/revoke",
+        expectedUrl,
         expect.objectContaining({
           body: JSON.stringify({
             access_token: originalToken,
