@@ -1,6 +1,6 @@
 // Mock mode - when true, URLs resolve to local mock endpoints
 const USE_MOCKS = process.env.USE_MOCKS === "true";
-const MOCK_BASE = process.env.NEXTAUTH_URL || "http://localhost:3000";
+const MOCK_BASE = process.env.LOCAL_BASE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
 
 const requiredEnvVars = {
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
