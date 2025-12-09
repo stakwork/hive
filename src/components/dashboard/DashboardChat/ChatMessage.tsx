@@ -26,7 +26,7 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
       transition={{ duration: 0.3 }}
       className="flex justify-center w-full"
     >
-      <div className="max-w-[600px] w-full">
+      <div className="max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px] w-full">
         <div className="bg-muted/40 rounded-2xl px-4 py-3 shadow-sm backdrop-blur-sm">
           {isStreaming ? (
             <div className="text-sm text-foreground/90 whitespace-pre-wrap">

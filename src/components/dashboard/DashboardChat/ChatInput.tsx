@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
 
 interface ChatInputProps {
-  onSend: (message: string) => Promise<void>;
+  onSend: (message: string, clearInput: () => void) => Promise<void>;
   disabled?: boolean;
 }
 
@@ -22,11 +22,11 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
     if (!input.trim() || disabled) return;
 
     const message = input.trim();
-    setInput("");
-    await onSend(message);
-
-    // Keep focus on input after sending
-    inputRef.current?.focus();
+    // Don't clear input yet - wait for response to start
+    await onSend(message, () => {
+      setInput("");
+      inputRef.current?.focus();
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -38,7 +38,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex justify-center w-full px-4 py-4">
-      <div className="relative w-full max-w-[600px]">
+      <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px]">
         <input
           ref={inputRef}
           type="text"
@@ -47,7 +47,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          className={`w-full px-4 py-3 pr-12 rounded-full bg-background/5 border border-border/20 text-sm text-muted-foreground/80 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
+          className={`w-full px-4 py-3 pr-12 rounded-full bg-background/5 border border-border/20 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
         />

@@ -3,7 +3,6 @@
 import { useState, useRef } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStreamProcessor } from "@/lib/streaming";
-import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
 
@@ -21,7 +20,7 @@ export function DashboardChat() {
   const hasReceivedContentRef = useRef(false);
   const { processStream } = useStreamProcessor();
 
-  const handleSend = async (content: string) => {
+  const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
 
     const userMessage: Message = {
@@ -65,6 +64,7 @@ export function DashboardChat() {
           if (!hasReceivedContentRef.current) {
             hasReceivedContentRef.current = true;
             setIsLoading(false);
+            clearInput(); // Clear input when response starts
           }
 
           // Extract only text content (no tool calls or reasoning)
@@ -89,11 +89,6 @@ export function DashboardChat() {
             }
             return [...prev, simpleMessage];
           });
-        },
-        // Additional fields for streaming message
-        {
-          role: "assistant" as const,
-          timestamp: new Date(),
         }
       );
     } catch (error) {
@@ -115,7 +110,7 @@ export function DashboardChat() {
   const assistantMessages = messages.filter((m) => m.role === "assistant");
 
   return (
-    <div className="fixed bottom-[35px] left-0 md:left-64 right-0 z-20 pointer-events-none">
+    <div className="fixed bottom-6 left-0 md:left-64 right-0 z-20 pointer-events-none">
       {/* Message history */}
       {assistantMessages.length > 0 && (
         <div className="max-h-[300px] overflow-y-auto pb-2 pointer-events-auto">
