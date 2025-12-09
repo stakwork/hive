@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { optionalEnvVars } from "@/config/env";
 
 export async function POST(
   request: NextRequest,
@@ -73,7 +74,7 @@ export async function POST(
     }
 
     // Get LiveKit base URL from environment
-    const liveKitBaseUrl = process.env.LIVEKIT_CALL_BASE_URL;
+    const liveKitBaseUrl = optionalEnvVars.LIVEKIT_CALL_BASE_URL;
     if (!liveKitBaseUrl) {
       return NextResponse.json(
         { error: "LiveKit call service not configured" },

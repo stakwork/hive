@@ -48,6 +48,9 @@ export const optionalEnvVars = {
   SWARM_SUPER_ADMIN_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/swarm-super-admin`
     : process.env.SWARM_SUPER_ADMIN_URL,
+  LIVEKIT_CALL_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/livekit/`
+    : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
