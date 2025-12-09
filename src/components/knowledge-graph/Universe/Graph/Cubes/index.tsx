@@ -1,17 +1,13 @@
 import { useStoreId } from '@/stores/StoreProvider'
-import { getStoreBundle } from '@/stores/createStoreFactory'
 import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
-import { ThreeEvent, useFrame } from '@react-three/fiber'
+import { ThreeEvent } from '@react-three/fiber'
 import { memo, useCallback, useRef } from 'react'
-import { Group, Mesh, MeshStandardMaterial } from 'three'
+import { Group } from 'three'
 import { useNodeNavigation } from '../../useNodeNavigation'
 import { NodePoints } from './NodePoints'
-import { NodeWrapper } from './NodeWrapper'
 import { RelevanceGroups } from './RelevanceGroups'
 import { RelevanceList } from './RelevanceList/indes'
-import { nodeBackground } from './constants'
-import { nodeMatchesFollowerFilter } from './utils/nodesMatchsFollowesFilter'
 
 const POINTER_IN_DELAY = 100
 
@@ -42,119 +38,119 @@ export const Cubes = memo(() => {
   const scaleDefault = 1
   const scaleDown = 0.1
 
-  useFrame(({ camera }) => {
-    const nodes = dataInitial?.nodes
+  // useFrame(({ camera }) => {
+  //   const nodes = dataInitial?.nodes
 
-    //    const primaryColor = normalizedSchemasByType[node.node_type]?.primary_color
+  //   //    const primaryColor = normalizedSchemasByType[node.node_type]?.primary_color
 
-    if (!instances || !group || !nodes || nodes.length === 0) {
-      return
-    }
+  //   if (!instances || !group || !nodes || nodes.length === 0) {
+  //     return
+  //   }
 
-    const { searchQuery, selectedLinkTypes, selectedNodeTypes, hoveredNodeSiblings, followersFilter, dateRangeFilter } =
-      getStoreBundle(storeId).graph.getState()
+  //   const { searchQuery, selectedLinkTypes, selectedNodeTypes, hoveredNodeSiblings, followersFilter, dateRangeFilter } =
+  //     getStoreBundle(storeId).graph.getState()
 
-    const dynamicMode =
-      searchQuery ||
-      selectedLinkTypes.length > 0 ||
-      selectedNodeTypes.length > 0 ||
-      selectedNode ||
-      followersFilter ||
-      dateRangeFilter
+  //   const dynamicMode =
+  //     searchQuery ||
+  //     selectedLinkTypes.length > 0 ||
+  //     selectedNodeTypes.length > 0 ||
+  //     selectedNode ||
+  //     followersFilter ||
+  //     dateRangeFilter
 
-    const selectedNodeNormalized = selectedNode ? nodesNormalized.get(selectedNode.ref_id) : null
+  //   const selectedNodeNormalized = selectedNode ? nodesNormalized.get(selectedNode.ref_id) : null
 
-    const selectedSiblings = selectedNodeNormalized
-      ? [...(selectedNodeNormalized?.targets || []), ...(selectedNodeNormalized.sources || [])]
-      : []
+  //   const selectedSiblings = selectedNodeNormalized
+  //     ? [...(selectedNodeNormalized?.targets || []), ...(selectedNodeNormalized.sources || [])]
+  //     : []
 
-    const start = frameIndex.current * chunkSize
-    const end = Math.min(start + chunkSize, nodes.length)
-    const points = instances.children[0].children
-    const objects = group.children
+  //   const start = frameIndex.current * chunkSize
+  //   const end = Math.min(start + chunkSize, nodes.length)
+  //   const points = instances.children[0].children
+  //   const objects = group.children
 
-    for (let i = start; i < end; i += 1) {
-      const object = objects[i] as Mesh & { userData: NodeExtended }
-      const background = object.getObjectByName('background') as Mesh | null
-      const backgroundWrapper = object.getObjectByName('background-wrapper') as Group | null
+  //   for (let i = start; i < end; i += 1) {
+  //     const object = objects[i] as Mesh & { userData: NodeExtended }
+  //     const background = object.getObjectByName('background') as Mesh | null
+  //     const backgroundWrapper = object.getObjectByName('background-wrapper') as Group | null
 
-      if (backgroundWrapper && !backgroundWrapper.visible) {
-        backgroundWrapper.visible = true
-      }
+  //     if (backgroundWrapper && !backgroundWrapper.visible) {
+  //       backgroundWrapper.visible = true
+  //     }
 
-      const node = object.userData
-      const point = points[i]
+  //     const node = object.userData
+  //     const point = points[i]
 
-      if (dynamicMode) {
-        const isHovered = hoveredNode?.ref_id === node.ref_id
-        const isSelected = selectedNode?.ref_id === node.ref_id
-        const isHoveredSibling = hoveredNodeSiblings.includes(node.ref_id)
-        const isSelectedSibling = selectedSiblings.includes(node.ref_id)
-        const isFollowersMatch = nodeMatchesFollowerFilter(node, followersFilter)
-        // const isDateRangeMatch = nodesMatchesDateRangeFilter(node, dateRangeFilter)
+  //     if (dynamicMode) {
+  //       const isHovered = hoveredNode?.ref_id === node.ref_id
+  //       const isSelected = selectedNode?.ref_id === node.ref_id
+  //       const isHoveredSibling = hoveredNodeSiblings.includes(node.ref_id)
+  //       const isSelectedSibling = selectedSiblings.includes(node.ref_id)
+  //       const isFollowersMatch = nodeMatchesFollowerFilter(node, followersFilter)
+  //       // const isDateRangeMatch = nodesMatchesDateRangeFilter(node, dateRangeFilter)
 
-        const highlight =
-          isHovered || isSelected || isHoveredSibling || isSelectedSibling || isFollowersMatch
+  //       const highlight =
+  //         isHovered || isSelected || isHoveredSibling || isSelectedSibling || isFollowersMatch
 
-        const name = node.name?.toLowerCase() || ''
-        const searchMatch = searchQuery && name.includes(searchQuery.toLowerCase())
-        const typeMatch = selectedNodeTypes.includes(node.node_type)
-        const linkMatch = node.edgeTypes?.some((t) => selectedLinkTypes.includes(t))
+  //       const name = node.name?.toLowerCase() || ''
+  //       const searchMatch = searchQuery && name.includes(searchQuery.toLowerCase())
+  //       const typeMatch = selectedNodeTypes.includes(node.node_type)
+  //       const linkMatch = node.edgeTypes?.some((t) => selectedLinkTypes.includes(t))
 
-        const shouldBeVisible = highlight || searchMatch || typeMatch || linkMatch
+  //       const shouldBeVisible = highlight || searchMatch || typeMatch || linkMatch
 
-        if (shouldBeVisible) {
-          object.visible = true
-          object.scale.setScalar(highlight ? 1.1 : 1)
+  //       if (shouldBeVisible) {
+  //         object.visible = true
+  //         object.scale.setScalar(highlight ? 1.1 : 1)
 
-          if (background) {
-            background.visible = true
+  //         if (background) {
+  //           background.visible = true
 
-            const material = background.material as MeshStandardMaterial
+  //           const material = background.material as MeshStandardMaterial
 
-            material.color.set(highlight ? node.primary_color || nodeBackground : nodeBackground)
-          }
+  //           material.color.set(highlight ? node.primary_color || nodeBackground : nodeBackground)
+  //         }
 
-          if (point) {
-            point.scale.set(scaleUp, scaleUp, scaleUp)
-          }
-        } else {
-          object.visible = false
+  //         if (point) {
+  //           point.scale.set(scaleUp, scaleUp, scaleUp)
+  //         }
+  //       } else {
+  //         object.visible = false
 
-          if (background) {
-            background.visible = false
-          }
+  //         if (background) {
+  //           background.visible = false
+  //         }
 
-          if (point) {
-            point.scale.set(scaleDown, scaleDown, scaleDown)
-          }
-        }
+  //         if (point) {
+  //           point.scale.set(scaleDown, scaleDown, scaleDown)
+  //         }
+  //       }
 
-        if (isSelected && backgroundWrapper) {
-          backgroundWrapper.visible = false
-        }
-      } else {
-        const distance = object.position.distanceTo(camera.position)
-        const visible = distance < 1500
+  //       if (isSelected && backgroundWrapper) {
+  //         backgroundWrapper.visible = false
+  //       }
+  //     } else {
+  //       const distance = object.position.distanceTo(camera.position)
+  //       const visible = distance < 1500
 
-        object.visible = visible
+  //       object.visible = visible
 
-        if (background) {
-          background.visible = visible
-        }
+  //       if (background) {
+  //         background.visible = visible
+  //       }
 
-        if (point) {
-          point.scale.set(scaleDefault, scaleDefault, scaleDefault)
-        }
+  //       if (point) {
+  //         point.scale.set(scaleDefault, scaleDefault, scaleDefault)
+  //       }
 
-        if (object) {
-          object.scale.setScalar(scaleDefault)
-        }
-      }
-    }
+  //       if (object) {
+  //         object.scale.setScalar(scaleDefault)
+  //       }
+  //     }
+  //   }
 
-    frameIndex.current = (frameIndex.current + 1) % Math.ceil(nodes.length / chunkSize)
-  })
+  //   frameIndex.current = (frameIndex.current + 1) % Math.ceil(nodes.length / chunkSize)
+  // })
 
   const ignoreNodeEvent = useCallback(
     (node: NodeExtended) => {
@@ -264,7 +260,7 @@ export const Cubes = memo(() => {
         onPointerOver={onPointerIn}
         onPointerUp={handlePointerUp}
       >
-        <group ref={nodesWrapperRef} name="simulation-3d-group__nodes" visible={!hideUniverse}>
+        {/* <group ref={nodesWrapperRef} name="simulation-3d-group__nodes" visible={!hideUniverse}>
           {dataInitial?.nodes.map((node: NodeExtended, index) => {
             const simulationNode = simulation?.nodes()[index]
             const isFixed = true || typeof simulationNode?.fx === 'number'
@@ -277,7 +273,7 @@ export const Cubes = memo(() => {
               <NodeWrapper key={node.ref_id} isFixed={isFixed} node={normalizedNode} scale={1} />
             ) : null
           })}
-        </group>
+        </group> */}
         <group ref={instancesRef} name="simulation-3d-group__node-points">
           <NodePoints />
         </group>

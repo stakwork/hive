@@ -28,6 +28,16 @@ const Content = ({ enableRotation }: { enableRotation: boolean }) => {
       <color args={[colors.BLUE_PRESS_STATE]} attach="transparent" />
 
       <Controls enableRotation={enableRotation} />
+      {/* <Perf
+        position="top-left"
+        showGraph={false}
+        deepAnalyze={true}
+        minimal={false}
+        overClock={false}
+        matrixUpdate={true}
+        colorBlind={false}
+        antialias={false}
+      /> */}
 
       <Graph />
     </>
