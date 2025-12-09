@@ -36,7 +36,7 @@ The LiveKit URL is configured in `src/config/env.ts`:
 ```typescript
 export const optionalEnvVars = {
   LIVEKIT_CALL_BASE_URL: USE_MOCKS
-    ? `/api/mock/livekit/`
+    ? `${MOCK_BASE}/api/mock/livekit/`
     : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
   // ... other config
 }
@@ -205,7 +205,7 @@ Required environment variables for mock mode:
 # Enable mock mode
 USE_MOCKS=true
 
-# Base URL for application
+# Base URL for application (used as MOCK_BASE)
 NEXTAUTH_URL=http://localhost:3000
 
 # Optional: LiveKit base URL (only used when USE_MOCKS=false)

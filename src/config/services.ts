@@ -1,7 +1,7 @@
 import { ServiceConfig } from "@/types";
 import { optionalEnvVars, config } from "./env";
 
-const { USE_MOCKS } = config;
+const { USE_MOCKS, MOCK_BASE } = config;
 
 // Service endpoint configurations
 // Note: poolManager and stakwork baseURLs come from env.ts which handles USE_MOCKS routing
@@ -34,7 +34,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
   },
   github: {
     baseURL: USE_MOCKS
-      ? `/api/mock/github`
+      ? `${MOCK_BASE}/api/mock/github`
       : "https://api.github.com",
     apiKey: "",
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),
@@ -44,7 +44,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
   },
   githubApplications: {
     baseURL: USE_MOCKS
-      ? `/api/mock/github`
+      ? `${MOCK_BASE}/api/mock/github`
       : "https://api.github.com",
     apiKey: "",
     timeout: parseInt(process.env.API_TIMEOUT || "10000"),

@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     if (process.env.NODE_ENV === "development" && isLocalHost) {
       const baseUrl = config.USE_MOCKS
-        ? `/api/mock/stakgraph`
+        ? `${config.MOCK_BASE}/api/mock/stakgraph`
         : "http://0.0.0.0:3355";
 
       const params = new URLSearchParams({

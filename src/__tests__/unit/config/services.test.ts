@@ -9,6 +9,7 @@ vi.mock("@/config/env", () => ({
   },
   config: {
     USE_MOCKS: false,
+    MOCK_BASE: "http://localhost:3000",
   },
 }));
 

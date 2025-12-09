@@ -42,7 +42,7 @@ export async function getModel(
 
     const mockProvider = createAnthropic({
       apiKey: "mock-anthropic-key-12345",
-      baseURL: `/api/mock/anthropic/v1`,
+      baseURL: `${config.MOCK_BASE}/api/mock/anthropic/v1`,
     });
 
     // Return appropriate model based on modelType
