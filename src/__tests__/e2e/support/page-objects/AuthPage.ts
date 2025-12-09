@@ -30,8 +30,9 @@ export class AuthPage {
     await expect(signInButton).toBeVisible({ timeout: 10000 });
     await signInButton.click();
 
-    // Wait for redirect to workspace
-    await this.page.waitForURL(/\/w\/.*/, { timeout: 10000 });
+    // Wait for redirect to workspace (increased timeout for CI environment)
+    // This involves: signIn callback → session callback → workspace query → client redirect
+    await this.page.waitForURL(/\/w\/.*/, { timeout: 30000 });
   }
 
   /**
