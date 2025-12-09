@@ -5,16 +5,11 @@ import {
   GeminiError,
   GeminiErrorType,
 } from '@/services/gemini-image';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getGeminiClient } from '@/lib/gemini/client';
 
-// Mock the GoogleGenerativeAI module
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn(),
-}));
-
-// Mock the env config
-vi.mock('@/config/env', () => ({
-  getGeminiApiKey: vi.fn(() => 'test-api-key'),
+// Mock the Gemini client wrapper
+vi.mock('@/lib/gemini/client', () => ({
+  getGeminiClient: vi.fn(),
 }));
 
 describe('gemini-image service', () => {
@@ -55,9 +50,10 @@ describe('gemini-image service', () => {
         generateContent: mockGenerateContent,
       }));
       
-      (GoogleGenerativeAI as any).mockImplementation(() => ({
+      // Mock getGeminiClient to return a mock client
+      (getGeminiClient as any).mockReturnValue({
         getGenerativeModel: mockGetGenerativeModel,
-      }));
+      });
     });
     
     afterEach(() => {
