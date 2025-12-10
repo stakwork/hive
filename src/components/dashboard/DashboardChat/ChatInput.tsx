@@ -26,8 +26,10 @@ export function ChatInput({
   onImageRemove,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,8 +85,75 @@ export function ChatInput({
     }
   };
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+
+    if (disabled) return;
+
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please drop an image file");
+      return;
+    }
+
+    try {
+      const base64 = await convertToBase64(file);
+      onImageUpload?.(base64);
+    } catch (error) {
+      console.error("Error reading file:", error);
+      alert("Failed to read image file");
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="flex justify-center items-center gap-2 w-full px-4 py-4">
+    <form
+      onSubmit={handleSubmit}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className="relative flex justify-center items-center gap-2 w-full px-4 py-4"
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-2xl flex items-center justify-center pointer-events-none z-10">
+          <div className="bg-background/90 px-6 py-3 rounded-lg shadow-lg">
+            <p className="text-sm font-medium text-foreground flex items-center gap-2">
+              <ImageIcon className="w-4 h-4" />
+              Drop image here
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Image upload button */}
       <div className="relative">
         <input
