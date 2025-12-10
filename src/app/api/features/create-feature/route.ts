@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { type ModelMessage } from "ai";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { createFeature } from "@/services/roadmap";
 import { extractFeatureFromTranscript } from "@/lib/ai/extract-feature";
@@ -11,7 +12,10 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { workspaceSlug, transcript } = body;
+    const { workspaceSlug, transcript } = body as {
+      workspaceSlug: string;
+      transcript: string | ModelMessage[];
+    };
 
     if (!workspaceSlug || !transcript) {
       return NextResponse.json(
@@ -20,9 +24,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (typeof transcript !== "string" || transcript.trim().length === 0) {
+    // Validate transcript is either a non-empty string or non-empty array
+    const isValidString = typeof transcript === "string" && transcript.trim().length > 0;
+    const isValidArray = Array.isArray(transcript) && transcript.length > 0;
+
+    if (!isValidString && !isValidArray) {
       return NextResponse.json(
-        { error: "Transcript must be a non-empty string" },
+        { error: "Transcript must be a non-empty string or ModelMessage array" },
         { status: 400 }
       );
     }
@@ -42,7 +50,10 @@ export async function POST(request: NextRequest) {
 
     console.log("🎤 Creating feature from voice transcript:", {
       workspaceSlug,
-      transcriptLength: transcript.length,
+      transcriptLength: typeof transcript === "string"
+        ? transcript.length
+        : `${transcript.length} messages`,
+      isMessageArray: Array.isArray(transcript),
       userId: userOrResponse.id,
     });
 

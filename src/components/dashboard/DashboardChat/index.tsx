@@ -5,33 +5,67 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
+import { CreateFeatureModal } from "./CreateFeatureModal";
+import { toast } from "sonner";
+import type { ModelMessage } from "ai";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  imageData?: string;
 }
 
 export function DashboardChat() {
   const { slug } = useWorkspace();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingFeature, setIsCreatingFeature] = useState(false);
+  const [showFeatureModal, setShowFeatureModal] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const { processStream } = useStreamProcessor();
+
+  // Get the most recent image from the messages array
+  const currentImageData = messages
+    .slice()
+    .reverse()
+    .find((m) => m.imageData)?.imageData || null;
 
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: content.trim(),
-      timestamp: new Date(),
-    };
+    // Check if the last message is an empty user message with an image
+    const lastMessage = messages[messages.length - 1];
+    const hasEmptyImageMessage =
+      lastMessage &&
+      lastMessage.role === "user" &&
+      lastMessage.content === "" &&
+      lastMessage.imageData;
 
-    // Create the updated messages array (includes current messages + new user message)
-    const updatedMessages = [...messages, userMessage];
+    let updatedMessages: Message[];
+
+    if (hasEmptyImageMessage) {
+      // Update the last message with the text content
+      updatedMessages = [
+        ...messages.slice(0, -1),
+        {
+          ...lastMessage,
+          content: content.trim(),
+          timestamp: new Date(),
+        },
+      ];
+    } else {
+      // Create a new user message with the current image (if any)
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content: content.trim(),
+        timestamp: new Date(),
+        imageData: currentImageData || undefined,
+      };
+      updatedMessages = [...messages, userMessage];
+    }
 
     // Add user message to state
     setMessages(updatedMessages);
@@ -45,10 +79,23 @@ export function DashboardChat() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: updatedMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          messages: updatedMessages
+            .filter((m) => m.content.trim()) // Filter out empty messages
+            .map((m) => {
+              if (m.imageData) {
+                return {
+                  role: m.role,
+                  content: [
+                    { type: "image", image: m.imageData },
+                    { type: "text", text: m.content },
+                  ],
+                };
+              }
+              return {
+                role: m.role,
+                content: m.content,
+              };
+            }),
           workspaceSlug: slug,
         }),
       });
@@ -110,11 +157,115 @@ export function DashboardChat() {
   };
 
   const handleDeleteMessage = (messageId: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    setMessages((prev) => {
+      // Find the index of the message to delete
+      const deleteIndex = prev.findIndex((m) => m.id === messageId);
+      if (deleteIndex === -1) return prev;
+
+      // Delete this message and ALL messages before it
+      // This allows clearing the image by deleting the assistant response
+      return prev.slice(deleteIndex + 1);
+    });
+  };
+
+  const handleImageUpload = (imageData: string) => {
+    // Add a new user message with just the image (no text yet)
+    const imageMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: "", // Empty content, will be filled when user sends
+      timestamp: new Date(),
+      imageData,
+    };
+    setMessages((prev) => [...prev, imageMessage]);
+  };
+
+  const handleImageRemove = () => {
+    // Remove the most recent message with an image
+    setMessages((prev) => {
+      const lastImageIndex = prev
+        .map((m, i) => ({ msg: m, index: i }))
+        .reverse()
+        .find((item) => item.msg.imageData)?.index;
+
+      if (lastImageIndex === undefined) return prev;
+      return prev.filter((_, i) => i !== lastImageIndex);
+    });
+  };
+
+  const handleOpenFeatureModal = () => {
+    setShowFeatureModal(true);
+  };
+
+  const handleCreateFeature = async (objective: string) => {
+    if (!slug || messages.length === 0) return;
+
+    setIsCreatingFeature(true);
+
+    try {
+      // Filter out empty messages and add objective as a user message
+      const messagesWithObjective: ModelMessage[] = [
+        ...messages
+          .filter((m) => m.content.trim()) // Filter out empty messages
+          .map((m): ModelMessage => {
+            if (m.imageData) {
+              // Images are always from user messages
+              return {
+                role: "user" as const,
+                content: [
+                  { type: "image" as const, image: m.imageData },
+                  { type: "text" as const, text: m.content },
+                ],
+              };
+            }
+            return {
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            };
+          }),
+        {
+          role: "user" as const,
+          content: `Feature objective: ${objective}`,
+        },
+      ];
+
+      const response = await fetch("/api/features/create-feature", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceSlug: slug,
+          transcript: messagesWithObjective,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create feature");
+      }
+
+      const data = await response.json();
+
+      toast.success("Feature created!", {
+        description: `"${data.title}" has been added to your workspace.`,
+      });
+
+      console.log("✅ Feature created from chat:", data);
+
+      // Close modal on success
+      setShowFeatureModal(false);
+    } catch (error) {
+      console.error("❌ Error creating feature from chat:", error);
+      toast.error("Failed to create feature", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsCreatingFeature(false);
+    }
   };
 
   // Only show assistant messages
   const assistantMessages = messages.filter((m) => m.role === "assistant");
+  const hasAssistantMessages = assistantMessages.length > 0;
 
   return (
     <div className="pointer-events-none">
@@ -141,8 +292,25 @@ export function DashboardChat() {
 
       {/* Input field */}
       <div className="pointer-events-auto">
-        <ChatInput onSend={handleSend} disabled={isLoading} />
+        <ChatInput
+          onSend={handleSend}
+          disabled={isLoading}
+          showCreateFeature={hasAssistantMessages}
+          onCreateFeature={handleOpenFeatureModal}
+          isCreatingFeature={isCreatingFeature}
+          imageData={currentImageData}
+          onImageUpload={handleImageUpload}
+          onImageRemove={handleImageRemove}
+        />
       </div>
+
+      {/* Create Feature Modal */}
+      <CreateFeatureModal
+        open={showFeatureModal}
+        onOpenChange={setShowFeatureModal}
+        onSubmit={handleCreateFeature}
+        isCreating={isCreatingFeature}
+      />
     </div>
   );
 }

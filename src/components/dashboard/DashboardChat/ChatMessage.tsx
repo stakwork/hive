@@ -10,6 +10,7 @@ interface ChatMessageProps {
     role: "user" | "assistant";
     content: string;
     timestamp: Date;
+    imageData?: string;
   };
   isStreaming?: boolean;
   onDelete?: (messageId: string) => void;
