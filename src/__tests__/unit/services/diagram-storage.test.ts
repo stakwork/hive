@@ -61,7 +61,7 @@ describe('DiagramStorageService', () => {
       expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledOnce()
       expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledWith(
         expect.stringMatching(/^diagrams\/workspace-456\/feature-123\/\d+\.png$/),
-        31536000 // 1 year in seconds
+        604800 // 7 days in seconds (AWS max limit)
       )
 
       // Verify return value
@@ -179,7 +179,7 @@ describe('DiagramStorageService', () => {
       expect(putObjectCall[2]).toBe('image/png')
     })
 
-    it('should use 1 year expiration for presigned URLs', async () => {
+    it('should use 7 day expiration for presigned URLs (AWS max limit)', async () => {
       const buffer = Buffer.from('fake-png-data')
       const featureId = 'feature-123'
       const workspaceId = 'workspace-456'
@@ -191,7 +191,7 @@ describe('DiagramStorageService', () => {
 
       expect(mockS3Service.generatePresignedDownloadUrl).toHaveBeenCalledWith(
         expect.any(String),
-        31536000 // 1 year = 365 * 24 * 60 * 60 seconds
+        604800 // 7 days = 7 * 24 * 60 * 60 seconds (AWS max limit)
       )
     })
   })
