@@ -549,22 +549,24 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
                       <TableRow key={row.id}>
                         <TableCell className="font-medium">{row.title}</TableCell>
                         <TableCell>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleReplay(row)}
-                            disabled={isReplayingTask === row.id}
-                            className="h-8 w-8 p-0"
-                            title={row.hasVideo ? "Play recording" : "Run test"}
-                          >
-                            {isReplayingTask === row.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : row.hasVideo ? (
-                              <PlayCircle className="h-4 w-4" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                          </Button>
+                          {row.testFilePath && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleReplay(row)}
+                              disabled={isReplayingTask === row.id}
+                              className="h-8 w-8 p-0"
+                              title={row.hasVideo ? "Play recording" : "Run test"}
+                            >
+                              {isReplayingTask === row.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : row.hasVideo ? (
+                                <PlayCircle className="h-4 w-4" />
+                              ) : (
+                                <Play className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
                         </TableCell>
                         <TableCell>{renderBadge(row.badge)}</TableCell>
                         <TableCell>
