@@ -68,6 +68,14 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
       "Content-Type": "application/json",
     },
   },
+  sphinxTribes: {
+    baseURL: optionalEnvVars.SPHINX_TRIBES_API_URL,
+    apiKey: "", // Sphinx Tribes uses different auth (pubkey-based)
+    timeout: optionalEnvVars.API_TIMEOUT,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  },
 } as const;
 
 // Service endpoints

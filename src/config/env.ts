@@ -52,6 +52,12 @@ export const optionalEnvVars = {
   SWARM_SUPER_ADMIN_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/swarm-super-admin`
     : process.env.SWARM_SUPER_ADMIN_URL,
+  SPHINX_TRIBES_API_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/sphinx-tribes`
+    : (process.env.SPHINX_TRIBES_API_URL || "https://api.sphinx.chat"),
+  NEXT_PUBLIC_SPHINX_TRIBES_URL:
+    process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL ||
+    (USE_MOCKS ? "http://localhost:3000/mock-tribes" : "https://community.sphinx.chat"),
   LIVEKIT_CALL_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/livekit/`
     : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",

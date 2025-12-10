@@ -226,6 +226,27 @@ const mockServices = [
     file_count: 7,
     mocked: false,
   },
+  {
+    name: "sphinx-tribes",
+    ref_id: "cafeaefd-38f0-4e3a-b8bc-612b29522d29",
+    description:
+      "Sphinx Tribes bounty platform API at community.sphinx.chat for creating and viewing bounties",
+    linked_files: [
+      "stakwork/hive/src/config/services.ts",
+      "stakwork/hive/src/config/env.ts",
+      "stakwork/hive/env.example",
+      "stakwork/hive/src/components/features/RoadmapTasksTable.tsx",
+      "stakwork/hive/src/lib/sphinx-tribes.ts",
+      "stakwork/hive/src/lib/mock/sphinx-tribes-state.ts",
+      "stakwork/hive/src/app/api/mock/sphinx-tribes/bounties/route.ts",
+      "stakwork/hive/src/app/api/mock/sphinx-tribes/bounties/[bountyId]/route.ts",
+      "stakwork/hive/src/app/api/mock/sphinx-tribes/bounties/code/[bountyCode]/route.ts",
+      "stakwork/hive/src/app/api/mock/sphinx-tribes/users/[userId]/route.ts",
+      "stakwork/hive/docs/SPHINX_TRIBES_MOCK_ENDPOINTS.md",
+    ],
+    file_count: 11,
+    mocked: true,
+  },
 ];
 
 export async function GET(request: NextRequest) {
