@@ -1,5 +1,5 @@
 import { NodeTypeOrderItem, sortNodeTypesByConfig } from "@/hooks/useSortedNodeTypes";
-import { FilterParams, Link, Node, NodeExtended } from '@Universe/types';
+import { FetchDataResponse, FilterParams, Link, Node, NodeExtended } from '@Universe/types';
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { type DataStore, defaultFilters } from "./useDataStore";
@@ -10,6 +10,7 @@ export type SidebarFilterWithCount = {
 }
 
 const repositoryNodeTypes = ['GitHubRepo', 'Commits', 'Stars', 'Issues', 'Age', 'Contributor'];
+const ADD_NEW_NODE_BATCH_WINDOW = 1000;
 
 const defaultData: Omit<
   DataStore,
@@ -71,10 +72,12 @@ const normalizeNodeType = (type?: string) => (type || 'Unknown').trim()
 
 export const createDataStore = () =>
   create<DataStore>()(
-    devtools((set, get) => ({
-      ...defaultData,
+    devtools((set, get) => {
+      // Throttle frequent addNewNode calls so bursts are merged into a single update
+      let addNodeBatchQueue: FetchDataResponse[] = [];
+      let addNodeFlushTimeout: ReturnType<typeof setTimeout> | null = null;
 
-      addNewNode: (data) => {
+      const applyAddNewNode = (data: FetchDataResponse) => {
         const {
           dataInitial: existingData,
           nodesNormalized,
@@ -83,6 +86,8 @@ export const createDataStore = () =>
           nodeLinksNormalized: existingNodeLinksNormalized,
           repositoryNodes: existingRepositoryNodes,
         } = get()
+
+        console.log('[adding new nodes] addNewNode called with data', data)
 
         if (!data?.nodes) {
           return
@@ -183,86 +188,133 @@ export const createDataStore = () =>
           linksNormalized: normalizedLinksMap,
           nodeLinksNormalized,
         })
-      },
+      };
 
-      resetGraph: () => {
-        set({
-          filters: defaultData.filters,
-          dataInitial: null,
-          dataNew: null,
-        })
-      },
-
-      resetData: () => {
-        set({
-          dataInitial: null,
-          sidebarFilter: 'all',
-          sidebarFilters: [],
-          sidebarFilterCounts: [],
-          repositoryNodes: [],
-          isOnboarding: false,
-          dataNew: null,
-          runningProjectId: '',
-          nodeTypes: [],
-          nodesNormalized: new Map<string, NodeExtended>(),
-          linksNormalized: new Map<string, Link>(),
-          nodeLinksNormalized: {},
-        })
-      },
-
-      resetDataNew: () => set({ dataNew: null }),
-      setFilters: (filters: Partial<FilterParams>) => {
-        set((state) => ({ filters: { ...state.filters, ...filters, skip: 0 } }))
-      },
-      setSidebarFilterCounts: (sidebarFilterCounts) => set({ sidebarFilterCounts }),
-      setTrendingTopics: (trendingTopics) => set({ trendingTopics }),
-      setStats: (stats) => set({ stats }),
-      setCategoryFilter: (categoryFilter) => set({ categoryFilter }),
-      setQueuedSources: (queuedSources) => set({ queuedSources }),
-      setSidebarFilter: (sidebarFilter: string) => set({ sidebarFilter }),
-      setSelectedTimestamp: (selectedTimestamp) => set({ selectedTimestamp }),
-      setSources: (sources) => set({ sources }),
-      setHideNodeDetails: (hideNodeDetails) => set({ hideNodeDetails }),
-      setSeedQuestions: (questions) => set({ seedQuestions: questions }),
-      updateNode: (updatedNode) => {
-        const { nodesNormalized } = get()
-
-        const newNodesNormalized = new Map(nodesNormalized)
-
-        newNodesNormalized.set(updatedNode.ref_id, updatedNode)
-
-        set({ nodesNormalized: newNodesNormalized })
-      },
-
-      removeNode: (id) => id,
-
-      setRunningProjectId: (runningProjectId) => set({ runningProjectId, runningProjectMessages: [] }),
-      setRunningProjectMessages: (message) => {
-        const { runningProjectMessages } = get()
-
-        set({ runningProjectMessages: [...runningProjectMessages, message] })
-      },
-      resetRunningProjectMessages: () => set({ runningProjectMessages: [] }),
-      setAbortRequests: (abortRequest) => set({ abortRequest }),
-      finishLoading: () => set({ splashDataLoading: false }),
-      setIsOnboarding: (isOnboarding) => set({ isOnboarding }),
-      setNodeTypeOrder: (nodeTypeOrder: NodeTypeOrderItem[] | null) => {
-        const { dataInitial } = get()
-
-        set({ nodeTypeOrder })
-
-        // Re-sort existing nodeTypes if we have data
-        if (dataInitial?.nodes) {
-          const rawNodeTypes = [...new Set(dataInitial.nodes.map((node) => normalizeNodeType(node.node_type)))]
-          const sortedNodeTypes = sortNodeTypesByConfig(rawNodeTypes, nodeTypeOrder)
-          const sidebarFilters = ['all', ...sortedNodeTypes.map((type) => type.toLowerCase())]
-
-          set({
-            nodeTypes: sortedNodeTypes,
-            sidebarFilters
-          })
+      const flushQueuedAddNewNodes = () => {
+        if (!addNodeBatchQueue.length) {
+          addNodeFlushTimeout = null;
+          return;
         }
-      },
-      setRepositoryNodes: (repositoryNodes) => set({ repositoryNodes }),
-    }))
+
+        const merged = addNodeBatchQueue.reduce<FetchDataResponse>(
+          (acc, batch) => {
+            acc.nodes.push(...(batch.nodes || []));
+            acc.edges.push(...(batch.edges || []));
+            return acc;
+          },
+          { nodes: [], edges: [] },
+        );
+
+        addNodeBatchQueue = [];
+        addNodeFlushTimeout = null;
+
+        applyAddNewNode(merged);
+      };
+
+      const scheduleAddNewNodeFlush = () => {
+        if (addNodeFlushTimeout) {
+          return;
+        }
+
+        addNodeFlushTimeout = setTimeout(flushQueuedAddNewNodes, ADD_NEW_NODE_BATCH_WINDOW);
+      };
+
+      return {
+        ...defaultData,
+
+        addNewNode: (data) => {
+          if (!data?.nodes) {
+            return
+          }
+
+          if (addNodeFlushTimeout) {
+            addNodeBatchQueue.push(data);
+            return;
+          }
+
+          applyAddNewNode(data);
+          scheduleAddNewNodeFlush();
+        },
+
+        resetGraph: () => {
+          set({
+            filters: defaultData.filters,
+            dataInitial: null,
+            dataNew: null,
+          })
+        },
+
+        resetData: () => {
+          set({
+            dataInitial: null,
+            sidebarFilter: 'all',
+            sidebarFilters: [],
+            sidebarFilterCounts: [],
+            repositoryNodes: [],
+            isOnboarding: false,
+            dataNew: null,
+            runningProjectId: '',
+            nodeTypes: [],
+            nodesNormalized: new Map<string, NodeExtended>(),
+            linksNormalized: new Map<string, Link>(),
+            nodeLinksNormalized: {},
+          })
+        },
+
+        resetDataNew: () => set({ dataNew: null }),
+        setFilters: (filters: Partial<FilterParams>) => {
+          set((state) => ({ filters: { ...state.filters, ...filters, skip: 0 } }))
+        },
+        setSidebarFilterCounts: (sidebarFilterCounts) => set({ sidebarFilterCounts }),
+        setTrendingTopics: (trendingTopics) => set({ trendingTopics }),
+        setStats: (stats) => set({ stats }),
+        setCategoryFilter: (categoryFilter) => set({ categoryFilter }),
+        setQueuedSources: (queuedSources) => set({ queuedSources }),
+        setSidebarFilter: (sidebarFilter: string) => set({ sidebarFilter }),
+        setSelectedTimestamp: (selectedTimestamp) => set({ selectedTimestamp }),
+        setSources: (sources) => set({ sources }),
+        setHideNodeDetails: (hideNodeDetails) => set({ hideNodeDetails }),
+        setSeedQuestions: (questions) => set({ seedQuestions: questions }),
+        updateNode: (updatedNode) => {
+          const { nodesNormalized } = get()
+
+          const newNodesNormalized = new Map(nodesNormalized)
+
+          newNodesNormalized.set(updatedNode.ref_id, updatedNode)
+
+          set({ nodesNormalized: newNodesNormalized })
+        },
+
+        removeNode: (id) => id,
+
+        setRunningProjectId: (runningProjectId) => set({ runningProjectId, runningProjectMessages: [] }),
+        setRunningProjectMessages: (message) => {
+          const { runningProjectMessages } = get()
+
+          set({ runningProjectMessages: [...runningProjectMessages, message] })
+        },
+        resetRunningProjectMessages: () => set({ runningProjectMessages: [] }),
+        setAbortRequests: (abortRequest) => set({ abortRequest }),
+        finishLoading: () => set({ splashDataLoading: false }),
+        setIsOnboarding: (isOnboarding) => set({ isOnboarding }),
+        setNodeTypeOrder: (nodeTypeOrder: NodeTypeOrderItem[] | null) => {
+          const { dataInitial } = get()
+
+          set({ nodeTypeOrder })
+
+          // Re-sort existing nodeTypes if we have data
+          if (dataInitial?.nodes) {
+            const rawNodeTypes = [...new Set(dataInitial.nodes.map((node) => normalizeNodeType(node.node_type)))]
+            const sortedNodeTypes = sortNodeTypesByConfig(rawNodeTypes, nodeTypeOrder)
+            const sidebarFilters = ['all', ...sortedNodeTypes.map((type) => type.toLowerCase())]
+
+            set({
+              nodeTypes: sortedNodeTypes,
+              sidebarFilters
+            })
+          }
+        },
+        setRepositoryNodes: (repositoryNodes) => set({ repositoryNodes }),
+      }
+    })
   );

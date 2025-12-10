@@ -51,9 +51,9 @@ export async function POST(
     // Validate architecture text exists
     if (!feature.architecture || feature.architecture.trim().length === 0) {
       return NextResponse.json(
-        { 
-          error: "Architecture text required", 
-          message: "Architecture text is required to generate a diagram" 
+        {
+          error: "Architecture text required",
+          message: "Architecture text is required to generate a diagram"
         },
         { status: 400 }
       );
@@ -66,11 +66,11 @@ export async function POST(
     } catch (error) {
       if (error instanceof GeminiError) {
         console.error("Gemini API error:", error);
-        
+
         // Return more specific error messages based on error type
         let message = "Failed to generate diagram";
         let status = 500;
-        
+
         switch (error.type) {
           case GeminiErrorType.AUTHENTICATION:
             message = "AI service authentication failed. Please contact support.";
@@ -92,19 +92,19 @@ export async function POST(
             message = error.message || "Failed to generate diagram";
             status = 500;
         }
-        
+
         return NextResponse.json(
           { error: "Diagram generation failed", message },
           { status }
         );
       }
-      
+
       // Unknown error
       console.error("Unknown error generating diagram:", error);
       return NextResponse.json(
-        { 
-          error: "Diagram generation failed", 
-          message: "An unexpected error occurred while generating the diagram" 
+        {
+          error: "Diagram generation failed",
+          message: "An unexpected error occurred while generating the diagram"
         },
         { status: 500 }
       );
@@ -122,9 +122,9 @@ export async function POST(
     } catch (error) {
       console.error("S3 upload error:", error);
       return NextResponse.json(
-        { 
-          error: "Storage failed", 
-          message: "Failed to store the diagram. Please try again." 
+        {
+          error: "Storage failed",
+          message: "Failed to store the diagram. Please try again."
         },
         { status: 500 }
       );
@@ -148,11 +148,11 @@ export async function POST(
       } catch (cleanupError) {
         console.error("Failed to cleanup diagram after DB error:", cleanupError);
       }
-      
+
       return NextResponse.json(
-        { 
-          error: "Database update failed", 
-          message: "Failed to save the diagram reference" 
+        {
+          error: "Database update failed",
+          message: "Failed to save the diagram reference"
         },
         { status: 500 }
       );
@@ -169,9 +169,9 @@ export async function POST(
   } catch (error) {
     console.error("Error in diagram generation endpoint:", error);
     return NextResponse.json(
-      { 
-        error: "Internal server error", 
-        message: "An unexpected error occurred" 
+      {
+        error: "Internal server error",
+        message: "An unexpected error occurred"
       },
       { status: 500 }
     );
