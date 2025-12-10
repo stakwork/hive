@@ -12,6 +12,9 @@ export {
   deleteWorkspaces,
   deleteUser,
   deleteUsers,
+  createJanitorConfig,
+  createJanitorRun,
+  createJanitorRecommendation,
 } from "@/__tests__/support/fixtures/database";
 
 export {
