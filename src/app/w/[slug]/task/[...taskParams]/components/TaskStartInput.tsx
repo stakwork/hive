@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -181,7 +181,11 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
             tabIndex={0}
             data-testid="task-start-submit"
           >
-            <ArrowUp className="w-4 h-4" />
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <ArrowUp className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </Card>
