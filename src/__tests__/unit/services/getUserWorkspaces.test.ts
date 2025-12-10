@@ -67,8 +67,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce(memberships) // First call for memberships
-        .mockResolvedValueOnce([]) // Second call for owner memberships (lastAccessedAt)
-        .mockResolvedValueOnce(memberCounts); // Third call for member counts
+        .mockResolvedValueOnce(memberCounts); // Second call for member counts
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -87,10 +86,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
           userId: testUserId,
           leftAt: null,
         },
-        select: {
+        include: {
           workspace: true,
-          role: true,
-          lastAccessedAt: true,
         },
       });
 
@@ -155,8 +152,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -189,8 +185,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue([]);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -230,8 +225,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -261,8 +255,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue([]);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -301,9 +294,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
       (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce([]) // First call for memberships (empty)
-        .mockResolvedValueOnce([]) // Second call for owner memberships (empty)
-        .mockResolvedValueOnce(memberCounts); // Third call for member counts
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(memberCounts);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -328,9 +320,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
 
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
       (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce([]) // First call for memberships (empty)
-        .mockResolvedValueOnce([]) // Second call for owner memberships (empty)
-        .mockResolvedValueOnce([]); // Third call for member counts (empty)
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]); // No members
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -345,8 +336,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue([]);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -389,8 +379,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue([]);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce(malformedMemberships)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -421,9 +410,8 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
 
       (db.workspace.findMany as Mock).mockResolvedValue([]);
       (db.workspaceMember.findMany as Mock)
-        .mockResolvedValueOnce(activeMemberships) // First call for memberships
-        .mockResolvedValueOnce([]) // Second call for owner memberships (lastAccessedAt)
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce(activeMemberships) // Only return active memberships
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -453,8 +441,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 
@@ -502,8 +489,7 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       (db.workspace.findMany as Mock).mockResolvedValue(ownedWorkspaces);
       (db.workspaceMember.findMany as Mock)
         .mockResolvedValueOnce(memberships)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]); // Third call for member counts
+        .mockResolvedValueOnce([]);
 
       const result = await getUserWorkspaces(testUserId);
 

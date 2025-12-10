@@ -368,10 +368,8 @@ export async function getUserWorkspaces(
         userId,
         leftAt: null,
       },
-      select: {
+      include: {
         workspace: true,
-        role: true,
-        lastAccessedAt: true,
       },
     }),
   ]);
@@ -383,24 +381,6 @@ export async function getUserWorkspaces(
       .filter(m => m.workspace && !m.workspace.deleted)
       .map(m => m.workspace!.id)
   ];
-
-  // Query self-referencing WorkspaceMember records for owners to get lastAccessedAt
-  const ownerMemberships = await db.workspaceMember.findMany({
-    where: {
-      workspaceId: { in: ownedWorkspaces.map(w => w.id) },
-      userId,
-    },
-    select: {
-      workspaceId: true,
-      lastAccessedAt: true,
-    },
-  });
-
-  // Create a map of workspaceId to lastAccessedAt for owners
-  const ownerLastAccessedMap: Record<string, Date | null> = {};
-  for (const ownerMembership of ownerMemberships) {
-    ownerLastAccessedMap[ownerMembership.workspaceId] = ownerMembership.lastAccessedAt;
-  }
 
   // Get all member counts in a single query if we have workspace IDs
   const memberCountMap: Record<string, number> = {};
@@ -426,7 +406,6 @@ export async function getUserWorkspaces(
   // Add owned workspaces
   for (const workspace of ownedWorkspaces) {
     const memberCount = memberCountMap[workspace.id] || 0;
-    const lastAccessedAt = ownerLastAccessedMap[workspace.id];
     result.push({
       id: workspace.id,
       name: workspace.name,
@@ -439,7 +418,6 @@ export async function getUserWorkspaces(
       memberCount: memberCount + 1, // +1 for owner
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
-      lastAccessedAt: lastAccessedAt ? lastAccessedAt.toISOString() : null,
     });
   }
 
@@ -459,18 +437,12 @@ export async function getUserWorkspaces(
         memberCount: memberCount + 1, // +1 for owner
         logoKey: membership.workspace.logoKey,
         logoUrl: membership.workspace.logoUrl,
-        lastAccessedAt: membership.lastAccessedAt ? membership.lastAccessedAt.toISOString() : null,
       });
     }
   }
 
-  // Sort by lastAccessedAt (most recent first), with null values falling back to alphabetical order
-  return result.sort((a, b) => {
-    if (!a.lastAccessedAt && !b.lastAccessedAt) return a.name.localeCompare(b.name);
-    if (!a.lastAccessedAt) return 1;
-    if (!b.lastAccessedAt) return -1;
-    return new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime();
-  });
+  // Sort by name and return
+  return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**

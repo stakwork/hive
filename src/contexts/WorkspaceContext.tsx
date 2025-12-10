@@ -160,11 +160,6 @@ export function WorkspaceProvider({
       const newPath = `/w/${targetWorkspace.slug}${currentPath}`;
 
       router.push(newPath);
-
-      // Update lastAccessedAt timestamp asynchronously (fire-and-forget)
-      fetch(`/api/workspaces/${targetWorkspace.slug}/access`, {
-        method: "POST",
-      }).catch(console.error);
     },
     [router, pathname],
   );

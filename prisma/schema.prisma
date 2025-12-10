@@ -244,15 +244,14 @@ model Workspace {
 }
 
 model WorkspaceMember {
-  id             String        @id @default(cuid())
-  workspaceId    String        @map("workspace_id")
-  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  userId         String        @map("user_id")
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role           WorkspaceRole @default(VIEWER)
-  joinedAt       DateTime      @default(now()) @map("joined_at")
-  leftAt         DateTime?     @map("left_at")
-  lastAccessedAt DateTime?     @map("last_accessed_at")
+  id          String        @id @default(cuid())
+  workspaceId String        @map("workspace_id")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String        @map("user_id")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        WorkspaceRole @default(VIEWER)
+  joinedAt    DateTime      @default(now()) @map("joined_at")
+  leftAt      DateTime?     @map("left_at")
 
   @@unique([workspaceId, userId])
   @@index([workspaceId])

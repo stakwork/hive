@@ -27,7 +27,6 @@ export type { WorkspaceRole };
 export interface WorkspaceWithRole extends WorkspaceResponse {
   userRole: WorkspaceRole;
   memberCount: number;
-  lastAccessedAt?: string | null;
 }
 
 export interface WorkspaceWithAccess extends WorkspaceResponse {
