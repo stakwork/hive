@@ -140,7 +140,7 @@ model SourceControlOrg {
   id                   String                @id @default(cuid())
   type                 SourceControlOrgType  @default(ORG)
   githubLogin          String                @unique // e.g. "anthropic", "evanfeenstra"
-  githubInstallationId Int                   @unique @map("github_installation_id")
+  githubInstallationId Int?                  @unique @map("github_installation_id")
   name                 String?               // Display name
   avatarUrl            String?               @map("avatar_url")
   description          String?
