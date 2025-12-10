@@ -5,8 +5,7 @@
  * Google's Gemini 2.5 Flash Image model.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getGeminiApiKey } from '@/config/env';
+import { getGeminiClient } from '@/lib/gemini/client';
 
 /**
  * Error types for Gemini API failures
@@ -100,11 +99,8 @@ export async function generateArchitectureDiagram(text: string): Promise<Buffer>
       );
     }
     
-    // Get API key
-    const apiKey = getGeminiApiKey();
-    
-    // Initialize Gemini client
-    const genAI = new GoogleGenerativeAI(apiKey);
+    // Initialize Gemini client (uses wrapper for mock-mode routing)
+    const genAI = getGeminiClient();
     const model = genAI.getGenerativeModel({ 
       model: 'gemini-2.5-flash-image' 
     });
