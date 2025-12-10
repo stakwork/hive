@@ -95,8 +95,9 @@ function DashboardInner() {
         />
       </div>
 
-      {/* Dashboard Chat - Fixed at bottom */}
-      <DashboardChat />
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-0" style={{ width: 'calc(100% - 340px)' }}>
+        <DashboardChat />
+      </div>
     </div>
   );
 }
