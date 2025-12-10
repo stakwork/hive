@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStreamProcessor } from "@/lib/streaming";
+import { useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
 
@@ -117,7 +117,7 @@ export function DashboardChat() {
   const assistantMessages = messages.filter((m) => m.role === "assistant");
 
   return (
-    <div className="fixed bottom-6 left-0 md:left-64 right-0 z-20 pointer-events-none">
+    <div className="pointer-events-none">
       {/* Message history */}
       {assistantMessages.length > 0 && (
         <div className="max-h-[300px] overflow-y-auto pb-2">
