@@ -182,8 +182,15 @@ export function AITextareaSection({
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to generate diagram");
+        let errorMessage = "Failed to generate diagram";
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+        } catch {
+          // Response wasn't JSON (e.g., 405 HTML error page)
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
