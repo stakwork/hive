@@ -5,6 +5,9 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
+import { CreateFeatureModal } from "./CreateFeatureModal";
+import { toast } from "sonner";
+import type { ModelMessage } from "ai";
 
 interface Message {
   id: string;
@@ -17,6 +20,8 @@ export function DashboardChat() {
   const { slug } = useWorkspace();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingFeature, setIsCreatingFeature] = useState(false);
+  const [showFeatureModal, setShowFeatureModal] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const { processStream } = useStreamProcessor();
 
@@ -113,8 +118,65 @@ export function DashboardChat() {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
   };
 
+  const handleOpenFeatureModal = () => {
+    setShowFeatureModal(true);
+  };
+
+  const handleCreateFeature = async (objective: string) => {
+    if (!slug || messages.length === 0) return;
+
+    setIsCreatingFeature(true);
+
+    try {
+      // Add objective as a user message to the conversation
+      const messagesWithObjective: ModelMessage[] = [
+        ...messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+        {
+          role: "user" as const,
+          content: `Feature objective: ${objective}`,
+        },
+      ];
+
+      const response = await fetch("/api/features/create-feature", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceSlug: slug,
+          transcript: messagesWithObjective,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create feature");
+      }
+
+      const data = await response.json();
+
+      toast.success("Feature created!", {
+        description: `"${data.title}" has been added to your workspace.`,
+      });
+
+      console.log("✅ Feature created from chat:", data);
+
+      // Close modal on success
+      setShowFeatureModal(false);
+    } catch (error) {
+      console.error("❌ Error creating feature from chat:", error);
+      toast.error("Failed to create feature", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsCreatingFeature(false);
+    }
+  };
+
   // Only show assistant messages
   const assistantMessages = messages.filter((m) => m.role === "assistant");
+  const hasAssistantMessages = assistantMessages.length > 0;
 
   return (
     <div className="pointer-events-none">
@@ -141,8 +203,22 @@ export function DashboardChat() {
 
       {/* Input field */}
       <div className="pointer-events-auto">
-        <ChatInput onSend={handleSend} disabled={isLoading} />
+        <ChatInput
+          onSend={handleSend}
+          disabled={isLoading}
+          showCreateFeature={hasAssistantMessages}
+          onCreateFeature={handleOpenFeatureModal}
+          isCreatingFeature={isCreatingFeature}
+        />
       </div>
+
+      {/* Create Feature Modal */}
+      <CreateFeatureModal
+        open={showFeatureModal}
+        onOpenChange={setShowFeatureModal}
+        onSubmit={handleCreateFeature}
+        isCreating={isCreatingFeature}
+      />
     </div>
   );
 }

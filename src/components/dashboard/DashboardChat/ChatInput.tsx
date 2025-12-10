@@ -2,14 +2,23 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
+import { Send, Lightbulb } from "lucide-react";
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
   disabled?: boolean;
+  showCreateFeature?: boolean;
+  onCreateFeature?: () => void;
+  isCreatingFeature?: boolean;
 }
 
-export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  disabled = false,
+  showCreateFeature = false,
+  onCreateFeature,
+  isCreatingFeature = false,
+}: ChatInputProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -33,7 +42,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex justify-center w-full px-4 py-4">
+    <form onSubmit={handleSubmit} className="flex justify-center items-center gap-2 w-full px-4 py-4">
       <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px]">
         <input
           ref={inputRef}
@@ -56,6 +65,19 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           <Send className="w-4 h-4" />
         </Button>
       </div>
+      {showCreateFeature && (
+        <Button
+          type="button"
+          onClick={onCreateFeature}
+          disabled={isCreatingFeature || disabled}
+          variant="outline"
+          size="icon"
+          className="rounded-full h-10 w-10"
+          title="Create Feature"
+        >
+          <Lightbulb className="w-4 h-4" />
+        </Button>
+      )}
     </form>
   );
 }
