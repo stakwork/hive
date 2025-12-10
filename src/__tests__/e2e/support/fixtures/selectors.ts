@@ -154,14 +154,18 @@ export const selectors = {
   },
 
   feature: {
-    briefInput: '[data-testid="feature-brief-input"]',
-    requirementsInput: '[data-testid="feature-requirements-input"]',
-    architectureInput: '[data-testid="feature-architecture-input"]',
-    userStoryInput: '[data-testid="user-story-input"]',
-    addUserStoryButton: '[data-testid="add-user-story-button"]',
+    briefInput: '#brief',
+    requirementsInput: '#requirements',
+    architectureInput: '#architecture',
+    personasInput: '#personas',
+    personasAddButton: 'button:has-text("Add")',
+    userStoryInput: 'input[placeholder*="As a user"]',
+    addUserStoryButton: 'button:has-text("Add")',
+    generateUserStoriesButton: 'button:has-text("Generate")',
     phaseInput: '[data-testid="phase-name-input"]',
     addPhaseButton: '[data-testid="add-phase-button"]',
     phaseCard: '[data-testid="phase-card"]',
+    backButton: 'button:has-text("Back")',
   },
 
   phase: {
