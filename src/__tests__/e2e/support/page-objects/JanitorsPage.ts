@@ -31,14 +31,15 @@ export class JanitorsPage {
     const protectButton = this.page.locator(selectors.navigation.protectButton);
     const janitorsLink = this.page.locator(selectors.navigation.janitorsLink).first();
 
-    // Wait for the navigation to be ready
-    await protectButton.waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for the navigation to be ready with increased timeout
+    await protectButton.waitFor({ state: 'visible', timeout: 15000 });
 
     // Check if janitors link is visible, if not, click Protect to expand
     const isJanitorsVisible = await janitorsLink.isVisible();
     if (!isJanitorsVisible) {
       await protectButton.click();
-      await this.page.waitForTimeout(300); // Wait for expand animation
+      // Wait for the janitors link to appear after expansion
+      await janitorsLink.waitFor({ state: 'visible', timeout: 5000 });
     }
 
     await janitorsLink.click();

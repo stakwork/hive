@@ -10,4 +10,13 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   testDir: "src/__tests__/e2e",
+  webServer: {
+    command: "npm run dev",
+    port: 3000,
+    reuseExistingServer: !process.env.CI,
+    env: {
+      // Enable feature flags for E2E tests
+      NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true",
+    },
+  },
 });
