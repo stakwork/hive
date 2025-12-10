@@ -235,6 +235,7 @@ export function DashboardChat() {
         body: JSON.stringify({
           workspaceSlug: slug,
           transcript: messagesWithObjective,
+          deepResearch: true,
         }),
       });
 
@@ -245,14 +246,17 @@ export function DashboardChat() {
 
       const data = await response.json();
 
-      toast.success("Feature created!", {
-        description: `"${data.title}" has been added to your workspace.`,
-      });
-
       console.log("✅ Feature created from chat:", data);
 
       // Close modal on success
       setShowFeatureModal(false);
+
+      // Show appropriate toast based on whether deep research was started
+      toast.success("Feature created!", {
+        description: data.run
+          ? `"${data.title}" has been added. Starting deep research...`
+          : `"${data.title}" has been added to your workspace.`,
+      });
     } catch (error) {
       console.error("❌ Error creating feature from chat:", error);
       toast.error("Failed to create feature", {
