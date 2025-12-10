@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2 } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2, AlertTriangle } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -16,9 +16,18 @@ interface TaskStartInputProps {
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
+  hasAvailablePods?: boolean | null;
+  isCheckingPods?: boolean;
 }
 
-export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = false }: TaskStartInputProps) {
+export function TaskStartInput({
+  onStart,
+  taskMode,
+  onModeChange,
+  isLoading = false,
+  hasAvailablePods,
+  isCheckingPods = false,
+}: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initialValueRef = useRef("");
@@ -72,6 +81,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
   };
 
   const hasText = value.trim().length > 0;
+  const noPodsAvailable = taskMode === "agent" && hasAvailablePods === false;
 
   const handleClick = () => {
     if (hasText) {
@@ -176,7 +186,7 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
             size="icon"
             className="rounded-full shadow-lg transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-ring/60"
             style={{ width: 32, height: 32 }}
-            disabled={!hasText || isLoading}
+            disabled={!hasText || isLoading || noPodsAvailable}
             onClick={handleClick}
             tabIndex={0}
             data-testid="task-start-submit"
@@ -189,6 +199,16 @@ export function TaskStartInput({ onStart, taskMode, onModeChange, isLoading = fa
           </Button>
         </div>
       </Card>
+
+      {/* Pod availability warning for agent mode */}
+      {taskMode === "agent" && hasAvailablePods === false && !isCheckingPods && (
+        <div className="w-full max-w-2xl mt-3 px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            No pods currently available.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
