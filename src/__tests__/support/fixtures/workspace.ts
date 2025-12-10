@@ -31,6 +31,7 @@ export interface CreateTestMembershipOptions {
   userId: string;
   role?: WorkspaceRole;
   leftAt?: Date;
+  lastAccessedAt?: Date;
 }
 
 export async function createTestWorkspace(
@@ -64,6 +65,7 @@ export async function createTestMembership(
       userId: options.userId,
       role: options.role || "VIEWER",
       leftAt: options.leftAt || null,
+      lastAccessedAt: options.lastAccessedAt || null,
     },
   });
 }
