@@ -383,10 +383,10 @@ async function seedTasks(
     {
       title: "Signup Flow Test",
       description: "E2E test for new user registration flow",
-      status: TaskStatus.TODO,
-      workflowStatus: WorkflowStatus.PENDING,
+      status: TaskStatus.IN_PROGRESS,
+      workflowStatus: WorkflowStatus.IN_PROGRESS,
       sourceType: TaskSourceType.USER_JOURNEY,
-      testFilePath: "src/__tests__/e2e/specs/auth/signup.spec.ts",
+      // No testFilePath yet - test is still being generated
     },
 
     // BLOCKED/CANCELLED
