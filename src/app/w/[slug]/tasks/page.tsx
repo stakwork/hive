@@ -15,7 +15,7 @@ export default function TasksPage() {
     <div className="space-y-6">
       <PageHeader
         title="Tasks"
-        actions={workspace?.isCodeGraphSetup && (
+        actions={workspace && workspace.repositories?.length > 0 && (
           <Button onClick={() => router.push(`/w/${slug}/task/new`)}>
             <Plus className="w-4 h-4 mr-2" />
             New Task
@@ -23,8 +23,8 @@ export default function TasksPage() {
         )}
       />
 
-      {/* Connect Repository Card - Only show if CodeGraph is not set up */}
-      {workspace && !workspace.isCodeGraphSetup ? (
+      {/* Connect Repository Card - Only show if no repositories connected */}
+      {!workspace || !workspace.repositories?.length ? (
         <ConnectRepository
           workspaceSlug={slug}
           title="Connect repository to Start Managing Tasks"

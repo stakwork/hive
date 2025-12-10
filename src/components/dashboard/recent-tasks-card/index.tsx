@@ -10,8 +10,8 @@ export function RecentTasksCard() {
   // Get the 3 most recent tasks
   const recentTasks = tasks.slice(0, 3);
 
-  // Don't render if workspace doesn't have code graph setup
-  if (!workspace?.isCodeGraphSetup) {
+  // Don't render if workspace doesn't have repositories connected
+  if (!workspace || !workspace.repositories?.length) {
     return null;
   }
 

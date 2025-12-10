@@ -225,7 +225,7 @@ export default function CallsPage() {
   }, [transcriptBuffer, currentTranscript, isRecording, slug, processingFeature, getRecentTranscript]);
 
   useEffect(() => {
-    if (!slug || !workspace?.isCodeGraphSetup) {
+    if (!slug || !workspace || !workspace.repositories?.length) {
       setLoading(false);
       return;
     }
@@ -255,9 +255,9 @@ export default function CallsPage() {
     };
 
     fetchCalls();
-  }, [slug, workspace?.isCodeGraphSetup, page]);
+  }, [slug, workspace?.repositories.length, page]);
 
-  if (!workspace?.isCodeGraphSetup) {
+  if (!workspace || !workspace.repositories?.length) {
     return (
       <div className="space-y-6">
         <PageHeader title="Calls" />
@@ -276,7 +276,7 @@ export default function CallsPage() {
       <PageHeader
         title="Calls"
         actions={
-          workspace?.isCodeGraphSetup ? (
+          workspace && workspace.repositories?.length > 0 ? (
             <div className="flex gap-2">
               {isVoiceSupported && (
                 <TranscriptTooltip

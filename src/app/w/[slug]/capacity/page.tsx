@@ -70,7 +70,7 @@ export default function CapacityPage() {
   }, [slug, isPoolActive]);
 
   // Not set up yet
-  if (!workspace?.isCodeGraphSetup) {
+  if (!workspace || !workspace.repositories?.length) {
     return (
       <div className="space-y-6">
         <PageHeader title="Capacity" />
