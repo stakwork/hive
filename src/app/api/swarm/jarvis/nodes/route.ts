@@ -82,16 +82,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
     }
 
-    console.log('request--here', request);
+    // console.log('request--here', request);
 
     const searchParams = request.nextUrl.searchParams;
     const workspaceId = searchParams.get("id");
     const endpoint = searchParams.get("endpoint") || "graph/search/latest?limit=1000&top_node_count=500";
     const nodeType = searchParams.get("node_type");
 
-    console.log("[Jarvis Nodes] Full request URL:", request.nextUrl.toString());
-    console.log("[Jarvis Nodes] Endpoint param:", endpoint);
-    console.log("[Jarvis Nodes] Node type param:", nodeType);
+    // console.log("[Jarvis Nodes] Full request URL:", request.nextUrl.toString());
+    // console.log("[Jarvis Nodes] Endpoint param:", endpoint);
+    // console.log("[Jarvis Nodes] Node type param:", nodeType);
 
     const where: Record<string, string> = {};
     if (workspaceId) where.workspaceId = workspaceId;

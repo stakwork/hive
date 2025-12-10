@@ -122,7 +122,7 @@ export function DashboardChat() {
     setShowFeatureModal(true);
   };
 
-  const handleCreateFeature = async (objective: string) => {
+  const handleCreateFeature = async (objective: string, imageData?: string) => {
     if (!slug || messages.length === 0) return;
 
     setIsCreatingFeature(true);
@@ -136,7 +136,12 @@ export function DashboardChat() {
         })),
         {
           role: "user" as const,
-          content: `Feature objective: ${objective}`,
+          content: imageData
+            ? [
+                { type: "text" as const, text: `Feature objective: ${objective}` },
+                { type: "image" as const, image: imageData },
+              ]
+            : `Feature objective: ${objective}`,
         },
       ];
 
