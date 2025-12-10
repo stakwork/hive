@@ -69,7 +69,9 @@ export function ClarifyingQuestionsPreview({
 
   const handleOptionSelect = (option: string) => {
     if (currentQuestion.type === "single_choice") {
-      updateAnswer({ selections: [option] });
+      // single_choice - toggle selection (allow deselection)
+      const isSelected = currentAnswer.selections.includes(option);
+      updateAnswer({ selections: isSelected ? [] : [option] });
     } else {
       // multiple_choice - toggle selection
       const isSelected = currentAnswer.selections.includes(option);
