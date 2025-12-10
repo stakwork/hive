@@ -60,6 +60,14 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
       "Content-Type": "application/json",
     },
   },
+  gemini: {
+    baseURL: optionalEnvVars.GEMINI_API_BASE_URL,
+    apiKey: "", // Handled by SDK initialization
+    timeout: optionalEnvVars.API_TIMEOUT,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  },
 } as const;
 
 // Service endpoints

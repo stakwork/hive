@@ -266,8 +266,9 @@ const GraphComponentInner = ({
             <div className="text-lg text-gray-300">No data found</div>
           </div>
         ) : (
-          <Universe enableRotation={enableRotation} />
+          null
         )}
+        <Universe enableRotation={enableRotation} />
       </div>
 
     </div >

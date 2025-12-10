@@ -504,6 +504,203 @@ describe('ClarifyingQuestionsPreview', () => {
       expect(screen.getByText('1 of 1')).toBeInTheDocument();
       expect(screen.getByText('Choose multiple options')).toBeInTheDocument();
     });
+
+    describe('Single Choice Deselection', () => {
+      it('should allow deselecting a selected single_choice option by clicking it again', async () => {
+        const user = userEvent.setup();
+        const singleChoiceQuestion: ClarifyingQuestion[] = [
+          {
+            question: 'Choose one option',
+            type: 'single_choice',
+            options: ['Option A', 'Option B', 'Option C'],
+          },
+        ];
+
+        render(
+          <ClarifyingQuestionsPreview
+            questions={singleChoiceQuestion}
+            onSubmit={mockOnSubmit}
+          />
+        );
+
+        const optionButton = screen.getByText('Option A').closest('button');
+        expect(optionButton).not.toBeNull();
+
+        // Click to select Option A
+        await user.click(optionButton!);
+
+        // Verify Option A is selected (has check icon)
+        await waitFor(() => {
+          expect(screen.getByTestId('check-icon')).toBeInTheDocument();
+        });
+
+        // Click Option A again to deselect
+        await user.click(optionButton!);
+
+        // Verify Option A is deselected (no check icon)
+        await waitFor(() => {
+          expect(screen.queryByTestId('check-icon')).not.toBeInTheDocument();
+        });
+
+        // Next button should be disabled since no selection and no text
+        const nextButton = screen.getByRole('button', { name: /review/i });
+        expect(nextButton).toBeDisabled();
+      });
+
+      it('should select an unselected single_choice option when clicked', async () => {
+        const user = userEvent.setup();
+        const singleChoiceQuestion: ClarifyingQuestion[] = [
+          {
+            question: 'Choose one option',
+            type: 'single_choice',
+            options: ['Option A', 'Option B'],
+          },
+        ];
+
+        render(
+          <ClarifyingQuestionsPreview
+            questions={singleChoiceQuestion}
+            onSubmit={mockOnSubmit}
+          />
+        );
+
+        // Initially no option selected
+        expect(screen.queryByTestId('check-icon')).not.toBeInTheDocument();
+
+        // Click Option A to select
+        const optionAButton = screen.getByText('Option A').closest('button');
+        await user.click(optionAButton!);
+
+        // Verify Option A is selected
+        await waitFor(() => {
+          expect(screen.getByTestId('check-icon')).toBeInTheDocument();
+        });
+
+        // Next button should be enabled
+        const reviewButton = screen.getByRole('button', { name: /review/i });
+        expect(reviewButton).not.toBeDisabled();
+      });
+
+      it('should update visual indicators correctly when single_choice option is deselected', async () => {
+        const user = userEvent.setup();
+        const { container } = render(
+          <ClarifyingQuestionsPreview
+            questions={[
+              {
+                question: 'Choose one',
+                type: 'single_choice',
+                options: ['Option A'],
+              },
+            ]}
+            onSubmit={mockOnSubmit}
+          />
+        );
+
+        const optionButton = screen.getByText('Option A').closest('button');
+        
+        // Select Option A
+        await user.click(optionButton!);
+
+        // Verify selected styles
+        await waitFor(() => {
+          expect(optionButton).toHaveClass('bg-primary/10', 'border-primary/30');
+          expect(screen.getByTestId('check-icon')).toBeInTheDocument();
+        });
+
+        // Deselect Option A
+        await user.click(optionButton!);
+
+        // Verify deselected styles (no check icon, no highlight)
+        await waitFor(() => {
+          expect(screen.queryByTestId('check-icon')).not.toBeInTheDocument();
+          expect(optionButton).not.toHaveClass('bg-primary/10', 'border-primary/30');
+        });
+      });
+
+      it('should allow proceeding to next question with text input only when no single_choice option is selected', async () => {
+        const user = userEvent.setup();
+        render(
+          <ClarifyingQuestionsPreview
+            questions={[
+              {
+                question: 'Choose one or type custom answer',
+                type: 'single_choice',
+                options: ['Option A', 'Option B'],
+              },
+              {
+                question: 'Next question',
+                type: 'text',
+              },
+            ]}
+            onSubmit={mockOnSubmit}
+          />
+        );
+
+        // Initially, next button should be disabled (no selection, no text)
+        const nextButton = screen.getByRole('button', { name: /next/i });
+        expect(nextButton).toBeDisabled();
+
+        // Type custom text without selecting an option
+        const textarea = screen.getByPlaceholderText(/add additional context/i);
+        await user.type(textarea, 'My custom answer');
+
+        // Next button should now be enabled
+        await waitFor(() => {
+          expect(nextButton).not.toBeDisabled();
+        });
+
+        // Should be able to proceed to next question
+        await user.click(nextButton);
+
+        await waitFor(() => {
+          expect(screen.getByText('Next question')).toBeInTheDocument();
+          expect(screen.getByText('2 of 2')).toBeInTheDocument();
+        });
+      });
+
+      it('should preserve multiple_choice toggle behavior (regression test)', async () => {
+        const user = userEvent.setup();
+        render(
+          <ClarifyingQuestionsPreview
+            questions={[
+              {
+                question: 'Choose multiple',
+                type: 'multiple_choice',
+                options: ['Option A', 'Option B', 'Option C'],
+              },
+            ]}
+            onSubmit={mockOnSubmit}
+          />
+        );
+
+        const optionAButton = screen.getByText('Option A').closest('button');
+        const optionBButton = screen.getByText('Option B').closest('button');
+
+        // Select Option A
+        await user.click(optionAButton!);
+        await waitFor(() => {
+          expect(screen.getAllByTestId('check-icon')).toHaveLength(1);
+        });
+
+        // Select Option B (should have 2 selected)
+        await user.click(optionBButton!);
+        await waitFor(() => {
+          expect(screen.getAllByTestId('check-icon')).toHaveLength(2);
+        });
+
+        // Deselect Option A (should have 1 selected)
+        await user.click(optionAButton!);
+        await waitFor(() => {
+          expect(screen.getAllByTestId('check-icon')).toHaveLength(1);
+        });
+
+        // Deselect Option B (should have 0 selected)
+        await user.click(optionBButton!);
+        await waitFor(() => {
+          expect(screen.queryByTestId('check-icon')).not.toBeInTheDocument();
+        });
+      });
+    });
   });
 
   describe('Loading State', () => {
