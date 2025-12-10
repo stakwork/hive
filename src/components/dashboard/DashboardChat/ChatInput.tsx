@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Lightbulb } from "lucide-react";
+import { Send, Lightbulb, Image as ImageIcon, X } from "lucide-react";
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
@@ -10,6 +10,9 @@ interface ChatInputProps {
   showCreateFeature?: boolean;
   onCreateFeature?: () => void;
   isCreatingFeature?: boolean;
+  imageData?: string | null;
+  onImageUpload?: (imageData: string) => void;
+  onImageRemove?: () => void;
 }
 
 export function ChatInput({
@@ -18,9 +21,13 @@ export function ChatInput({
   showCreateFeature = false,
   onCreateFeature,
   isCreatingFeature = false,
+  imageData = null,
+  onImageUpload,
+  onImageRemove,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,8 +48,84 @@ export function ChatInput({
     }
   };
 
+  const convertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file");
+      return;
+    }
+
+    try {
+      const base64 = await convertToBase64(file);
+      onImageUpload?.(base64);
+    } catch (error) {
+      console.error("Error reading file:", error);
+      alert("Failed to read image file");
+    }
+  };
+
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onImageRemove?.();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="flex justify-center items-center gap-2 w-full px-4 py-4">
+      {/* Image upload button */}
+      <div className="relative">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileInput}
+          className="hidden"
+          disabled={disabled}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          className={`relative h-10 w-10 rounded-full border-2 transition-all overflow-hidden ${
+            imageData
+              ? "border-primary"
+              : "border-border/20 hover:border-primary/50 bg-background/5"
+          } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          title={imageData ? "Click to change image" : "Upload image"}
+        >
+          {imageData ? (
+            <>
+              <img
+                src={imageData}
+                alt="Uploaded"
+                className="w-full h-full object-cover"
+              />
+              <div
+                onClick={handleRemoveImage}
+                className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-white" />
+              </div>
+            </>
+          ) : (
+            <ImageIcon className="w-4 h-4 m-auto text-muted-foreground" />
+          )}
+        </button>
+      </div>
+
       <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px]">
         <input
           ref={inputRef}
