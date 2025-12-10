@@ -246,8 +246,9 @@ describe("Workspace CRUD Operations", () => {
 
       mockedDb.workspace.findMany.mockResolvedValue(mockOwnedWorkspaces);
       mockedDb.workspaceMember.findMany
-        .mockResolvedValueOnce(mockMemberships)
-        .mockResolvedValueOnce([
+        .mockResolvedValueOnce(mockMemberships) // First call for memberships
+        .mockResolvedValueOnce([]) // Second call for owner memberships (lastAccessedAt)
+        .mockResolvedValueOnce([ // Third call for member counts
           { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" },
           { workspaceId: "ws2" }, { workspaceId: "ws2" }, { workspaceId: "ws2" }
         ]);
