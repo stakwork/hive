@@ -222,14 +222,15 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(data).toEqual({ success: true });
 
       // Verify GitHub API was called with decrypted token
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.github.com/applications/revoke",
-        expect.objectContaining({
-          body: JSON.stringify({
-            access_token: originalToken,
-          }),
-        })
-      );
+      // In test environment with USE_MOCKS=true, it uses mock endpoint
+      expect(mockFetch).toHaveBeenCalled();
+      const fetchCall = mockFetch.mock.calls[0];
+      expect(fetchCall[0]).toMatch(/\/applications\/revoke$/);
+      expect(fetchCall[1]).toMatchObject({
+        body: JSON.stringify({
+          access_token: originalToken,
+        }),
+      });
     });
 
     test("should handle encryption/decryption errors gracefully", async () => {

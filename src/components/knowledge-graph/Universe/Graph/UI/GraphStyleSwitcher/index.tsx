@@ -35,7 +35,7 @@ export const GraphStyleSwitcher = () => {
   }), [currentGraphStyle])
 
   return (
-    <div className="fixed top-4 right-4 z-50 bg-black/80 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+    <div className="fixed top-4 right-4 z-[150] bg-black/80 backdrop-blur-sm rounded-lg p-4 border border-white/20">
       <div className="mb-3">
         <h3 className="text-white font-semibold text-sm mb-1">Graph Layout</h3>
         <p className="text-white/70 text-xs">{currentStyleInfo.description}</p>
