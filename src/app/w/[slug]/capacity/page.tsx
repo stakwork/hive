@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader } from "@/components/ui/page-header";
-import { ConnectRepository } from "@/components/ConnectRepository";
+import { PoolLaunchBanner } from "@/components/pool-launch-banner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,38 +69,16 @@ export default function CapacityPage() {
     }
   }, [slug, isPoolActive]);
 
-  // Not set up yet
-  if (!workspace?.isCodeGraphSetup) {
+  // Pool not complete - show banner
+  if (workspace?.poolState !== "COMPLETE") {
     return (
       <div className="space-y-6">
         <PageHeader title="Capacity" />
-        <ConnectRepository
+        <PoolLaunchBanner
           workspaceSlug={slug}
-          title="Connect repository to view capacity"
-          description="Setup your development environment to monitor resource capacity."
-          buttonText="Connect Repository"
+          title="Complete Pool Setup to View Capacity"
+          description="Launch your development pods to monitor resource utilization and capacity metrics."
         />
-      </div>
-    );
-  }
-
-  // Pool not active
-  if (!isPoolActive) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Capacity" />
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Server className="h-5 w-5" />
-              No Active Pool
-            </CardTitle>
-            <CardDescription>
-              Resource pool is not configured or not active yet.
-              Please configure your pool in workspace settings to view capacity metrics.
-            </CardDescription>
-          </CardHeader>
-        </Card>
       </div>
     );
   }

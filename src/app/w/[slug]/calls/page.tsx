@@ -6,7 +6,7 @@ import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { WAKE_WORD } from "@/lib/constants/voice";
 import { CallRecording, CallsResponse } from "@/types/calls";
 import { CallsTable } from "@/components/calls/CallsTable";
-import { ConnectRepository } from "@/components/ConnectRepository";
+import { PoolLaunchBanner } from "@/components/pool-launch-banner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
@@ -225,7 +225,7 @@ export default function CallsPage() {
   }, [transcriptBuffer, currentTranscript, isRecording, slug, processingFeature, getRecentTranscript]);
 
   useEffect(() => {
-    if (!slug || !workspace?.isCodeGraphSetup) {
+    if (!slug || workspace?.poolState !== "COMPLETE") {
       setLoading(false);
       return;
     }
@@ -255,17 +255,16 @@ export default function CallsPage() {
     };
 
     fetchCalls();
-  }, [slug, workspace?.isCodeGraphSetup, page]);
+  }, [slug, workspace?.poolState, page]);
 
-  if (!workspace?.isCodeGraphSetup) {
+  if (workspace?.poolState !== "COMPLETE") {
     return (
       <div className="space-y-6">
         <PageHeader title="Calls" />
-        <ConnectRepository
+        <PoolLaunchBanner
           workspaceSlug={slug}
-          title="Connect repository to view call recordings"
-          description="Setup your development environment to access call recordings."
-          buttonText="Connect Repository"
+          title="Complete Pool Setup to View Call Recordings"
+          description="Launch your development pods to access call recordings and transcripts."
         />
       </div>
     );
@@ -276,7 +275,7 @@ export default function CallsPage() {
       <PageHeader
         title="Calls"
         actions={
-          workspace?.isCodeGraphSetup ? (
+          workspace?.poolState === "COMPLETE" ? (
             <div className="flex gap-2">
               {isVoiceSupported && (
                 <TranscriptTooltip

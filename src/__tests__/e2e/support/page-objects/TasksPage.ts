@@ -53,10 +53,10 @@ export class TasksPage {
   }
 
   /**
-   * Check if connect repository button is visible
+   * Check if launch pods button is visible
    */
-  async hasConnectRepositoryButton(): Promise<boolean> {
-    const button = this.page.locator(selectors.tasks.connectRepoButton);
+  async hasLaunchPodsButton(): Promise<boolean> {
+    const button = this.page.locator(selectors.tasks.launchPodsButton);
     return await button.isVisible({ timeout: 3000 }).catch(() => false);
   }
 

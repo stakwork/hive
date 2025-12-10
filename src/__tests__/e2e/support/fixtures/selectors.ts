@@ -112,7 +112,7 @@ export const selectors = {
     chatMessageSubmit: '[data-testid="chat-message-submit"]',
     taskTitle: '[data-testid="task-title"]',
     taskCard: '[data-testid="task-card"]',
-    connectRepoButton: 'button:has-text("Connect Repository")',
+    launchPodsButton: 'button:has-text("Launch Pods")',
     taskListContainer: '[data-testid="task-card"]',
     recentTasksHeading: 'text=/Recent Tasks|Tasks/i',
   },

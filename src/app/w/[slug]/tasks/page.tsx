@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { ConnectRepository } from "@/components/ConnectRepository";
+import { PoolLaunchBanner } from "@/components/pool-launch-banner";
 import { TasksList } from "@/components/tasks";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -15,7 +15,7 @@ export default function TasksPage() {
     <div className="space-y-6">
       <PageHeader
         title="Tasks"
-        actions={workspace?.isCodeGraphSetup && (
+        actions={workspace?.poolState === "COMPLETE" && (
           <Button onClick={() => router.push(`/w/${slug}/task/new`)}>
             <Plus className="w-4 h-4 mr-2" />
             New Task
@@ -23,13 +23,12 @@ export default function TasksPage() {
         )}
       />
 
-      {/* Connect Repository Card - Only show if CodeGraph is not set up */}
-      {workspace && !workspace.isCodeGraphSetup ? (
-        <ConnectRepository
+      {/* Pool Launch Banner - Only show if Pool is not complete */}
+      {workspace?.poolState !== "COMPLETE" ? (
+        <PoolLaunchBanner
           workspaceSlug={slug}
-          title="Connect repository to Start Managing Tasks"
-          description="Setup your development environment to ask codebase questions or write code."
-          buttonText="Connect Repository"
+          title="Complete Pool Setup to Start Managing Tasks"
+          description="Launch your development pods to create and manage tasks."
         />
       ) : (
         <TasksList workspaceId={workspaceId} workspaceSlug={slug} />
