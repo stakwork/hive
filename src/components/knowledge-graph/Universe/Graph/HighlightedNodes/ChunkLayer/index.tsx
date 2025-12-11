@@ -515,7 +515,6 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
   if (validNodes.length === 0) return null
 
-  console.log('Valid nodes debug:', validNodes)
 
   return (
     <>
