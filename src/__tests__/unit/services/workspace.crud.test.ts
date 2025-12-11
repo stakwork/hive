@@ -273,7 +273,9 @@ describe("Workspace CRUD Operations", () => {
   });
 
   describe("getDefaultWorkspaceForUser", () => {
-    test("should return first owned workspace", async () => {
+    // NOTE: This function returns the OLDEST created workspace, not the most recently accessed.
+    // For redirect logic, use getUserWorkspaces()[0] instead, which is sorted by lastAccessedAt desc.
+    test("should return first owned workspace (oldest by createdAt)", async () => {
       const mockOwnedWorkspace = {
         id: "ws1",
         name: "Owned Workspace",

@@ -415,10 +415,12 @@ describe("Workspace Service - Integration Tests", () => {
   });
 
   describe("getDefaultWorkspaceForUser", () => {
-    test("should return most recently created workspace", async () => {
+    // NOTE: This function returns the OLDEST created workspace (orderBy createdAt asc), not the most recently accessed.
+    // For redirect logic, use getUserWorkspaces()[0] instead, which is sorted by lastAccessedAt desc.
+    test("should return oldest created workspace", async () => {
       const testUser = await createTestUser({ name: "Test User" });
 
-      // Create workspaces - getDefaultWorkspaceForUser returns the most recently created
+      // Create workspaces - getDefaultWorkspaceForUser returns the OLDEST created (first by createdAt asc)
       const workspace1 = await db.workspace.create({
         data: {
           name: "Workspace 1",
@@ -441,8 +443,8 @@ describe("Workspace Service - Integration Tests", () => {
       const defaultWorkspace = await getDefaultWorkspaceForUser(testUser.id);
 
       expect(defaultWorkspace).toBeDefined();
-      // The function should return the most recently created workspace
-      expect([workspace1.name, workspace2.name]).toContain(defaultWorkspace?.name);
+      // The function returns the oldest created workspace (workspace1)
+      expect(defaultWorkspace?.name).toBe(workspace1.name);
     });
 
     test("should return null if user has no workspaces", async () => {

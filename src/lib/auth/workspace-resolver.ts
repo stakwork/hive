@@ -1,7 +1,4 @@
-import {
-  getDefaultWorkspaceForUser,
-  getUserWorkspaces,
-} from "@/services/workspace";
+import { getUserWorkspaces } from "@/services/workspace";
 import { Session } from "next-auth";
 import { redirect } from "next/navigation";
 
@@ -42,36 +39,14 @@ export async function resolveUserWorkspaceRedirect(
       };
     }
 
-    if (userWorkspaces.length === 1) {
-      // User has exactly one workspace - redirect to it
-      const workspace = userWorkspaces[0];
-      return {
-        shouldRedirect: true,
-        redirectUrl: `/w/${workspace.slug}`,
-        workspaceCount: 1,
-        defaultWorkspaceSlug: workspace.slug,
-      };
-    }
-
-    // User has multiple workspaces - get their default
-    const defaultWorkspace = await getDefaultWorkspaceForUser(userId);
-
-    if (defaultWorkspace) {
-      return {
-        shouldRedirect: true,
-        redirectUrl: `/w/${defaultWorkspace.slug}`,
-        workspaceCount: userWorkspaces.length,
-        defaultWorkspaceSlug: defaultWorkspace.slug,
-      };
-    }
-
-    // Fallback to first workspace
-    const fallbackWorkspace = userWorkspaces[0];
+    // User has one or more workspaces - redirect to most recently accessed
+    // userWorkspaces is already sorted by lastAccessedAt desc
+    const workspace = userWorkspaces[0];
     return {
       shouldRedirect: true,
-      redirectUrl: `/w/${fallbackWorkspace.slug}`,
+      redirectUrl: `/w/${workspace.slug}`,
       workspaceCount: userWorkspaces.length,
-      defaultWorkspaceSlug: fallbackWorkspace.slug,
+      defaultWorkspaceSlug: workspace.slug,
     };
   } catch (error) {
     console.error("Error resolving workspace redirect:", error);

@@ -2,20 +2,15 @@ import { mockData } from "@/__tests__/utils/test-helpers";
 import {
   resolveUserWorkspaceRedirect,
 } from "@/lib/auth/workspace-resolver";
-import {
-  getDefaultWorkspaceForUser,
-  getUserWorkspaces,
-} from "@/services/workspace";
+import { getUserWorkspaces } from "@/services/workspace";
 import { Session } from "next-auth";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@/services/workspace", () => ({
-  getDefaultWorkspaceForUser: vi.fn(),
   getUserWorkspaces: vi.fn(),
 }));
 
 const mockedGetUserWorkspaces = vi.mocked(getUserWorkspaces);
-const mockedGetDefaultWorkspaceForUser = vi.mocked(getDefaultWorkspaceForUser);
 
 describe("resolveUserWorkspaceRedirect", () => {
   beforeEach(() => {
@@ -62,40 +57,16 @@ describe("resolveUserWorkspaceRedirect", () => {
       });
     });
 
-    test("should redirect to default workspace when user has multiple", async () => {
+    test("should redirect to first workspace from sorted list (most recently accessed)", async () => {
       const session = mockData.session("user1");
-      const mockWorkspaces = mockData.workspaces(2, [
-        { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
-        { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
-      ]);
-      const defaultWorkspace = mockData.workspaceResponse({
-        slug: "workspace-2",
-        ownerId: "user2",
-      });
-
-      mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
-      mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
-
-      const result = await resolveUserWorkspaceRedirect(session);
-
-      expect(result).toEqual({
-        shouldRedirect: true,
-        redirectUrl: "/w/workspace-2",
-        workspaceCount: 2,
-        defaultWorkspaceSlug: "workspace-2",
-      });
-      expect(mockedGetDefaultWorkspaceForUser).toHaveBeenCalledWith("user1");
-    });
-
-    test("should fallback to first workspace when no default and POD_URL set", async () => {
-      const session = mockData.session("user1");
+      // getUserWorkspaces returns workspaces sorted by lastAccessedAt desc
+      // workspace-1 is most recently accessed
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
         { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
       ]);
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
-      mockedGetDefaultWorkspaceForUser.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -141,41 +112,16 @@ describe("resolveUserWorkspaceRedirect", () => {
       });
     });
 
-    test("should redirect to default workspace when user has multiple", async () => {
+    test("should redirect to first workspace from sorted list (most recently accessed)", async () => {
       const session = mockData.session("user1");
-      const mockWorkspaces = mockData.workspaces(2, [
-        { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
-        { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
-      ]);
-      const defaultWorkspace = mockData.workspaceResponse({
-        id: "ws2",
-        slug: "workspace-2",
-        ownerId: "user2",
-      });
-
-      mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
-      mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
-
-      const result = await resolveUserWorkspaceRedirect(session);
-
-      expect(result).toEqual({
-        shouldRedirect: true,
-        redirectUrl: "/w/workspace-2",
-        workspaceCount: 2,
-        defaultWorkspaceSlug: "workspace-2",
-      });
-      expect(mockedGetDefaultWorkspaceForUser).toHaveBeenCalledWith("user1");
-    });
-
-    test("should fallback to first workspace when no default workspace", async () => {
-      const session = mockData.session("user1");
+      // getUserWorkspaces returns workspaces sorted by lastAccessedAt desc
+      // workspace-1 is most recently accessed
       const mockWorkspaces = mockData.workspaces(2, [
         { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
         { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
       ]);
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
-      mockedGetDefaultWorkspaceForUser.mockResolvedValue(null);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
@@ -232,33 +178,6 @@ describe("resolveUserWorkspaceRedirect", () => {
 
       consoleErrorSpy.mockRestore();
     });
-
-    test("should redirect to onboarding on getDefaultWorkspaceForUser error", async () => {
-      const session = mockData.session("user1");
-      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
-
-      const mockWorkspaces = mockData.workspaces(2, [
-        { slug: "workspace-1", ownerId: "user1", userRole: "OWNER" },
-        { slug: "workspace-2", ownerId: "user2", userRole: "DEVELOPER" },
-      ]);
-
-      mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
-      mockedGetDefaultWorkspaceForUser.mockRejectedValue(new Error("Default workspace query failed"));
-
-      const result = await resolveUserWorkspaceRedirect(session);
-
-      expect(result).toEqual({
-        shouldRedirect: true,
-        redirectUrl: "/onboarding/workspace",
-        workspaceCount: 0,
-      });
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Error resolving workspace redirect:",
-        expect.any(Error)
-      );
-
-      consoleErrorSpy.mockRestore();
-    });
   });
 
   describe("edge cases", () => {
@@ -280,21 +199,20 @@ describe("resolveUserWorkspaceRedirect", () => {
       expect(mockedGetUserWorkspaces).toHaveBeenCalledWith("user1");
     });
 
-    test("should handle large workspace arrays without performance issues", async () => {
+    test("should redirect to first workspace from large sorted array", async () => {
       const session = mockData.session("user1");
       const mockWorkspaces = mockData.workspaces(100); // Large array test
-      const defaultWorkspace = mockData.workspaceResponse({ slug: "workspace-50" });
 
       mockedGetUserWorkspaces.mockResolvedValue(mockWorkspaces);
-      mockedGetDefaultWorkspaceForUser.mockResolvedValue(defaultWorkspace);
 
       const result = await resolveUserWorkspaceRedirect(session);
 
+      // First workspace from the sorted array
       expect(result).toEqual({
         shouldRedirect: true,
-        redirectUrl: "/w/workspace-50",
+        redirectUrl: `/w/${mockWorkspaces[0].slug}`,
         workspaceCount: 100,
-        defaultWorkspaceSlug: "workspace-50",
+        defaultWorkspaceSlug: mockWorkspaces[0].slug,
       });
     });
 
