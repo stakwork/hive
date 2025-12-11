@@ -266,4 +266,4 @@ export const createGraphStore = (
       }),
       setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
     }
-  }));
+  });
