@@ -4,6 +4,8 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { createFeature } from "@/services/roadmap";
 import { extractFeatureFromTranscript } from "@/lib/ai/extract-feature";
 import { db } from "@/lib/db";
+import { createStakworkRun } from "@/services/stakwork-run";
+import { StakworkRunType } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,9 +14,10 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { workspaceSlug, transcript } = body as {
+    const { workspaceSlug, transcript, deepResearch } = body as {
       workspaceSlug: string;
       transcript: string | ModelMessage[];
+      deepResearch?: boolean;
     };
 
     if (!workspaceSlug || !transcript) {
@@ -78,11 +81,39 @@ export async function POST(request: NextRequest) {
       title: feature.title,
     });
 
+    // Optionally trigger deep research
+    let run = null;
+    if (deepResearch) {
+      try {
+        run = await createStakworkRun(
+          {
+            type: StakworkRunType.ARCHITECTURE,
+            workspaceId: feature.workspaceId,
+            featureId: feature.id,
+          },
+          userOrResponse.id
+        );
+        console.log("✅ Deep research started:", run.id);
+      } catch (error) {
+        console.error("❌ Failed to start deep research:", error);
+        // Don't fail the whole request - feature was created successfully
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
         featureId: feature.id,
+        workspaceId: feature.workspaceId,
         title: feature.title,
+        ...(run && {
+          run: {
+            id: run.id,
+            type: run.type,
+            status: run.status,
+            projectId: run.projectId,
+          },
+        }),
       },
       { status: 201 }
     );

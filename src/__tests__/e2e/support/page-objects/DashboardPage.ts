@@ -70,6 +70,9 @@ export class DashboardPage {
     const protectButton = this.page.locator('[data-testid="nav-protect"]');
     const recommendationsLink = this.page.locator(selectors.navigation.recommendationsLink).first();
 
+    // Wait for protect button to be visible (ensures nav is loaded)
+    await protectButton.waitFor({ state: 'visible', timeout: 10000 });
+
     // Check if recommendations link is visible, if not, click Protect to expand
     const isRecommendationsVisible = await recommendationsLink.isVisible();
     if (!isRecommendationsVisible) {

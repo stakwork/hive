@@ -235,6 +235,7 @@ export function DashboardChat() {
         body: JSON.stringify({
           workspaceSlug: slug,
           transcript: messagesWithObjective,
+          deepResearch: true,
         }),
       });
 
@@ -245,14 +246,17 @@ export function DashboardChat() {
 
       const data = await response.json();
 
-      toast.success("Feature created!", {
-        description: `"${data.title}" has been added to your workspace.`,
-      });
-
       console.log("✅ Feature created from chat:", data);
 
       // Close modal on success
       setShowFeatureModal(false);
+
+      // Show appropriate toast based on whether deep research was started
+      toast.success("Feature created!", {
+        description: data.run
+          ? `"${data.title}" has been added. Starting deep research...`
+          : `"${data.title}" has been added to your workspace.`,
+      });
     } catch (error) {
       console.error("❌ Error creating feature from chat:", error);
       toast.error("Failed to create feature", {
@@ -264,18 +268,19 @@ export function DashboardChat() {
   };
 
   // Only show assistant messages
-  const assistantMessages = messages.filter((m) => m.role === "assistant");
-  const hasAssistantMessages = assistantMessages.length > 0;
+  // const assistantMessages = messages.filter((m) => m.role === "assistant");
+  // const hasAssistantMessages = assistantMessages.length > 0;
+  const hasMessages = messages.length > 0;
 
   return (
     <div className="pointer-events-none">
       {/* Message history */}
-      {assistantMessages.length > 0 && (
+      {messages.length > 0 && (
         <div className="max-h-[300px] overflow-y-auto pb-2">
           <div className="space-y-2 px-4">
-            {assistantMessages.map((message, index) => {
+            {messages.map((message, index) => {
               // Only the last message is streaming
-              const isLastMessage = index === assistantMessages.length - 1;
+              const isLastMessage = index === messages.length - 1;
               const isMessageStreaming = isLastMessage && isLoading;
               return (
                 <ChatMessage
@@ -295,7 +300,7 @@ export function DashboardChat() {
         <ChatInput
           onSend={handleSend}
           disabled={isLoading}
-          showCreateFeature={hasAssistantMessages}
+          showCreateFeature={hasMessages}
           onCreateFeature={handleOpenFeatureModal}
           isCreatingFeature={isCreatingFeature}
           imageData={currentImageData}
