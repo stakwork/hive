@@ -105,7 +105,7 @@ export function JanitorSection({
   };
 
   return (
-    <Card data-testid={`janitor-section-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+    <Card>
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
           {icon}
@@ -124,7 +124,6 @@ export function JanitorSection({
             return (
               <div
                 key={janitor.id}
-                data-testid={`janitor-item-${janitor.id.toLowerCase().replace(/_/g, '-')}`}
                 className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${isItemComingSoon ? 'opacity-60' : ''
                   }`}
               >
@@ -141,10 +140,8 @@ export function JanitorSection({
 
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
-                      <span className="font-medium text-sm" data-testid={`janitor-name-${janitor.id.toLowerCase().replace(/_/g, '-')}`}>{janitor.name}</span>
-                      <span data-testid={`janitor-status-${janitor.id.toLowerCase().replace(/_/g, '-')}`}>
-                        {getStatusBadge(isOn, janitor.comingSoon || false, comingSoon || false)}
-                      </span>
+                      <span className="font-medium text-sm">{janitor.name}</span>
+                      {getStatusBadge(isOn, janitor.comingSoon || false, comingSoon || false)}
                     </div>
                     <p className="text-xs text-muted-foreground">{janitor.description}</p>
                   </div>
