@@ -39,10 +39,10 @@ export class DiagramStorageService {
     // Upload to S3
     await this.s3Service.putObject(s3Key, buffer, 'image/png')
 
-    // Generate presigned URL with 1 year expiration (31536000 seconds)
+    // Generate presigned URL with 7 day expiration (AWS max for presigned URLs)
     const s3Url = await this.s3Service.generatePresignedDownloadUrl(
       s3Key,
-      31536000
+      604800
     )
 
     return {

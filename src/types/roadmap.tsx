@@ -142,6 +142,8 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
     requirements: true;
     architecture: true;
     personas: true;
+    diagramUrl: true;
+    diagramS3Key: true;
     status: true;
     priority: true;
     createdAt: true;

@@ -100,6 +100,8 @@ export const Graph = () => {
   }, [highlightNodes, addClusterForce, simulationRestart])
 
   useEffect(() => {
+    console.log('[adding new nodes] useEffect called dataNew', dataNew)
+
     if (!dataNew) {
       return
     }
@@ -119,7 +121,9 @@ export const Graph = () => {
     if (!simulation) {
       simulationCreate(nodesClone)
     }
-  }, [dataNew, simulation, simulationCreate, dataInitial, addNodesAndLinks])
+
+    resetDataNew()
+  }, [dataNew, simulation, simulationCreate, dataInitial, addNodesAndLinks, resetDataNew])
 
   // useEffect(() => {
   //   ; () => removeSimulation()
@@ -329,7 +333,6 @@ export const Graph = () => {
     })
 
     simulation.on('end', () => {
-      resetDataNew()
 
       simulation.nodes().forEach((i: NodeExtended) => {
 
@@ -445,7 +448,6 @@ export const Graph = () => {
     simulation,
     setGraphRadius,
     normalizedSchemasByType,
-    resetDataNew,
     updateSimulationVersion,
     setSimulationInProgress,
     isOnboarding,

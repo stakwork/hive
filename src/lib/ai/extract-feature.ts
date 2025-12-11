@@ -1,8 +1,29 @@
-import { generateObject } from "ai";
+import { generateObject, type ModelMessage } from "ai";
 import { z } from "zod";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
+
+/**
+ * Converts AI SDK messages to a transcript string
+ * @param messages - Array of ModelMessage objects
+ * @returns Formatted transcript string with only USER and ASSISTANT messages
+ */
+export function convertMessagesToTranscript(messages: ModelMessage[]): string {
+  return messages
+    .filter((msg) => msg.role === "user" || msg.role === "assistant")
+    .map((msg) => {
+      const role = msg.role === "user" ? "USER" : "ASSISTANT";
+      const content = typeof msg.content === "string"
+        ? msg.content
+        : msg.content
+            .filter((part) => part.type === "text")
+            .map((part) => (part as { type: "text"; text: string }).text)
+            .join("\n");
+      return `${role}: ${content}`;
+    })
+    .join("\n\n");
+}
 
 // Schema for feature extraction from voice transcript
 const featureExtractionSchema = z.object({
@@ -39,18 +60,24 @@ export interface ExtractedFeature {
 }
 
 /**
- * Extracts feature specifications from a voice transcript
- * @param transcript - The conversation transcript to analyze (typically last hour)
+ * Extracts feature specifications from a voice transcript or message array
+ * @param transcript - The conversation transcript to analyze (string or ModelMessage[])
  * @param workspaceSlug - Workspace identifier for model context (optional)
  * @returns Promise<ExtractedFeature> - Structured feature data with title, brief, and requirements
  */
 export async function extractFeatureFromTranscript(
-  transcript: string,
+  transcript: string | ModelMessage[],
   workspaceSlug?: string,
 ): Promise<ExtractedFeature> {
   try {
+    // Convert messages to transcript if needed
+    const transcriptText = Array.isArray(transcript)
+      ? convertMessagesToTranscript(transcript)
+      : transcript;
+
     console.log("🎯 Extracting feature from transcript:", {
-      transcriptLength: transcript.length,
+      transcriptLength: transcriptText.length,
+      isMessageArray: Array.isArray(transcript),
       workspaceSlug,
     });
 
@@ -61,7 +88,7 @@ export async function extractFeatureFromTranscript(
     const result = await generateObject({
       model,
       schema: featureExtractionSchema,
-      prompt: `Here is the conversation transcript to analyze:\n\n${transcript}`,
+      prompt: `Here is the conversation transcript to analyze:\n\n${transcriptText}`,
       system: FEATURE_EXTRACTION_SYSTEM_PROMPT,
       temperature: 0.8,
     });

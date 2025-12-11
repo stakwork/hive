@@ -506,6 +506,7 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ architecture: value })}
                 onBlur={(value) => handleFieldBlur("architecture", value)}
+                initialDiagramUrl={feature.diagramUrl}
               />
 
               {/* Navigation buttons */}

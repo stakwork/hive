@@ -155,12 +155,32 @@ export function addMiddlewareHeaders(
 
 /**
  * Creates a POST request with middleware auth headers
+ * Supports two signatures:
+ * 1. createAuthenticatedPostRequest(url, body, user) - legacy
+ * 2. createAuthenticatedPostRequest(url, user, body?) - new pattern
  */
 export function createAuthenticatedPostRequest(
   url: string,
-  body: object,
-  user: { id: string; email: string; name: string }
+  bodyOrUser: object | { id: string; email: string; name?: string },
+  userOrBody?: { id: string; email: string; name?: string } | object
 ): NextRequest {
+  // Detect which signature is being used
+  // If second param has 'id' and 'email', it's the user (new signature)
+  const isNewSignature = 'id' in bodyOrUser && 'email' in bodyOrUser;
+  
+  let body: object;
+  let user: { id: string; email: string; name: string };
+  
+  if (isNewSignature) {
+    // New signature: (url, user, body?)
+    user = bodyOrUser as { id: string; email: string; name: string };
+    body = (userOrBody as object) || {};
+  } else {
+    // Legacy signature: (url, body, user)
+    body = bodyOrUser as object;
+    user = userOrBody as { id: string; email: string; name: string };
+  }
+  
   const baseRequest = createPostRequest(url, body);
   return addMiddlewareHeaders(baseRequest, user);
 }

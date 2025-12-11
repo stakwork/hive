@@ -4,6 +4,7 @@ import type { HttpClientConfig } from "@/lib/http-client";
 
 // Mock console methods to avoid cluttering test output
 const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+const mockConsoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 describe("HttpClient.post Method - Unit Tests", () => {
   let httpClient: HttpClient;
@@ -536,6 +537,468 @@ describe("HttpClient.post Method - Unit Tests", () => {
         // Restore original JSON.stringify
         (global as any).JSON.stringify = originalStringify;
       }
+    });
+  });
+});
+
+describe("HttpClient RFC 7231 Compliance - HTTP Method Body Handling", () => {
+  let httpClient: HttpClient;
+  let mockFetch: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    
+    const mockConfig: HttpClientConfig = {
+      baseURL: "https://api.example.com",
+      timeout: 5000,
+    };
+
+    httpClient = new HttpClient(mockConfig);
+    
+    // Mock global fetch
+    mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    });
+    global.fetch = mockFetch;
+  });
+
+  describe("GET Method - Body Stripping", () => {
+    test("should NOT include body in GET request when body is undefined", async () => {
+      await httpClient.get("/test");
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should strip body from GET request when data parameter is provided", async () => {
+      // Create a custom GET request with body (simulating misuse)
+      const requestSpy = vi.spyOn(httpClient as any, "request");
+      
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: JSON.stringify({ data: "test" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      // Body should be stripped
+      expect(config.body).toBeUndefined();
+      
+      // Warning should be logged
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        "[HttpClient] Warning: GET requests cannot include a body (RFC 7231). Body parameter will be ignored."
+      );
+    });
+
+    test("should handle GET with empty string body", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: "" 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should handle GET with null body gracefully", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: null 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      // null is falsy, but body property exists, so it should be stripped
+      expect(config.body).toBeUndefined();
+    });
+
+    test("should handle lowercase 'get' method", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "get", 
+        body: JSON.stringify({ test: "data" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should handle mixed-case 'Get' method", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "Get", 
+        body: JSON.stringify({ test: "data" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+  });
+
+  describe("HEAD Method - Body Stripping", () => {
+    test("should strip body from HEAD request", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "HEAD", 
+        body: JSON.stringify({ data: "test" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        "[HttpClient] Warning: HEAD requests cannot include a body (RFC 7231). Body parameter will be ignored."
+      );
+    });
+
+    test("should handle lowercase 'head' method", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "head", 
+        body: JSON.stringify({ test: "data" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should not warn when HEAD request has no body", async () => {
+      await (httpClient as any).request("/test", { method: "HEAD" });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("OPTIONS Method - Body Stripping", () => {
+    test("should strip body from OPTIONS request", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "OPTIONS", 
+        body: JSON.stringify({ data: "test" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        "[HttpClient] Warning: OPTIONS requests cannot include a body (RFC 7231). Body parameter will be ignored."
+      );
+    });
+
+    test("should handle lowercase 'options' method", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "options", 
+        body: JSON.stringify({ test: "data" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should not warn when OPTIONS request has no body", async () => {
+      await (httpClient as any).request("/test", { method: "OPTIONS" });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST Method - Body Allowed", () => {
+    test("should allow body in POST request", async () => {
+      const payload = { data: "test" };
+      await httpClient.post("/test", payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBe(JSON.stringify(payload));
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should handle POST with complex body", async () => {
+      const payload = { 
+        user: { name: "John", age: 30 },
+        items: [1, 2, 3] 
+      };
+      await httpClient.post("/test", payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBe(JSON.stringify(payload));
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should handle POST with undefined body", async () => {
+      await httpClient.post("/test");
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("PUT Method - Body Allowed", () => {
+    test("should allow body in PUT request", async () => {
+      const payload = { data: "test" };
+      await httpClient.put("/test", payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBe(JSON.stringify(payload));
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should handle PUT with complex body", async () => {
+      const payload = { 
+        id: 123,
+        updates: { field1: "value1", field2: "value2" } 
+      };
+      await httpClient.put("/test", payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBe(JSON.stringify(payload));
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should handle PUT with undefined body", async () => {
+      await httpClient.put("/test");
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("PATCH Method - Body Allowed", () => {
+    test("should allow body in PATCH request", async () => {
+      const payload = { field: "newValue" };
+      await httpClient.patch("/test", payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBe(JSON.stringify(payload));
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should handle PATCH with partial update", async () => {
+      const payload = { status: "active" };
+      await httpClient.patch("/test/123", payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBe(JSON.stringify(payload));
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should handle PATCH with undefined body", async () => {
+      await httpClient.patch("/test");
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("DELETE Method - Body Handling", () => {
+    test("should allow DELETE without body", async () => {
+      await httpClient.delete("/test");
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+
+    test("should handle DELETE method correctly", async () => {
+      await httpClient.delete("/test/123");
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.method).toBe("DELETE");
+      expect(config.body).toBeUndefined();
+    });
+  });
+
+  describe("Default Method Handling", () => {
+    test("should default to GET when method is not specified", async () => {
+      await (httpClient as any).request("/test", { 
+        body: JSON.stringify({ test: "data" }) 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      // Should strip body since default is GET
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should handle missing method property", async () => {
+      await (httpClient as any).request("/test", { 
+        body: "test body",
+        headers: { "X-Test": "value" }
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+  });
+
+  describe("Edge Cases", () => {
+    test("should handle body with value 0 (falsy but defined)", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: 0 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should handle body with empty string (falsy but defined)", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: "" 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should handle body with false (falsy but defined)", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: false 
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    test("should preserve other config options when stripping body", async () => {
+      const customHeaders = { "X-Custom": "value" };
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: JSON.stringify({ test: "data" }),
+        headers: customHeaders
+      });
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.body).toBeUndefined();
+      expect(config.headers).toBeDefined();
+      expect(config.headers["X-Custom"]).toBe("value");
+    });
+
+    test("should warn only once per request", async () => {
+      await (httpClient as any).request("/test", { 
+        method: "GET", 
+        body: JSON.stringify({ test: "data" }) 
+      });
+      
+      expect(mockConsoleWarn).toHaveBeenCalledTimes(1);
+    });
+
+    test("should handle GET request through public API correctly", async () => {
+      await httpClient.get("/test");
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const config = callArgs[1];
+      
+      expect(config.method).toBe("GET");
+      expect(config.body).toBeUndefined();
+      expect(mockConsoleWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Multiple Requests - State Isolation", () => {
+    test("should handle multiple GET requests without interference", async () => {
+      await (httpClient as any).request("/test1", { 
+        method: "GET", 
+        body: "body1" 
+      });
+      
+      await (httpClient as any).request("/test2", { 
+        method: "GET", 
+        body: "body2" 
+      });
+      
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      
+      const call1Config = mockFetch.mock.calls[0][1];
+      const call2Config = mockFetch.mock.calls[1][1];
+      
+      expect(call1Config.body).toBeUndefined();
+      expect(call2Config.body).toBeUndefined();
+    });
+
+    test("should handle mixed method requests correctly", async () => {
+      // GET without body should be stripped
+      await (httpClient as any).request("/test1", { 
+        method: "GET", 
+        body: "should-be-removed" 
+      });
+      
+      // POST with body should be preserved
+      await httpClient.post("/test2", { data: "preserved" });
+      
+      const call1Config = mockFetch.mock.calls[0][1];
+      const call2Config = mockFetch.mock.calls[1][1];
+      
+      expect(call1Config.body).toBeUndefined();
+      expect(call2Config.body).toBe(JSON.stringify({ data: "preserved" }));
     });
   });
 });

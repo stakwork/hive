@@ -312,33 +312,149 @@ describe("ChatArea", () => {
   });
 
   describe("Navigation Handling", () => {
-    test("navigates back to tasks when workspace slug is provided", async () => {
+    test("navigates back when referrer is same-origin", async () => {
       const user = userEvent.setup();
+      
+      // Mock document.referrer and window.location.origin
+      Object.defineProperty(document, "referrer", {
+        value: "http://localhost:3000/w/test-workspace/features/feature-1",
+        configurable: true,
+      });
+      Object.defineProperty(window, "location", {
+        value: {
+          origin: "http://localhost:3000",
+        },
+        writable: true,
+        configurable: true,
+      });
+
       const { props, router } = setupChatAreaTest({
         taskTitle: "Test Task",
         workspaceSlug: "test-workspace",
       });
       render(<ChatArea {...props} />);
 
-      // Find the back button by the arrow icon testid within it
-      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
-      await user.click(backButton!);
-
-      expect(router.push).toHaveBeenCalledWith("/w/test-workspace/tasks");
-    });
-
-    test("navigates back when no workspace slug is provided", async () => {
-      const user = userEvent.setup();
-      const { props, router } = setupChatAreaTest({
-        taskTitle: "Test Task",
-      });
-      render(<ChatArea {...props} />);
-
-      // Find the back button by the arrow icon testid within it
       const backButton = screen.getByTestId("arrow-left-icon").closest("button");
       await user.click(backButton!);
 
       expect(router.back).toHaveBeenCalled();
+      expect(router.push).not.toHaveBeenCalled();
+    });
+
+    test("navigates to tasks list when referrer is external origin", async () => {
+      const user = userEvent.setup();
+      
+      // Mock external referrer
+      Object.defineProperty(document, "referrer", {
+        value: "https://external-site.com/some-page",
+        configurable: true,
+      });
+      Object.defineProperty(window, "location", {
+        value: {
+          origin: "http://localhost:3000",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+      });
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.push).toHaveBeenCalledWith("/w/test-workspace/tasks");
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    test("navigates to tasks list when no referrer is present", async () => {
+      const user = userEvent.setup();
+      
+      // Mock empty referrer
+      Object.defineProperty(document, "referrer", {
+        value: "",
+        configurable: true,
+      });
+      Object.defineProperty(window, "location", {
+        value: {
+          origin: "http://localhost:3000",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: "test-workspace",
+      });
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.push).toHaveBeenCalledWith("/w/test-workspace/tasks");
+      expect(router.back).not.toHaveBeenCalled();
+    });
+
+    test("calls router.back when no workspace slug is provided and no referrer", async () => {
+      const user = userEvent.setup();
+      
+      // Mock empty referrer
+      Object.defineProperty(document, "referrer", {
+        value: "",
+        configurable: true,
+      });
+      Object.defineProperty(window, "location", {
+        value: {
+          origin: "http://localhost:3000",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: undefined,
+      });
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.back).toHaveBeenCalled();
+      expect(router.push).not.toHaveBeenCalled();
+    });
+
+    test("navigates back when same-origin referrer and no workspace slug", async () => {
+      const user = userEvent.setup();
+      
+      // Mock same-origin referrer
+      Object.defineProperty(document, "referrer", {
+        value: "http://localhost:3000/some-page",
+        configurable: true,
+      });
+      Object.defineProperty(window, "location", {
+        value: {
+          origin: "http://localhost:3000",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const { props, router } = setupChatAreaTest({
+        taskTitle: "Test Task",
+        workspaceSlug: undefined,
+      });
+      render(<ChatArea {...props} />);
+
+      const backButton = screen.getByTestId("arrow-left-icon").closest("button");
+      await user.click(backButton!);
+
+      expect(router.back).toHaveBeenCalled();
+      expect(router.push).not.toHaveBeenCalled();
     });
   });
 

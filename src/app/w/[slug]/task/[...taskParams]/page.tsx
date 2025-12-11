@@ -21,6 +21,7 @@ import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from 
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
+import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal } from "./components";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
@@ -74,8 +75,23 @@ export default function TaskChatPage() {
 
   const slug = params.slug as string;
   const taskParams = params.taskParams as string[];
-
   const isNewTask = taskParams?.[0] === "new";
+
+  // Check pod availability when in agent mode on new task page
+  const { poolStatus, loading: poolStatusLoading, refetch: refetchPoolStatus } = usePoolStatus(
+    slug,
+    isNewTask && taskMode === "agent"
+  );
+  const hasAvailablePods = poolStatus ? poolStatus.unusedVms > 0 : null;
+
+  // Wrapper to handle mode changes and trigger pod status check
+  const handleModeChange = (newMode: string) => {
+    setTaskMode(newMode);
+    if (newMode === "agent") {
+      refetchPoolStatus();
+    }
+  };
+
   const taskIdFromUrl = !isNewTask ? taskParams?.[0] : null;
 
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -819,7 +835,14 @@ export default function TaskChatPage() {
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} isLoading={isLoading} />
+          <TaskStartInput
+            onStart={handleStart}
+            taskMode={taskMode}
+            onModeChange={handleModeChange}
+            isLoading={isLoading}
+            hasAvailablePods={hasAvailablePods}
+            isCheckingPods={poolStatusLoading}
+          />
         </motion.div>
       ) : (
         <motion.div

@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const modelMessages: ModelMessage[] = [
-      ...getQuickAskPrefixMessages(concepts),
+      ...getQuickAskPrefixMessages(concepts, repoUrl),
       // Conversation history (convert from LearnMessage to ModelMessage format)
       ...messages.map((msg: { role: string; content: string }) => ({
         role: msg.role as "user" | "assistant",

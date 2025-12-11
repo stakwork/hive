@@ -107,10 +107,19 @@ export function ChatArea({
   }, [messages, shouldAutoScroll]);
 
   const handleBackToTasks = () => {
-    if (workspaceSlug) {
-      router.push(`/w/${workspaceSlug}/tasks`);
-    } else {
+    const referrer = document.referrer;
+    const currentOrigin = window.location.origin;
+    
+    // Check if referrer exists and is from same app (same origin)
+    if (referrer && referrer.startsWith(currentOrigin)) {
       router.back();
+    } else {
+      // Fallback to tasks list if no history or external referrer
+      if (workspaceSlug) {
+        router.push(`/w/${workspaceSlug}/tasks`);
+      } else {
+        router.back();
+      }
     }
   };
 

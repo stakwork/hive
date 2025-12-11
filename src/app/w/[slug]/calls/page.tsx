@@ -132,7 +132,7 @@ export default function CallsPage() {
           console.log(`🎤 Wake word "${WAKE_WORD}" detected, checking if feature request...`);
 
           // Call API to detect if this is a feature request (requires AI/LLM)
-          const detectionResponse = await fetch("/api/voice/detect-feature-request", {
+          const detectionResponse = await fetch("/api/features/detect-feature-request", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -177,7 +177,7 @@ export default function CallsPage() {
               });
 
               // Create feature in background
-              const response = await fetch("/api/voice/create-feature", {
+              const response = await fetch("/api/features/create-feature", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

@@ -573,11 +573,7 @@ describe("GET /api/github/app/status", () => {
       expect(vi.mocked(checkRepositoryAccess)).not.toHaveBeenCalled();
     });
 
-    // NOTE: Test disabled due to production code bug - API returns {hasTokens: false} 
-    // without hasRepoAccess field at line 188 of route.ts
-    // BUG: Should return { hasTokens: false, hasRepoAccess: false }
-    // Fix in separate PR: Add hasRepoAccess: false to response at route.ts:188
-    it.skip("should return hasTokens=false when workspace has no repository URL", async () => {
+    it("should return hasTokens=false and hasRepoAccess=false when workspace has no repository URL", async () => {
       const testUser = await createTestUser();
       const workspace = await db.workspace.create({
         data: {
@@ -778,11 +774,7 @@ describe("GET /api/github/app/status", () => {
       expect(vi.mocked(checkRepositoryAccess)).not.toHaveBeenCalled();
     });
 
-    // NOTE: Test disabled due to production code bug - similar to test above
-    // API returns {hasTokens: false} without hasRepoAccess field when workspace is null
-    // BUG: Should return { hasTokens: false, hasRepoAccess: false }
-    // Fix in separate PR: Ensure consistent response format in all code paths
-    it.skip("should handle validateWorkspaceAccess returning null workspace gracefully", async () => {
+    it("should handle validateWorkspaceAccess returning null workspace gracefully", async () => {
       const testUser = await createTestUser();
       
       getMockedSession().mockResolvedValue(createAuthenticatedSession(testUser));

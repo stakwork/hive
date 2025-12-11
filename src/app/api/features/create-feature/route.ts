@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { type ModelMessage } from "ai";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { createFeature } from "@/services/roadmap";
 import { extractFeatureFromTranscript } from "@/lib/ai/extract-feature";
 import { db } from "@/lib/db";
+import { createStakworkRun } from "@/services/stakwork-run";
+import { StakworkRunType } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +14,11 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { workspaceSlug, transcript } = body;
+    const { workspaceSlug, transcript, deepResearch } = body as {
+      workspaceSlug: string;
+      transcript: string | ModelMessage[];
+      deepResearch?: boolean;
+    };
 
     if (!workspaceSlug || !transcript) {
       return NextResponse.json(
@@ -20,9 +27,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (typeof transcript !== "string" || transcript.trim().length === 0) {
+    // Validate transcript is either a non-empty string or non-empty array
+    const isValidString = typeof transcript === "string" && transcript.trim().length > 0;
+    const isValidArray = Array.isArray(transcript) && transcript.length > 0;
+
+    if (!isValidString && !isValidArray) {
       return NextResponse.json(
-        { error: "Transcript must be a non-empty string" },
+        { error: "Transcript must be a non-empty string or ModelMessage array" },
         { status: 400 }
       );
     }
@@ -42,7 +53,10 @@ export async function POST(request: NextRequest) {
 
     console.log("🎤 Creating feature from voice transcript:", {
       workspaceSlug,
-      transcriptLength: transcript.length,
+      transcriptLength: typeof transcript === "string"
+        ? transcript.length
+        : `${transcript.length} messages`,
+      isMessageArray: Array.isArray(transcript),
       userId: userOrResponse.id,
     });
 
@@ -67,11 +81,39 @@ export async function POST(request: NextRequest) {
       title: feature.title,
     });
 
+    // Optionally trigger deep research
+    let run = null;
+    if (deepResearch) {
+      try {
+        run = await createStakworkRun(
+          {
+            type: StakworkRunType.ARCHITECTURE,
+            workspaceId: feature.workspaceId,
+            featureId: feature.id,
+          },
+          userOrResponse.id
+        );
+        console.log("✅ Deep research started:", run.id);
+      } catch (error) {
+        console.error("❌ Failed to start deep research:", error);
+        // Don't fail the whole request - feature was created successfully
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
         featureId: feature.id,
+        workspaceId: feature.workspaceId,
         title: feature.title,
+        ...(run && {
+          run: {
+            id: run.id,
+            type: run.type,
+            status: run.status,
+            projectId: run.projectId,
+          },
+        }),
       },
       { status: 201 }
     );
