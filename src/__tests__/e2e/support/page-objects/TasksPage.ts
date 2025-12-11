@@ -49,7 +49,8 @@ export class TasksPage {
    */
   async clickNewTask(): Promise<void> {
     await this.page.locator(selectors.tasks.newTaskButton).click();
-    await this.page.waitForURL(/\/w\/.*\/task\/new/, { timeout: 10000 });
+    await this.page.waitForURL(/\/w\/.*\/task\/new/, { timeout: 15000 });
+    await this.waitForTaskInput();
   }
 
   /**

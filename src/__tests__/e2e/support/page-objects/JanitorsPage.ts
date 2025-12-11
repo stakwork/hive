@@ -31,14 +31,12 @@ export class JanitorsPage {
     const protectButton = this.page.locator(selectors.navigation.protectButton);
     const janitorsLink = this.page.locator(selectors.navigation.janitorsLink).first();
 
-    // Wait for protect button to be visible (ensures nav is loaded)
-    await protectButton.waitFor({ state: 'visible', timeout: 10000 });
-
     // Check if janitors link is visible, if not, click Protect to expand
-    const isJanitorsVisible = await janitorsLink.isVisible();
+    const isJanitorsVisible = await janitorsLink.isVisible().catch(() => false);
     if (!isJanitorsVisible) {
       await protectButton.click();
-      await this.page.waitForTimeout(300); // Wait for expand animation
+      // Wait for janitors link to become visible after expanding
+      await janitorsLink.waitFor({ state: 'visible', timeout: 5000 });
     }
 
     await janitorsLink.click();

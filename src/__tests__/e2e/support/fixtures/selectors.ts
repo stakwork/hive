@@ -24,6 +24,8 @@ export const selectors = {
     callsLink: '[data-testid="nav-calls"]',
     protectButton: '[data-testid="nav-protect"]',
     janitorsLink: '[data-testid="nav-janitors"]',
+    buildButton: '[data-testid="nav-build"]',
+    contextButton: '[data-testid="nav-context"]',
   },
 
   // Page titles
