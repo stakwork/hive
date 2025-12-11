@@ -31,6 +31,9 @@ export class JanitorsPage {
     const protectButton = this.page.locator(selectors.navigation.protectButton);
     const janitorsLink = this.page.locator(selectors.navigation.janitorsLink).first();
 
+    // Wait for protect button to be visible (ensures nav is loaded)
+    await protectButton.waitFor({ state: 'visible', timeout: 10000 });
+
     // Check if janitors link is visible, if not, click Protect to expand
     const isJanitorsVisible = await janitorsLink.isVisible();
     if (!isJanitorsVisible) {
