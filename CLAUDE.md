@@ -167,6 +167,30 @@ External API integrations use a service factory pattern:
 - Services: `StakworkService`, `PoolManagerService`
 - Configuration in `/src/config/services.ts`
 
+### Jarvis Node Operations
+
+Workspace-specific Jarvis API calls use a different pattern (not ServiceFactory) since each workspace has its own swarm:
+
+**Service Layer:** `/src/services/swarm/api/nodes.ts`
+- Pure functions accepting `JarvisConnectionConfig` (jarvisUrl + decrypted apiKey)
+- Currently supports: `updateNode(config, { ref_id, properties })`
+- Extensible for future CRUD operations (createNode, getNode, deleteNode, listNodes)
+
+**API Route:** `/api/workspaces/[slug]/nodes/[nodeId]`
+- Uses `getWorkspaceSwarmAccess()` to get decrypted credentials
+- Uses `getJarvisUrl(swarmName)` to build `https://{swarmName}.sphinx.chat:8444`
+
+**Usage from other endpoints/crons:**
+```typescript
+import { updateNode } from "@/services/swarm/api/nodes";
+import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
+import { getJarvisUrl } from "@/lib/utils/swarm";
+
+const access = await getWorkspaceSwarmAccess(slug, userId);
+const config = { jarvisUrl: getJarvisUrl(access.data.swarmName), apiKey: access.data.swarmApiKey };
+await updateNode(config, { ref_id: "...", properties: { is_muted: true } });
+```
+
 ## Development Guidelines
 
 ### Adding New Components

@@ -15,3 +15,13 @@ export interface JarvisResponse {
   edges?: unknown[];
   [key: string]: unknown;
 }
+
+export interface UpdateNodeRequest {
+  ref_id: string;
+  properties: Record<string, unknown>;
+}
+
+export interface JarvisConnectionConfig {
+  jarvisUrl: string;
+  apiKey: string;
+}
