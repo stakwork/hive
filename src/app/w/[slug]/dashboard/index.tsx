@@ -9,6 +9,7 @@ import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
 import { GraphComponent } from "@/components/knowledge-graph";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { useGraphPolling } from "@/hooks/useGraphPolling";
+import { useTasksHighlight } from "@/hooks/useTasksHighlight";
 import { useWebhookHighlights } from "@/hooks/useWebhookHighlights";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { logStoreInstances } from "@/stores/createStoreFactory";
@@ -36,13 +37,16 @@ function DashboardInner() {
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
   const isOnboarding = useDataStore((s) => s.isOnboarding);
 
-
   useGraphPolling({
     enabled: !isOnboarding && activeFilterTab === 'all',
     interval: 5000
   });
 
   useWebhookHighlights()
+  useTasksHighlight({
+    workspaceSlug: slug,
+    enabled: !!slug,
+  });
 
   const handleFilterChange = (value: FilterTab) => {
     setActiveFilterTab(value);
