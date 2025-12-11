@@ -16,10 +16,6 @@ export function TestCoverageCard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const hasInitializedIgnoreDirs = useRef(false);
-  
-  // Mock inventory state
-  const [mockData, setMockData] = useState<{ mocked: number; total: number } | undefined>();
-  const [mockLoading, setMockLoading] = useState(true);
 
   const fetchTestCoverage = useCallback(async () => {
     if (!workspaceId) {
@@ -64,41 +60,9 @@ export function TestCoverageCard() {
     }
   }, [workspaceId, ignoreDirs, repo, setIgnoreDirs]);
 
-  const fetchMockInventory = useCallback(async () => {
-    if (!workspaceId) {
-      setMockLoading(false);
-      return;
-    }
-
-    try {
-      setMockLoading(true);
-
-      // Fetch total mocks
-      const totalParams = new URLSearchParams({ workspaceId, mocked: "all", limit: "1", offset: "0" });
-      const totalResponse = await fetch(`/api/tests/mocks?${totalParams.toString()}`);
-      const totalResult = await totalResponse.json();
-
-      // Fetch mocked endpoints
-      const mockedParams = new URLSearchParams({ workspaceId, mocked: "mocked", limit: "1", offset: "0" });
-      const mockedResponse = await fetch(`/api/tests/mocks?${mockedParams.toString()}`);
-      const mockedResult = await mockedResponse.json();
-
-      if (totalResponse.ok && mockedResponse.ok && totalResult.success && mockedResult.success) {
-        const total = totalResult.data?.total_count || 0;
-        const mocked = mockedResult.data?.total_count || 0;
-        setMockData({ mocked, total });
-      }
-    } catch (err) {
-      console.error("Failed to fetch mock inventory:", err);
-    } finally {
-      setMockLoading(false);
-    }
-  }, [workspaceId]);
-
   useEffect(() => {
     fetchTestCoverage();
-    fetchMockInventory();
-  }, [workspaceId, ignoreDirs, repo, fetchTestCoverage, fetchMockInventory]);
+  }, [workspaceId, ignoreDirs, repo, fetchTestCoverage]);
 
   if (isLoading) {
     return (
@@ -112,7 +76,7 @@ export function TestCoverageCard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {[...Array(4)].map((_, i) => (
+            {[...Array(3)].map((_, i) => (
               <div key={i} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -241,7 +205,7 @@ export function TestCoverageCard() {
           )}
 
           {/* Mocked Endpoints */}
-          {!mockLoading && mockData && mockData.total > 0 && (
+          {data.mocks && (
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
                 <Server className="h-4 w-4 text-muted-foreground" />
@@ -250,9 +214,9 @@ export function TestCoverageCard() {
 
               <MetricDisplay
                 label="Mock Coverage"
-                percent={mockData.total > 0 ? (mockData.mocked / mockData.total) * 100 : 0}
-                covered={mockData.mocked}
-                total={mockData.total}
+                percent={data.mocks.percent}
+                covered={data.mocks.mocked}
+                total={data.mocks.total}
               />
             </div>
           )}
