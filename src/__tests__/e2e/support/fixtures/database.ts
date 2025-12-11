@@ -41,3 +41,8 @@ export {
   type CreateTestTaskOptions,
   type CreateTestChatMessageOptions,
 } from "@/__tests__/support/fixtures/task";
+
+export {
+  createTestFeature,
+  type CreateTestFeatureOptions,
+} from "@/__tests__/support/fixtures/feature";
