@@ -15,6 +15,7 @@ export interface CreateTestSwarmOptions {
   containerFilesSetUp?: boolean;
   poolName?: string;
   poolApiKey?: string;
+  poolState?: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE";
 }
 
 export async function createTestSwarm(
@@ -33,6 +34,7 @@ export async function createTestSwarm(
     agentStatus: null,
     containerFilesSetUp: options.containerFilesSetUp ?? true, // Default to true for E2E tests
     poolName: options.poolName ?? null,
+    poolState: options.poolState ?? "NOT_STARTED",
   };
 
   let createData = baseData as any;

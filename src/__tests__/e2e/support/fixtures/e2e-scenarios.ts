@@ -36,6 +36,7 @@ export async function createStandardWorkspaceScenario(): Promise<TestWorkspaceSc
     withSwarm: true,
     swarm: {
       containerFilesSetUp: true,
+      poolState: "COMPLETE",
     },
   });
 }
@@ -53,21 +54,21 @@ export async function createWorkspaceWithTasksScenario() {
       description: "First test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "active",
+      status: "IN_PROGRESS",
     }),
     createTestTask({
       title: "E2E Test Task 2",
       description: "Second test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "active",
+      status: "IN_PROGRESS",
     }),
     createTestTask({
       title: "E2E Test Task 3",
       description: "Third test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "completed",
+      status: "DONE",
     }),
   ]);
 

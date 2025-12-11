@@ -262,7 +262,6 @@ export default function CallsPage() {
       <div className="space-y-6">
         <PageHeader title="Calls" />
         <PoolLaunchBanner
-          workspaceSlug={slug}
           title="Complete Pool Setup to View Call Recordings"
           description="Launch your development pods to access call recordings and transcripts."
         />
@@ -306,7 +305,7 @@ export default function CallsPage() {
                   </Button>
                 </TranscriptTooltip>
               )}
-              <Button onClick={handleStartCall} disabled={generatingLink}>
+              <Button onClick={handleStartCall} disabled={generatingLink} data-testid="start-call-button">
                 {generatingLink ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -348,7 +347,7 @@ export default function CallsPage() {
         </Card>
       )}
 
-      <Card>
+      <Card data-testid="call-recordings-card">
         <CardHeader>
           <CardTitle>Call Recordings</CardTitle>
         </CardHeader>
