@@ -23,35 +23,17 @@ export class WorkspaceSettingsPage {
   }
 
   async waitForLoad(): Promise<void> {
-    // Debug: Wait a moment and then check what's on the page
-    await this.page.waitForTimeout(2000);
-    
+    // Wait for the settings form to be visible
+    const settingsForm = this.page.locator('form');
+    await settingsForm.waitFor({ state: 'visible', timeout: 10000 });
+
     // Check if we're on the sign-in page instead
     const signInButton = this.page.locator(selectors.auth.mockSignInButton);
-    const isSignInPage = await signInButton.isVisible();
-    
+    const isSignInPage = await signInButton.isVisible().catch(() => false);
+
     if (isSignInPage) {
-      console.log('WARNING: On sign-in page instead of workspace settings');
       throw new Error('Authentication failed - redirected to sign-in page');
     }
-    
-    // Check the actual page title that exists
-    const pageTitle = this.page.locator('[data-testid="page-title"]');
-    const pageTitleExists = await pageTitle.isVisible();
-    
-    if (pageTitleExists) {
-      const titleText = await pageTitle.textContent();
-      console.log(`Found page title: "${titleText}"`);
-    } else {
-      console.log('No page title found with data-testid="page-title"');
-    }
-    
-    // Try a more flexible approach - just check if we have the settings form
-    const settingsForm = this.page.locator('form');
-    await expect(settingsForm).toBeVisible({ timeout: 10000 });
-    
-    // If we find the form but not the title, we're probably on the right page
-    console.log('Settings form found - assuming we\'re on the correct page');
   }
 
   async fillWorkspaceName(name: string): Promise<void> {

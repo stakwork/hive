@@ -49,7 +49,7 @@ export class CallsPage {
    */
   async navigateViaNavigation(): Promise<void> {
     // First, expand Context section if it's not already expanded
-    const contextButton = this.page.locator('[data-testid="nav-context"]');
+    const contextButton = this.page.locator(selectors.navigation.contextButton);
     const callsLink = this.page.locator(selectors.navigation.callsLink);
 
     // Check if calls link is visible, if not, click context to expand
