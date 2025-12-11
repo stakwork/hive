@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricDisplay } from "@/components/ui/metric-display";
-import { TestTube, FunctionSquare, Globe, Target } from "lucide-react";
+import { TestTube, FunctionSquare, Globe, Target, Server } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCoverageStore } from "@/stores/useCoverageStore";
@@ -16,6 +16,10 @@ export function TestCoverageCard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const hasInitializedIgnoreDirs = useRef(false);
+  
+  // Mock inventory state
+  const [mockData, setMockData] = useState<{ mocked: number; total: number } | undefined>();
+  const [mockLoading, setMockLoading] = useState(true);
 
   const fetchTestCoverage = useCallback(async () => {
     if (!workspaceId) {
@@ -60,9 +64,41 @@ export function TestCoverageCard() {
     }
   }, [workspaceId, ignoreDirs, repo, setIgnoreDirs]);
 
+  const fetchMockInventory = useCallback(async () => {
+    if (!workspaceId) {
+      setMockLoading(false);
+      return;
+    }
+
+    try {
+      setMockLoading(true);
+
+      // Fetch total mocks
+      const totalParams = new URLSearchParams({ workspaceId, mocked: "all", limit: "1", offset: "0" });
+      const totalResponse = await fetch(`/api/tests/mocks?${totalParams.toString()}`);
+      const totalResult = await totalResponse.json();
+
+      // Fetch mocked endpoints
+      const mockedParams = new URLSearchParams({ workspaceId, mocked: "mocked", limit: "1", offset: "0" });
+      const mockedResponse = await fetch(`/api/tests/mocks?${mockedParams.toString()}`);
+      const mockedResult = await mockedResponse.json();
+
+      if (totalResponse.ok && mockedResponse.ok && totalResult.success && mockedResult.success) {
+        const total = totalResult.data?.total_count || 0;
+        const mocked = mockedResult.data?.total_count || 0;
+        setMockData({ mocked, total });
+      }
+    } catch (err) {
+      console.error("Failed to fetch mock inventory:", err);
+    } finally {
+      setMockLoading(false);
+    }
+  }, [workspaceId]);
+
   useEffect(() => {
     fetchTestCoverage();
-  }, [workspaceId, ignoreDirs, repo, fetchTestCoverage]);
+    fetchMockInventory();
+  }, [workspaceId, ignoreDirs, repo, fetchTestCoverage, fetchMockInventory]);
 
   if (isLoading) {
     return (
@@ -76,7 +112,7 @@ export function TestCoverageCard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {[...Array(3)].map((_, i) => (
+            {[...Array(4)].map((_, i) => (
               <div key={i} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -200,6 +236,23 @@ export function TestCoverageCard() {
                 percent={data.e2e_tests.percent || 0}
                 covered={data.e2e_tests.covered || 0}
                 total={data.e2e_tests.total || 0}
+              />
+            </div>
+          )}
+
+          {/* Mocked Endpoints */}
+          {!mockLoading && mockData && mockData.total > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Server className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Mocked Endpoints</span>
+              </div>
+
+              <MetricDisplay
+                label="Mock Coverage"
+                percent={mockData.total > 0 ? (mockData.mocked / mockData.total) * 100 : 0}
+                covered={mockData.mocked}
+                total={mockData.total}
               />
             </div>
           )}
