@@ -191,6 +191,13 @@ export const selectors = {
     poolLaunchBanner: '[data-testid="pool-launch-banner"]',
   },
 
+  // Learn / Context Learn
+  learn: {
+    messageInput: '[data-testid="learn-message-input"]',
+    messageSend: '[data-testid="learn-message-send"]',
+    chatMessage: '[data-testid="learn-chat-message"]',
+  },
+
   // Common UI elements
   common: {
     loader: 'text=/Loading/i',
