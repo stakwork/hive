@@ -22,6 +22,8 @@ export const selectors = {
     userJourneysLink: '[data-testid="nav-user-journeys"]',
     roadmapLink: '[data-testid="nav-plan"]',
     callsLink: '[data-testid="nav-calls"]',
+    protectButton: '[data-testid="nav-protect"]',
+    janitorsLink: '[data-testid="nav-janitors"]',
   },
 
   // Page titles
@@ -176,6 +178,23 @@ export const selectors = {
     callRecordingsCard: 'text=/Call Recordings/i',
   },
 
+  // Janitors
+  janitors: {
+    pageTitle: '[data-testid="page-title"]:has-text("Janitors")',
+    sectionTaskCoordinator: '[data-testid="janitor-section-task-coordinator"]',
+    sectionTesting: '[data-testid="janitor-section-testing"]',
+    sectionMaintainability: '[data-testid="janitor-section-maintainability"]',
+    sectionSecurity: '[data-testid="janitor-section-security"]',
+    // Individual janitor items - using actual IDs
+    itemTicketSweep: '[data-testid="janitor-item-ticket-sweep"]',
+    itemRecommendationSweep: '[data-testid="janitor-item-recommendation-sweep"]',
+    itemUnitTests: '[data-testid="janitor-item-UNIT_TESTS"]',
+    itemIntegrationTests: '[data-testid="janitor-item-INTEGRATION_TESTS"]',
+    itemMockGeneration: '[data-testid="janitor-item-MOCK_GENERATION"]',
+    itemSecurityReview: '[data-testid="janitor-item-SECURITY_REVIEW"]',
+    // Janitor names and statuses (dynamic helpers below)
+  },
+
   // Common UI elements
   common: {
     loader: 'text=/Loading/i',
@@ -225,4 +244,16 @@ export const dynamicSelectors = {
 
   workspaceMemberRoleBadgeByUsername: (username: string) =>
     `[data-testid="workspace-member-row"][data-member-username="${username}"] [data-testid="member-role-badge"]`,
+
+  /**
+   * Select janitor name by janitor ID
+   */
+  janitorName: (janitorId: string) =>
+    `[data-testid="janitor-name-${janitorId}"]`,
+
+  /**
+   * Select janitor status by janitor ID
+   */
+  janitorStatus: (janitorId: string) =>
+    `[data-testid="janitor-status-${janitorId}"]`,
 };
