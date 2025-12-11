@@ -1,18 +1,18 @@
 "use client";
 
-import { PageHeader } from "@/components/ui/page-header";
 import { PoolLaunchBanner } from "@/components/pool-launch-banner";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { usePoolStatus } from "@/hooks/usePoolStatus";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertCircle, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { usePoolStatus } from "@/hooks/usePoolStatus";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { AlertCircle, Loader2, Server } from "lucide-react";
+import { useEffect, useState } from "react";
 
-import { VMData } from "@/types/pool-manager";
-import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
 import { CapacityControls } from "@/components/capacity/CapacityControls";
+import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
 import { VMGrid } from "@/components/capacity/VMGrid";
+import { VMData } from "@/types/pool-manager";
 
 export default function CapacityPage() {
   const { workspace, slug } = useWorkspace();
@@ -75,7 +75,6 @@ export default function CapacityPage() {
       <div className="space-y-6">
         <PageHeader title="Capacity" />
         <PoolLaunchBanner
-          workspaceSlug={slug}
           title="Complete Pool Setup to View Capacity"
           description="Launch your development pods to monitor resource utilization and capacity metrics."
         />

@@ -186,8 +186,9 @@ export const selectors = {
 
   // Calls
   calls: {
-    startCallButton: 'button:has-text("Start Call")',
-    callRecordingsCard: 'text=/Call Recordings/i',
+    startCallButton: '[data-testid="start-call-button"]',
+    callRecordingsCard: '[data-testid="call-recordings-card"]',
+    poolLaunchBanner: '[data-testid="pool-launch-banner"]',
   },
 
   // Common UI elements

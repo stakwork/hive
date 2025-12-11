@@ -26,7 +26,6 @@ export default function TasksPage() {
       {/* Pool Launch Banner - Only show if Pool is not complete */}
       {workspace?.poolState !== "COMPLETE" ? (
         <PoolLaunchBanner
-          workspaceSlug={slug}
           title="Complete Pool Setup to Start Managing Tasks"
           description="Launch your development pods to create and manage tasks."
         />

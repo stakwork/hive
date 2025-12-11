@@ -1,20 +1,18 @@
 "use client";
 
-import React from "react";
+import { useModal } from "@/components/modals/ModlaProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Server } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useModal } from "@/components/modals/ModlaProvider";
+import { Server } from "lucide-react";
+import React from "react";
 
 interface PoolLaunchBannerProps {
-  workspaceSlug: string;
   title?: string;
   description?: string;
 }
 
 export function PoolLaunchBanner({
-  workspaceSlug,
   title = "Complete Pool Setup",
   description = "Launch your development pods to continue.",
 }: PoolLaunchBannerProps) {
@@ -36,7 +34,7 @@ export function PoolLaunchBanner({
   // Setting up state - services not ready yet
   if (!servicesReady) {
     return (
-      <Card>
+      <Card data-testid="pool-launch-banner">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <div className="relative flex items-center justify-center">
@@ -55,7 +53,7 @@ export function PoolLaunchBanner({
 
   // Ready to launch pods
   return (
-    <Card>
+    <Card data-testid="pool-launch-banner">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
