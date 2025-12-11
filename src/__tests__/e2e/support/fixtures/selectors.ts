@@ -137,6 +137,17 @@ export const selectors = {
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
   },
 
+  // Recommendations
+  recommendations: {
+    card: '[data-testid="recommendation-card"]',
+    title: '[data-testid="recommendation-title"]',
+    description: '[data-testid="recommendation-description"]',
+    impact: '[data-testid="recommendation-impact"]',
+    reviewBadge: '[data-testid="recommendation-review-badge"]',
+    acceptButton: '[data-testid="recommendation-accept-button"]',
+    dismissButton: '[data-testid="recommendation-dismiss-button"]',
+  },
+
   // Onboarding
   onboarding: {
     welcomeText: 'text=/Welcome|Get Started|Create.*Workspace/i',

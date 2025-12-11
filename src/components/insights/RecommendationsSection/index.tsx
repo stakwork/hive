@@ -112,15 +112,15 @@ export function RecommendationsSection() {
           displayedRecommendations.map((recommendation) => {
             const Icon = getRecommendationIcon(recommendation.janitorRun?.janitorType as JanitorType);
             return (
-              <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors">
+              <div key={recommendation.id} className="p-3 border rounded-lg hover:bg-muted transition-colors" data-testid="recommendation-card">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <Icon className="h-4 w-4 text-muted-foreground" />
-                    <h4 className="text-sm font-medium line-clamp-1">{recommendation.title}</h4>
+                    <h4 className="text-sm font-medium line-clamp-1" data-testid="recommendation-title">{recommendation.title}</h4>
                   </div>
                   <div className="flex items-center gap-2">
                     {!recommendation.janitorRun && (
-                      <Badge className="gap-1 px-1.5 py-0.5 text-xs bg-purple-100 text-purple-800 border-purple-200">
+                      <Badge className="gap-1 px-1.5 py-0.5 text-xs bg-purple-100 text-purple-800 border-purple-200" data-testid="recommendation-review-badge">
                         <User className="w-3 h-3" />
                         Review Required
                       </Badge>
@@ -129,8 +129,8 @@ export function RecommendationsSection() {
                   </div>
                 </div>
 
-                <p className="text-xs text-muted-foreground mb-3">{recommendation.description}</p>
-                {recommendation.impact && <p className="text-xs text-blue-600 mb-3">Impact: {recommendation.impact}</p>}
+                <p className="text-xs text-muted-foreground mb-3" data-testid="recommendation-description">{recommendation.description}</p>
+                {recommendation.impact && <p className="text-xs text-blue-600 mb-3" data-testid="recommendation-impact">Impact: {recommendation.impact}</p>}
 
                 <div className="flex items-center justify-start">
                   <div className="flex gap-2">
@@ -139,10 +139,11 @@ export function RecommendationsSection() {
                       variant="outline"
                       className="h-7 text-xs"
                       onClick={() => handleDismiss(recommendation.id)}
+                      data-testid="recommendation-dismiss-button"
                     >
                       Dismiss
                     </Button>
-                    <Button size="sm" className="h-7 text-xs" onClick={() => handleAccept(recommendation.id)}>
+                    <Button size="sm" className="h-7 text-xs" onClick={() => handleAccept(recommendation.id)} data-testid="recommendation-accept-button">
                       Accept
                     </Button>
                   </div>
