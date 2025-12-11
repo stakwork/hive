@@ -1,14 +1,18 @@
 import { expect } from '@playwright/test';
 import { test } from '@/__tests__/e2e/support/fixtures/test-hooks';
-import { AuthPage, JanitorsPage } from '@/__tests__/e2e/support/page-objects';
+import { AuthPage, DashboardPage, JanitorsPage } from '@/__tests__/e2e/support/page-objects';
 import { createStandardWorkspaceScenario } from '@/__tests__/e2e/support/fixtures/e2e-scenarios';
 
 test.describe('Protect:Janitors:Check essential list is visible', () => {
   test('should display all essential janitors with their names and status badges', async ({ page }) => {
     // Arrange - Create test workspace and sign in
-    const scenario = await createStandardWorkspaceScenario();
+    await createStandardWorkspaceScenario();
     const authPage = new AuthPage(page);
     await authPage.signInWithMock();
+
+    // Wait for dashboard to load
+    const dashboardPage = new DashboardPage(page);
+    await dashboardPage.waitForLoad();
 
     // Act - Navigate to Janitors page
     const janitorsPage = new JanitorsPage(page);
