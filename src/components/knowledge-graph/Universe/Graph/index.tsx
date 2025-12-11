@@ -10,6 +10,7 @@ import { Group, Vector3 } from 'three'
 import { Line2 } from 'three-stdlib'
 import { RepositoryScene } from '../GitSeeScene'
 import { EdgesGPU } from './Connections/EdgeCpu'
+import { CalloutsLayer } from './Callouts'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
 import { HtmlNodesLayer } from './HtmlNodesLayer'
@@ -472,6 +473,7 @@ export const Graph = () => {
         <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
       {!isOnboarding && <HighlightedNodesLayer />}
+      {!isOnboarding && <CalloutsLayer />}
       {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
