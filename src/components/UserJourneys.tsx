@@ -12,12 +12,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye, ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useModal } from "./modals/ModlaProvider";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 
@@ -59,12 +60,14 @@ interface UserJourneysProps {
 
 export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps) {
   const { id, slug, workspace } = useWorkspace();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
   const [userJourneys, setUserJourneys] = useState<UserJourneyRow[]>([]);
   const [fetchingJourneys, setFetchingJourneys] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [archivingInventoryId, setArchivingInventoryId] = useState<string | null>(null);
 
   // View type state (tests or inventory)
   const [viewType, setViewType] = useState<"tests" | "inventory">("tests");
@@ -84,6 +87,11 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
     },
     enabled: viewType === "inventory" && !!slug,
   });
+
+  // Filter out muted inventory nodes
+  const filteredInventoryNodes = inventoryNodes?.filter(
+    (node: { properties: { is_muted?: boolean } }) => !node.properties.is_muted
+  ) || [];
 
   // Replay-related state
   const [replayTestCode, setReplayTestCode] = useState<string | null>(null);
@@ -227,6 +235,35 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
       toast.error("Archive Failed", { description: "Unable to archive the test. Please try again." });
     } finally {
       setArchivingId(null);
+    }
+  };
+
+  const handleArchiveInventoryNode = async (refId: string) => {
+    try {
+      setArchivingInventoryId(refId);
+
+      const response = await fetch(`/api/workspaces/${slug}/nodes/${refId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: { is_muted: true },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to archive node");
+      }
+
+      toast("User Objective Ignored", { description: "This item has been hidden from the inventory." });
+
+      queryClient.invalidateQueries({ queryKey: ["inventory-nodes", slug] });
+    } catch (error) {
+      console.error("Error archiving node:", error);
+      toast.error("Failed to Ignore", { description: "Unable to ignore this item. Please try again." });
+    } finally {
+      setArchivingInventoryId(null);
     }
   };
 
@@ -656,21 +693,46 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-            ) : inventoryNodes && inventoryNodes.length > 0 ? (
+            ) : filteredInventoryNodes.length > 0 ? (
               <div className="rounded-md border">
                 <Table>
                   <TableHeader className="bg-muted/50">
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Description</TableHead>
+                      <TableHead className="w-[80px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {inventoryNodes.map((node: { ref_id: string; properties: { name: string; description: string } }) => (
+                    {filteredInventoryNodes.map((node: { ref_id: string; properties: { name: string; description: string } }) => (
                       <TableRow key={node.ref_id}>
                         <TableCell className="font-medium">{node.properties.name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {node.properties.description}
+                        </TableCell>
+                        <TableCell>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleArchiveInventoryNode(node.ref_id)}
+                                  disabled={archivingInventoryId === node.ref_id}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  {archivingInventoryId === node.ref_id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Archive className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Ignore</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TableCell>
                       </TableRow>
                     ))}
