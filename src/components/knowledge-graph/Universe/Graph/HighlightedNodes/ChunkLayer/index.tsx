@@ -67,14 +67,6 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const simulation = useSimulationStore((s) => s.simulation)
   const storeId = useStoreId()
 
-  // Auto-remove this chunk after duration
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      removeHighlightChunk(chunk.chunkId)
-    }, HIGHLIGHT_DURATION)
-    return () => clearTimeout(timer)
-  }, [chunk.chunkId, removeHighlightChunk])
-
   // Initialize nodes from normalized data with depth-based discovery
   useEffect(() => {
     // Include all chunk nodes plus the source node if specified
