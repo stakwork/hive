@@ -22,6 +22,9 @@ export const selectors = {
     userJourneysLink: '[data-testid="nav-user-journeys"]',
     roadmapLink: '[data-testid="nav-plan"]',
     callsLink: '[data-testid="nav-calls"]',
+    buildButton: '[data-testid="nav-build"]',
+    protectButton: '[data-testid="nav-protect"]',
+    contextButton: '[data-testid="nav-context"]',
   },
 
   // Page titles
