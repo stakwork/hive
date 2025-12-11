@@ -161,6 +161,7 @@ const defaultData: Omit<
   | 'setWebhookHighlightNodes'
   | 'addCallout'
   | 'removeCallout'
+  | 'pruneExpiredCallouts'
   | 'clearCallouts'
   | 'addHighlightChunk'
   | 'removeHighlightChunk'
@@ -319,32 +320,32 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
       highlightTimestamp: Date.now(),
       webhookHighlightDepth: depth
     }),
-  addCallout: (title: string, nodeRefId: string, id?: string, addedAt?: number) => {
-    const calloutId = id || crypto.randomUUID()
-    const { callouts } = get()
-    const addedTimestamp = addedAt || Date.now()
-    const nextCallouts: GraphCallout[] = [
-      ...callouts.filter((callout) => callout.id !== calloutId),
-      { id: calloutId, title, nodeRefId, addedAt: addedTimestamp }
-    ]
-    set({ callouts: nextCallouts })
-    return calloutId
-  },
-  removeCallout: (calloutId: string) => {
-    const { callouts } = get()
-    const updated = callouts.filter((callout) => callout.id !== calloutId)
-    set({ callouts: updated })
-  },
-  pruneExpiredCallouts: (ttlMs = 15 * 60 * 1000) => {
-    const { callouts } = get()
-    if (!callouts.length) return
-    const now = Date.now()
-    const fresh = callouts.filter((callout) => now - callout.addedAt < ttlMs)
-    if (fresh.length !== callouts.length) {
-      set({ callouts: fresh })
-    }
-  },
-  clearCallouts: () => set({ callouts: [] }),
+    addCallout: (title: string, nodeRefId: string, id?: string, addedAt?: number) => {
+      const calloutId = id || crypto.randomUUID()
+      const { callouts } = get()
+      const addedTimestamp = addedAt || Date.now()
+      const nextCallouts: GraphCallout[] = [
+        ...callouts.filter((callout) => callout.id !== calloutId),
+        { id: calloutId, title, nodeRefId, addedAt: addedTimestamp }
+      ]
+      set({ callouts: nextCallouts })
+      return calloutId
+    },
+    removeCallout: (calloutId: string) => {
+      const { callouts } = get()
+      const updated = callouts.filter((callout) => callout.id !== calloutId)
+      set({ callouts: updated })
+    },
+    pruneExpiredCallouts: (ttlMs = 15 * 60 * 1000) => {
+      const { callouts } = get()
+      if (!callouts.length) return
+      const now = Date.now()
+      const fresh = callouts.filter((callout) => now - callout.addedAt < ttlMs)
+      if (fresh.length !== callouts.length) {
+        set({ callouts: fresh })
+      }
+    },
+    clearCallouts: () => set({ callouts: [] }),
     addHighlightChunk: (title: string, ref_ids: string[], sourceNodeRefId?: string) => {
       const chunkId = crypto.randomUUID()
       const chunk: HighlightChunk = {
