@@ -13,6 +13,20 @@ import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 import { getSystemAssigneeEnum, getSystemAssigneeUser, isSystemAssigneeId } from "@/lib/system-assignees";
 
 /**
+ * Simple hash function to convert string to integer for advisory locks
+ * Includes both featureId and phaseId in hash for proper scoping
+ */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
+}
+
+/**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
  */
 export async function getTicket(
@@ -139,11 +153,6 @@ export async function createTicket(
     throw new Error("User not found");
   }
 
-  const nextOrder = await calculateNextOrder(db.task, {
-    featureId,
-    phaseId: data.phaseId || null,
-  });
-
   // Determine if assignee is a system assignee
   const isSystemAssignee = data.assigneeId?.startsWith("system:");
   const systemAssigneeType = isSystemAssignee
@@ -154,49 +163,69 @@ export async function createTicket(
 
   const bountyCode = await ensureUniqueBountyCode();
 
-  const task = await db.task.create({
-    data: {
-      title: data.title.trim(),
-      description: data.description?.trim() || null,
-      workspaceId: feature.workspaceId,
-      featureId,
-      phaseId: data.phaseId || null,
-      status: data.status || TaskStatus.TODO,
-      priority: data.priority || Priority.MEDIUM,
-      order: nextOrder,
-      assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
-      systemAssigneeType: systemAssigneeType,
-      bountyCode: bountyCode,
-      dependsOnTaskIds: data.dependsOnTaskIds || [],
-      runBuild: data.runBuild ?? true,
-      runTestSuite: data.runTestSuite ?? true,
-      createdById: userId,
-      updatedById: userId,
-    },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      status: true,
-      priority: true,
-      order: true,
-      featureId: true,
-      phaseId: true,
-      bountyCode: true,
-      dependsOnTaskIds: true,
-      createdAt: true,
-      updatedAt: true,
-      systemAssigneeType: true,
-      assignee: {
-        select: USER_SELECT,
+  // Use transaction with advisory lock to prevent race condition in concurrent ticket creation
+  const task = await db.$transaction(async (tx) => {
+    // Use advisory lock based on featureId+phaseId combination to serialize order calculation
+    // The lock is automatically released at end of transaction
+    const lockKey = `${featureId}:${data.phaseId || 'null'}`;
+    const lockId = Math.abs(hashString(lockKey));
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockId})`);
+
+    // Calculate next order within locked transaction to ensure atomicity
+    const maxOrderItem = await tx.task.findFirst({
+      where: {
+        featureId,
+        phaseId: data.phaseId || null,
       },
-      phase: {
-        select: {
-          id: true,
-          name: true,
+      orderBy: { order: "desc" },
+      select: { order: true },
+    });
+    const nextOrder = (maxOrderItem?.order ?? -1) + 1;
+
+    return await tx.task.create({
+      data: {
+        title: data.title.trim(),
+        description: data.description?.trim() || null,
+        workspaceId: feature.workspaceId,
+        featureId,
+        phaseId: data.phaseId || null,
+        status: data.status || TaskStatus.TODO,
+        priority: data.priority || Priority.MEDIUM,
+        order: nextOrder,
+        assigneeId: isSystemAssignee ? null : (data.assigneeId || null),
+        systemAssigneeType: systemAssigneeType,
+        bountyCode: bountyCode,
+        dependsOnTaskIds: data.dependsOnTaskIds || [],
+        runBuild: data.runBuild ?? true,
+        runTestSuite: data.runTestSuite ?? true,
+        createdById: userId,
+        updatedById: userId,
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        order: true,
+        featureId: true,
+        phaseId: true,
+        bountyCode: true,
+        dependsOnTaskIds: true,
+        createdAt: true,
+        updatedAt: true,
+        systemAssigneeType: true,
+        assignee: {
+          select: USER_SELECT,
+        },
+        phase: {
+          select: {
+            id: true,
+            name: true,
+          },
         },
       },
-    },
+    });
   });
 
   // Convert system assignee type to virtual user object
