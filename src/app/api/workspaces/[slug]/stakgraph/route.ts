@@ -466,7 +466,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({
       success: true,
-      message: "Stakgraph settings saved successfully",
+      message: "Pool settings saved successfully",
       data: {
         id: typedSwarm.id,
         name: typedSwarm.name || settings.name,
