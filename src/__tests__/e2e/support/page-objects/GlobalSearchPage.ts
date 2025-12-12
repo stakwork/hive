@@ -94,9 +94,10 @@ export class GlobalSearchPage {
       throw new Error(`Could not find result with title: ${title}`);
     }
 
-    // Use keyboard navigation: press Down arrow to reach the item, then Enter to select
-    // cmdk auto-highlights the first item, so we need (targetIndex) down presses
-    for (let i = 0; i < targetIndex; i++) {
+    // Use keyboard navigation to select the item
+    // Always press ArrowDown at least once to enter list navigation mode in cmdk
+    // Then navigate to the target index and press Enter
+    for (let i = 0; i <= targetIndex; i++) {
       await this.page.keyboard.press('ArrowDown');
     }
 
@@ -113,9 +114,10 @@ export class GlobalSearchPage {
     // Wait for cmdk to fully process the search results
     await this.page.waitForTimeout(100);
 
-    // Use keyboard navigation: press Down arrow to reach the item, then Enter to select
-    // cmdk auto-highlights the first item, so we need (index) down presses
-    for (let i = 0; i < index; i++) {
+    // Use keyboard navigation to select the item
+    // Always press ArrowDown at least once to enter list navigation mode in cmdk
+    // Then navigate to the target index and press Enter
+    for (let i = 0; i <= index; i++) {
       await this.page.keyboard.press('ArrowDown');
     }
 
