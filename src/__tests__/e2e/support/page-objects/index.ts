@@ -14,3 +14,4 @@ export { PhaseDetailPage } from './PhaseDetailPage';
 export { CallsPage } from './CallsPage';
 export { RecommendationsPage } from './RecommendationsPage';
 export { ContextLearnPage } from './ContextLearnPage';
+export { JanitorsPage } from './JanitorsPage';

@@ -25,6 +25,7 @@ export const selectors = {
     buildButton: '[data-testid="nav-build"]',
     protectButton: '[data-testid="nav-protect"]',
     contextButton: '[data-testid="nav-context"]',
+    janitorsLink: '[data-testid="nav-janitors"]',
   },
 
   // Page titles
@@ -198,6 +199,15 @@ export const selectors = {
     chatMessage: '[data-testid="learn-chat-message"]',
   },
 
+  // Janitors
+  janitors: {
+    pageTitle: '[data-testid="page-title"]:has-text("Janitors")',
+    taskCoordinatorSection: '[data-testid="janitor-section-task-coordinator"]',
+    testingSection: '[data-testid="janitor-section-testing"]',
+    maintainabilitySection: '[data-testid="janitor-section-maintainability"]',
+    securitySection: '[data-testid="janitor-section-security"]',
+  },
+
   // Common UI elements
   common: {
     loader: 'text=/Loading/i',
@@ -247,4 +257,28 @@ export const dynamicSelectors = {
 
   workspaceMemberRoleBadgeByUsername: (username: string) =>
     `[data-testid="workspace-member-row"][data-member-username="${username}"] [data-testid="member-role-badge"]`,
+
+  /**
+   * Select janitor item by ID
+   */
+  janitorItem: (janitorId: string) =>
+    `[data-testid="janitor-item-${janitorId}"]`,
+
+  /**
+   * Select janitor toggle switch by ID
+   */
+  janitorToggle: (janitorId: string) =>
+    `[data-testid="janitor-toggle-${janitorId}"]`,
+
+  /**
+   * Select janitor run button by ID
+   */
+  janitorRunButton: (janitorId: string) =>
+    `[data-testid="janitor-run-button-${janitorId}"]`,
+
+  /**
+   * Select janitor name by ID
+   */
+  janitorName: (janitorId: string) =>
+    `[data-testid="janitor-name-${janitorId}"]`,
 };
