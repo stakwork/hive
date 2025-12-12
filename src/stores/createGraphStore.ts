@@ -53,6 +53,8 @@ const defaultData: Omit<
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
   | 'setTestLayerVisibility'
+  | 'setTestNodeIds'
+  | 'setTestNodesFetched'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -89,6 +91,16 @@ const defaultData: Omit<
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
   testLayerVisibility: {
+    unitTests: false,
+    integrationTests: false,
+    e2eTests: false,
+  },
+  testNodeIds: {
+    unitTests: new Set(),
+    integrationTests: new Set(),
+    e2eTests: new Set(),
+  },
+  testNodesFetched: {
     unitTests: false,
     integrationTests: false,
     e2eTests: false,
@@ -273,6 +285,12 @@ export const createGraphStore = (
       setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
       setTestLayerVisibility: (updates) => set(({ testLayerVisibility }) => ({
         testLayerVisibility: { ...testLayerVisibility, ...updates }
+      })),
+      setTestNodeIds: (key, nodeIds) => set(({ testNodeIds }) => ({
+        testNodeIds: { ...testNodeIds, [key]: new Set(nodeIds) }
+      })),
+      setTestNodesFetched: (key, fetched) => set(({ testNodesFetched }) => ({
+        testNodesFetched: { ...testNodesFetched, [key]: fetched }
       })),
     }
   });

@@ -29,6 +29,12 @@ export type TestLayerVisibility = {
   e2eTests: boolean
 }
 
+export type TestNodeIds = {
+  unitTests: Set<string>
+  integrationTests: Set<string>
+  e2eTests: Set<string>
+}
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -65,6 +71,8 @@ export type GraphStore = {
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
   testLayerVisibility: TestLayerVisibility
+  testNodeIds: TestNodeIds
+  testNodesFetched: Record<keyof TestLayerVisibility, boolean>
 
   // setters
   setDisableCameraRotation(rotation: boolean): void
@@ -107,4 +115,6 @@ export type GraphStore = {
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
   setTestLayerVisibility(updates: Partial<TestLayerVisibility>): void
+  setTestNodeIds(key: keyof TestLayerVisibility, nodeIds: string[]): void
+  setTestNodesFetched(key: keyof TestLayerVisibility, fetched: boolean): void
 }

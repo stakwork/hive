@@ -53,6 +53,12 @@ export type TestLayerVisibility = {
   e2eTests: boolean
 }
 
+export type TestNodeIds = {
+  unitTests: Set<string>
+  integrationTests: Set<string>
+  e2eTests: Set<string>
+}
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -89,6 +95,8 @@ export type GraphStore = {
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
   testLayerVisibility: TestLayerVisibility
+  testNodeIds: TestNodeIds
+  testNodesFetched: Record<keyof TestLayerVisibility, boolean>
   setDisableCameraRotation: (rotation: boolean) => void
   setScrollEventsDisabled: (rotation: boolean) => void
   setData: (data: GraphData) => void
@@ -129,6 +137,8 @@ export type GraphStore = {
   clearWebhookHighlights: () => void
   setActiveFilterTab: (tab: FilterTab) => void
   setTestLayerVisibility: (updates: Partial<TestLayerVisibility>) => void
+  setTestNodeIds: (key: keyof TestLayerVisibility, nodeIds: string[]) => void
+  setTestNodesFetched: (key: keyof TestLayerVisibility, fetched: boolean) => void
 }
 
 const defaultData: Omit<
@@ -176,6 +186,8 @@ const defaultData: Omit<
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
   | 'setTestLayerVisibility'
+  | 'setTestNodeIds'
+  | 'setTestNodesFetched'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -212,6 +224,16 @@ const defaultData: Omit<
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
   testLayerVisibility: {
+    unitTests: false,
+    integrationTests: false,
+    e2eTests: false,
+  },
+  testNodeIds: {
+    unitTests: new Set(),
+    integrationTests: new Set(),
+    e2eTests: new Set(),
+  },
+  testNodesFetched: {
     unitTests: false,
     integrationTests: false,
     e2eTests: false,
@@ -392,6 +414,12 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
     setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
     setTestLayerVisibility: (updates) => set(({ testLayerVisibility }) => ({
       testLayerVisibility: { ...testLayerVisibility, ...updates }
+    })),
+    setTestNodeIds: (key, nodeIds) => set(({ testNodeIds }) => ({
+      testNodeIds: { ...testNodeIds, [key]: new Set(nodeIds) }
+    })),
+    setTestNodesFetched: (key, fetched) => set(({ testNodesFetched }) => ({
+      testNodesFetched: { ...testNodesFetched, [key]: fetched }
     })),
   }
 })
