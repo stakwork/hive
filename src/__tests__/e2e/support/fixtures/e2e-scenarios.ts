@@ -9,6 +9,7 @@ import {
   createTestWorkspaceScenario,
   createTestTask,
   createTestUser,
+  createTestFeature,
   type CreateTestUserOptions,
   type TestWorkspaceScenarioResult,
 } from "./database";
@@ -174,5 +175,50 @@ export async function createWorkspaceWithRecommendationsScenario() {
     janitorConfig,
     janitorRun,
     recommendations,
+  };
+}
+
+/**
+ * Workspace with searchable content (tasks and features) for testing global search
+ *
+ * IMPORTANT: Owner uses default mock auth user (dev-user@mock.dev) to align with
+ * AuthPage.signInWithMock() which signs in as "dev-user" by default.
+ */
+export async function createWorkspaceWithSearchableContentScenario() {
+  const scenario = await createStandardWorkspaceScenario();
+
+  // Create a feature that will show up in search results
+  const feature = await createTestFeature({
+    title: "API Integration",
+    brief: "Add RESTful API endpoints for external integrations",
+    workspaceId: scenario.workspace.id,
+    createdById: scenario.owner.id,
+    updatedById: scenario.owner.id,
+    status: "IN_PROGRESS",
+    priority: "HIGH",
+  });
+
+  // Create tasks that will show up in search results
+  const tasks = await Promise.all([
+    createTestTask({
+      title: "Implement API authentication",
+      description: "Add JWT authentication for API endpoints",
+      workspaceId: scenario.workspace.id,
+      createdById: scenario.owner.id,
+      status: "IN_PROGRESS",
+    }),
+    createTestTask({
+      title: "Create user dashboard",
+      description: "Build the user dashboard interface",
+      workspaceId: scenario.workspace.id,
+      createdById: scenario.owner.id,
+      status: "TODO",
+    }),
+  ]);
+
+  return {
+    ...scenario,
+    feature,
+    tasks,
   };
 }

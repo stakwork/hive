@@ -198,6 +198,14 @@ export const selectors = {
     chatMessage: '[data-testid="learn-chat-message"]',
   },
 
+  // Global Search
+  globalSearch: {
+    input: '[data-testid="global-search-input"]',
+    results: '[data-testid="global-search-results"]',
+    resultItem: '[data-testid="global-search-result-item"]',
+    resultTitle: '[data-testid="global-search-result-title"]',
+  },
+
   // Common UI elements
   common: {
     loader: 'text=/Loading/i',

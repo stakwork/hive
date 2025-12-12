@@ -141,13 +141,14 @@ export function GlobalSearch() {
         value={`${result.type}-${result.id}-${result.title}`}
         onSelect={() => handleSelect(result.url)}
         className="flex items-start gap-3 px-3 py-2 cursor-pointer"
+        data-testid="global-search-result-item"
       >
         <StatusIcon className={`h-4 w-4 mt-0.5 shrink-0 ${color}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">{config.label}</span>
             <span className="text-muted-foreground">›</span>
-            <span className="font-medium truncate">{result.title}</span>
+            <span className="font-medium truncate" data-testid="global-search-result-title">{result.title}</span>
           </div>
           {result.metadata.featureTitle && (
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -177,8 +178,9 @@ export function GlobalSearch() {
         placeholder="Search..."
         value={query}
         onValueChange={setQuery}
+        data-testid="global-search-input"
       />
-      <CommandList>
+      <CommandList data-testid="global-search-results">
         {loading && (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
