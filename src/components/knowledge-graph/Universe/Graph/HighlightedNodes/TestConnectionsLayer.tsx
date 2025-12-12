@@ -1,3 +1,4 @@
+import { useTestNodesFetch } from '@/hooks/useTestNodesFetch'
 import { useStoreId } from '@/stores/StoreProvider'
 import { getStoreBundle } from '@/stores/createStoreFactory'
 import type { TestLayerVisibility } from '@/stores/graphStore.types'
@@ -20,6 +21,9 @@ const LINE_WIDTH = 0.8
 
 export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
   ({ visibilityKey, nodeType, color }) => {
+    // Fetch test nodes when visibility changes
+    useTestNodesFetch()
+    
     const nodesNormalized = useDataStore((s) => s.nodesNormalized)
     const showLayer = useGraphStore((s) => s.testLayerVisibility[visibilityKey])
     const simulation = useSimulationStore((s) => s.simulation)
