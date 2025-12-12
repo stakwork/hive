@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricDisplay } from "@/components/ui/metric-display";
-import { TestTube, FunctionSquare, Globe, Target } from "lucide-react";
+import { TestTube, FunctionSquare, Globe, Target, Shield } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCoverageStore } from "@/stores/useCoverageStore";
@@ -76,7 +76,7 @@ export function TestCoverageCard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {[...Array(3)].map((_, i) => (
+            {[...Array(4)].map((_, i) => (
               <div key={i} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -200,6 +200,23 @@ export function TestCoverageCard() {
                 percent={data.e2e_tests.percent || 0}
                 covered={data.e2e_tests.covered || 0}
                 total={data.e2e_tests.total || 0}
+              />
+            </div>
+          )}
+
+          {/* 3rd Party Mocks */}
+          {data.mocks && (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">3rd Party Mocks</span>
+              </div>
+
+              <MetricDisplay
+                label="Mock Coverage"
+                percent={data.mocks.percent || 0}
+                covered={data.mocks.mocked || 0}
+                total={data.mocks.total || 0}
               />
             </div>
           )}

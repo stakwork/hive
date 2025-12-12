@@ -7,10 +7,17 @@ export interface TestCoverageMetric {
   line_percent?: number;
 }
 
+export interface MocksCoverageMetric {
+  total: number;
+  mocked: number;
+  percent: number;
+}
+
 export interface TestCoverageData {
   unit_tests: TestCoverageMetric;
   integration_tests: TestCoverageMetric;
   e2e_tests: TestCoverageMetric;
+  mocks?: MocksCoverageMetric;
 }
 
 export interface TestCoverageResponse {
