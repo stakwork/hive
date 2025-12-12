@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// Mock the config module to control USE_MOCKS flag dynamically
+vi.mock("@/config/env", () => {
+  return {
+    config: {
+      get USE_MOCKS() {
+        return process.env.USE_MOCKS === "true";
+      },
+    },
+  };
+});
+
 // Mock the external libraries before importing the module under test
 vi.mock("pusher", () => {
   const MockPusher = vi.fn().mockImplementation((config) => ({
@@ -41,6 +52,7 @@ describe("pusher.ts", () => {
     // Reset environment variables to a clean state
     process.env = {
       ...originalEnv,
+      USE_MOCKS: "false", // Disable mocks for tests by default
       PUSHER_APP_ID: "test-app-id",
       PUSHER_KEY: "test-key",
       PUSHER_SECRET: "test-secret",
@@ -107,6 +119,25 @@ describe("pusher.ts", () => {
         useTLS: true,
       });
     });
+
+    it("should use mock server when USE_MOCKS is true", async () => {
+      process.env.USE_MOCKS = "true";
+      // No Pusher env vars needed in mock mode
+      delete process.env.PUSHER_APP_ID;
+      delete process.env.PUSHER_KEY;
+      delete process.env.PUSHER_SECRET;
+      delete process.env.PUSHER_CLUSTER;
+      delete process.env.NEXT_PUBLIC_PUSHER_KEY;
+      delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+      
+      vi.resetModules();
+      const { pusherServer: testPusherServer } = await import("@/lib/pusher");
+      
+      // Should not throw - mock mode doesn't require env vars
+      expect(testPusherServer).toBeDefined();
+      expect(testPusherServer.trigger).toBeDefined();
+      expect(typeof testPusherServer.trigger).toBe("function");
+    });
   });
 
   describe("getPusherClient", () => {
@@ -140,50 +171,58 @@ describe("pusher.ts", () => {
       expect(client1).toBe(client2);
     });
 
-    it("should throw error when NEXT_PUBLIC_PUSHER_KEY is missing", async () => {
-      delete process.env.NEXT_PUBLIC_PUSHER_KEY;
-      vi.resetModules();
-      
-      const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
-    });
-
-    it("should throw error when NEXT_PUBLIC_PUSHER_CLUSTER is missing", async () => {
-      delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
-      vi.resetModules();
-      
-      const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
-    });
-
-    it("should throw error when both environment variables are missing", async () => {
-      delete process.env.NEXT_PUBLIC_PUSHER_KEY;
-      delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
-      vi.resetModules();
-      
-      const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
-    });
-
-    it("should work with empty string environment variables", async () => {
+    it("should throw error when NEXT_PUBLIC_PUSHER_KEY is missing in non-mock mode", async () => {
       process.env.NEXT_PUBLIC_PUSHER_KEY = "";
-      process.env.NEXT_PUBLIC_PUSHER_CLUSTER = "test-cluster";
       vi.resetModules();
       
+      // Should throw during module import, not when calling getPusherClient()
+      await expect(async () => {
+        await import("@/lib/pusher");
+      }).rejects.toThrow("Missing required Pusher environment variables");
+    });
+
+    it("should throw error when NEXT_PUBLIC_PUSHER_CLUSTER is missing in non-mock mode", async () => {
+      process.env.NEXT_PUBLIC_PUSHER_CLUSTER = "";
+      vi.resetModules();
+      
+      // Should throw during module import, not when calling getPusherClient()
+      await expect(async () => {
+        await import("@/lib/pusher");
+      }).rejects.toThrow("Missing required Pusher environment variables");
+    });
+
+    it("should throw error when both client environment variables are missing in non-mock mode", async () => {
+      process.env.NEXT_PUBLIC_PUSHER_KEY = "";
+      process.env.NEXT_PUBLIC_PUSHER_CLUSTER = "";
+      vi.resetModules();
+      
+      // Should throw during module import, not when calling getPusherClient()
+      await expect(async () => {
+        await import("@/lib/pusher");
+      }).rejects.toThrow("Missing required Pusher environment variables");
+    });
+
+    it("should use mock client when USE_MOCKS is true", async () => {
+      process.env.USE_MOCKS = "true";
+      // No Pusher env vars needed in mock mode
+      delete process.env.PUSHER_APP_ID;
+      delete process.env.PUSHER_KEY;
+      delete process.env.PUSHER_SECRET;
+      delete process.env.PUSHER_CLUSTER;
+      delete process.env.NEXT_PUBLIC_PUSHER_KEY;
+      delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+      
+      vi.resetModules();
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+      // Should not throw - mock mode doesn't require env vars
+      expect(() => testGetPusherClient()).not.toThrow();
+      
+      const client = testGetPusherClient();
+      expect(client).toBeDefined();
+      // Mock client should have the same interface
+      expect(client.subscribe).toBeDefined();
+      expect(typeof client.subscribe).toBe("function");
     });
 
     it("should have expected methods on returned client", async () => {
