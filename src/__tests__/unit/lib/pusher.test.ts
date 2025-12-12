@@ -1,5 +1,47 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// Mock @/config/env to provide Pusher credential getters
+vi.mock("@/config/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/config/env")>();
+  return {
+    ...actual,
+    optionalEnvVars: {
+      ...actual.optionalEnvVars,
+      USE_MOCKS: false, // Use real Pusher in these tests
+    },
+    getPusherAppId: () => {
+      const val = process.env.PUSHER_APP_ID;
+      if (!val) throw new Error("PUSHER_APP_ID environment variable is not set");
+      return val;
+    },
+    getPusherKey: () => {
+      const val = process.env.PUSHER_KEY;
+      if (!val) throw new Error("PUSHER_KEY environment variable is not set");
+      return val;
+    },
+    getPusherSecret: () => {
+      const val = process.env.PUSHER_SECRET;
+      if (!val) throw new Error("PUSHER_SECRET environment variable is not set");
+      return val;
+    },
+    getPusherCluster: () => {
+      const val = process.env.PUSHER_CLUSTER;
+      if (!val) throw new Error("PUSHER_CLUSTER environment variable is not set");
+      return val;
+    },
+    getPublicPusherKey: () => {
+      const val = process.env.NEXT_PUBLIC_PUSHER_KEY;
+      if (!val) throw new Error("NEXT_PUBLIC_PUSHER_KEY environment variable is not set");
+      return val;
+    },
+    getPublicPusherCluster: () => {
+      const val = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+      if (!val) throw new Error("NEXT_PUBLIC_PUSHER_CLUSTER environment variable is not set");
+      return val;
+    },
+  };
+});
+
 // Mock the external libraries before importing the module under test
 vi.mock("pusher", () => {
   const MockPusher = vi.fn().mockImplementation((config) => ({
@@ -147,7 +189,7 @@ describe("pusher.ts", () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
       expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
+        "NEXT_PUBLIC_PUSHER_KEY environment variable is not set"
       );
     });
 
@@ -158,7 +200,7 @@ describe("pusher.ts", () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
       expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
+        "NEXT_PUBLIC_PUSHER_CLUSTER environment variable is not set"
       );
     });
 
@@ -170,7 +212,7 @@ describe("pusher.ts", () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
       expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
+        "NEXT_PUBLIC_PUSHER_KEY environment variable is not set"
       );
     });
 
@@ -182,7 +224,7 @@ describe("pusher.ts", () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
       expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
+        "NEXT_PUBLIC_PUSHER_KEY environment variable is not set"
       );
     });
 

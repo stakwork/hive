@@ -19,6 +19,12 @@ interface TestEnvDefaults {
   AWS_ROLE_ARN: string;
   S3_BUCKET_NAME: string;
   AWS_REGION: string;
+  PUSHER_APP_ID: string;
+  PUSHER_KEY: string;
+  PUSHER_SECRET: string;
+  PUSHER_CLUSTER: string;
+  NEXT_PUBLIC_PUSHER_KEY: string;
+  NEXT_PUBLIC_PUSHER_CLUSTER: string;
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
@@ -37,6 +43,12 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
   AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/test-role",
   S3_BUCKET_NAME: "test-bucket",
   AWS_REGION: "us-east-1",
+  PUSHER_APP_ID: "test-pusher-app-id",
+  PUSHER_KEY: "test-pusher-key",
+  PUSHER_SECRET: "test-pusher-secret",
+  PUSHER_CLUSTER: "test-cluster",
+  NEXT_PUBLIC_PUSHER_KEY: "test-pusher-key",
+  NEXT_PUBLIC_PUSHER_CLUSTER: "test-cluster",
 };
 
 /**

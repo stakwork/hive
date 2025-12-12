@@ -51,6 +51,16 @@ vi.mock("@/config/env", () => ({
     USE_MOCKS: true,
     MOCK_BASE: "http://localhost:3000",
   },
+  // Pusher credential getters
+  getPusherAppId: () => process.env.PUSHER_APP_ID || "test-pusher-app-id",
+  getPusherKey: () => process.env.PUSHER_KEY || "test-pusher-key",
+  getPusherSecret: () => process.env.PUSHER_SECRET || "test-pusher-secret",
+  getPusherCluster: () => process.env.PUSHER_CLUSTER || "test-cluster",
+  getPublicPusherKey: () => process.env.NEXT_PUBLIC_PUSHER_KEY || "test-pusher-key",
+  getPublicPusherCluster: () => process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "test-cluster",
+  // Gemini API getter
+  getGeminiApiKey: () => "mock-gemini-key-12345",
+  isGeminiConfigured: () => true,
 }));
 
 export { mockEnv, mockConfig };

@@ -1,30 +1,47 @@
 import Pusher from "pusher";
 import PusherClient from "pusher-js";
+import { optionalEnvVars } from "@/config/env";
+import {
+  getPusherAppId,
+  getPusherKey,
+  getPusherSecret,
+  getPusherCluster,
+  getPublicPusherKey,
+  getPublicPusherCluster,
+} from "@/config/env";
+import { MockPusherServer } from "./mock/pusher-server";
+import { MockPusherClient } from "./mock/pusher-client";
+
+const USE_MOCKS = optionalEnvVars.USE_MOCKS;
 
 // Server-side Pusher instance for triggering events
-export const pusherServer = new Pusher({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.PUSHER_CLUSTER!,
-  useTLS: true,
-});
+export const pusherServer: Pusher | MockPusherServer = USE_MOCKS
+  ? new MockPusherServer({
+      appId: getPusherAppId(),
+      key: getPusherKey(),
+      secret: getPusherSecret(),
+      cluster: getPusherCluster(),
+      useTLS: true,
+    })
+  : new Pusher({
+      appId: getPusherAppId(),
+      key: getPusherKey(),
+      secret: getPusherSecret(),
+      cluster: getPusherCluster(),
+      useTLS: true,
+    });
 
 // Client-side Pusher instance - lazy initialization to avoid build-time errors
-let _pusherClient: PusherClient | null = null;
+let _pusherClient: PusherClient | MockPusherClient | null = null;
 
-export const getPusherClient = (): PusherClient => {
+export const getPusherClient = (): PusherClient | MockPusherClient => {
   if (!_pusherClient) {
-    if (
-      !process.env.NEXT_PUBLIC_PUSHER_KEY ||
-      !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
-    ) {
-      throw new Error("Pusher environment variables are not configured");
-    }
+    const key = getPublicPusherKey();
+    const cluster = getPublicPusherCluster();
 
-    _pusherClient = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
-    });
+    _pusherClient = USE_MOCKS
+      ? new MockPusherClient(key, { cluster })
+      : new PusherClient(key, { cluster });
   }
   return _pusherClient;
 };

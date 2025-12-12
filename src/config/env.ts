@@ -94,6 +94,113 @@ export function isGeminiConfigured(): boolean {
   return !!process.env.GEMINI_API_KEY;
 }
 
+/**
+ * Pusher Credential Getters
+ * Returns mock credentials when USE_MOCKS=true, else reads from environment
+ */
+
+/**
+ * Get Pusher App ID
+ * @throws Error if PUSHER_APP_ID is not set and USE_MOCKS=false
+ */
+export function getPusherAppId(): string {
+  if (USE_MOCKS) {
+    return "mock-pusher-app-id";
+  }
+  
+  const appId = process.env.PUSHER_APP_ID;
+  if (!appId) {
+    throw new Error('PUSHER_APP_ID environment variable is not set');
+  }
+  
+  return appId;
+}
+
+/**
+ * Get Pusher Key (server-side)
+ * @throws Error if PUSHER_KEY is not set and USE_MOCKS=false
+ */
+export function getPusherKey(): string {
+  if (USE_MOCKS) {
+    return "mock-pusher-key";
+  }
+  
+  const key = process.env.PUSHER_KEY;
+  if (!key) {
+    throw new Error('PUSHER_KEY environment variable is not set');
+  }
+  
+  return key;
+}
+
+/**
+ * Get Pusher Secret (server-side)
+ * @throws Error if PUSHER_SECRET is not set and USE_MOCKS=false
+ */
+export function getPusherSecret(): string {
+  if (USE_MOCKS) {
+    return "mock-pusher-secret";
+  }
+  
+  const secret = process.env.PUSHER_SECRET;
+  if (!secret) {
+    throw new Error('PUSHER_SECRET environment variable is not set');
+  }
+  
+  return secret;
+}
+
+/**
+ * Get Pusher Cluster
+ * @throws Error if PUSHER_CLUSTER is not set and USE_MOCKS=false
+ */
+export function getPusherCluster(): string {
+  if (USE_MOCKS) {
+    return "mock-cluster";
+  }
+  
+  const cluster = process.env.PUSHER_CLUSTER;
+  if (!cluster) {
+    throw new Error('PUSHER_CLUSTER environment variable is not set');
+  }
+  
+  return cluster;
+}
+
+/**
+ * Get Public Pusher Key (client-side)
+ * @throws Error if NEXT_PUBLIC_PUSHER_KEY is not set and USE_MOCKS=false
+ */
+export function getPublicPusherKey(): string {
+  if (USE_MOCKS) {
+    return "mock-pusher-key";
+  }
+  
+  const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+  if (!key) {
+    throw new Error('NEXT_PUBLIC_PUSHER_KEY environment variable is not set');
+  }
+  
+  return key;
+}
+
+/**
+ * Get Public Pusher Cluster (client-side)
+ * @throws Error if NEXT_PUBLIC_PUSHER_CLUSTER is not set and USE_MOCKS=false
+ */
+export function getPublicPusherCluster(): string {
+  if (USE_MOCKS) {
+    return "mock-cluster";
+  }
+  
+  const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+  if (!cluster) {
+    throw new Error('NEXT_PUBLIC_PUSHER_CLUSTER environment variable is not set');
+  }
+  
+  return cluster;
+}
+
 // Combined environment configuration
 export const config = {
   ...requiredEnvVars,
