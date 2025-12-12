@@ -153,7 +153,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     apiParams.edges = 'true';
 
-    const apiResult = await fetch(`${graphUrl}/graph?${new URLSearchParams(apiParams).toString()}`, {
+    // Filter out null and undefined values from apiParams
+    const filteredParams = Object.entries(apiParams).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Record<string, string>);
+
+    const apiResult = await fetch(`${graphUrl}/graph?${new URLSearchParams(filteredParams).toString()}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
