@@ -28,6 +28,12 @@ export const selectors = {
     janitorsLink: '[data-testid="nav-janitors"]',
   },
 
+  // User menu
+  userMenu: {
+    trigger: '[data-testid="user-menu-trigger"]',
+    logoutButton: '[data-testid="logout-button"]',
+  },
+
   // Page titles
   pageTitle: {
     element: '[data-testid="page-title"]',
