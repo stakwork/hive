@@ -223,7 +223,7 @@ export function useCoverageNodes() {
     loading: query.isLoading,
     filterLoading: query.isFetching && !query.isLoading,
     error: query.error ? (query.error as Error).message : null,
-    params: { nodeType, limit, offset, sort, sortDirection, coverage },
+    params: { nodeType, limit, offset, sort, sortDirection, coverage, mocked },
     page: query.data?.data?.page || 1,
     totalPages: query.data?.data?.total_pages,
     totalCount: query.data?.data?.total_count,
