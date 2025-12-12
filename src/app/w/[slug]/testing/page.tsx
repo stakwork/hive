@@ -25,9 +25,9 @@ export default function DefenseTestingPage() {
       <div className={isBrowserMode ? "w-full" : "max-w-5xl"}>
         <Tabs defaultValue="coverage" className="w-full">
           {!isBrowserMode && (
-            <TabsList>
-              <TabsTrigger value="coverage">Coverage</TabsTrigger>
-              <TabsTrigger value="user-journeys">User Journeys</TabsTrigger>
+            <TabsList data-testid="testing-tabs">
+              <TabsTrigger value="coverage" data-testid="coverage-tab">Coverage</TabsTrigger>
+              <TabsTrigger value="user-journeys" data-testid="user-journeys-tab">User Journeys</TabsTrigger>
             </TabsList>
           )}
 
