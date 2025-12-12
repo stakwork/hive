@@ -82,6 +82,25 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to janitors page
+   */
+  async goToJanitors(): Promise<void> {
+    // First expand the Protect section if not already expanded
+    const protectButton = this.page.locator(selectors.navigation.protectButton);
+    const janitorsLink = this.page.locator(selectors.navigation.janitorsLink).first();
+
+    // Check if janitors link is visible, if not, click Protect to expand
+    const isJanitorsVisible = await janitorsLink.isVisible().catch(() => false);
+    if (!isJanitorsVisible) {
+      await protectButton.click();
+      await janitorsLink.waitFor({ state: 'visible', timeout: 5000 });
+    }
+
+    await janitorsLink.click();
+    await this.page.waitForURL(/\/w\/.*\/janitors/, { timeout: 10000 });
+  }
+
+  /**
    * Navigate to settings page
    */
   async goToSettings(): Promise<void> {
