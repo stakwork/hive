@@ -146,6 +146,11 @@ export async function POST(request: NextRequest) {
     const updatedTask = await db.task.update({
       where: { id: finalTaskId },
       data: updateData,
+      include: {
+        workspace: {
+          select: { slug: true, id: true },
+        },
+      },
     });
 
     try {
@@ -165,6 +170,28 @@ export async function POST(request: NextRequest) {
       );
     } catch (error) {
       console.error("Error broadcasting to Pusher:", error);
+    }
+
+    // Broadcast to workspace channel for real-time task list updates
+    if (updatedTask.workspace?.slug) {
+      try {
+        const workspaceChannelName = getWorkspaceChannelName(updatedTask.workspace.slug);
+        const workspaceEventPayload = {
+          taskId: finalTaskId,
+          workflowStatus,
+          taskTitle: updatedTask.title,
+          workspaceId: updatedTask.workspace.id,
+          timestamp: new Date(),
+        };
+
+        await pusherServer.trigger(
+          workspaceChannelName,
+          PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+          workspaceEventPayload,
+        );
+      } catch (error) {
+        console.error("Error broadcasting to workspace channel:", error);
+      }
     }
 
     return NextResponse.json(
