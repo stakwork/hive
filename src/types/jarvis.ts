@@ -25,3 +25,9 @@ export interface JarvisConnectionConfig {
   jarvisUrl: string;
   apiKey: string;
 }
+
+export interface SearchByTypesRequest {
+  nodeTypes: Record<string, number>; // e.g., { "File": 50, "Function": 30 }
+  include_properties?: boolean;
+  namespace?: string;
+}
