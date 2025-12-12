@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { memo, useState } from "react";
 import { motion } from "framer-motion";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel } from "../artifacts";
@@ -14,7 +14,25 @@ interface ChatMessageProps {
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
 }
 
-export function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
+// Custom comparison function for React.memo
+function arePropsEqual(
+  prevProps: ChatMessageProps,
+  nextProps: ChatMessageProps
+): boolean {
+  // Compare message objects by id and updatedAt
+  const messageEqual =
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.updatedAt === nextProps.message.updatedAt &&
+    prevProps.message.artifacts?.length === nextProps.message.artifacts?.length &&
+    prevProps.message.workflowUrl === nextProps.message.workflowUrl;
+
+  // Compare replyMessage if present
+  const replyMessageEqual = prevProps.replyMessage?.id === nextProps.replyMessage?.id;
+
+  return messageEqual && replyMessageEqual;
+}
+
+export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -103,4 +121,4 @@ export function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMes
         ))}
     </motion.div>
   );
-}
+}, arePropsEqual);
