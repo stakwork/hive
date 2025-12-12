@@ -52,6 +52,7 @@ const defaultData: Omit<
   | 'removeHighlightChunk'
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
+  | 'setTestLayerVisibility'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
