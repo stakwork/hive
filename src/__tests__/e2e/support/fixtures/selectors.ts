@@ -37,6 +37,7 @@ export const selectors = {
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
     calls: '[data-testid="page-title"]:has-text("Calls")',
     capacity: '[data-testid="page-title"]:has-text("Capacity")',
+    testing: '[data-testid="page-title"]:has-text("Testing")',
   },
 
   // Page descriptions
@@ -206,6 +207,18 @@ export const selectors = {
     testingSection: '[data-testid="janitor-section-testing"]',
     maintainabilitySection: '[data-testid="janitor-section-maintainability"]',
     securitySection: '[data-testid="janitor-section-security"]',
+	},
+  // Testing
+  testing: {
+    tabs: '[data-testid="testing-tabs"]',
+    coverageTab: '[data-testid="coverage-tab"]',
+    userJourneysTab: '[data-testid="user-journeys-tab"]',
+  },
+
+  // User Journeys
+  userJourneys: {
+    createButton: '[data-testid="create-user-journey-button"]',
+    browserPanel: '[data-testid="browser-artifact-panel"]',
   },
 
   // Common UI elements

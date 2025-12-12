@@ -588,7 +588,12 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-                <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
+                <Button 
+                  className="flex items-center gap-2" 
+                  onClick={handleCreateUserJourney} 
+                  disabled={isLoading}
+                  data-testid="create-user-journey-button"
+                >
                   <Plus className="w-4 h-4" />
                   Create User Journey
                 </Button>
