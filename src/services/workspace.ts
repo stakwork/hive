@@ -443,9 +443,13 @@ export async function getUserWorkspaces(
     });
   }
 
-  // Add member workspaces
+  // Add member workspaces (exclude already-added owned workspaces)
+  const ownedWorkspaceIds = new Set(ownedWorkspaces.map(w => w.id));
+  
   for (const membership of memberships) {
-    if (membership.workspace && !membership.workspace.deleted) {
+    if (membership.workspace && 
+        !membership.workspace.deleted &&
+        !ownedWorkspaceIds.has(membership.workspace.id)) {
       const memberCount = memberCountMap[membership.workspace.id] || 0;
       result.push({
         id: membership.workspace.id,
@@ -555,44 +559,31 @@ export async function validateWorkspaceAccessById(
 export async function getDefaultWorkspaceForUser(
   userId: string,
 ): Promise<WorkspaceResponse | null> {
-  // Try to get the first owned workspace
-  const ownedWorkspace = await db.workspace.findFirst({
-    where: {
-      ownerId: userId,
-      deleted: false,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  if (ownedWorkspace) {
-    return {
-      ...ownedWorkspace,
-      nodeTypeOrder: (ownedWorkspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
-      createdAt: ownedWorkspace.createdAt.toISOString(),
-      updatedAt: ownedWorkspace.updatedAt.toISOString(),
-    };
+  // Get all user workspaces sorted by lastAccessedAt descending
+  const userWorkspaces = await getUserWorkspaces(userId);
+  
+  // Return the first workspace (most recently accessed)
+  if (userWorkspaces.length === 0) {
+    return null;
   }
 
-  // Get first workspace where user is a member
-  const membership = await db.workspaceMember.findFirst({
-    where: {
-      userId,
-      leftAt: null,
-    },
-    include: { workspace: true },
-    orderBy: { joinedAt: "asc" },
+  const workspace = userWorkspaces[0];
+  
+  // Fetch the full workspace details to return WorkspaceResponse
+  const fullWorkspace = await db.workspace.findUnique({
+    where: { id: workspace.id },
   });
 
-  if (membership?.workspace) {
-    return {
-      ...membership.workspace,
-      nodeTypeOrder: (membership.workspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
-      createdAt: membership.workspace.createdAt.toISOString(),
-      updatedAt: membership.workspace.updatedAt.toISOString(),
-    };
+  if (!fullWorkspace) {
+    return null;
   }
 
-  return null;
+  return {
+    ...fullWorkspace,
+    nodeTypeOrder: (fullWorkspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
+    createdAt: fullWorkspace.createdAt.toISOString(),
+    updatedAt: fullWorkspace.updatedAt.toISOString(),
+  };
 }
 
 // Enhanced functions

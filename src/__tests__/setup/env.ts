@@ -16,6 +16,9 @@ interface TestEnvDefaults {
   STAKWORK_CUSTOMERS_PASSWORD: string;
   API_TOKEN: string;
   USE_MOCKS: string;
+  AWS_ROLE_ARN: string;
+  S3_BUCKET_NAME: string;
+  AWS_REGION: string;
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
@@ -31,6 +34,9 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
   STAKWORK_CUSTOMERS_PASSWORD: "secret",
   API_TOKEN: "test-api-token",
   USE_MOCKS: "false",
+  AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/test-role",
+  S3_BUCKET_NAME: "test-bucket",
+  AWS_REGION: "us-east-1",
 };
 
 /**
