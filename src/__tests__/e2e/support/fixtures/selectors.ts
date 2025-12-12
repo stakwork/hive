@@ -221,6 +221,15 @@ export const selectors = {
     browserPanel: '[data-testid="browser-artifact-panel"]',
   },
 
+  // Janitors
+  janitors: {
+    pageTitle: '[data-testid="page-title"]:has-text("Janitors")',
+    taskCoordinatorSection: '[data-testid="janitor-section-task-coordinator"]',
+    testingSection: '[data-testid="janitor-section-testing"]',
+    maintainabilitySection: '[data-testid="janitor-section-maintainability"]',
+    securitySection: '[data-testid="janitor-section-security"]',
+  },
+
   // Common UI elements
   common: {
     loader: 'text=/Loading/i',
