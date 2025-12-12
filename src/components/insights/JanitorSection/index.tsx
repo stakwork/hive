@@ -105,7 +105,7 @@ export function JanitorSection({
   };
 
   return (
-    <Card>
+    <Card data-testid={`janitor-section-${title.toLowerCase().replace(/\s+/g, '-')}`}>
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
           {icon}
@@ -124,6 +124,7 @@ export function JanitorSection({
             return (
               <div
                 key={janitor.id}
+                data-testid={`janitor-item-${janitor.id}`}
                 className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${isItemComingSoon ? 'opacity-60' : ''
                   }`}
               >
@@ -140,7 +141,7 @@ export function JanitorSection({
 
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1">
-                      <span className="font-medium text-sm">{janitor.name}</span>
+                      <span className="font-medium text-sm" data-testid={`janitor-name-${janitor.id}`}>{janitor.name}</span>
                       {getStatusBadge(isOn, janitor.comingSoon || false, comingSoon || false)}
                     </div>
                     <p className="text-xs text-muted-foreground">{janitor.description}</p>
@@ -155,6 +156,7 @@ export function JanitorSection({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
+                            data-testid={`janitor-run-button-${janitor.id}`}
                             variant="outline"
                             size="sm"
                             className="h-8 w-8 p-0"
@@ -175,6 +177,7 @@ export function JanitorSection({
                     )
                   )}
                   <Switch
+                    data-testid={`janitor-toggle-${janitor.id}`}
                     checked={isItemComingSoon ? false : isOn}
                     onCheckedChange={() => handleToggle(janitor)}
                     className="data-[state=checked]:bg-green-500"
