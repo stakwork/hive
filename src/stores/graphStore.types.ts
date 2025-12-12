@@ -23,6 +23,12 @@ export type GraphCallout = {
   addedAt: number
 }
 
+export type TestLayerVisibility = {
+  unitTests: boolean
+  integrationTests: boolean
+  e2eTests: boolean
+}
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -58,6 +64,7 @@ export type GraphStore = {
   highlightTimestamp: number | null
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
+  testLayerVisibility: TestLayerVisibility
 
   // setters
   setDisableCameraRotation(rotation: boolean): void
@@ -99,4 +106,5 @@ export type GraphStore = {
   removeHighlightChunk(chunkId: string): void
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
+  setTestLayerVisibility(updates: Partial<TestLayerVisibility>): void
 }

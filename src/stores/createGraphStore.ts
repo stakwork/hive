@@ -87,6 +87,11 @@ const defaultData: Omit<
   highlightTimestamp: null,
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
+  testLayerVisibility: {
+    unitTests: false,
+    integrationTests: false,
+    e2eTests: false,
+  },
 }
 
 export const createGraphStore = (
@@ -265,5 +270,8 @@ export const createGraphStore = (
         highlightTimestamp: null
       }),
       setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
+      setTestLayerVisibility: (updates) => set(({ testLayerVisibility }) => ({
+        testLayerVisibility: { ...testLayerVisibility, ...updates }
+      })),
     }
   });
