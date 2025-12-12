@@ -17,14 +17,15 @@ import {
  *    - Currently: `broadcasted: !!workspace_id` (returns true if ID provided, even if workspace doesn't exist)
  *    - Should be: `broadcasted: !!workspace` (returns true only if workspace exists and broadcast succeeded)
  * 
- * SECURITY NOTE: This endpoint has several security gaps:
+ * SECURITY NOTE: This endpoint has several remaining security gaps:
  * 1. No HMAC signature verification (unlike GitHub webhook)
  * 2. API key comparison uses direct === (timing attack vulnerable, should use crypto.timingSafeEqual())
  * 3. No rate limiting
- * 4. No request size limits
- * 5. Soft-deleted workspaces not filtered in lookup
+ * 4. Soft-deleted workspaces not filtered in lookup
  * 
- * These gaps should be addressed in future security hardening.
+ * ✅ Request size limits: Implemented (1MB Content-Length + Zod schema validation)
+ * 
+ * These remaining issues should be addressed before production use.
  * 
  * NOTE: Several tests are commented out below due to the bugs above.
  * Uncomment these tests after the production code bugs are fixed.
@@ -161,6 +162,28 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
   });
 
   describe("Payload Validation - node_ids", () => {
+    test("should return 413 if Content-Length exceeds 1MB", async () => {
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": validApiKey,
+          "Content-Length": String(2 * 1024 * 1024), // 2 MB
+        },
+        body: JSON.stringify({
+          node_ids: ["550e8400-e29b-41d4-a716-446655440000"],
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(413);
+      expect(data).toEqual({
+        error: "Request body exceeds 1MB limit",
+      });
+    });
+
     test("should return 400 when node_ids is missing", async () => {
       const request = new Request(webhookUrl, {
         method: "POST",
@@ -177,7 +200,34 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
+      expect(data).toEqual({
+        error: "Invalid payload",
+        details: expect.any(Object),
+      });
+    });
+
+    test("should return 400 if node_ids array exceeds maximum length", async () => {
+      const tooManyNodes = Array.from({ length: 1001 }, (_, i) =>
+        `550e8400-e29b-41d4-a716-${String(i).padStart(12, "0")}`
+      );
+
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": validApiKey,
+        },
+        body: JSON.stringify({
+          node_ids: tooManyNodes,
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Invalid payload");
+      expect(data.details).toBeDefined();
     });
 
     test("should return 400 when node_ids is not an array (string)", async () => {
@@ -197,7 +247,10 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
+      expect(data).toEqual({
+        error: "Invalid payload",
+        details: expect.any(Object),
+      });
     });
 
     test("should return 400 when node_ids is not an array (object)", async () => {
@@ -216,7 +269,10 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
+      expect(data).toEqual({
+        error: "Invalid payload",
+        details: expect.any(Object),
+      });
     });
 
     test("should return 400 when node_ids is empty array", async () => {
@@ -235,7 +291,93 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("node_ids array is required");
+      expect(data).toEqual({
+        error: "Invalid payload",
+        details: expect.any(Object),
+      });
+    });
+
+    test("should return 400 if node_ids contains invalid UUIDs", async () => {
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": validApiKey,
+        },
+        body: JSON.stringify({
+          node_ids: ["not-a-uuid", "also-not-a-uuid"],
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Invalid payload");
+      expect(data.details).toBeDefined();
+    });
+
+    test("should return 400 if title exceeds maximum length", async () => {
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": validApiKey,
+        },
+        body: JSON.stringify({
+          node_ids: ["550e8400-e29b-41d4-a716-446655440000"],
+          title: "A".repeat(501),
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Invalid payload");
+      expect(data.details).toBeDefined();
+    });
+
+    test("should return 400 if depth is negative", async () => {
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": validApiKey,
+        },
+        body: JSON.stringify({
+          node_ids: ["550e8400-e29b-41d4-a716-446655440000"],
+          depth: -1,
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Invalid payload");
+      expect(data.details).toBeDefined();
+    });
+
+    test("should return 400 if depth exceeds maximum", async () => {
+      const request = new Request(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": validApiKey,
+        },
+        body: JSON.stringify({
+          node_ids: ["550e8400-e29b-41d4-a716-446655440000"],
+          depth: 11,
+        }),
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("Invalid payload");
+      expect(data.details).toBeDefined();
     });
 
     // BUG: Route throws Prisma error when workspace_id is undefined - uncomment after fixing route.ts
@@ -320,7 +462,10 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1", "node-2"],
+          node_ids: [
+            "550e8400-e29b-41d4-a716-446655440001",
+            "550e8400-e29b-41d4-a716-446655440002",
+          ],
           workspace_id: workspace.id,
         }),
       });
@@ -406,7 +551,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1"],
+          node_ids: ["550e8400-e29b-41d4-a716-446655440001"],
           workspace_id: workspace.id,
         }),
       });
@@ -423,7 +568,11 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
   describe("Pusher Broadcasting", () => {
     test("should broadcast HIGHLIGHT_NODES event to workspace channel", async () => {
       const { workspace } = await createTestWorkspace();
-      const nodeIds = ["node-1", "node-2", "node-3"];
+      const nodeIds = [
+        "550e8400-e29b-41d4-a716-446655440001",
+        "550e8400-e29b-41d4-a716-446655440002",
+        "550e8400-e29b-41d4-a716-446655440003",
+      ];
 
       const request = new Request(webhookUrl, {
         method: "POST",
@@ -465,7 +614,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1"],
+          node_ids: ["550e8400-e29b-41d4-a716-446655440001"],
           workspace_id: workspace.id,
         }),
       });
@@ -496,7 +645,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1"],
+          node_ids: ["550e8400-e29b-41d4-a716-446655440001"],
           workspace_id: workspace.id,
         }),
       });
@@ -520,7 +669,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1"],
+          node_ids: ["550e8400-e29b-41d4-a716-446655440001"],
           workspace_id: workspace.id,
         }),
       });
@@ -549,7 +698,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1"],
+          node_ids: ["550e8400-e29b-41d4-a716-446655440001"],
           workspace_id: workspace.id,
         }),
       });
@@ -603,7 +752,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1"],
+          node_ids: ["550e8400-e29b-41d4-a716-446655440001"],
           workspace_id: workspace.id,
         }),
       });
@@ -669,7 +818,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
           "x-api-key": validApiKey,
         },
         body: JSON.stringify({
-          node_ids: ["node-1"],
+          node_ids: ["550e8400-e29b-41d4-a716-446655440001"],
           workspace_id: workspace.id,
         }),
       });
@@ -778,7 +927,7 @@ describe("Graph Webhook API - POST /api/graph/webhook", () => {
             "x-api-key": validApiKey,
           },
           body: JSON.stringify({
-            node_ids: [`node-${i}`],
+            node_ids: [`550e8400-e29b-41d4-a716-44665544000${i}`],
             workspace_id: workspace.id,
           }),
         })
