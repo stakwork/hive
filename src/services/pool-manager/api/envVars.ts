@@ -41,6 +41,7 @@ export async function updatePoolDataApi(
   poolMemory: string | undefined,
   github_pat: string,
   github_username: string,
+  branch_name: string,
 ): Promise<void> {
   const url = `${config.POOL_MANAGER_BASE_URL}/pools/${encodeURIComponent(poolName)}`;
   const currentMap = new Map(currentEnvVars.map((env) => [env.name, env.value]));
@@ -64,6 +65,7 @@ export async function updatePoolDataApi(
     pm2_config_js: Buffer.from(containerFiles["pm2_config_js"].content).toString("base64"),
     github_pat: github_pat,
     github_username: github_username,
+    branch_name: branch_name,
   });
 
   const response = await fetch(url, {
