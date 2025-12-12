@@ -71,4 +71,35 @@ export class AuthPage {
     await this.verifyAuthenticated();
     expect(this.getCurrentWorkspaceSlug()).toBe(expectedSlug);
   }
+
+  /**
+   * Open user menu
+   */
+  async openUserMenu(): Promise<void> {
+    const userMenuTrigger = this.page.locator(selectors.userMenu.trigger);
+    await expect(userMenuTrigger).toBeVisible({ timeout: 10000 });
+    await userMenuTrigger.click();
+  }
+
+  /**
+   * Perform logout action
+   */
+  async logout(): Promise<void> {
+    await this.openUserMenu();
+    const logoutButton = this.page.locator(selectors.userMenu.logoutButton);
+    await expect(logoutButton).toBeVisible({ timeout: 10000 });
+    await logoutButton.click();
+  }
+
+  /**
+   * Verify user is logged out (redirected to login page)
+   */
+  async verifyLoggedOut(): Promise<void> {
+    // Wait for redirect to auth/signin or home page
+    await this.page.waitForURL(/\/(auth\/signin)?$/, { timeout: 10000 });
+    
+    // Verify mock sign-in button is visible
+    const signInButton = this.page.locator(selectors.auth.mockSignInButton);
+    await expect(signInButton).toBeVisible({ timeout: 10000 });
+  }
 }
