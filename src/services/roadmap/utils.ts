@@ -10,6 +10,7 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
     select: {
       id: true,
       workspaceId: true,
+      deleted: true,
       workspace: {
         select: {
           id: true,
@@ -25,6 +26,11 @@ export async function validateFeatureAccess(featureId: string, userId: string) {
   });
 
   if (!feature || feature.workspace.deleted) {
+    throw new Error("Feature not found");
+  }
+
+  // Check if feature is soft-deleted
+  if (feature.deleted) {
     throw new Error("Feature not found");
   }
 
