@@ -16,6 +16,7 @@ import { logStoreInstances } from "@/stores/createStoreFactory";
 import { FilterTab } from "@/stores/graphStore.types";
 import { StoreProvider } from "@/stores/StoreProvider";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
+import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
 
 export function Dashboard() {
   const { id } = useWorkspace();
@@ -52,8 +53,6 @@ function DashboardInner() {
     setActiveFilterTab(value);
   };
 
-
-
   const hasNodes = (dataInitial?.nodes && dataInitial.nodes.length > 0) || (repositoryNodes.length > 0);
   const isCentered = !hasNodes;
 
@@ -80,6 +79,7 @@ function DashboardInner() {
             onValueChange={handleFilterChange}
           />
         )}
+        <TestFilterDropdown />
         <GitHubStatusWidget />
         <PoolStatusWidget />
       </div>

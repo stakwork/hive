@@ -47,6 +47,12 @@ export type GraphCallout = {
   addedAt: number
 }
 
+export type TestLayerVisibility = {
+  unitTests: boolean
+  integrationTests: boolean
+  e2eTests: boolean
+}
+
 export type GraphStore = {
   graphRadius: number
   neighbourhoods: Neighbourhood[]
@@ -82,6 +88,7 @@ export type GraphStore = {
   highlightTimestamp: number | null
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
+  testLayerVisibility: TestLayerVisibility
   setDisableCameraRotation: (rotation: boolean) => void
   setScrollEventsDisabled: (rotation: boolean) => void
   setData: (data: GraphData) => void
@@ -121,6 +128,7 @@ export type GraphStore = {
   removeHighlightChunk: (chunkId: string) => void
   clearWebhookHighlights: () => void
   setActiveFilterTab: (tab: FilterTab) => void
+  setTestLayerVisibility: (updates: Partial<TestLayerVisibility>) => void
 }
 
 const defaultData: Omit<
@@ -202,6 +210,11 @@ const defaultData: Omit<
   highlightTimestamp: null,
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
+  testLayerVisibility: {
+    unitTests: false,
+    integrationTests: false,
+    e2eTests: false,
+  },
 }
 
 export const useGraphStore = create<GraphStore>()((set, get) => {
@@ -376,6 +389,9 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
       highlightTimestamp: null
     }),
     setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
+    setTestLayerVisibility: (updates) => set(({ testLayerVisibility }) => ({
+      testLayerVisibility: { ...testLayerVisibility, ...updates }
+    })),
   }
 })
 
