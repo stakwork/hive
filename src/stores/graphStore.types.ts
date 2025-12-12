@@ -8,6 +8,8 @@ export type CameraTarget = { x: number; y: number; z: number }
 
 export type FilterTab = 'all' | 'code' | 'comms' | 'tasks' | 'concepts'
 
+export type TestCoverageFilter = 'none' | 'all' | 'tested' | 'untested'
+
 export type HighlightChunk = {
   chunkId: string
   title: string
@@ -58,6 +60,7 @@ export type GraphStore = {
   highlightTimestamp: number | null
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
+  testCoverageFilter: TestCoverageFilter
 
   // setters
   setDisableCameraRotation(rotation: boolean): void
@@ -99,4 +102,5 @@ export type GraphStore = {
   removeHighlightChunk(chunkId: string): void
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
+  setTestCoverageFilter(filter: TestCoverageFilter): void
 }

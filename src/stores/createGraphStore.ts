@@ -52,6 +52,7 @@ const defaultData: Omit<
   | 'removeHighlightChunk'
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
+  | 'setTestCoverageFilter'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -87,6 +88,7 @@ const defaultData: Omit<
   highlightTimestamp: null,
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
+  testCoverageFilter: 'none',
 }
 
 export const createGraphStore = (
@@ -265,5 +267,6 @@ export const createGraphStore = (
         highlightTimestamp: null
       }),
       setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
+      setTestCoverageFilter: (testCoverageFilter) => set({ testCoverageFilter }),
     }
   });
