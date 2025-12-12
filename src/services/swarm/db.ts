@@ -57,6 +57,7 @@ export const select = {
   ec2Id: true,
   swarmApiKey: true,
   swarmPassword: true,
+  graphWebhookSecret: true,
   poolApiKey: true,
   poolName: true,
   poolCpu: true,

@@ -301,6 +301,9 @@ model Swarm {
   // Swarm password (encrypted)
   swarmPassword String? @map("swarm_password")
 
+  // Graph webhook secret (encrypted) - for HMAC signature verification
+  graphWebhookSecret String? @map("graph_webhook_secret")
+
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
