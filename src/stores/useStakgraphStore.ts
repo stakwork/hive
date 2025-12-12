@@ -291,7 +291,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
         if (response.ok && result.success) {
           set({ saved: true });
           toast.success("Configuration saved", {
-            description: "Your Stakgraph settings have been saved successfully!",
+            description: "Your pool settings have been saved successfully!",
           });
 
           // Update form data with response data
