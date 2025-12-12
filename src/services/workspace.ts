@@ -443,9 +443,13 @@ export async function getUserWorkspaces(
     });
   }
 
-  // Add member workspaces
+  // Add member workspaces (exclude already-added owned workspaces)
+  const ownedWorkspaceIds = new Set(ownedWorkspaces.map(w => w.id));
+  
   for (const membership of memberships) {
-    if (membership.workspace && !membership.workspace.deleted) {
+    if (membership.workspace && 
+        !membership.workspace.deleted &&
+        !ownedWorkspaceIds.has(membership.workspace.id)) {
       const memberCount = memberCountMap[membership.workspace.id] || 0;
       result.push({
         id: membership.workspace.id,
