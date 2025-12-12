@@ -532,4 +532,50 @@ describe("getUserWorkspaces - Security and Sensitive Data Tests", () => {
       });
     });
   });
+
+  describe("Deduplication", () => {
+    test("should not return duplicate workspaces when owner has WorkspaceMember record", async () => {
+      const mockWorkspace = {
+        id: "ws1",
+        name: "Test Workspace",
+        slug: "test-workspace",
+        ownerId: testUserId,
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deleted: false,
+        logoKey: null,
+        logoUrl: null,
+      };
+
+      const mockMemberships = [{
+        userId: testUserId,
+        role: "OWNER",
+        leftAt: null,
+        lastAccessedAt: new Date(),
+        workspace: mockWorkspace,
+      }];
+
+      const ownerLastAccessedAt = [{
+        workspaceId: "ws1",
+        lastAccessedAt: new Date(),
+      }];
+
+      const memberCounts = [
+        { workspaceId: "ws1" },
+      ];
+
+      (db.workspace.findMany as Mock).mockResolvedValue([mockWorkspace]);
+      (db.workspaceMember.findMany as Mock)
+        .mockResolvedValueOnce(mockMemberships)
+        .mockResolvedValueOnce(ownerLastAccessedAt)
+        .mockResolvedValueOnce(memberCounts);
+
+      const result = await getUserWorkspaces(testUserId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("ws1");
+      expect(result[0].userRole).toBe("OWNER");
+    });
+  });
 });
