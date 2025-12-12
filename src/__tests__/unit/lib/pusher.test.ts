@@ -39,8 +39,10 @@ describe("pusher.ts", () => {
     vi.clearAllMocks();
     
     // Reset environment variables to a clean state
+    // Set USE_MOCKS to false to test real Pusher initialization
     process.env = {
       ...originalEnv,
+      USE_MOCKS: "false",
       PUSHER_APP_ID: "test-app-id",
       PUSHER_KEY: "test-key",
       PUSHER_SECRET: "test-secret",

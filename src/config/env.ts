@@ -88,6 +88,31 @@ export function getGeminiApiKey(): string {
 }
 
 /**
+ * Get Pusher configuration based on mock mode
+ */
+export function getPusherConfig() {
+  if (USE_MOCKS) {
+    return {
+      appId: "mock-app-id",
+      key: "mock-pusher-key",
+      secret: "mock-pusher-secret",
+      cluster: "mock",
+      publicKey: "mock-pusher-key",
+      publicCluster: "mock",
+    };
+  }
+  
+  return {
+    appId: process.env.PUSHER_APP_ID,
+    key: process.env.PUSHER_KEY,
+    secret: process.env.PUSHER_SECRET,
+    cluster: process.env.PUSHER_CLUSTER,
+    publicKey: process.env.NEXT_PUBLIC_PUSHER_KEY,
+    publicCluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+  };
+}
+
+/**
  * Checks if Gemini API key is configured
  */
 export function isGeminiConfigured(): boolean {
