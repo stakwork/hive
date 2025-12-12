@@ -73,8 +73,35 @@ export class GlobalSearchPage {
     // Wait for this specific result to be visible
     await resultItem.waitFor({ state: 'visible', timeout: 10000 });
 
-    // Click the result - use force to ensure cmdk registers the click
-    await resultItem.click({ force: true });
+    // Wait for cmdk to fully process the search results
+    await this.page.waitForTimeout(100);
+
+    // Get all result items to find the index of our target
+    const allResults = this.page.locator(selectors.globalSearch.resultItem);
+    const count = await allResults.count();
+
+    // Find the index of our target item
+    let targetIndex = -1;
+    for (let i = 0; i < count; i++) {
+      const text = await allResults.nth(i).textContent();
+      if (text && text.includes(title)) {
+        targetIndex = i;
+        break;
+      }
+    }
+
+    if (targetIndex === -1) {
+      throw new Error(`Could not find result with title: ${title}`);
+    }
+
+    // Use keyboard navigation: press Down arrow to reach the item, then Enter to select
+    // cmdk auto-highlights the first item, so we need (targetIndex) down presses
+    for (let i = 0; i < targetIndex; i++) {
+      await this.page.keyboard.press('ArrowDown');
+    }
+
+    // Press Enter to select the highlighted item
+    await this.page.keyboard.press('Enter');
   }
 
   /**
@@ -82,9 +109,18 @@ export class GlobalSearchPage {
    */
   async selectResultByIndex(index: number): Promise<void> {
     await this.waitForResults();
-    
-    const resultItems = this.page.locator(selectors.globalSearch.resultItem);
-    await resultItems.nth(index).click();
+
+    // Wait for cmdk to fully process the search results
+    await this.page.waitForTimeout(100);
+
+    // Use keyboard navigation: press Down arrow to reach the item, then Enter to select
+    // cmdk auto-highlights the first item, so we need (index) down presses
+    for (let i = 0; i < index; i++) {
+      await this.page.keyboard.press('ArrowDown');
+    }
+
+    // Press Enter to select the highlighted item
+    await this.page.keyboard.press('Enter');
   }
 
   /**
