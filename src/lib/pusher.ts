@@ -1,30 +1,83 @@
 import Pusher from "pusher";
 import PusherClient from "pusher-js";
+import { getPusherConfig, getPusherClientConfig, config } from "@/config/env";
+import { MockPusherClient } from "@/lib/mock/pusher-client-wrapper";
+
+const USE_MOCKS = config.USE_MOCKS;
+const MOCK_BASE = config.MOCK_BASE;
 
 // Server-side Pusher instance for triggering events
-export const pusherServer = new Pusher({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.PUSHER_CLUSTER!,
-  useTLS: true,
-});
+const pusherConfig = getPusherConfig();
+const _realPusherServer = new Pusher(pusherConfig);
+
+/**
+ * Server-side Pusher wrapper that routes to mock endpoint when USE_MOCKS=true
+ */
+export const pusherServer = {
+  trigger: async (
+    channel: string,
+    event: string,
+    data: any,
+    params?: Pusher.TriggerParams
+  ) => {
+    if (USE_MOCKS) {
+      // Route to mock endpoint
+      const mockUrl = `${MOCK_BASE}/api/mock/pusher/trigger`;
+      
+      try {
+        const response = await fetch(mockUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel, event, data }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Mock Pusher trigger failed: ${response.statusText}`);
+        }
+
+        return response.json();
+      } catch (error) {
+        console.error('Mock Pusher trigger error:', error);
+        throw error;
+      }
+    } else {
+      // Use real Pusher
+      return _realPusherServer.trigger(channel, event, data, params);
+    }
+  },
+
+  // Pass through other methods to real Pusher (not commonly used)
+  triggerBatch: _realPusherServer.triggerBatch.bind(_realPusherServer),
+  authenticate: _realPusherServer.authenticate.bind(_realPusherServer),
+  authorizeChannel: _realPusherServer.authorizeChannel.bind(_realPusherServer),
+  webhook: _realPusherServer.webhook.bind(_realPusherServer),
+  get: _realPusherServer.get.bind(_realPusherServer),
+  post: _realPusherServer.post.bind(_realPusherServer),
+};
 
 // Client-side Pusher instance - lazy initialization to avoid build-time errors
-let _pusherClient: PusherClient | null = null;
+let _pusherClient: PusherClient | MockPusherClient | null = null;
 
-export const getPusherClient = (): PusherClient => {
+export const getPusherClient = (): PusherClient | MockPusherClient => {
   if (!_pusherClient) {
-    if (
-      !process.env.NEXT_PUBLIC_PUSHER_KEY ||
-      !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
-    ) {
-      throw new Error("Pusher environment variables are not configured");
-    }
+    const clientConfig = getPusherClientConfig();
 
-    _pusherClient = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
-    });
+    if (USE_MOCKS) {
+      // Return mock client for local development
+      _pusherClient = new MockPusherClient(clientConfig.key, {
+        cluster: clientConfig.cluster,
+        pollingInterval: 1000, // Poll every 1 second
+      });
+    } else {
+      // Return real Pusher client
+      if (!clientConfig.key || !clientConfig.cluster) {
+        throw new Error("Pusher environment variables are not configured");
+      }
+
+      _pusherClient = new PusherClient(clientConfig.key, {
+        cluster: clientConfig.cluster,
+      });
+    }
   }
   return _pusherClient;
 };

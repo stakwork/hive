@@ -94,9 +94,52 @@ export function isGeminiConfigured(): boolean {
   return !!process.env.GEMINI_API_KEY;
 }
 
+/**
+ * Returns Pusher configuration based on mock mode
+ * In mock mode, returns placeholder values that won't be used
+ * In production mode, returns real Pusher credentials
+ */
+export function getPusherConfig() {
+  if (USE_MOCKS) {
+    return {
+      appId: "mock-app-id",
+      key: "mock-key",
+      secret: "mock-secret",
+      cluster: "mock-cluster",
+      useTLS: true,
+    };
+  }
+
+  return {
+    appId: process.env.PUSHER_APP_ID!,
+    key: process.env.PUSHER_KEY!,
+    secret: process.env.PUSHER_SECRET!,
+    cluster: process.env.PUSHER_CLUSTER!,
+    useTLS: true,
+  };
+}
+
+/**
+ * Returns client-side Pusher configuration based on mock mode
+ */
+export function getPusherClientConfig() {
+  if (USE_MOCKS) {
+    return {
+      key: "mock-pusher-key",
+      cluster: "mock-cluster",
+    };
+  }
+
+  return {
+    key: process.env.NEXT_PUBLIC_PUSHER_KEY!,
+    cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+  };
+}
+
 // Combined environment configuration
 export const config = {
   ...requiredEnvVars,
   ...optionalEnvVars,
   geminiApiKey: process.env.GEMINI_API_KEY,
+  PUSHER_MOCK_WEBHOOK_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/pusher/trigger` : undefined,
 } as const;
