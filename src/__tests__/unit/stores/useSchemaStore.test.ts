@@ -2,18 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useSchemaStore } from '@/stores/useSchemaStore';
 import type { SchemaExtended, SchemaLink } from '@/stores/useSchemaStore';
 import type { ActionDetail } from '@Universe/types';
-import {
-  resetSchemaStore,
-  getSchemaStoreState,
-  createTestSchema,
-  createTestSchemas,
-  createTestLink,
-  createTestLinks,
-  createTestActionDetail,
-  setSchemasAndGetState,
-  setLinksAndGetState,
-  setActionDetailAndGetState,
-} from '@/__tests__/support/helpers/store-helpers/schema-store';
+import { resetSchemaStore } from '@/__tests__/support/helpers/store-helpers/schema-store';
 
 describe('useSchemaStore', () => {
   // Reset store before each test to ensure isolation
