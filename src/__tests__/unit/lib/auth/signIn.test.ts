@@ -774,4 +774,421 @@ describe('signIn callback', () => {
       });
     });
   });
+
+  describe('Security & Data Integrity', () => {
+    it('should encrypt all GitHub OAuth tokens when creating new account', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id',
+        name: 'GitHub User',
+        email: 'githubuser@example.com',
+        image: 'https://avatars.githubusercontent.com/u/123',
+      };
+      const mockAccount = {
+        provider: 'github',
+        type: 'oauth',
+        providerAccountId: 'github-123',
+        access_token: 'gho_sensitive_token',
+        refresh_token: 'ghr_sensitive_refresh',
+        id_token: 'sensitive_id_token',
+      };
+      const existingUser = {
+        id: 'existing-user-123',
+        email: 'githubuser@example.com',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (db.account.findFirst as any).mockResolvedValue(null);
+      (db.account.create as any).mockResolvedValue({});
+
+      // Act
+      await signInCallback({ user: mockUser, account: mockAccount });
+
+      // Assert - verify all tokens are encrypted
+      const createCall = (db.account.create as any).mock.calls[0][0];
+      expect(createCall.data.access_token).toContain('encrypted_gho_sensitive_token');
+      expect(createCall.data.refresh_token).toContain('encrypted_ghr_sensitive_refresh');
+      expect(createCall.data.id_token).toContain('encrypted_sensitive_id_token');
+      
+      // Verify all encrypted fields are JSON stringified
+      expect(() => JSON.parse(createCall.data.access_token)).not.toThrow();
+      expect(() => JSON.parse(createCall.data.refresh_token)).not.toThrow();
+      expect(() => JSON.parse(createCall.data.id_token)).not.toThrow();
+    });
+
+    it('should encrypt tokens when updating existing GitHub account', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id',
+        name: 'GitHub User',
+        email: 'githubuser@example.com',
+        image: 'https://avatars.githubusercontent.com/u/123',
+      };
+      const mockAccount = {
+        provider: 'github',
+        type: 'oauth',
+        providerAccountId: 'github-123',
+        access_token: 'gho_new_sensitive_token',
+        refresh_token: 'ghr_new_sensitive_refresh',
+      };
+      const existingUser = {
+        id: 'existing-user-456',
+        email: 'githubuser@example.com',
+      };
+      const existingAccount = {
+        id: 'account-789',
+        userId: 'existing-user-456',
+        provider: 'github',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (db.account.findFirst as any).mockResolvedValue(existingAccount);
+      (db.account.update as any).mockResolvedValue({});
+
+      // Act
+      await signInCallback({ user: mockUser, account: mockAccount });
+
+      // Assert - verify tokens are encrypted
+      const updateCall = (db.account.update as any).mock.calls[0][0];
+      expect(updateCall.data.access_token).toContain('encrypted_gho_new_sensitive_token');
+      expect(updateCall.data.refresh_token).toContain('encrypted_ghr_new_sensitive_refresh');
+      
+      // Verify encrypted fields are JSON stringified
+      expect(() => JSON.parse(updateCall.data.access_token)).not.toThrow();
+      expect(() => JSON.parse(updateCall.data.refresh_token)).not.toThrow();
+    });
+
+    it('should verify workspace exists before allowing mock authentication to complete', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id',
+        name: 'mockuser',
+        email: 'mockuser@mock.dev',
+        image: 'https://avatars.githubusercontent.com/u/1?v=4',
+      };
+      const mockAccount = {
+        provider: 'mock',
+        type: 'credentials',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.user.create as any).mockResolvedValue({ id: 'user-123', email: mockUser.email });
+      (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
+      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
+
+      // Act
+      const result = await signInCallback({
+        user: mockUser,
+        account: mockAccount,
+      });
+
+      // Assert
+      expect(result).toBe(true);
+      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+        where: { ownerId: 'user-123', deleted: false },
+        select: { slug: true },
+      });
+      expect(logger.authInfo).toHaveBeenCalledWith(
+        'Mock workspace created successfully',
+        'SIGNIN_MOCK_SUCCESS',
+        expect.any(Object)
+      );
+    });
+
+    it('should handle concurrent sign-in attempts with same email (mock provider)', async () => {
+      // Arrange - simulates race condition where user is created between check and creation
+      const mockUser = {
+        id: 'temp-id',
+        name: 'mockuser',
+        email: 'mockuser@mock.dev',
+        image: 'https://avatars.githubusercontent.com/u/1?v=4',
+      };
+      const mockAccount = {
+        provider: 'mock',
+        type: 'credentials',
+      };
+      const raceConditionError = new Error('Unique constraint failed on email');
+
+      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.user.create as any).mockRejectedValue(raceConditionError);
+
+      // Act
+      const result = await signInCallback({
+        user: mockUser,
+        account: mockAccount,
+      });
+
+      // Assert
+      expect(result).toBe(false);
+      expect(logger.authError).toHaveBeenCalledWith(
+        'Failed to handle mock authentication',
+        'SIGNIN_MOCK',
+        raceConditionError
+      );
+    });
+
+    it('should mutate user object ID during mock authentication', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id-will-be-replaced',
+        name: 'mockuser',
+        email: 'mockuser@mock.dev',
+        image: 'https://avatars.githubusercontent.com/u/1?v=4',
+      };
+      const mockAccount = {
+        provider: 'mock',
+        type: 'credentials',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.user.create as any).mockResolvedValue({ id: 'database-generated-id', email: mockUser.email });
+      (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
+      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
+
+      // Act
+      await signInCallback({
+        user: mockUser,
+        account: mockAccount,
+      });
+
+      // Assert - user.id should be mutated to the database-generated ID
+      expect(mockUser.id).toBe('database-generated-id');
+    });
+
+    it('should mutate user object ID when using existing user (mock provider)', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id-will-be-replaced',
+        name: 'existinguser',
+        email: 'existinguser@mock.dev',
+        image: 'https://avatars.githubusercontent.com/u/1?v=4',
+      };
+      const mockAccount = {
+        provider: 'mock',
+        type: 'credentials',
+      };
+      const existingUser = {
+        id: 'existing-database-id',
+        email: 'existinguser@mock.dev',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (ensureMockWorkspaceForUser as any).mockResolvedValue('existing-workspace');
+      (db.workspace.findFirst as any).mockResolvedValue({ slug: 'existing-workspace' });
+
+      // Act
+      await signInCallback({
+        user: mockUser,
+        account: mockAccount,
+      });
+
+      // Assert - user.id should be mutated to the existing database ID
+      expect(mockUser.id).toBe('existing-database-id');
+    });
+
+    it('should mutate user object ID when linking GitHub to existing user', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id-will-be-replaced',
+        name: 'GitHub User',
+        email: 'githubuser@example.com',
+        image: 'https://avatars.githubusercontent.com/u/123',
+      };
+      const mockAccount = {
+        provider: 'github',
+        type: 'oauth',
+        providerAccountId: 'github-123',
+        access_token: 'gho_test_token',
+      };
+      const existingUser = {
+        id: 'real-user-database-id',
+        email: 'githubuser@example.com',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (db.account.findFirst as any).mockResolvedValue(null);
+      (db.account.create as any).mockResolvedValue({});
+
+      // Act
+      await signInCallback({
+        user: mockUser,
+        account: mockAccount,
+      });
+
+      // Assert - user.id should be mutated to the existing user's database ID
+      expect(mockUser.id).toBe('real-user-database-id');
+    });
+  });
+
+  describe('Account Data Handling', () => {
+    it('should correctly handle all GitHub OAuth fields in account creation', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id',
+        name: 'GitHub User',
+        email: 'githubuser@example.com',
+        image: 'https://avatars.githubusercontent.com/u/123',
+      };
+      const mockAccount = {
+        provider: 'github',
+        type: 'oauth',
+        providerAccountId: 'github-123456',
+        access_token: 'gho_test_token',
+        refresh_token: 'ghr_refresh_token',
+        expires_at: 1735000000,
+        token_type: 'bearer',
+        scope: 'read:user user:email repo',
+        id_token: 'id_token_jwt',
+        session_state: 'session_state_value',
+      };
+      const existingUser = {
+        id: 'existing-user-123',
+        email: 'githubuser@example.com',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (db.account.findFirst as any).mockResolvedValue(null);
+      (db.account.create as any).mockResolvedValue({});
+
+      // Act
+      await signInCallback({ user: mockUser, account: mockAccount });
+
+      // Assert
+      expect(db.account.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'existing-user-123',
+          type: 'oauth',
+          provider: 'github',
+          providerAccountId: 'github-123456',
+          access_token: expect.stringContaining('encrypted_gho_test_token'),
+          refresh_token: expect.stringContaining('encrypted_ghr_refresh_token'),
+          expires_at: 1735000000,
+          token_type: 'bearer',
+          scope: 'read:user user:email repo',
+          id_token: expect.stringContaining('encrypted_id_token_jwt'),
+          session_state: 'session_state_value',
+        },
+      });
+    });
+
+    it('should handle account update with subset of fields', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id',
+        name: 'GitHub User',
+        email: 'githubuser@example.com',
+        image: 'https://avatars.githubusercontent.com/u/123',
+      };
+      const mockAccount = {
+        provider: 'github',
+        type: 'oauth',
+        providerAccountId: 'github-123',
+        access_token: 'gho_updated_token',
+        scope: 'read:user user:email',
+        // Note: no refresh_token or id_token in update
+      };
+      const existingUser = {
+        id: 'existing-user-456',
+        email: 'githubuser@example.com',
+      };
+      const existingAccount = {
+        id: 'account-789',
+        userId: 'existing-user-456',
+        provider: 'github',
+        refresh_token: 'old_refresh_token',
+        id_token: 'old_id_token',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(existingUser);
+      (db.account.findFirst as any).mockResolvedValue(existingAccount);
+      (db.account.update as any).mockResolvedValue({});
+
+      // Act
+      await signInCallback({ user: mockUser, account: mockAccount });
+
+      // Assert - should preserve old tokens when new ones aren't provided
+      expect(db.account.update).toHaveBeenCalledWith({
+        where: { id: 'account-789' },
+        data: {
+          access_token: expect.stringContaining('encrypted_gho_updated_token'),
+          scope: 'read:user user:email',
+          refresh_token: 'old_refresh_token',
+          id_token: 'old_id_token',
+        },
+      });
+    });
+  });
+
+  describe('Mock Workspace Atomicity', () => {
+    it('should fail authentication if workspace slug is undefined', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id',
+        name: 'testuser',
+        email: 'testuser@mock.dev',
+        image: 'https://avatars.githubusercontent.com/u/1?v=4',
+      };
+      const mockAccount = {
+        provider: 'mock',
+        type: 'credentials',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.user.create as any).mockResolvedValue({ id: 'user-789', email: mockUser.email });
+      (ensureMockWorkspaceForUser as any).mockResolvedValue(undefined);
+
+      // Act
+      const result = await signInCallback({
+        user: mockUser,
+        account: mockAccount,
+      });
+
+      // Assert
+      expect(result).toBe(false);
+      expect(logger.authError).toHaveBeenCalledWith(
+        'Failed to create mock workspace - workspace slug is empty',
+        'SIGNIN_MOCK_WORKSPACE_FAILED',
+        { userId: expect.any(String) }
+      );
+    });
+
+    it('should verify workspace was committed to database before completing authentication', async () => {
+      // Arrange
+      const mockUser = {
+        id: 'temp-id',
+        name: 'testuser',
+        email: 'testuser@mock.dev',
+        image: 'https://avatars.githubusercontent.com/u/1?v=4',
+      };
+      const mockAccount = {
+        provider: 'mock',
+        type: 'credentials',
+      };
+
+      (db.user.findUnique as any).mockResolvedValue(null);
+      (db.user.create as any).mockResolvedValue({ id: 'user-999', email: mockUser.email });
+      (ensureMockWorkspaceForUser as any).mockResolvedValue('test-workspace');
+      
+      // First call to findFirst in verification - returns null (not found)
+      (db.workspace.findFirst as any).mockResolvedValue(null);
+
+      // Act
+      const result = await signInCallback({
+        user: mockUser,
+        account: mockAccount,
+      });
+
+      // Assert - authentication should fail due to verification failure
+      expect(result).toBe(false);
+      expect(db.workspace.findFirst).toHaveBeenCalledWith({
+        where: { ownerId: expect.any(String), deleted: false },
+        select: { slug: true },
+      });
+      expect(logger.authError).toHaveBeenCalledWith(
+        'Mock workspace created but not found on verification - possible transaction issue',
+        'SIGNIN_MOCK_VERIFICATION_FAILED',
+        { userId: expect.any(String), expectedSlug: 'test-workspace' }
+      );
+    });
+  });
 });
