@@ -55,6 +55,11 @@ export const optionalEnvVars = {
   LIVEKIT_CALL_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/livekit/`
     : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
+  // Pusher configuration (uses mock credentials when USE_MOCKS=true)
+  PUSHER_APP_ID: USE_MOCKS ? "mock-app-id" : process.env.PUSHER_APP_ID,
+  PUSHER_KEY: USE_MOCKS ? "mock-pusher-key" : process.env.PUSHER_KEY,
+  PUSHER_SECRET: USE_MOCKS ? "mock-pusher-secret" : process.env.PUSHER_SECRET,
+  PUSHER_CLUSTER: USE_MOCKS ? "mock-cluster" : process.env.PUSHER_CLUSTER,
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,

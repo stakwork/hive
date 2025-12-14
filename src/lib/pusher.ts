@@ -1,30 +1,47 @@
 import Pusher from "pusher";
 import PusherClient from "pusher-js";
+import { optionalEnvVars } from "@/config/env";
+import { PusherServerMock } from "@/lib/mock/pusher-server-wrapper";
+import { PusherClientMock } from "@/lib/mock/pusher-client-wrapper";
+
+// Check USE_MOCKS from environment directly to support dynamic configuration in tests
+const USE_MOCKS = process.env.USE_MOCKS === "true";
 
 // Server-side Pusher instance for triggering events
-export const pusherServer = new Pusher({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.PUSHER_CLUSTER!,
-  useTLS: true,
-});
+export const pusherServer: Pusher | PusherServerMock = USE_MOCKS
+  ? new PusherServerMock()
+  : new Pusher({
+      appId: USE_MOCKS ? "mock-app-id" : (process.env.PUSHER_APP_ID || optionalEnvVars.PUSHER_APP_ID)!,
+      key: USE_MOCKS ? "mock-pusher-key" : (process.env.PUSHER_KEY || optionalEnvVars.PUSHER_KEY)!,
+      secret: USE_MOCKS ? "mock-pusher-secret" : (process.env.PUSHER_SECRET || optionalEnvVars.PUSHER_SECRET)!,
+      cluster: USE_MOCKS ? "mock-cluster" : (process.env.PUSHER_CLUSTER || optionalEnvVars.PUSHER_CLUSTER)!,
+      useTLS: true,
+    });
 
 // Client-side Pusher instance - lazy initialization to avoid build-time errors
-let _pusherClient: PusherClient | null = null;
+let _pusherClient: PusherClient | PusherClientMock | null = null;
 
-export const getPusherClient = (): PusherClient => {
+export const getPusherClient = (): PusherClient | PusherClientMock => {
   if (!_pusherClient) {
-    if (
-      !process.env.NEXT_PUBLIC_PUSHER_KEY ||
-      !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
-    ) {
-      throw new Error("Pusher environment variables are not configured");
-    }
+    // Check USE_MOCKS at runtime for test flexibility
+    const useMocks = process.env.USE_MOCKS === "true";
+    
+    if (useMocks) {
+      _pusherClient = new PusherClientMock("mock-pusher-key", {
+        cluster: "mock-cluster",
+      });
+    } else {
+      if (
+        !process.env.NEXT_PUBLIC_PUSHER_KEY ||
+        !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
+      ) {
+        throw new Error("Pusher environment variables are not configured");
+      }
 
-    _pusherClient = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
-    });
+      _pusherClient = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY, {
+        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+      });
+    }
   }
   return _pusherClient;
 };

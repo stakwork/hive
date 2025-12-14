@@ -39,8 +39,10 @@ describe("pusher.ts", () => {
     vi.clearAllMocks();
     
     // Reset environment variables to a clean state
+    // IMPORTANT: Disable USE_MOCKS to test real Pusher configuration
     process.env = {
       ...originalEnv,
+      USE_MOCKS: "false", // Disable mocks for unit tests
       PUSHER_APP_ID: "test-app-id",
       PUSHER_KEY: "test-key",
       PUSHER_SECRET: "test-secret",
@@ -90,6 +92,7 @@ describe("pusher.ts", () => {
 
     it("should use environment variables for configuration", async () => {
       // Set different environment variables
+      process.env.USE_MOCKS = "false";
       process.env.PUSHER_APP_ID = "different-app-id";
       process.env.PUSHER_KEY = "different-key";
       process.env.PUSHER_SECRET = "different-secret";
@@ -142,6 +145,7 @@ describe("pusher.ts", () => {
 
     it("should throw error when NEXT_PUBLIC_PUSHER_KEY is missing", async () => {
       delete process.env.NEXT_PUBLIC_PUSHER_KEY;
+      process.env.USE_MOCKS = "false";
       vi.resetModules();
       
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
@@ -153,6 +157,7 @@ describe("pusher.ts", () => {
 
     it("should throw error when NEXT_PUBLIC_PUSHER_CLUSTER is missing", async () => {
       delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+      process.env.USE_MOCKS = "false";
       vi.resetModules();
       
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
@@ -165,6 +170,7 @@ describe("pusher.ts", () => {
     it("should throw error when both environment variables are missing", async () => {
       delete process.env.NEXT_PUBLIC_PUSHER_KEY;
       delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+      process.env.USE_MOCKS = "false";
       vi.resetModules();
       
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
@@ -177,6 +183,7 @@ describe("pusher.ts", () => {
     it("should work with empty string environment variables", async () => {
       process.env.NEXT_PUBLIC_PUSHER_KEY = "";
       process.env.NEXT_PUBLIC_PUSHER_CLUSTER = "test-cluster";
+      process.env.USE_MOCKS = "false";
       vi.resetModules();
       
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
