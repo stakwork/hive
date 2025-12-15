@@ -39,7 +39,7 @@ interface SaveOrUpdateSwarmParams {
   services?: ServiceConfig[]; // Use ServiceConfig[]
   swarmId?: string;
   swarmSecretAlias?: string;
-  ingestRefId?: string;
+  ingestRefId?: string | null;
   containerFiles?: Record<string, string>;
   poolState?: PoolState;
   ingestRequestInProgress?: boolean;

@@ -100,11 +100,12 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    // Set ingest request in progress flag
-    console.log(`[STAKGRAPH_INGEST] Setting ingestRequestInProgress to true`);
+    // Set ingest request in progress flag and clear old ref ID since we're starting fresh
+    console.log(`[STAKGRAPH_INGEST] Setting ingestRequestInProgress to true and clearing ingestRefId`);
     await saveOrUpdateSwarm({
       workspaceId: swarm.workspaceId,
       ingestRequestInProgress: true,
+      ingestRefId: null,
     });
     console.log(`[STAKGRAPH_INGEST] Ingest request marked as in progress`);
 
