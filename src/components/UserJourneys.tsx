@@ -11,11 +11,14 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { Artifact, BrowserContent } from "@/lib/chat";
 import { Archive, ExternalLink, Loader2, Plus, Play, PlayCircle, Eye, ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useModal } from "./modals/ModlaProvider";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
 
@@ -51,18 +54,44 @@ interface UserJourneyRow {
   };
 }
 
-export default function UserJourneys() {
+interface UserJourneysProps {
+  onBrowserModeChange?: (isOpen: boolean) => void;
+}
+
+export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps) {
   const { id, slug, workspace } = useWorkspace();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [frontend, setFrontend] = useState<string | null>(null);
   const [userJourneys, setUserJourneys] = useState<UserJourneyRow[]>([]);
   const [fetchingJourneys, setFetchingJourneys] = useState(false);
   const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [archivingInventoryId, setArchivingInventoryId] = useState<string | null>(null);
+
+  // View type state (tests or inventory)
+  const [viewType, setViewType] = useState<"tests" | "inventory">("tests");
 
   // Filter state (defaults: show pending, hide failed)
   const [showPendingTasks, setShowPendingTasks] = useState(true);
   const [showFailedTasks, setShowFailedTasks] = useState(false);
+
+  // Fetch inventory nodes when viewing inventory
+  const { data: inventoryNodes, isLoading: inventoryLoading } = useQuery({
+    queryKey: ["inventory-nodes", slug],
+    queryFn: async () => {
+      const response = await fetch(`/api/workspaces/${slug}/graph/nodes?node_type=Userobjective&output=json`);
+      if (!response.ok) throw new Error("Failed to fetch inventory");
+      const data = await response.json();
+      return data.data?.nodes || [];
+    },
+    enabled: viewType === "inventory" && !!slug,
+  });
+
+  // Filter out muted inventory nodes
+  const filteredInventoryNodes = inventoryNodes?.filter(
+    (node: { properties: { is_muted?: boolean } }) => !node.properties.is_muted
+  ) || [];
 
   // Replay-related state
   const [replayTestCode, setReplayTestCode] = useState<string | null>(null);
@@ -105,6 +134,11 @@ export default function UserJourneys() {
       fetchUserJourneys();
     }
   }, [frontend, fetchUserJourneys]);
+
+  // Notify parent when browser mode changes
+  useEffect(() => {
+    onBrowserModeChange?.(!!frontend);
+  }, [frontend, onBrowserModeChange]);
 
   // Updated filter logic
   const filteredRows = userJourneys.filter((row) => {
@@ -201,6 +235,35 @@ export default function UserJourneys() {
       toast.error("Archive Failed", { description: "Unable to archive the test. Please try again." });
     } finally {
       setArchivingId(null);
+    }
+  };
+
+  const handleArchiveInventoryNode = async (refId: string) => {
+    try {
+      setArchivingInventoryId(refId);
+
+      const response = await fetch(`/api/workspaces/${slug}/nodes/${refId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: { is_muted: true },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to archive node");
+      }
+
+      toast("User Objective Ignored", { description: "This item has been hidden from the inventory." });
+
+      queryClient.invalidateQueries({ queryKey: ["inventory-nodes", slug] });
+    } catch (error) {
+      console.error("Error archiving node:", error);
+      toast.error("Failed to Ignore", { description: "Unable to ignore this item. Please try again." });
+    } finally {
+      setArchivingInventoryId(null);
     }
   };
 
@@ -483,122 +546,198 @@ export default function UserJourneys() {
       {viewMode === "video" ? (
         renderVideoView()
       ) : frontend ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-end">
-            <Button variant="ghost" size="sm" onClick={handleCloseBrowser} className="h-8 w-8 p-0">
-              ✕
-            </Button>
-          </div>
-          <div className="h-[600px] border rounded-lg overflow-hidden">
-            <BrowserArtifactPanel
-              artifacts={browserArtifacts}
-              ide={false}
-              workspaceId={id || workspace?.id}
-              onUserJourneySave={saveUserJourneyTest}
-              externalTestCode={replayTestCode}
-              externalTestTitle={replayTitle}
-            />
-          </div>
+        <div className="h-[calc(100vh-120px)] border rounded-lg overflow-hidden">
+          <BrowserArtifactPanel
+            artifacts={browserArtifacts}
+            ide={false}
+            workspaceId={id || workspace?.id}
+            onUserJourneySave={saveUserJourneyTest}
+            externalTestCode={replayTestCode}
+            externalTestTitle={replayTitle}
+            onClose={handleCloseBrowser}
+          />
         </div>
       ) : (
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center justify-end gap-4 mb-6">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuCheckboxItem checked={showPendingTasks} onCheckedChange={setShowPendingTasks}>
-                    Pending Tasks
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuCheckboxItem checked={showFailedTasks} onCheckedChange={setShowFailedTasks}>
-                    Failed Tasks
-                  </DropdownMenuCheckboxItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button className="flex items-center gap-2" onClick={handleCreateUserJourney} disabled={isLoading}>
-                <Plus className="w-4 h-4" />
-                Create User Journey
-              </Button>
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <Select value={viewType} onValueChange={(v) => setViewType(v as "tests" | "inventory")}>
+                <SelectTrigger className="h-8 w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tests">Tests</SelectItem>
+                  <SelectItem value="inventory">Inventory</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-4">
+                {viewType === "tests" && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuCheckboxItem checked={showPendingTasks} onCheckedChange={setShowPendingTasks}>
+                        Pending Tasks
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem checked={showFailedTasks} onCheckedChange={setShowFailedTasks}>
+                        Failed Tasks
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                <Button 
+                  className="flex items-center gap-2" 
+                  onClick={handleCreateUserJourney} 
+                  disabled={isLoading}
+                  data-testid="create-user-journey-button"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create User Journey
+                </Button>
+              </div>
             </div>
-            {fetchingJourneys ? (
+            {viewType === "tests" ? (
+              fetchingJourneys ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredRows.length > 0 ? (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead className="w-[80px]">Replay</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Test File</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead className="w-[100px]">Archive</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRows.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-medium">{row.title}</TableCell>
+                          <TableCell>
+                            {row.testFilePath && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleReplay(row)}
+                                disabled={isReplayingTask === row.id}
+                                className="h-8 w-8 p-0"
+                                title={row.hasVideo ? "Play recording" : "Run test"}
+                              >
+                                {isReplayingTask === row.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : row.hasVideo ? (
+                                  <PlayCircle className="h-4 w-4" />
+                                ) : (
+                                  <Play className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </TableCell>
+                          <TableCell>{renderBadge(row.badge)}</TableCell>
+                          <TableCell>
+                            {row.testFileUrl ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => window.open(row.testFileUrl!, "_blank")}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(row.createdAt).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleArchive(row)}
+                              disabled={archivingId === row.id}
+                              className="h-8 w-8 p-0"
+                              title="Archive test"
+                            >
+                              {archivingId === row.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Archive className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sm text-muted-foreground">
+                    {!showPendingTasks && userJourneys.length > 0
+                      ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
+                      : !showFailedTasks && userJourneys.length > 0
+                        ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
+                        : "No E2E tests yet. Create a user journey to get started!"}
+                  </p>
+                </div>
+              )
+            ) : inventoryLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-            ) : filteredRows.length > 0 ? (
+            ) : filteredInventoryNodes.length > 0 ? (
               <div className="rounded-md border">
                 <Table>
                   <TableHeader className="bg-muted/50">
                     <TableRow>
-                      <TableHead>Title</TableHead>
-                      <TableHead className="w-[80px]">Replay</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Test File</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead className="w-[100px]">Archive</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="w-[80px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredRows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-medium">{row.title}</TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleReplay(row)}
-                            disabled={isReplayingTask === row.id}
-                            className="h-8 w-8 p-0"
-                            title={row.hasVideo ? "Play recording" : "Run test"}
-                          >
-                            {isReplayingTask === row.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : row.hasVideo ? (
-                              <PlayCircle className="h-4 w-4" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </TableCell>
-                        <TableCell>{renderBadge(row.badge)}</TableCell>
-                        <TableCell>
-                          {row.testFileUrl ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => window.open(row.testFileUrl!, "_blank")}
-                                className="h-6 w-6 p-0"
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">{row.testFilePath || "N/A"}</span>
-                          )}
-                        </TableCell>
+                    {filteredInventoryNodes.map((node: { ref_id: string; properties: { name: string; description: string } }) => (
+                      <TableRow key={node.ref_id}>
+                        <TableCell className="font-medium">{node.properties.name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {new Date(row.createdAt).toLocaleDateString()}
+                          {node.properties.description}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleArchive(row)}
-                            disabled={archivingId === row.id}
-                            className="h-8 w-8 p-0"
-                            title="Archive test"
-                          >
-                            {archivingId === row.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Archive className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleArchiveInventoryNode(node.ref_id)}
+                                  disabled={archivingInventoryId === node.ref_id}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  {archivingInventoryId === node.ref_id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Archive className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Ignore</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -607,13 +746,7 @@ export default function UserJourneys() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-sm text-muted-foreground">
-                  {!showPendingTasks && userJourneys.length > 0
-                    ? "No completed tests to display. Enable 'Pending Tasks' filter to see all tests."
-                    : !showFailedTasks && userJourneys.length > 0
-                      ? "No passing tests to display. Enable 'Failed Tasks' filter to see all tests."
-                      : "No E2E tests yet. Create a user journey to get started!"}
-                </p>
+                <p className="text-sm text-muted-foreground">No inventory items found.</p>
               </div>
             )}
           </CardContent>

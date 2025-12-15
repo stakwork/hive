@@ -34,6 +34,20 @@ export class HttpClient {
       },
     };
 
+    // RFC 7231 Compliance: GET, HEAD, and OPTIONS requests MUST NOT include a body
+    // Strip body from these methods to ensure HTTP specification compliance
+    const method = (config.method || "GET").toUpperCase();
+    const methodsWithoutBody = ["GET", "HEAD", "OPTIONS"];
+    
+    if (methodsWithoutBody.includes(method)) {
+      if (config.body !== undefined) {
+        console.warn(
+          `[HttpClient] Warning: ${method} requests cannot include a body (RFC 7231). Body parameter will be ignored.`
+        );
+        delete config.body;
+      }
+    }
+
     // Create AbortController for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(

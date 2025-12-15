@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getSwarmConfig } from "./utils";
+import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { parseOwnerRepo } from "@/lib/ai/utils";
+import { validateWorkspaceAccess } from "@/services/workspace";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,14 +60,9 @@ export async function POST(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceSlug = searchParams.get("workspace");
-    const budget = searchParams.get("budget");
 
     if (!workspaceSlug) {
       return NextResponse.json({ error: "Missing required parameter: workspace" }, { status: 400 });
-    }
-
-    if (!budget) {
-      return NextResponse.json({ error: "Missing required parameter: budget" }, { status: 400 });
     }
 
     const swarmConfig = await getSwarmConfig(workspaceSlug, userOrResponse.id);
@@ -73,7 +72,39 @@ export async function POST(request: NextRequest) {
 
     const { baseSwarmUrl, decryptedSwarmApiKey } = swarmConfig;
 
-    const swarmUrl = `${baseSwarmUrl}/seed_stories?budget=${encodeURIComponent(budget)}`;
+    // Get workspace access to retrieve workspace ID
+    const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
+    if (!workspaceAccess.hasAccess || !workspaceAccess.workspace) {
+      return NextResponse.json({ error: "Workspace not found or access denied" }, { status: 403 });
+    }
+
+    // Get primary repository
+    const primaryRepo = await getPrimaryRepository(workspaceAccess.workspace.id);
+    if (!primaryRepo) {
+      return NextResponse.json({ error: "No repository configured for this workspace" }, { status: 404 });
+    }
+
+    // Parse repository URL to extract owner and repo
+    let owner: string, repo: string;
+    try {
+      const parsed = parseOwnerRepo(primaryRepo.repositoryUrl);
+      owner = parsed.owner;
+      repo = parsed.repo;
+    } catch (error) {
+      console.error("Failed to parse repository URL:", error);
+      return NextResponse.json({ error: "Invalid repository URL" }, { status: 400 });
+    }
+
+    // Get GitHub PAT for the user
+    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspaceSlug);
+    const token = githubProfile?.token;
+
+    if (!token) {
+      return NextResponse.json({ error: "GitHub PAT not found for this user" }, { status: 404 });
+    }
+
+    // Call gitree/process endpoint with token parameter
+    const swarmUrl = `${baseSwarmUrl}/gitree/process?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&token=${encodeURIComponent(token)}&summarize=true&link=true&analyze_clues=true`;
 
     fetch(swarmUrl, {
       method: "POST",
@@ -84,16 +115,16 @@ export async function POST(request: NextRequest) {
     })
       .then((response) => {
         if (!response.ok) {
-          console.error(`Swarm seed_stories error: ${response.status}`);
+          console.error(`Swarm gitree/process error: ${response.status}`);
         }
       })
       .catch((error) => {
-        console.error("Seed stories request failed:", error);
+        console.error("Gitree process request failed:", error);
       });
 
-    return NextResponse.json({ success: true, message: "Seed knowledge request initiated" });
+    return NextResponse.json({ success: true, message: "Repository processing initiated" });
   } catch (error) {
-    console.error("Seed stories API proxy error:", error);
-    return NextResponse.json({ error: "Failed to seed stories" }, { status: 500 });
+    console.error("Gitree process API proxy error:", error);
+    return NextResponse.json({ error: "Failed to process repository" }, { status: 500 });
   }
 }

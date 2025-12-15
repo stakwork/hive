@@ -46,7 +46,6 @@ vi.mock("@/services/s3");
 vi.mock("@/lib/utils", () => ({
   getBaseUrl: vi.fn(),
   cn: vi.fn(),
-  formatRelativeTime: vi.fn(),
   getRelativeUrl: vi.fn(),
 }));
 vi.mock("@/lib/utils/swarm");

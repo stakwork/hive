@@ -27,15 +27,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { podId, workspaceId, taskId } = body;
-    console.log(">>> [DIFF] Request params:", { podId, workspaceId, taskId, userId });
+    const { workspaceId, taskId } = body;
+    console.log(">>> [DIFF] Request params:", { workspaceId, taskId, userId });
 
     // Validate required fields
-    if (!podId) {
-      console.log(">>> [DIFF] Missing podId");
-      return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
-    }
-
     if (!workspaceId) {
       console.log(">>> [DIFF] Missing workspaceId");
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
@@ -45,6 +40,20 @@ export async function POST(request: NextRequest) {
       console.log(">>> [DIFF] Missing taskId");
       return NextResponse.json({ error: "Missing required field: taskId" }, { status: 400 });
     }
+
+    // Fetch podId from task record
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { podId: true },
+    });
+
+    if (!task?.podId) {
+      console.log(">>> [DIFF] No podId found for task:", taskId);
+      return NextResponse.json({ error: "No pod assigned to this task" }, { status: 400 });
+    }
+
+    const podId = task.podId;
+    console.log(">>> [DIFF] Found podId from task:", podId);
 
     // Verify user has access to the workspace
     const workspace = await db.workspace.findFirst({

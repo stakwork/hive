@@ -286,7 +286,7 @@ export function Sidebar({ user }: SidebarProps) {
   const poolCapacityCount = useMemo(() => {
     if (!poolStatus) return null;
     const inUse = poolStatus.usedVms || 0;
-    const total = (poolStatus.usedVms || 0) + (poolStatus.unusedVms || 0);
+    const total = poolStatus.runningVms || 0;
     return total > 0 ? `${inUse}/${total}` : null;
   }, [poolStatus]);
 

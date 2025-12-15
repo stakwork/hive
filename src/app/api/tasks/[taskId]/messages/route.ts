@@ -47,6 +47,7 @@ export async function GET(
         workflowStatus: true,
         stakworkProjectId: true,
         mode: true,
+        podId: true,
         workspace: {
           select: {
             id: true,
@@ -133,6 +134,7 @@ export async function GET(
             workflowStatus: task.workflowStatus,
             stakworkProjectId: task.stakworkProjectId,
             mode: task.mode,
+            podId: task.podId,
           },
           messages: clientMessages,
           count: clientMessages.length,

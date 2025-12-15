@@ -1,9 +1,9 @@
+import LandingPage from "@/components/LandingPage";
+import { isLandingPageEnabled } from "@/lib/auth/landing-cookie";
 import { authOptions } from "@/lib/auth/nextauth";
 import { handleWorkspaceRedirect } from "@/lib/auth/workspace-resolver";
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
-import LandingPage from "@/components/LandingPage";
-import { isLandingPageEnabled } from "@/lib/auth/landing-cookie";
 
 export default async function HomePage() {
   const session = await getServerSession(authOptions);

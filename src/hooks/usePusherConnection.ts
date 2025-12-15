@@ -25,9 +25,10 @@ export interface RecommendationsUpdatedEvent {
 
 export interface TaskTitleUpdateEvent {
   taskId: string;
-  newTitle: string;
-  previousTitle: string;
+  newTitle?: string;
+  previousTitle?: string;
   archived?: boolean;
+  podId?: string | null;
   timestamp: Date;
 }
 

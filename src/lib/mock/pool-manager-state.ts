@@ -17,6 +17,7 @@ interface MockPod {
   username: string;
   claimedAt?: Date;
   workspaceId?: string;
+  userInfo?: string;
 }
 
 interface MockPool {
@@ -104,8 +105,8 @@ class MockPoolStateManager {
   // Pod Management
   private createPod(poolName: string, index: number): MockPod {
     const podId = `${poolName}-pod-${index}`;
-    // Use POD_URL env var for mock pods, fallback to localhost
-    const podUrl = process.env.POD_URL || "http://localhost:3000";
+    // Use NEXTAUTH_URL for mock pods
+    const podUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
     return {
       id: podId,
       state: "running",
@@ -118,6 +119,9 @@ class MockPoolStateManager {
         "3001": podUrl,
         "5173": podUrl,
         "8080": podUrl,
+        // Real pod ports for control and goose
+        "15552": podUrl, // CONTROL port
+        "15551": podUrl, // GOOSE port
       },
       repositories: [],
       branches: [],
@@ -178,6 +182,7 @@ class MockPoolStateManager {
     pod.environmentVariables = {};
     pod.claimedAt = undefined;
     pod.workspaceId = undefined;
+    pod.userInfo = undefined;
 
     return true;
   }
@@ -218,6 +223,16 @@ class MockPoolStateManager {
     }
 
     pod.environmentVariables = { ...pod.environmentVariables, ...envVars };
+    return true;
+  }
+
+  updatePodUserInfo(poolName: string, podId: string, userInfo: string): boolean {
+    const pod = this.getPod(poolName, podId);
+    if (!pod) {
+      return false;
+    }
+
+    pod.userInfo = userInfo;
     return true;
   }
 

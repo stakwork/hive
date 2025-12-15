@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
 
     const repoDefaultBranch: string | undefined = payload?.repository?.default_branch;
     const allowedBranches = new Set<string>(
-      [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[],
+      [repository.branch, repoDefaultBranch, "main", "master"].filter(Boolean) as string[]
     );
 
     // Fetch GitHub credentials early for both push and PR events
@@ -182,12 +182,7 @@ export async function POST(request: NextRequest) {
 
         // Store PR data without failing the webhook if this fails
         try {
-          await storePullRequest(
-            payload as PullRequestPayload,
-            repository.id,
-            repository.workspaceId,
-            githubPat,
-          );
+          await storePullRequest(payload as PullRequestPayload, repository.id, repository.workspaceId, githubPat);
         } catch (error) {
           console.error("[GithubWebhook] Failed to store PR, continuing", {
             delivery,
@@ -294,7 +289,7 @@ export async function POST(request: NextRequest) {
       decryptedSwarmApiKey,
       repository.repositoryUrl,
       username && githubPat ? { username, pat: githubPat } : undefined,
-      callbackUrl,
+      callbackUrl
     );
 
     console.log("[GithubWebhook] Async sync response", {

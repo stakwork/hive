@@ -1,8 +1,12 @@
 "use client";
 
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { ClarifyingQuestionsPreview } from "@/components/features/ClarifyingQuestionsPreview";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
+import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
+import { DiagramViewer } from "@/components/features/DiagramViewer";
 import { AIButton } from "@/components/ui/ai-button";
 import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
@@ -14,8 +18,9 @@ import { useImageUpload } from "@/hooks/useImageUpload";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
+import { isClarifyingQuestions, type ClarifyingQuestionsResponse } from "@/types/stakwork";
 import { Edit, Eye } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { SaveIndicator } from "./SaveIndicator";
 
 interface GeneratedContent {
@@ -36,6 +41,7 @@ interface AITextareaSectionProps {
   onBlur: (value: string | null) => void;
   rows?: number;
   className?: string;
+  initialDiagramUrl?: string | null;
 }
 
 export function AITextareaSection({
@@ -52,11 +58,14 @@ export function AITextareaSection({
   onBlur,
   rows = 8,
   className,
+  initialDiagramUrl = null,
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [quickGenerating, setQuickGenerating] = useState(false);
   const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
+  const [diagramUrl, setDiagramUrl] = useState<string | null>(initialDiagramUrl);
+  const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
 
   const { workspace } = useWorkspace();
   const { latestRun, refetch } = useStakworkGeneration({
@@ -155,6 +164,66 @@ export function AITextareaSection({
     setMode(newMode);
   };
 
+  const handleGenerateDiagram = async (retryCount = 0) => {
+    if (!featureId || !value?.trim()) {
+      toast.error("Cannot generate diagram", { 
+        description: "Architecture text is required to generate a diagram." 
+      });
+      return;
+    }
+
+    setIsGeneratingDiagram(true);
+    try {
+      const response = await fetch(`/api/features/${featureId}/diagram/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to generate diagram";
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const error = await response.json();
+            errorMessage = error.message || errorMessage;
+          } else {
+            const text = await response.text();
+            errorMessage = text || `Server error: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      setDiagramUrl(data.diagramUrl);
+      
+      toast("Diagram generated successfully", { 
+        description: "Your architecture diagram is ready." 
+      });
+    } catch (error) {
+      console.error("Diagram generation error:", error);
+      
+      // Retry mechanism - max 2 retries
+      if (retryCount < 2) {
+        toast("Retrying diagram generation", { 
+          description: `Attempt ${retryCount + 2} of 3...` 
+        });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return handleGenerateDiagram(retryCount + 1);
+      }
+      
+      toast.error("Failed to generate diagram", { 
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again." 
+      });
+    } finally {
+      setIsGeneratingDiagram(false);
+    }
+  };
+
   const isErrorState = latestRun?.status &&
     ["FAILED", "ERROR", "HALTED"].includes(latestRun.status);
 
@@ -166,6 +235,20 @@ export function AITextareaSection({
     !latestRun.decision &&
     isErrorState
   );
+
+  // Detect if the content is clarifying questions from StakWork
+  const parsedContent = useMemo(() => {
+    if (!aiGeneration.content) return null;
+    try {
+      const parsed = JSON.parse(aiGeneration.content);
+      if (isClarifyingQuestions(parsed)) {
+        return { type: "questions" as const, data: parsed as ClarifyingQuestionsResponse };
+      }
+    } catch {
+      // Not JSON, treat as regular content
+    }
+    return { type: "content" as const, data: aiGeneration.content };
+  }, [aiGeneration.content]);
 
   return (
     <div className="space-y-2">
@@ -200,6 +283,9 @@ export function AITextareaSection({
               isQuickGenerating={quickGenerating}
               disabled={false}
               showDeepThink={true}
+              showGenerateDiagram={mode === "preview" && !!value?.trim()}
+              onGenerateDiagram={handleGenerateDiagram}
+              isGeneratingDiagram={isGeneratingDiagram}
             />
           )}
         </div>
@@ -210,9 +296,17 @@ export function AITextareaSection({
         </p>
       )}
 
-      {aiGeneration.content ? (
+      {latestRun?.status === "IN_PROGRESS" && latestRun.projectId ? (
+        <DeepResearchProgress projectId={latestRun.projectId} />
+      ) : parsedContent?.type === "questions" ? (
+        <ClarifyingQuestionsPreview
+          questions={parsedContent.data.content}
+          onSubmit={(formattedAnswers) => handleProvideFeedback(formattedAnswers)}
+          isLoading={aiGeneration.isLoading}
+        />
+      ) : parsedContent?.type === "content" ? (
         <GenerationPreview
-          content={aiGeneration.content}
+          content={parsedContent.data}
           source={aiGeneration.source || "quick"}
           onAccept={handleAccept}
           onReject={handleReject}
@@ -292,6 +386,16 @@ export function AITextareaSection({
                     <p>No content yet. Click Edit to add {label.toLowerCase()}.</p>
                   )}
                 </div>
+                
+                {/* Diagram Viewer - Only show in preview mode for architecture */}
+                {type === "architecture" && (
+                  <div className="mt-6">
+                    <DiagramViewer 
+                      diagramUrl={diagramUrl} 
+                      isGenerating={isGeneratingDiagram} 
+                    />
+                  </div>
+                )}
               </>
             )}
           </div>

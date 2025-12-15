@@ -246,8 +246,9 @@ describe("Workspace CRUD Operations", () => {
 
       mockedDb.workspace.findMany.mockResolvedValue(mockOwnedWorkspaces);
       mockedDb.workspaceMember.findMany
-        .mockResolvedValueOnce(mockMemberships)
-        .mockResolvedValueOnce([
+        .mockResolvedValueOnce(mockMemberships) // First call for memberships
+        .mockResolvedValueOnce([]) // Second call for owner memberships (lastAccessedAt)
+        .mockResolvedValueOnce([ // Third call for member counts
           { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" }, { workspaceId: "ws1" },
           { workspaceId: "ws2" }, { workspaceId: "ws2" }, { workspaceId: "ws2" }
         ]);
@@ -272,63 +273,148 @@ describe("Workspace CRUD Operations", () => {
   });
 
   describe("getDefaultWorkspaceForUser", () => {
-    test("should return first owned workspace", async () => {
-      const mockOwnedWorkspace = {
-        id: "ws1",
-        name: "Owned Workspace",
-        slug: "owned-workspace",
-        ownerId: "user1",
-        createdAt: new Date("2024-01-01"),
-        updatedAt: new Date("2024-01-01"),
-      };
+    test("should return most recently accessed workspace", async () => {
+      const now = new Date("2024-01-15T12:00:00.000Z");
+      const yesterday = new Date("2024-01-14T12:00:00.000Z");
+      
+      const mockOwnedWorkspaces = [
+        {
+          id: "ws1",
+          name: "Owned Workspace 1",
+          slug: "owned-workspace-1",
+          ownerId: "user1",
+          createdAt: new Date("2024-01-01"),
+          updatedAt: new Date("2024-01-01"),
+          deleted: false,
+          deletedAt: null,
+          description: null,
+          stakworkApiKey: null,
+          nodeTypeOrder: null,
+          logoKey: null,
+          logoUrl: null,
+          repositoryDraft: null,
+          mission: null,
+          sourceControlOrgId: null,
+          originalSlug: null,
+        },
+        {
+          id: "ws2",
+          name: "Owned Workspace 2",
+          slug: "owned-workspace-2",
+          ownerId: "user1",
+          createdAt: new Date("2024-01-02"),
+          updatedAt: new Date("2024-01-02"),
+          deleted: false,
+          deletedAt: null,
+          description: null,
+          stakworkApiKey: null,
+          nodeTypeOrder: null,
+          logoKey: null,
+          logoUrl: null,
+          repositoryDraft: null,
+          mission: null,
+          sourceControlOrgId: null,
+          originalSlug: null,
+        },
+      ];
 
-      mockedDb.workspace.findFirst.mockResolvedValue(mockOwnedWorkspace);
+      const mockOwnerMemberships = [
+        { workspaceId: "ws1", lastAccessedAt: yesterday },
+        { workspaceId: "ws2", lastAccessedAt: now }, // Most recently accessed
+      ];
+
+      // Mock getUserWorkspaces calls
+      mockedDb.workspace.findMany.mockResolvedValue(mockOwnedWorkspaces);
+      mockedDb.workspaceMember.findMany
+        .mockResolvedValueOnce([]) // First call: memberships
+        .mockResolvedValueOnce(mockOwnerMemberships) // Second call: owner lastAccessedAt
+        .mockResolvedValueOnce([ // Third call: member counts
+          { workspaceId: "ws1" }, { workspaceId: "ws1" },
+          { workspaceId: "ws2" }, { workspaceId: "ws2" }, { workspaceId: "ws2" }
+        ]);
+
+      // Mock findUnique to return the most recently accessed workspace
+      mockedDb.workspace.findUnique.mockResolvedValue(mockOwnedWorkspaces[1]);
 
       const result = await getDefaultWorkspaceForUser("user1");
 
-      expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { ownerId: "user1", deleted: false },
-        orderBy: { createdAt: "asc" },
-      });
       expect(result).toEqual({
-        ...mockOwnedWorkspace,
-        createdAt: "2024-01-01T00:00:00.000Z",
-        updatedAt: "2024-01-01T00:00:00.000Z",
+        ...mockOwnedWorkspaces[1],
+        createdAt: "2024-01-02T00:00:00.000Z",
+        updatedAt: "2024-01-02T00:00:00.000Z",
+        nodeTypeOrder: null,
       });
     });
 
-    test("should return first member workspace if no owned", async () => {
-      const mockMembership = {
-        workspace: {
+    test("should return alphabetically first workspace when no lastAccessedAt", async () => {
+      const mockOwnedWorkspaces = [
+        {
+          id: "ws1",
+          name: "Zebra Workspace",
+          slug: "zebra-workspace",
+          ownerId: "user1",
+          createdAt: new Date("2024-01-01"),
+          updatedAt: new Date("2024-01-01"),
+          deleted: false,
+          deletedAt: null,
+          description: null,
+          stakworkApiKey: null,
+          nodeTypeOrder: null,
+          logoKey: null,
+          logoUrl: null,
+          repositoryDraft: null,
+          mission: null,
+          sourceControlOrgId: null,
+          originalSlug: null,
+        },
+        {
           id: "ws2",
-          name: "Member Workspace",
-          slug: "member-workspace",
-          ownerId: "other-user",
+          name: "Alpha Workspace",
+          slug: "alpha-workspace",
+          ownerId: "user1",
           createdAt: new Date("2024-01-02"),
           updatedAt: new Date("2024-01-02"),
+          deleted: false,
+          deletedAt: null,
+          description: null,
+          stakworkApiKey: null,
+          nodeTypeOrder: null,
+          logoKey: null,
+          logoUrl: null,
+          repositoryDraft: null,
+          mission: null,
+          sourceControlOrgId: null,
+          originalSlug: null,
         },
-      };
+      ];
 
-      mockedDb.workspace.findFirst.mockResolvedValue(null);
-      mockedDb.workspaceMember.findFirst.mockResolvedValue(mockMembership);
+      const mockOwnerMemberships = [
+        { workspaceId: "ws1", lastAccessedAt: null },
+        { workspaceId: "ws2", lastAccessedAt: null },
+      ];
+
+      // Mock getUserWorkspaces calls
+      mockedDb.workspace.findMany.mockResolvedValue(mockOwnedWorkspaces);
+      mockedDb.workspaceMember.findMany
+        .mockResolvedValueOnce([]) // First call: memberships
+        .mockResolvedValueOnce(mockOwnerMemberships) // Second call: owner lastAccessedAt
+        .mockResolvedValueOnce([ // Third call: member counts
+          { workspaceId: "ws1" },
+          { workspaceId: "ws2" }
+        ]);
+
+      // Mock findUnique to return the alphabetically first workspace (Alpha Workspace)
+      mockedDb.workspace.findUnique.mockResolvedValue(mockOwnedWorkspaces[1]);
 
       const result = await getDefaultWorkspaceForUser("user1");
 
-      expect(db.workspaceMember.findFirst).toHaveBeenCalledWith({
-        where: { userId: "user1", leftAt: null },
-        include: { workspace: true },
-        orderBy: { joinedAt: "asc" },
-      });
-      expect(result).toEqual({
-        ...mockMembership.workspace,
-        createdAt: "2024-01-02T00:00:00.000Z",
-        updatedAt: "2024-01-02T00:00:00.000Z",
-      });
+      expect(result?.name).toBe("Alpha Workspace");
     });
 
     test("should return null if no workspaces found", async () => {
-      mockedDb.workspace.findFirst.mockResolvedValue(null);
-      mockedDb.workspaceMember.findFirst.mockResolvedValue(null);
+      // Mock getUserWorkspaces to return empty array
+      mockedDb.workspace.findMany.mockResolvedValue([]);
+      mockedDb.workspaceMember.findMany.mockResolvedValue([]);
 
       const result = await getDefaultWorkspaceForUser("user1");
 

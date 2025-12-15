@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 import { Clock, MoreHorizontal, Server, Settings, Zap } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "../modals/ModlaProvider";
@@ -135,7 +135,7 @@ export function VMConfigSection() {
 
               {poolStatus.status.lastCheck && (
                 <div className="text-xs text-muted-foreground">
-                  Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z')
+                  Updated {formatRelativeOrDate(poolStatus.status.lastCheck.endsWith('Z')
                     ? poolStatus.status.lastCheck
                     : poolStatus.status.lastCheck + 'Z')}
                 </div>

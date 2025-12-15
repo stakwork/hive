@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         state: pod.state,
         internal_state: pod.state,
         usage_status: pod.usage_status === "in_use" ? "used" : "unused",
-        user_info: pod.workspaceId || null,
+        user_info: pod.userInfo || pod.workspaceId || null,
         resource_usage: {
           available: true,
           requests: {

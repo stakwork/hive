@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -11,7 +11,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 
 interface TaskCardProps {
   task: TaskData;
@@ -141,8 +141,24 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         {/* Date */}
         <div className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
-          <span>{formatRelativeTime(task.createdAt)}</span>
+          <span>{formatRelativeOrDate(task.createdAt)}</span>
         </div>
+
+        {/* Pod indicator - shows when pod is active */}
+        {task.podId && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center">
+                  <Server className="w-3 h-3 text-green-600" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Pod active</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
 
         {/* Optional: Agent badge */}
         {!hideWorkflowStatus && task.mode === "agent" && (

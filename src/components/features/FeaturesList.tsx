@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useState, useRef, forwardRef, useImperativeHandle, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, List, LayoutGrid, Trash2, X, Search } from "lucide-react";
+import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -84,6 +84,9 @@ function FeatureRow({
           showLowPriority={true}
         />
       </TableCell>
+      <TableCell className="w-[150px] text-muted-foreground text-sm">
+        {feature.createdBy?.name || "Unknown"}
+      </TableCell>
       <TableCell className="w-[180px]" onClick={(e) => e.stopPropagation()}>
         <AssigneeCombobox
           workspaceSlug={workspaceSlug}
@@ -96,9 +99,6 @@ function FeatureRow({
       </TableCell>
       <TableCell className="w-[150px] text-right text-muted-foreground text-sm">
         {new Date(feature.createdAt).toLocaleDateString()}
-      </TableCell>
-      <TableCell className="w-[150px] text-muted-foreground text-sm">
-        {feature.createdBy?.name || "Unknown"}
       </TableCell>
       <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
         <ActionMenu
@@ -215,6 +215,15 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
 
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  // State for showing/hiding canceled features with localStorage persistence
+  const [showCanceled, setShowCanceled] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-show-canceled-preference");
+      return saved === "true"; // Default to false (hide canceled)
+    }
+    return false;
+  });
+
   // Debounce search query to reduce API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -310,8 +319,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   };
 
-  // Check if any filters are active
-  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || sortBy !== null || debouncedSearchQuery.trim() !== "";
+  // Check if any filters are active (excluding default sort)
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -375,6 +384,19 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     }
   }, [statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder]);
 
+  // Save show canceled preference to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("features-show-canceled-preference", showCanceled.toString());
+    }
+  }, [showCanceled]);
+
+  // Toggle show/hide canceled features
+  const handleToggleCanceled = async () => {
+    const newValue = !showCanceled;
+    setShowCanceled(newValue);
+  };
+
   // Save view preference to localStorage
   const handleViewChange = (value: string) => {
     if (value === "list" || value === "kanban") {
@@ -427,8 +449,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     setStatusFilters([]);
     setPriorityFilters([]);
     setAssigneeFilter("ALL");
-    setSortBy(null);
-    setSortOrder("asc");
+    setSortBy("updatedAt");
+    setSortOrder("desc");
     setSearchQuery("");
     setPage(1);
   };
@@ -603,6 +625,13 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     })),
   ];
 
+  // Filter features to hide cancelled if showCanceled is false - using useMemo for reactivity
+  const filteredFeatures = useMemo(() => {
+    return showCanceled 
+      ? features 
+      : features.filter(feature => feature.status !== "CANCELLED");
+  }, [features, showCanceled]);
+
   return (
     <Card>
       <CardHeader>
@@ -642,10 +671,10 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                   <TableHead className="w-[300px]">Title</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[120px]">Priority</TableHead>
+                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[180px]">Assigned</TableHead>
                   <TableHead className="w-[150px] text-right">Updated At</TableHead>
                   <TableHead className="w-[150px] text-right">Created</TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -661,6 +690,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     <TableCell className="w-[120px]">
                       <Skeleton className="h-6 w-20" />
                     </TableCell>
+                    <TableCell className="w-[150px]">
+                      <Skeleton className="h-4 w-32" />
+                    </TableCell>
                     <TableCell className="w-[180px]">
                       <Skeleton className="h-6 w-32" />
                     </TableCell>
@@ -669,9 +701,6 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     </TableCell>
                     <TableCell className="w-[150px] text-right">
                       <Skeleton className="h-4 w-24 ml-auto" />
-                    </TableCell>
-                    <TableCell className="w-[150px]">
-                      <Skeleton className="h-4 w-32" />
                     </TableCell>
                     <TableCell className="w-[50px]"></TableCell>
                   </TableRow>
@@ -688,23 +717,43 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           <>
             {!isCreating && (
           <div className="mb-4 flex items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search features..."
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9 pr-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => handleSearchChange("")}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+            <div className="flex items-center gap-4 flex-1">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search features..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9 pr-9"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => handleSearchChange("")}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleToggleCanceled}
+                className="whitespace-nowrap"
+              >
+                {showCanceled ? (
+                  <>
+                    <EyeOff className="h-4 w-4 mr-2" />
+                    Hide canceled
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4 mr-2" />
+                    Show canceled
+                  </>
+                )}
+              </Button>
             </div>
             {hasActiveFilters && (
               <Button variant="outline" size="sm" onClick={handleClearFilters}>
@@ -817,6 +866,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showPriorityBadges={true}
                     />
                   </TableHead>
+                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[180px]">
                     <FilterDropdownHeader
                       label="Assigned"
@@ -845,19 +895,18 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       align="right"
                     />
                   </TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {features.length === 0 ? (
+                {filteredFeatures.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="h-32 text-center">
                       <p className="text-muted-foreground">No features match your filters</p>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  features.map((feature) => (
+                  filteredFeatures.map((feature) => (
                     <FeatureRow
                       key={feature.id}
                       feature={feature}
@@ -876,7 +925,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           ) : null
         ) : (
           <KanbanView
-            items={features}
+            items={filteredFeatures}
             columns={FEATURE_KANBAN_COLUMNS}
             getItemStatus={(feature) => feature.status}
             getItemId={(feature) => feature.id}
@@ -894,7 +943,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
           />
         )}
 
-        {viewType === "list" && features.length > 0 && (
+        {viewType === "list" && filteredFeatures.length > 0 && (
           <div className="pt-4">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm text-muted-foreground">

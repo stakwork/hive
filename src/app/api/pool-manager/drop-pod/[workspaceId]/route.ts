@@ -4,23 +4,12 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { dropPod, getPodFromPool, updatePodRepositories, POD_PORTS } from "@/lib/pods";
+import { dropPod, getPodFromPool, updatePodRepositories, releaseTaskPod, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
-
     const { workspaceId } = await params;
 
     // Validate required fields
@@ -28,25 +17,101 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
     }
 
-    // Check for "latest" and "podId" query parameters
+    // Check for "latest", "podId", and "taskId" query parameters
     const { searchParams } = new URL(request.url);
     const shouldResetRepositories = searchParams.get("latest") === "true";
     const podId = searchParams.get("podId");
+    const taskId = searchParams.get("taskId");
 
     // podId is required - we must know which specific pod to drop
     if (!podId) {
       return NextResponse.json({ error: "Missing required field: podId" }, { status: 400 });
     }
 
-    // Verify user has access to the workspace
+    // Check for API token authentication (used by Stakwork/external services)
+    const apiToken = request.headers.get("x-api-token");
+    const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
+
+    if (!isApiTokenAuth) {
+      // Fall back to session-based authentication
+      const session = await getServerSession(authOptions);
+
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      }
+
+      // Verify user has access to the workspace
+      const workspaceAccess = await db.workspace.findFirst({
+        where: { id: workspaceId },
+        include: {
+          members: {
+            where: { userId },
+            select: { role: true },
+          },
+        },
+      });
+
+      if (!workspaceAccess) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+
+      const isOwner = workspaceAccess.ownerId === userId;
+      const isMember = workspaceAccess.members.length > 0;
+
+      if (!isOwner && !isMember) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+    }
+
+    // If taskId is provided, use the shared releaseTaskPod() function
+    if (taskId) {
+      const result = await releaseTaskPod({
+        taskId,
+        podId,
+        workspaceId,
+        verifyOwnership: true,
+        resetRepositories: shouldResetRepositories,
+        clearTaskFields: true,
+        newWorkflowStatus: "COMPLETED",
+      });
+
+      if (result.reassigned) {
+        return NextResponse.json(
+          { error: "Pod has been reassigned to another task", reassigned: true, taskCleared: result.taskCleared },
+          { status: 409 },
+        );
+      }
+
+      if (!result.success && result.error) {
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Pod dropped successfully",
+          taskCleared: result.taskCleared,
+        },
+        { status: 200 },
+      );
+    }
+
+    // No taskId provided - drop pod directly without task cleanup
+    // This is for cases where we just want to release a pod without task association
+
+    if (process.env.MOCK_BROWSER_URL) {
+      return NextResponse.json({ success: true, message: "Pod dropped successfully" }, { status: 200 });
+    }
+
+    // Fetch workspace with swarm and repositories
     const workspace = await db.workspace.findFirst({
       where: { id: workspaceId },
       include: {
-        owner: true,
-        members: {
-          where: { userId },
-          select: { role: true },
-        },
         swarm: true,
         repositories: true,
       },
@@ -54,17 +119,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (!workspace) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
-
-    if (process.env.MOCK_BROWSER_URL) {
-      return NextResponse.json({ success: true, message: "Pod dropped successfully" }, { status: 200 });
-    }
-
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Check if workspace has a swarm
@@ -86,7 +140,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
-      // Fetch workspace details to get port mappings and password
       const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
       const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
@@ -107,7 +160,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Now drop the pod
+    // Drop the pod
     await dropPod(poolId as string, podId, poolApiKeyPlain);
 
     return NextResponse.json(

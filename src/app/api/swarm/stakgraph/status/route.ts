@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
+import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const stakgraphUrl = `https://${getSwarmVanityAddress(swarm.name)}:7799`;
+    const stakgraphUrl = getStakgraphUrl(getSwarmVanityAddress(swarm.name));
     const apiResult = await swarmApiRequest({
       swarmUrl: stakgraphUrl,
       endpoint: `/status/${id}`,

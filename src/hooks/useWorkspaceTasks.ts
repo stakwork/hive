@@ -46,6 +46,7 @@ export interface TaskData {
   workflowStatus: WorkflowStatus | null;
   sourceType: "USER" | "JANITOR" | "TASK_COORDINATOR" | "SYSTEM";
   mode: string;
+  podId?: string | null;
   stakworkProjectId?: number | null;
   createdAt: string;
   updatedAt: string;
@@ -241,7 +242,11 @@ export function useWorkspaceTasks(
         // Otherwise update the task in place
         return prevTasks.map(task =>
           task.id === update.taskId
-            ? { ...task, title: update.newTitle }
+            ? {
+                ...task,
+                ...(update.newTitle !== undefined && { title: update.newTitle }),
+                ...('podId' in update && { podId: update.podId }),
+              }
             : task
         );
       });

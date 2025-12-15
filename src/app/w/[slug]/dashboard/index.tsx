@@ -1,20 +1,22 @@
 "use client";
 
-import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
+import { DashboardChat } from "@/components/dashboard/DashboardChat";
 import { GitLeaksWidget } from "@/components/dashboard/git-leaks-widget";
+import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
+import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
 import { GraphComponent } from "@/components/knowledge-graph";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { useGraphPolling } from "@/hooks/useGraphPolling";
+import { useTasksHighlight } from "@/hooks/useTasksHighlight";
 import { useWebhookHighlights } from "@/hooks/useWebhookHighlights";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { logStoreInstances } from "@/stores/createStoreFactory";
 import { FilterTab } from "@/stores/graphStore.types";
 import { StoreProvider } from "@/stores/StoreProvider";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
-import { useEffect } from "react";
 
 export function Dashboard() {
   const { id } = useWorkspace();
@@ -31,49 +33,25 @@ export function Dashboard() {
 function DashboardInner() {
   const { slug, workspace } = useWorkspace();
   const dataInitial = useDataStore((s) => s.dataInitial);
-  const addNewNode = useDataStore((s) => s.addNewNode);
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
-
-  const tempGitHubRepoRef = 'temp-github-repo';
+  const isOnboarding = useDataStore((s) => s.isOnboarding);
 
   useGraphPolling({
-    enabled: activeFilterTab === 'all',
+    enabled: !isOnboarding && activeFilterTab === 'all',
     interval: 5000
   });
 
   useWebhookHighlights()
+  useTasksHighlight({
+    workspaceSlug: slug,
+    enabled: !!slug,
+  });
 
   const handleFilterChange = (value: FilterTab) => {
     setActiveFilterTab(value);
   };
-
-  useEffect(() => {
-    const repoName = workspace?.repositories?.[0]?.name || 'Repository';
-
-    addNewNode({
-      edges: [],
-      nodes: [
-        {
-          ref_id: tempGitHubRepoRef,
-          name: repoName,
-          label: repoName,
-          node_type: 'GitHubRepo',
-          x: 0,
-          y: 0,
-          z: 0,
-          properties: {
-            name: repoName,
-            description: repoName,
-          } as any,
-          edge_count: 0,
-        },
-      ],
-    });
-
-  }, [addNewNode, workspace?.repositories]);
-
 
   const hasNodes = (dataInitial?.nodes && dataInitial.nodes.length > 0) || (repositoryNodes.length > 0);
   const isCentered = !hasNodes;
@@ -101,6 +79,7 @@ function DashboardInner() {
             onValueChange={handleFilterChange}
           />
         )}
+        <TestFilterDropdown />
         <GitHubStatusWidget />
         <PoolStatusWidget />
       </div>
@@ -118,6 +97,10 @@ function DashboardInner() {
           height="h-full"
           width="w-full"
         />
+      </div>
+
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-0" style={{ width: 'calc(100% - 340px)' }}>
+        <DashboardChat />
       </div>
     </div>
   );

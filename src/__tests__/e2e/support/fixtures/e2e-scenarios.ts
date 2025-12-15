@@ -36,6 +36,7 @@ export async function createStandardWorkspaceScenario(): Promise<TestWorkspaceSc
     withSwarm: true,
     swarm: {
       containerFilesSetUp: true,
+      poolState: "COMPLETE",
     },
   });
 }
@@ -53,21 +54,21 @@ export async function createWorkspaceWithTasksScenario() {
       description: "First test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "active",
+      status: "IN_PROGRESS",
     }),
     createTestTask({
       title: "E2E Test Task 2",
       description: "Second test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "active",
+      status: "IN_PROGRESS",
     }),
     createTestTask({
       title: "E2E Test Task 3",
       description: "Third test task",
       workspaceId: scenario.workspace.id,
       createdById: scenario.owner.id,
-      status: "completed",
+      status: "DONE",
     }),
   ]);
 
@@ -115,4 +116,63 @@ export async function createInvitableUser(options: Partial<CreateTestUserOptions
     withGitHubAuth: true,
     ...options,
   });
+}
+
+/**
+ * Workspace with recommendations for testing recommendation acceptance/dismissal
+ *
+ * IMPORTANT: Owner uses default mock auth user (dev-user@mock.dev) to align with
+ * AuthPage.signInWithMock() which signs in as "dev-user" by default.
+ */
+export async function createWorkspaceWithRecommendationsScenario() {
+  const { createJanitorConfig, createJanitorRun, createJanitorRecommendation } = await import("./database");
+  
+  const scenario = await createStandardWorkspaceScenario();
+
+  // Create janitor config for the workspace
+  const janitorConfig = await createJanitorConfig(scenario.workspace.id, {
+    unitTestsEnabled: true,
+    integrationTestsEnabled: true,
+  });
+
+  // Create a completed janitor run
+  const janitorRun = await createJanitorRun(janitorConfig.id, {
+    janitorType: "UNIT_TESTS",
+    status: "COMPLETED",
+  });
+
+  // Create test recommendations
+  const recommendations = await Promise.all([
+    createJanitorRecommendation(scenario.workspace.id, {
+      janitorRunId: janitorRun.id,
+      title: "Add unit tests for UserService",
+      description: "UserService lacks comprehensive test coverage. Adding tests will improve code reliability.",
+      priority: "HIGH",
+      impact: "Improves code reliability and catches bugs early",
+      status: "PENDING",
+    }),
+    createJanitorRecommendation(scenario.workspace.id, {
+      janitorRunId: janitorRun.id,
+      title: "Add integration tests for API endpoints",
+      description: "API endpoints need integration tests to verify end-to-end functionality.",
+      priority: "MEDIUM",
+      impact: "Ensures API contracts are maintained",
+      status: "PENDING",
+    }),
+    createJanitorRecommendation(scenario.workspace.id, {
+      janitorRunId: janitorRun.id,
+      title: "Refactor authentication middleware",
+      description: "Authentication middleware has code duplication that should be refactored.",
+      priority: "LOW",
+      impact: "Improves code maintainability",
+      status: "PENDING",
+    }),
+  ]);
+
+  return {
+    ...scenario,
+    janitorConfig,
+    janitorRun,
+    recommendations,
+  };
 }

@@ -11,13 +11,14 @@ vi.mock("@/lib/db", () => ({
     },
     feature: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
   },
 }));
 
 // Import after mocks
 import { db } from "@/lib/db";
-import { calculateNextOrder } from "@/services/roadmap/utils";
+import { calculateNextOrder, validateFeatureAccess } from "@/services/roadmap/utils";
 
 describe("calculateNextOrder", () => {
   beforeEach(() => {
@@ -423,5 +424,799 @@ describe("calculateNextOrder", () => {
    * 
    * These integration tests use Promise.all patterns with real database connections
    * to verify that concurrent operations are handled correctly by Prisma and PostgreSQL.
+   */
+});
+
+describe("validateFeatureAccess", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  describe("Successful Access - Workspace Owner", () => {
+    test("grants access when user is workspace owner", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+      expect(db.feature.findUnique).toHaveBeenCalledWith({
+        where: { id: "feature-123" },
+        select: {
+          id: true,
+          workspaceId: true,
+          workspace: {
+            select: {
+              id: true,
+              ownerId: true,
+              deleted: true,
+              members: {
+                where: { userId: "user-789" },
+                select: { role: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    test("grants access to owner even when they are also a member", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [{ role: "ADMIN" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+    });
+  });
+
+  describe("Successful Access - Workspace Member", () => {
+    test("grants access when user is workspace member", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "DEVELOPER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+      expect(db.feature.findUnique).toHaveBeenCalledWith({
+        where: { id: "feature-123" },
+        select: {
+          id: true,
+          workspaceId: true,
+          workspace: {
+            select: {
+              id: true,
+              ownerId: true,
+              deleted: true,
+              members: {
+                where: { userId: "user-789" },
+                select: { role: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    test("grants access to member with ADMIN role", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "ADMIN" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("grants access to member with PM role", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "PM" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("grants access to member with STAKEHOLDER role", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "STAKEHOLDER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("grants access to member with VIEWER role", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "VIEWER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+    });
+  });
+
+  describe("Access Denied - Not Found Errors", () => {
+    test("throws 'Feature not found' when feature does not exist", async () => {
+      vi.mocked(db.feature.findUnique).mockResolvedValue(null);
+
+      await expect(validateFeatureAccess("non-existent", "user-789")).rejects.toThrow(
+        "Feature not found"
+      );
+
+      expect(db.feature.findUnique).toHaveBeenCalledWith({
+        where: { id: "non-existent" },
+        select: {
+          id: true,
+          workspaceId: true,
+          workspace: {
+            select: {
+              id: true,
+              ownerId: true,
+              deleted: true,
+              members: {
+                where: { userId: "user-789" },
+                select: { role: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    test("throws 'Feature not found' when workspace is soft-deleted", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: true,
+          members: [{ role: "DEVELOPER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Feature not found"
+      );
+    });
+
+    test("throws 'Feature not found' for deleted workspace even if user is owner", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: true,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Feature not found"
+      );
+    });
+  });
+
+  describe("Access Denied - Permission Errors", () => {
+    test("throws 'Access denied' when user is not owner or member", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Access denied"
+      );
+
+      expect(db.feature.findUnique).toHaveBeenCalledWith({
+        where: { id: "feature-123" },
+        select: {
+          id: true,
+          workspaceId: true,
+          workspace: {
+            select: {
+              id: true,
+              ownerId: true,
+              deleted: true,
+              members: {
+                where: { userId: "user-789" },
+                select: { role: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    test("throws 'Access denied' when members array is empty", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "unauthorized-user")).rejects.toThrow(
+        "Access denied"
+      );
+    });
+
+    test("throws 'Access denied' when user ID does not match owner or any member", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "random-user-id")).rejects.toThrow(
+        "Access denied"
+      );
+    });
+  });
+
+  describe("Query Structure Verification", () => {
+    test("queries with correct feature ID in where clause", async () => {
+      const mockFeature = {
+        id: "feature-abc",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-xyz",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await validateFeatureAccess("feature-abc", "user-xyz");
+
+      expect(db.feature.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "feature-abc" },
+        })
+      );
+    });
+
+    test("filters members by userId in query", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "DEVELOPER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await validateFeatureAccess("feature-123", "member-123");
+
+      expect(db.feature.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            workspace: expect.objectContaining({
+              select: expect.objectContaining({
+                members: {
+                  where: { userId: "member-123" },
+                  select: { role: true },
+                },
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("selects all required fields from feature and workspace", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await validateFeatureAccess("feature-123", "user-789");
+
+      expect(db.feature.findUnique).toHaveBeenCalledWith({
+        where: { id: "feature-123" },
+        select: {
+          id: true,
+          workspaceId: true,
+          workspace: {
+            select: {
+              id: true,
+              ownerId: true,
+              deleted: true,
+              members: {
+                where: { userId: "user-789" },
+                select: { role: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    test("calls findUnique exactly once", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await validateFeatureAccess("feature-123", "user-789");
+
+      expect(db.feature.findUnique).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Access Control Logic", () => {
+    test("prioritizes owner check before member check", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [{ role: "ADMIN" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("uses member check when user is not owner", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "DEVELOPER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("validates deleted flag before permission checks", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: true,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Feature not found"
+      );
+    });
+  });
+
+  describe("Edge Cases", () => {
+    test("handles empty string feature ID gracefully", async () => {
+      vi.mocked(db.feature.findUnique).mockResolvedValue(null);
+
+      await expect(validateFeatureAccess("", "user-789")).rejects.toThrow(
+        "Feature not found"
+      );
+
+      expect(db.feature.findUnique).toHaveBeenCalledWith({
+        where: { id: "" },
+        select: expect.any(Object),
+      });
+    });
+
+    test("handles empty string user ID", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "")).rejects.toThrow(
+        "Access denied"
+      );
+    });
+
+    test("handles special characters in IDs", async () => {
+      const mockFeature = {
+        id: "feature-!@#$",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-!@#$",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-!@#$", "user-!@#$");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("handles UUID format feature IDs", async () => {
+      const featureId = "550e8400-e29b-41d4-a716-446655440000";
+      const userId = "650e8400-e29b-41d4-a716-446655440001";
+
+      const mockFeature = {
+        id: featureId,
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: userId,
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess(featureId, userId);
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("handles CUID format feature IDs", async () => {
+      const featureId = "clh0x8y5k0000qh08z0dqz0dq";
+      const userId = "clh0x8y5k0001qh08z0dqz0dr";
+
+      const mockFeature = {
+        id: featureId,
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: userId,
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess(featureId, userId);
+
+      expect(result).toEqual(mockFeature);
+    });
+  });
+
+  describe("Error Handling", () => {
+    test("propagates database connection errors", async () => {
+      const dbError = new Error("Database connection failed");
+      vi.mocked(db.feature.findUnique).mockRejectedValue(dbError);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Database connection failed"
+      );
+
+      expect(db.feature.findUnique).toHaveBeenCalledWith({
+        where: { id: "feature-123" },
+        select: expect.any(Object),
+      });
+    });
+
+    test("propagates Prisma query timeout errors", async () => {
+      const timeoutError = new Error("Query timeout exceeded");
+      vi.mocked(db.feature.findUnique).mockRejectedValue(timeoutError);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Query timeout exceeded"
+      );
+    });
+
+    test("propagates Prisma constraint errors", async () => {
+      const constraintError = new Error("Foreign key constraint violation");
+      vi.mocked(db.feature.findUnique).mockRejectedValue(constraintError);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Foreign key constraint violation"
+      );
+    });
+
+    test("propagates network errors", async () => {
+      const networkError = new Error("Network error occurred");
+      vi.mocked(db.feature.findUnique).mockRejectedValue(networkError);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Network error occurred"
+      );
+    });
+
+    test("propagates unexpected runtime errors", async () => {
+      const runtimeError = new Error("Unexpected runtime error");
+      vi.mocked(db.feature.findUnique).mockRejectedValue(runtimeError);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Unexpected runtime error"
+      );
+    });
+  });
+
+  describe("Return Value Verification", () => {
+    test("returns complete feature object with workspace data", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result).toEqual(mockFeature);
+      expect(result.id).toBe("feature-123");
+      expect(result.workspaceId).toBe("ws-456");
+      expect(result.workspace.id).toBe("ws-456");
+      expect(result.workspace.ownerId).toBe("user-789");
+      expect(result.workspace.deleted).toBe(false);
+      expect(result.workspace.members).toEqual([]);
+    });
+
+    test("returns feature with member data when user is member", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        workspace: {
+          id: "ws-456",
+          ownerId: "owner-999",
+          deleted: false,
+          members: [{ role: "DEVELOPER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-123", "user-789");
+
+      expect(result.workspace.members).toHaveLength(1);
+      expect(result.workspace.members[0].role).toBe("DEVELOPER");
+    });
+  });
+
+  describe("Real-World Usage Scenarios", () => {
+    test("validates access for feature detail page view", async () => {
+      const mockFeature = {
+        id: "feature-prod-123",
+        workspaceId: "ws-production",
+        workspace: {
+          id: "ws-production",
+          ownerId: "owner-alice",
+          deleted: false,
+          members: [{ role: "PM" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-prod-123", "pm-bob");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("validates access for feature update operation", async () => {
+      const mockFeature = {
+        id: "feature-update-456",
+        workspaceId: "ws-staging",
+        workspace: {
+          id: "ws-staging",
+          ownerId: "owner-charlie",
+          deleted: false,
+          members: [{ role: "DEVELOPER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      const result = await validateFeatureAccess("feature-update-456", "dev-dave");
+
+      expect(result).toEqual(mockFeature);
+    });
+
+    test("blocks access from external user trying to view private feature", async () => {
+      const mockFeature = {
+        id: "feature-private-789",
+        workspaceId: "ws-secure",
+        workspace: {
+          id: "ws-secure",
+          ownerId: "owner-eve",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(
+        validateFeatureAccess("feature-private-789", "external-user")
+      ).rejects.toThrow("Access denied");
+    });
+
+    test("blocks access to archived workspace feature", async () => {
+      const mockFeature = {
+        id: "feature-archived-101",
+        workspaceId: "ws-archived",
+        workspace: {
+          id: "ws-archived",
+          ownerId: "owner-frank",
+          deleted: true,
+          members: [{ role: "ADMIN" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(
+        validateFeatureAccess("feature-archived-101", "admin-grace")
+      ).rejects.toThrow("Feature not found");
+    });
+  });
+
+  /**
+   * NOTE: Integration testing coverage
+   * 
+   * While these unit tests verify the business logic of validateFeatureAccess in isolation,
+   * the function is also extensively tested at the integration level in:
+   * - src/__tests__/integration/api/features-featureId.test.ts
+   * - src/__tests__/integration/api/features-tickets.test.ts
+   * 
+   * Integration tests validate:
+   * - Real database queries and transactions
+   * - Full authentication flow with NextAuth
+   * - HTTP request/response handling
+   * - End-to-end access control enforcement
+   * 
+   * Unit tests focus on:
+   * - Permission logic correctness
+   * - Error handling paths
+   * - Edge cases with mocked data
+   * - Query structure verification
    */
 });

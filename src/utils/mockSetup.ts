@@ -1,10 +1,12 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
+  PoolState,
   RepositoryStatus,
   SourceControlOrgType,
   SwarmStatus,
 } from "@prisma/client";
+import { seedMockData } from "./mockSeedData";
 import { slugify } from "./slugify";
 
 // Mock GitHub user ID counter (starts high to avoid conflicts)
@@ -146,8 +148,8 @@ export async function ensureMockWorkspaceForUser(
     // Optional repository seed to satisfy UIs expecting a repository
     await tx.repository.create({
       data: {
-        name: "stakgraph",
-        repositoryUrl: "https://github.com/mock/stakgraph",
+        name: "hive",
+        repositoryUrl: "https://github.com/stakwork/hive",
         branch: "main",
         status: RepositoryStatus.SYNCED,
         workspaceId: workspace.id,
@@ -169,12 +171,23 @@ export async function ensureMockWorkspaceForUser(
         agentRequestId: null,
         agentStatus: null,
         containerFilesSetUp: true, // Enable for E2E tests to show dashboard immediately
+        poolState: PoolState.COMPLETE, // Skip "Launch Pods" step for mock users
+        poolName: "mock-pool",
         poolApiKey: encryptedPoolApiKey, // Mock pool API key for Pool Manager mock
       },
     });
 
     return workspace;
   });
+
+  // Seed mock data (features, tasks, janitor config, etc.)
+  // This runs outside the transaction - workspace creation succeeds even if seeding fails
+  try {
+    await seedMockData(userId, workspace.id);
+  } catch (error) {
+    console.error("[MockSetup] Failed to seed mock data:", error);
+    // Don't fail workspace creation if seeding fails
+  }
 
   return workspace.slug;
 }

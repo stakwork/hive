@@ -97,6 +97,108 @@ export async function createScreenshot(
   })
 }
 
+/**
+ * Factory for creating test janitor config with sensible defaults
+ */
+export async function createJanitorConfig(
+  workspaceId: string,
+  overrides: Partial<{
+    taskCoordinatorEnabled: boolean
+    recommendationSweepEnabled: boolean
+    ticketSweepEnabled: boolean
+    unitTestsEnabled: boolean
+    integrationTestsEnabled: boolean
+    e2eTestsEnabled: boolean
+    securityReviewEnabled: boolean
+    mockGenerationEnabled: boolean
+  }> = {}
+) {
+  const defaults = {
+    taskCoordinatorEnabled: false,
+    recommendationSweepEnabled: false,
+    ticketSweepEnabled: false,
+    unitTestsEnabled: true,
+    integrationTestsEnabled: false,
+    e2eTestsEnabled: false,
+    securityReviewEnabled: false,
+    mockGenerationEnabled: false,
+  }
+
+  return db.janitorConfig.create({
+    data: {
+      workspaceId,
+      ...defaults,
+      ...overrides,
+    },
+  })
+}
+
+/**
+ * Factory for creating test janitor run with sensible defaults
+ */
+export async function createJanitorRun(
+  janitorConfigId: string,
+  overrides: Partial<{
+    janitorType: "UNIT_TESTS" | "INTEGRATION_TESTS" | "E2E_TESTS" | "SECURITY_REVIEW" | "MOCK_GENERATION"
+    status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED"
+    startedAt: Date
+    completedAt: Date
+    error: string
+    metadata: any
+  }> = {}
+) {
+  const defaults = {
+    janitorType: "UNIT_TESTS" as const,
+    status: "COMPLETED" as const,
+    startedAt: new Date(),
+    completedAt: new Date(),
+  }
+
+  return db.janitorRun.create({
+    data: {
+      janitorConfigId,
+      ...defaults,
+      ...overrides,
+    },
+  })
+}
+
+/**
+ * Factory for creating test janitor recommendation with sensible defaults
+ */
+export async function createJanitorRecommendation(
+  workspaceId: string,
+  overrides: Partial<{
+    janitorRunId: string
+    title: string
+    description: string
+    priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+    impact: string
+    status: "PENDING" | "ACCEPTED" | "DISMISSED"
+    acceptedAt: Date | null
+    dismissedAt: Date | null
+    acceptedById: string | null
+    dismissedById: string | null
+    metadata: any
+  }> = {}
+) {
+  const defaults = {
+    title: `Test Recommendation ${Date.now()}`,
+    description: "This is a test recommendation for E2E testing",
+    priority: "MEDIUM" as const,
+    impact: "Improves code quality and test coverage",
+    status: "PENDING" as const,
+  }
+
+  return db.janitorRecommendation.create({
+    data: {
+      workspaceId,
+      ...defaults,
+      ...overrides,
+    },
+  })
+}
+
 export const cleanup = {
   deleteWorkspace,
   deleteWorkspaces,

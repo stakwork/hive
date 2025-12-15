@@ -5,8 +5,3 @@ export interface LearnMessage extends BaseStreamingMessage {
   timestamp: Date;
   ref_id?: string;
 }
-
-export interface Learnings {
-  prompts: string[];
-  hints: string[];
-}

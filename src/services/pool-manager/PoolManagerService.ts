@@ -24,6 +24,7 @@ interface IPoolManagerService {
     poolMemory: string,
     github_pat: string,
     github_username: string,
+    branch_name: string,
   ) => Promise<void>;
   getPoolStatus: (poolId: string, poolApiKey: string) => Promise<PoolStatusResponse>;
   getPoolWorkspaces: (poolId: string, poolApiKey: string) => Promise<PoolWorkspacesResponse>;
@@ -67,6 +68,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
     poolMemory: string | undefined,
     github_pat: string,
     github_username: string,
+    branch_name: string,
   ): Promise<void> {
     return updatePoolDataApi(
       poolName,
@@ -78,6 +80,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
       poolMemory,
       github_pat,
       github_username,
+      branch_name,
     );
   }
 

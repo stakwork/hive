@@ -1,7 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { NextRequest } from "next/server";
-import { POST } from "@/app/api/chat/message/route";
-import { ChatRole, ChatStatus, WorkflowStatus } from "@prisma/client";
 
 // Mock all external dependencies
 vi.mock("next-auth/next");
@@ -42,7 +39,10 @@ vi.mock("@/lib/utils/swarm", () => ({
   transformSwarmUrlToRepo2Graph: vi.fn(),
 }));
 
-// Import mocked modules after vi.mock declarations
+// Import modules after mocks are set up
+import { NextRequest } from "next/server";
+import { POST } from "@/app/api/chat/message/route";
+import { ChatRole, ChatStatus, WorkflowStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";

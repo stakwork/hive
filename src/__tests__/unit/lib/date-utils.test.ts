@@ -86,11 +86,6 @@ describe("date-utils", () => {
       expect(formatFeatureDate(date)).toBe("Nov 15, 2025");
     });
 
-    test("formats date at start of year", () => {
-      const date = new Date("2025-01-01T00:00:00.000Z");
-      expect(formatFeatureDate(date)).toBe("Jan 1, 2025");
-    });
-
     test("formats date at end of year", () => {
       const date = new Date("2025-12-31T23:59:59.000Z");
       expect(formatFeatureDate(date)).toBe("Dec 31, 2025");

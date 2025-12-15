@@ -21,6 +21,7 @@ import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from 
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
+import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal } from "./components";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
@@ -32,6 +33,32 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Helper to archive task and redirect on pod claim failure
+async function archiveTaskAndRedirect(taskId: string, slug: string, errorTitle: string, errorDescription: string) {
+  try {
+    // Archive the task
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        archived: true,
+      }),
+    });
+    
+    toast.error(errorTitle, { description: errorDescription });
+    
+    // Redirect back to task list
+    window.location.href = `/w/${slug}/tasks`;
+  } catch (archiveError) {
+    console.error("Error archiving task:", archiveError);
+    toast.error("Error", { 
+      description: "Failed to claim pod and couldn't archive task. Please contact support." 
+    });
+  }
 }
 
 export default function TaskChatPage() {
@@ -48,8 +75,23 @@ export default function TaskChatPage() {
 
   const slug = params.slug as string;
   const taskParams = params.taskParams as string[];
-
   const isNewTask = taskParams?.[0] === "new";
+
+  // Check pod availability when in agent mode on new task page
+  const { poolStatus, loading: poolStatusLoading, refetch: refetchPoolStatus } = usePoolStatus(
+    slug,
+    isNewTask && taskMode === "agent"
+  );
+  const hasAvailablePods = poolStatus ? poolStatus.unusedVms > 0 : null;
+
+  // Wrapper to handle mode changes and trigger pod status check
+  const handleModeChange = (newMode: string) => {
+    setTaskMode(newMode);
+    if (newMode === "agent") {
+      refetchPoolStatus();
+    }
+  };
+
   const taskIdFromUrl = !isNewTask ? taskParams?.[0] : null;
 
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -66,11 +108,12 @@ export default function TaskChatPage() {
   // });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
+  const [podId, setPodId] = useState<string | null>(null);
+  const [isReleasingPod, setIsReleasingPod] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
-  const [claimedPodId, setClaimedPodId] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -112,8 +155,14 @@ export default function TaskChatPage() {
     (update: TaskTitleUpdateEvent) => {
       // Only update if it's for the current task
       if (update.taskId === currentTaskId) {
-        console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
-        setTaskTitle(update.newTitle);
+        if (update.newTitle !== undefined) {
+          console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
+          setTaskTitle(update.newTitle);
+        }
+        if ('podId' in update) {
+          console.log(`Task podId updated: ${update.podId}`);
+          setPodId(update.podId ?? null);
+        }
       }
     },
     [currentTaskId],
@@ -195,6 +244,11 @@ export default function TaskChatPage() {
         if (result.data.task?.title) {
           setTaskTitle(result.data.task.title);
         }
+
+        // Set podId from API response
+        if (result.data.task?.podId) {
+          setPodId(result.data.task.podId);
+        }
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
@@ -267,15 +321,29 @@ export default function TaskChatPage() {
                 ide: podResult.ide,
               };
               freshPodId = podResult.podId;
-              console.log(">>> Setting claimedPodId:", freshPodId);
-              setClaimedPodId(freshPodId);
+              setPodId(freshPodId);
+              console.log(">>> Pod claimed:", freshPodId);
             } else {
+              // Pod claim failed - archive the task and redirect back to task list
               console.error("Failed to claim pod:", await podResponse.text());
-              toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
+              await archiveTaskAndRedirect(
+                newTaskId,
+                slug,
+                "No pods available",
+                "Task archived. Please try again later when capacity is available."
+              );
+              return;
             }
           } catch (error) {
+            // Network or other error during pod claim
             console.error("Error claiming pod:", error);
-            toast.error("Warning", { description: "Failed to claim pod. Continuing without pod integration." });
+            await archiveTaskAndRedirect(
+              newTaskId,
+              slug,
+              "Pod claim error",
+              "Task archived. Please try again later."
+            );
+            return;
           }
         }
 
@@ -291,7 +359,7 @@ export default function TaskChatPage() {
         window.history.replaceState({}, "", newUrl);
 
         setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls, podId: freshPodId });
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
       } else {
         setStarted(true);
         await sendMessage(msg);
@@ -326,7 +394,6 @@ export default function TaskChatPage() {
       webhook?: string;
       artifact?: Artifact;
       podUrls?: { frontend: string; ide: string } | null;
-      podId?: string | null;
     },
   ) => {
     // Create artifacts array starting with any existing artifact
@@ -431,16 +498,12 @@ export default function TaskChatPage() {
         );
 
         // Check for diffs after agent completes (agent mode only)
-        // Only check if we have a real pod claimed
-        const podIdToUse = options?.podId || claimedPodId;
-
-        if (effectiveWorkspaceId && (options?.taskId || currentTaskId) && podIdToUse) {
+        if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
           try {
             const diffResponse = await fetch("/api/agent/diff", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                podId: podIdToUse,
                 workspaceId: effectiveWorkspaceId,
                 taskId: options?.taskId || currentTaskId,
               }),
@@ -534,7 +597,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleArtifactAction = async (messageId: string, action: Option, webhook: string) => {
+  const handleArtifactAction = useCallback(async (messageId: string, action: Option, webhook: string) => {
     // console.log("Action triggered:", action);
 
     // Find the original message that contains artifacts
@@ -548,7 +611,7 @@ export default function TaskChatPage() {
         webhook: webhook,
       });
     }
-  };
+  }, [messages, sendMessage, setIsChainVisible]);
 
   const handleDebugMessage = async (_message: string, debugArtifact?: Artifact) => {
     if (debugArtifact) {
@@ -559,9 +622,47 @@ export default function TaskChatPage() {
     }
   };
 
+  const handleReleasePod = async () => {
+    if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
+
+    setIsReleasingPod(true);
+    try {
+      const response = await fetch(
+        `/api/pool-manager/drop-pod/${effectiveWorkspaceId}?podId=${podId}&taskId=${currentTaskId}`,
+        { method: "POST" }
+      );
+
+      const data = await response.json();
+
+      if (response.status === 409 && data.reassigned) {
+        toast.error("Pod already released", {
+          description: "This pod is no longer connected to this task.",
+        });
+        setPodId(null);
+        setWorkflowStatus(WorkflowStatus.COMPLETED);
+      } else if (!response.ok) {
+        toast.error("Failed to release pod", {
+          description: data.error || "An error occurred",
+        });
+      } else {
+        toast.success("Pod released", {
+          description: "The pod has been released successfully.",
+        });
+        setPodId(null);
+        setWorkflowStatus(WorkflowStatus.COMPLETED);
+      }
+    } catch {
+      toast.error("Failed to release pod", {
+        description: "Network error occurred",
+      });
+    } finally {
+      setIsReleasingPod(false);
+    }
+  };
+
   const handleCommit = async () => {
     if (!workspaceId || !currentTaskId) {
-      console.error("Missing commit requirements:", { workspaceId, claimedPodId, currentTaskId });
+      console.error("Missing commit requirements:", { workspaceId, currentTaskId });
       toast.error("Error", {
         description: `Missing required information to commit. workspaceId: ${!!workspaceId}, taskId: ${!!currentTaskId}`,
       });
@@ -605,15 +706,6 @@ export default function TaskChatPage() {
     if (!workspaceId || !currentTaskId) {
       return;
     }
-    console.log("🔍 Claimed pod ID:", claimedPodId);
-    // Block actual commit in local dev without a pod
-    if (!claimedPodId) {
-      toast("Local Development", {
-        description: "Commit & Push is not available - no pod claimed",
-      });
-      setShowCommitModal(false);
-      return;
-    }
 
     setIsCommitting(true);
 
@@ -624,7 +716,6 @@ export default function TaskChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          podId: claimedPodId,
           workspaceId: workspaceId,
           taskId: currentTaskId,
           commitMessage: finalCommitMessage,
@@ -744,7 +835,14 @@ export default function TaskChatPage() {
           exit={{ opacity: 0, y: -60 }}
           transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
         >
-          <TaskStartInput onStart={handleStart} taskMode={taskMode} onModeChange={setTaskMode} isLoading={isLoading} />
+          <TaskStartInput
+            onStart={handleStart}
+            taskMode={taskMode}
+            onModeChange={handleModeChange}
+            isLoading={isLoading}
+            hasAvailablePods={hasAvailablePods}
+            isCheckingPods={poolStatusLoading}
+          />
         </motion.div>
       ) : (
         <motion.div
@@ -785,6 +883,9 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    podId={podId}
+                    onReleasePod={handleReleasePod}
+                    isReleasingPod={isReleasingPod}
                   />
                 )}
               </div>
@@ -806,6 +907,9 @@ export default function TaskChatPage() {
                       onCommit={handleCommit}
                       isCommitting={isGeneratingCommitInfo || isCommitting}
                       taskMode={taskMode}
+                      podId={podId}
+                      onReleasePod={handleReleasePod}
+                      isReleasingPod={isReleasingPod}
                     />
                   </div>
                 </ResizablePanel>
@@ -838,6 +942,9 @@ export default function TaskChatPage() {
                 onCommit={handleCommit}
                 isCommitting={isGeneratingCommitInfo || isCommitting}
                 taskMode={taskMode}
+                podId={podId}
+                onReleasePod={handleReleasePod}
+                isReleasingPod={isReleasingPod}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -873,6 +980,9 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    podId={podId}
+                    onReleasePod={handleReleasePod}
+                    isReleasingPod={isReleasingPod}
                   />
                 )}
               </div>
@@ -897,6 +1007,9 @@ export default function TaskChatPage() {
                       stakworkProjectId={stakworkProjectId}
                       workspaceSlug={slug}
                       taskMode={taskMode}
+                      podId={podId}
+                      onReleasePod={handleReleasePod}
+                      isReleasingPod={isReleasingPod}
                     />
                   </div>
                 </ResizablePanel>
@@ -932,6 +1045,9 @@ export default function TaskChatPage() {
                 stakworkProjectId={stakworkProjectId}
                 workspaceSlug={slug}
                 taskMode={taskMode}
+                podId={podId}
+                onReleasePod={handleReleasePod}
+                isReleasingPod={isReleasingPod}
               />
             </div>
           )}

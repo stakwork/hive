@@ -132,3 +132,36 @@ export interface StakworkRunListResponse {
 
 // Helper type for determining data type
 export type DataType = "string" | "number" | "boolean" | "json" | "array" | "null";
+
+// =============================================
+// CLARIFYING QUESTIONS TYPES
+// =============================================
+
+export type ClarifyingQuestionType = "text" | "single_choice" | "multiple_choice";
+
+export interface ClarifyingQuestion {
+  question: string;
+  type: ClarifyingQuestionType;
+  options?: string[]; // Required for single_choice and multiple_choice
+}
+
+export interface ClarifyingQuestionsResponse {
+  tool_use: "ask_clarifying_questions";
+  content: ClarifyingQuestion[];
+}
+
+/**
+ * Type guard to check if a result is a clarifying questions response
+ */
+export function isClarifyingQuestions(
+  result: unknown
+): result is ClarifyingQuestionsResponse {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "tool_use" in result &&
+    (result as Record<string, unknown>).tool_use === "ask_clarifying_questions" &&
+    "content" in result &&
+    Array.isArray((result as Record<string, unknown>).content)
+  );
+}

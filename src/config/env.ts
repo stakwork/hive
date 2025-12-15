@@ -14,8 +14,10 @@ const requiredEnvVars = {
   //ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
 } as const;
 
-// Validate environment variables (skip in mock mode)
-if (!USE_MOCKS) {
+// Validate environment variables at runtime (skip in mock mode)
+export function validateEnvVars(): void {
+  if (USE_MOCKS) return;
+  
   for (const [key, value] of Object.entries(requiredEnvVars)) {
     if (!value) {
       throw new Error(`Missing required environment variable: ${key}`);
@@ -32,6 +34,10 @@ export const optionalEnvVars = {
   GITHUB_OAUTH_TOKEN_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/github/oauth/access_token`
     : "https://github.com/login/oauth/access_token",
+  // Gemini API base URL (routes to mock endpoint when USE_MOCKS=true)
+  GEMINI_API_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/gemini`
+    : "https://generativelanguage.googleapis.com",
   STAKWORK_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/stakwork`
     : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
@@ -46,6 +52,9 @@ export const optionalEnvVars = {
   SWARM_SUPER_ADMIN_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/swarm-super-admin`
     : process.env.SWARM_SUPER_ADMIN_URL,
+  LIVEKIT_CALL_BASE_URL: USE_MOCKS
+    ? `${MOCK_BASE}/api/mock/livekit/`
+    : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
   API_TIMEOUT: parseInt(process.env.API_TIMEOUT || "10000"),
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
@@ -55,8 +64,39 @@ export const optionalEnvVars = {
   MOCK_BASE,
 } as const;
 
+/**
+ * Validates and returns Gemini API key
+ * Returns mock key when USE_MOCKS=true, else reads from environment
+ * @throws Error if GEMINI_API_KEY is not set and USE_MOCKS=false
+ */
+export function getGeminiApiKey(): string {
+  // Return mock API key in mock mode
+  if (USE_MOCKS) {
+    return "mock-gemini-key-12345";
+  }
+  
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error(
+      'GEMINI_API_KEY environment variable is not set. ' +
+      'Please add it to your .env file.'
+    );
+  }
+  
+  return apiKey;
+}
+
+/**
+ * Checks if Gemini API key is configured
+ */
+export function isGeminiConfigured(): boolean {
+  return !!process.env.GEMINI_API_KEY;
+}
+
 // Combined environment configuration
 export const config = {
   ...requiredEnvVars,
   ...optionalEnvVars,
+  geminiApiKey: process.env.GEMINI_API_KEY,
 } as const;

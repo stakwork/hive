@@ -1,16 +1,34 @@
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { LongformContent, Artifact } from "@/lib/chat";
-import { useRef, useState, useEffect } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { WorkflowUrlLink } from "../components/WorkflowUrlLink";
 import { getArtifactIcon } from "@/lib/icons";
 
-export function LongformArtifactPanel({
-  artifacts,
-  workflowUrl,
-}: {
+interface LongformArtifactPanelProps {
   artifacts: Artifact[];
   workflowUrl?: string;
-}) {
+}
+
+// Custom comparison for React.memo - shallow comparison of artifacts array and workflowUrl
+function arePropsEqual(
+  prevProps: LongformArtifactPanelProps,
+  nextProps: LongformArtifactPanelProps
+): boolean {
+  // Compare workflowUrl
+  if (prevProps.workflowUrl !== nextProps.workflowUrl) return false;
+
+  // Shallow comparison of artifacts array
+  if (prevProps.artifacts.length !== nextProps.artifacts.length) return false;
+
+  return prevProps.artifacts.every(
+    (artifact, index) => artifact.id === nextProps.artifacts[index]?.id
+  );
+}
+
+export const LongformArtifactPanel = memo(function LongformArtifactPanel({
+  artifacts,
+  workflowUrl,
+}: LongformArtifactPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showFade, setShowFade] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
@@ -66,4 +84,4 @@ export function LongformArtifactPanel({
       )}
     </div>
   );
-}
+}, arePropsEqual);

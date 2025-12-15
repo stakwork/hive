@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 import { Clock, Loader2, Server } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "@/components/modals/ModlaProvider";
@@ -69,7 +69,7 @@ export function PoolStatusWidget() {
     }
 
     if (poolStatus) {
-      const totalVms = poolStatus.status.usedVms + poolStatus.status.unusedVms;
+      const totalVms = poolStatus.status.runningVms;
       const hasIssues = poolStatus.status.pendingVms > 0 || poolStatus.status.failedVms > 0;
 
       return (
@@ -108,7 +108,7 @@ export function PoolStatusWidget() {
                 )}
                 {poolStatus.status.lastCheck && (
                   <div className="text-muted-foreground">
-                    Updated {formatRelativeTime(poolStatus.status.lastCheck.endsWith('Z')
+                    Updated {formatRelativeOrDate(poolStatus.status.lastCheck.endsWith('Z')
                       ? poolStatus.status.lastCheck
                       : poolStatus.status.lastCheck + 'Z')}
                   </div>
