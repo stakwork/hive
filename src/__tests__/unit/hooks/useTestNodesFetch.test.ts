@@ -19,14 +19,9 @@ describe("useTestNodesFetch", () => {
   const mockAddNewNode = vi.fn();
   const mockWorkspaceId = "workspace-123";
   const defaultVisibility = { unitTests: false, integrationTests: false, e2eTests: false };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    global.fetch = vi.fn();
-
-    // Default mocks
-    vi.mocked(useWorkspace).mockReturnValue({
-      id: mockWorkspaceId,
+  const createWorkspaceMock = (id = mockWorkspaceId) =>
+    ({
+      id,
       workspace: null,
       slug: "test-workspace",
       role: null,
@@ -42,6 +37,19 @@ describe("useTestNodesFetch", () => {
       updateWorkspace: vi.fn(),
       hasAccess: vi.fn(),
     } as any);
+  const getEndpointParams = (fetchUrl: string) => {
+    const url = new URL(fetchUrl, "http://localhost");
+    const endpoint = decodeURIComponent(url.searchParams.get("endpoint") || "");
+    const [, queryString] = endpoint.split("?");
+    return new URLSearchParams(queryString);
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn();
+
+    // Default mocks
+    vi.mocked(useWorkspace).mockReturnValue(createWorkspaceMock());
 
     vi.mocked(useDataStore).mockImplementation((selector: any) => {
       if (typeof selector === "function") {
@@ -52,8 +60,14 @@ describe("useTestNodesFetch", () => {
   });
 
   describe("initialization", () => {
+    it("should not fetch when visibility is not provided", () => {
+      renderHook(() => useTestNodesFetch());
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it("should not fetch when workspace is not loaded", () => {
-      vi.mocked(useWorkspace).mockReturnValue({ id: undefined } as any);
+      vi.mocked(useWorkspace).mockReturnValue({ ...createWorkspaceMock(), id: undefined });
       renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true }));
 
       expect(global.fetch).not.toHaveBeenCalled();
@@ -93,9 +107,10 @@ describe("useTestNodesFetch", () => {
       });
 
       const fetchUrl = (global.fetch as any).mock.calls[0][0];
-      expect(fetchUrl).toContain("id=workspace-123");
-      expect(fetchUrl).toContain("endpoint=graph%2Fsearch");
-      expect(fetchUrl).toContain('node_type=%5B%22unittest%22%5D');
+      const decodedUrl = decodeURIComponent(fetchUrl);
+      const endpointParams = getEndpointParams(fetchUrl);
+      expect(decodedUrl).toContain("id=workspace-123");
+      expect(endpointParams.get("node_type")).toBe(JSON.stringify(["unittest"]));
 
       await waitFor(() => {
         expect(mockAddNewNode).toHaveBeenCalledWith({
@@ -134,7 +149,8 @@ describe("useTestNodesFetch", () => {
       });
 
       const fetchUrl = (global.fetch as any).mock.calls[0][0];
-      expect(fetchUrl).toContain('node_type=%5B%22integrationtest%22%5D');
+      const endpointParams = getEndpointParams(fetchUrl);
+      expect(endpointParams.get("node_type")).toBe(JSON.stringify(["integrationtest"]));
     });
 
     it("should fetch e2e test nodes when e2eTests becomes visible", async () => {
@@ -158,7 +174,8 @@ describe("useTestNodesFetch", () => {
       });
 
       const fetchUrl = (global.fetch as any).mock.calls[0][0];
-      expect(fetchUrl).toContain('node_type=%5B%22e2etest%22%5D');
+      const endpointParams = getEndpointParams(fetchUrl);
+      expect(endpointParams.get("node_type")).toBe(JSON.stringify(["e2etest"]));
     });
 
     it("should fetch multiple test node types when multiple layers are visible", async () => {
@@ -184,6 +201,46 @@ describe("useTestNodesFetch", () => {
       const fetchCalls = (global.fetch as any).mock.calls;
       expect(fetchCalls[0][0]).toContain('unittest');
       expect(fetchCalls[1][0]).toContain('integrationtest');
+    });
+  });
+
+  describe("workspace changes", () => {
+    it("should allow refetching after workspace changes when visibility toggles again", async () => {
+      const mockNodes = [{ ref_id: "node1", node_type: "unittest", label: "Test 1" }];
+      const mockEdges: any[] = [];
+      let currentWorkspaceId = mockWorkspaceId;
+
+      vi.mocked(useWorkspace).mockImplementation(() => createWorkspaceMock(currentWorkspaceId));
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { nodes: mockNodes, edges: mockEdges },
+        }),
+      } as Response);
+
+      const { rerender } = renderHook(
+        (visibility) => useTestNodesFetch(visibility),
+        { initialProps: { ...defaultVisibility, unitTests: true } }
+      );
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      // Hide the layer to reset visibility state
+      rerender(defaultVisibility);
+
+      currentWorkspaceId = "workspace-456";
+      rerender({ ...defaultVisibility, unitTests: true });
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+      });
+
+      const fetchUrl = decodeURIComponent((global.fetch as any).mock.calls[1][0]);
+      expect(fetchUrl).toContain("workspace-456");
     });
   });
 
