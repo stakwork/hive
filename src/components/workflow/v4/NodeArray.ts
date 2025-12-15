@@ -819,18 +819,17 @@ class NodeArray {
   }
 
   setIcon(type: string): string {
-    let icon = 'question_mark';
     if (type === 'human') {
-      icon = HumanIcon;
+      return HumanIcon;
     } else if (type === 'api') {
-      icon = ApiIcon;
+      return ApiIcon;
     } else if (type === 'automated') {
-      icon = AutomatedIcon;
+      return AutomatedIcon;
     } else if (type === 'loop') {
-      icon = AutomatedIcon;
+      return AutomatedIcon;
     }
-
-    return icon;
+    // Default to automated icon for unknown types
+    return AutomatedIcon;
   }
 
   getOutputTemplates({ step }: { step: WorkflowTransition }): any[] | undefined {

@@ -23,6 +23,7 @@ import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal } from "./components";
+import { useWorkflowNodes, WorkflowNode } from "@/hooks/useWorkflowNodes";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
@@ -83,6 +84,13 @@ export default function TaskChatPage() {
     isNewTask && taskMode === "agent"
   );
   const hasAvailablePods = poolStatus ? poolStatus.unusedVms > 0 : null;
+
+  // Fetch workflows when in workflow_editor mode
+  const {
+    workflows,
+    isLoading: isLoadingWorkflows,
+    error: workflowsError,
+  } = useWorkflowNodes(slug, isNewTask && taskMode === "workflow_editor");
 
   // Wrapper to handle mode changes and trigger pod status check
   const handleModeChange = (newMode: string) => {
@@ -267,6 +275,78 @@ export default function TaskChatPage() {
       loadTaskMessages(taskIdFromUrl);
     }
   }, [taskIdFromUrl, loadTaskMessages]);
+
+  // Handle workflow selection in workflow_editor mode
+  const handleWorkflowSelect = async (workflowId: number, workflowData: WorkflowNode) => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      // Use workflow_name directly from properties
+      const workflowName = workflowData.properties.workflow_name;
+
+      // Create new task with workflow info
+      const taskTitle = workflowName || `Workflow ${workflowId}`;
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: taskTitle,
+          description: `Editing workflow ${workflowId}`,
+          status: "active",
+          workspaceSlug: slug,
+          mode: taskMode,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const newTaskId = result.data.id;
+      setCurrentTaskId(newTaskId);
+
+      // Set the task title
+      setTaskTitle(taskTitle);
+
+      // Update URL without reloading
+      const newUrl = `/w/${slug}/task/${newTaskId}`;
+      window.history.replaceState({}, "", newUrl);
+
+      // Create workflow artifact with the workflow_json
+      const workflowArtifact = createArtifact({
+        id: generateUniqueId(),
+        messageId: "",
+        type: ArtifactType.WORKFLOW,
+        content: {
+          workflowJson: workflowData.properties.workflow_json,
+          workflowId: workflowId,
+          workflowName: workflowName,
+        },
+      });
+
+      // Create initial message with workflow artifact
+      const initialMessage: ChatMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: `Loaded: ${taskTitle}`,
+        role: ChatRole.ASSISTANT,
+        status: ChatStatus.SENT,
+        artifacts: [workflowArtifact],
+      });
+
+      setMessages([initialMessage]);
+      setStarted(true);
+      setWorkflowStatus(WorkflowStatus.PENDING);
+    } catch (error) {
+      console.error("Error in handleWorkflowSelect:", error);
+      toast.error("Error", { description: "Failed to load workflow. Please try again." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleStart = async (msg: string) => {
     if (isLoading) return; // Prevent duplicate sends
@@ -843,6 +923,10 @@ export default function TaskChatPage() {
             hasAvailablePods={hasAvailablePods}
             isCheckingPods={poolStatusLoading}
             workspaceSlug={slug}
+            workflows={workflows}
+            onWorkflowSelect={handleWorkflowSelect}
+            isLoadingWorkflows={isLoadingWorkflows}
+            workflowsError={workflowsError}
           />
         </motion.div>
       ) : (
