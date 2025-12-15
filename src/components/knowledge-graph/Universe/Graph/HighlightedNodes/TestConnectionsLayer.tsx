@@ -1,17 +1,15 @@
-import { useTestNodesFetch } from '@/hooks/useTestNodesFetch'
 import { useStoreId } from '@/stores/StoreProvider'
 import { getStoreBundle } from '@/stores/createStoreFactory'
-import type { TestLayerVisibility } from '@/stores/graphStore.types'
-import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
+import { useDataStore, useSimulationStore } from '@/stores/useStores'
 import type { NodeExtended } from '@Universe/types'
 import { useFrame } from '@react-three/fiber'
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import * as THREE from 'three'
 
 type Connection = { from: string; to: string }
 
 type TestConnectionsLayerProps = {
-  visibilityKey: keyof TestLayerVisibility
+  enabled: boolean
   nodeType: string
   color: string
 }
@@ -20,150 +18,148 @@ const LINE_OPACITY = 0.1
 const LINE_WIDTH = 0.8
 
 export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
-  ({ visibilityKey, nodeType, color }) => {
-    // Fetch test nodes when visibility changes
-    useTestNodesFetch()
-    
+  ({ enabled, nodeType, color }) => {
     const nodesNormalized = useDataStore((s) => s.nodesNormalized)
-    const showLayer = useGraphStore((s) => s.testLayerVisibility[visibilityKey])
+    const dataInitial = useDataStore((s) => s.dataInitial)
     const simulation = useSimulationStore((s) => s.simulation)
     const storeId = useStoreId()
 
-    const connections = useMemo<Connection[]>(() => {
-      if (!showLayer) return []
-
-      const nodeValues = Array.from(nodesNormalized.values())
-      if (!nodeValues.length) return []
-
-      const targetNodes = nodeValues.filter(
+    const connections: Connection[] = []
+    if (enabled) {
+      const nodeValues = dataInitial?.nodes || []
+      const testNodes = nodeValues.filter(
         (node) => node.node_type?.toLowerCase() === nodeType.toLowerCase()
       )
-      if (!targetNodes.length) return []
 
-      const nodeIds = new Set(nodeValues.map((n) => n.ref_id))
-      const seen = new Set<string>()
-      const result: Connection[] = []
+      const targetNodes: NodeExtended[] = testNodes.map((node) => nodesNormalized.get(node.ref_id) || node).filter((node) => node !== undefined)
 
-      targetNodes.forEach((testNode) => {
-        const neighbors = [...(testNode.sources || []), ...(testNode.targets || [])]
 
-        neighbors.forEach((neighborId) => {
-          if (!neighborId || neighborId === testNode.ref_id) return
-          if (!nodeIds.has(neighborId)) return
+      if (targetNodes.length) {
+        const nodeIds = new Set(nodeValues.map((n) => n.ref_id))
+        const seen = new Set<string>()
 
-          const pairKey = [testNode.ref_id, neighborId].sort().join('--')
-          if (seen.has(pairKey)) return
+        targetNodes.forEach((testNode) => {
+          const neighbors = [...(testNode.sources || []), ...(testNode.targets || [])]
 
-          seen.add(pairKey)
-          result.push({ from: testNode.ref_id, to: neighborId })
+          neighbors.forEach((neighborId) => {
+            if (!neighborId || neighborId === testNode.ref_id) return
+            if (!nodeIds.has(neighborId)) return
+
+            const pairKey = [testNode.ref_id, neighborId].sort().join('--')
+            if (seen.has(pairKey)) return
+
+            seen.add(pairKey)
+            connections.push({ from: testNode.ref_id, to: neighborId })
+          })
         })
-      })
-
-      return result
-    }, [nodesNormalized, nodeType, showLayer])
-
-    const { geometry, material } = useMemo(() => {
-      if (!showLayer || !connections.length) {
-        return { geometry: null as THREE.BufferGeometry | null, material: null as THREE.ShaderMaterial | null }
       }
+    }
 
-      const edgeCount = connections.length
-      const vCount = edgeCount * 4
-      const iCount = edgeCount * 6
+    const edgeCount = enabled ? connections.length : 0
 
-      const positions = new Float32Array(vCount * 3)
-      const aStart = new Float32Array(vCount * 3)
-      const aEnd = new Float32Array(vCount * 3)
-      const aSide = new Float32Array(vCount)
-      const aT = new Float32Array(vCount)
-      const indices = new Uint32Array(iCount)
+    // Allocate geometry once per render for simplicity (no memo)
+    const geometry =
+      edgeCount > 0
+        ? (() => {
+          const vCount = edgeCount * 4
+          const iCount = edgeCount * 6
 
-      for (let e = 0; e < edgeCount; e++) {
-        const v = e * 4
-        const i = e * 6
+          const positions = new Float32Array(vCount * 3)
+          const aStart = new Float32Array(vCount * 3)
+          const aEnd = new Float32Array(vCount * 3)
+          const aSide = new Float32Array(vCount)
+          const aT = new Float32Array(vCount)
+          const indices = new Uint32Array(iCount)
 
-        aSide[v] = -1
-        aSide[v + 1] = +1
-        aSide[v + 2] = -1
-        aSide[v + 3] = +1
+          for (let e = 0; e < edgeCount; e++) {
+            const v = e * 4
+            const i = e * 6
 
-        aT[v] = 0
-        aT[v + 1] = 0
-        aT[v + 2] = 1
-        aT[v + 3] = 1
+            aSide[v] = -1
+            aSide[v + 1] = +1
+            aSide[v + 2] = -1
+            aSide[v + 3] = +1
 
-        indices[i] = v
-        indices[i + 1] = v + 2
-        indices[i + 2] = v + 1
-        indices[i + 3] = v + 2
-        indices[i + 4] = v + 3
-        indices[i + 5] = v + 1
-      }
+            aT[v] = 0
+            aT[v + 1] = 0
+            aT[v + 2] = 1
+            aT[v + 3] = 1
 
-      const geometry = new THREE.BufferGeometry()
-      geometry.setIndex(new THREE.BufferAttribute(indices, 1))
-      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-      geometry.setAttribute('aStart', new THREE.BufferAttribute(aStart, 3))
-      geometry.setAttribute('aEnd', new THREE.BufferAttribute(aEnd, 3))
-      geometry.setAttribute('aSide', new THREE.BufferAttribute(aSide, 1))
-      geometry.setAttribute('aT', new THREE.BufferAttribute(aT, 1))
-
-      const material = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        uniforms: {
-          uColor: { value: new THREE.Color(color) },
-          uOpacity: { value: LINE_OPACITY },
-          uLineWidth: { value: LINE_WIDTH },
-          uResolution: { value: new THREE.Vector2(1, 1) },
-        },
-        vertexShader: `
-          uniform vec2 uResolution;
-          uniform float uLineWidth;
-
-          attribute vec3 aStart;
-          attribute vec3 aEnd;
-          attribute float aSide;
-          attribute float aT;
-
-          void main() {
-            vec4 sc = projectionMatrix * modelViewMatrix * vec4(aStart, 1.0);
-            vec4 ec = projectionMatrix * modelViewMatrix * vec4(aEnd, 1.0);
-
-            vec4 clip = mix(sc, ec, aT);
-
-            vec2 sN = sc.xy / sc.w;
-            vec2 eN = ec.xy / ec.w;
-            vec2 dir = normalize(eN - sN);
-            vec2 normal = vec2(-dir.y, dir.x);
-
-            float aspect = uResolution.x / uResolution.y;
-            normal.x *= aspect;
-
-            vec2 offset = normal * aSide * uLineWidth / uResolution.y * 2.0;
-
-            vec2 ndc = clip.xy / clip.w;
-            ndc += offset;
-
-            clip.xy = ndc * clip.w;
-            gl_Position = clip;
+            indices[i] = v
+            indices[i + 1] = v + 2
+            indices[i + 2] = v + 1
+            indices[i + 3] = v + 2
+            indices[i + 4] = v + 3
+            indices[i + 5] = v + 1
           }
-        `,
-        fragmentShader: `
-          uniform vec3 uColor;
-          uniform float uOpacity;
 
-          void main() {
-            gl_FragColor = vec4(uColor, uOpacity);
-          }
-        `,
-      })
+          const geo = new THREE.BufferGeometry()
+          geo.setIndex(new THREE.BufferAttribute(indices, 1))
+          geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+          geo.setAttribute('aStart', new THREE.BufferAttribute(aStart, 3))
+          geo.setAttribute('aEnd', new THREE.BufferAttribute(aEnd, 3))
+          geo.setAttribute('aSide', new THREE.BufferAttribute(aSide, 1))
+          geo.setAttribute('aT', new THREE.BufferAttribute(aT, 1))
+          return geo
+        })()
+        : null
 
-      return { geometry, material }
-    }, [color, connections.length, showLayer])
+    const material =
+      edgeCount > 0
+        ? new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          uniforms: {
+            uColor: { value: new THREE.Color(color) },
+            uOpacity: { value: LINE_OPACITY },
+            uLineWidth: { value: LINE_WIDTH },
+            uResolution: { value: new THREE.Vector2(1, 1) },
+          },
+          vertexShader: `
+              uniform vec2 uResolution;
+              uniform float uLineWidth;
+
+              attribute vec3 aStart;
+              attribute vec3 aEnd;
+              attribute float aSide;
+              attribute float aT;
+
+              void main() {
+                vec4 sc = projectionMatrix * modelViewMatrix * vec4(aStart, 1.0);
+                vec4 ec = projectionMatrix * modelViewMatrix * vec4(aEnd, 1.0);
+
+                vec4 clip = mix(sc, ec, aT);
+
+                vec2 sN = sc.xy / sc.w;
+                vec2 eN = ec.xy / ec.w;
+                vec2 dir = normalize(eN - sN);
+                vec2 normal = vec2(-dir.y, dir.x);
+
+                float aspect = uResolution.x / uResolution.y;
+                normal.x *= aspect;
+
+                vec2 offset = normal * aSide * uLineWidth / uResolution.y * 2.0;
+
+                vec2 ndc = clip.xy / clip.w;
+                ndc += offset;
+
+                clip.xy = ndc * clip.w;
+                gl_Position = clip;
+              }
+            `,
+          fragmentShader: `
+              uniform vec3 uColor;
+              uniform float uOpacity;
+
+              void main() {
+                gl_FragColor = vec4(uColor, uOpacity);
+              }
+            `,
+        })
+        : null
 
     useFrame(() => {
-      if (!showLayer || !connections.length || !geometry || !material) return
+      if (!enabled || !connections.length || !geometry || !material) return
 
       const aStart = geometry.getAttribute('aStart') as THREE.BufferAttribute | undefined
       const aEnd = geometry.getAttribute('aEnd') as THREE.BufferAttribute | undefined
@@ -221,7 +217,7 @@ export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
       material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight)
     })
 
-    if (!showLayer || connections.length === 0) return null
+    if (!enabled || connections.length === 0) return null
 
     return (
       <group name={`${nodeType}-connections-layer`}>
