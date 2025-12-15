@@ -7,6 +7,13 @@ vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
+// Mock ResizeObserver for 3D components (react-three/fiber Canvas)
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 beforeAll(() => {
   // Global test hooks can be added here when needed.
 });
