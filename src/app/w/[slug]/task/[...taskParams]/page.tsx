@@ -30,6 +30,7 @@ import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { SelectedStepContent } from "@/lib/workflow-step";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -122,6 +123,11 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
+  const [selectedStep, setSelectedStep] = useState<SelectedStepContent | null>(null);
+  const [currentWorkflowContext, setCurrentWorkflowContext] = useState<{
+    workflowId: number;
+    workflowName: string;
+  } | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -257,6 +263,24 @@ export default function TaskChatPage() {
         if (result.data.task?.podId) {
           setPodId(result.data.task.podId);
         }
+
+        // Restore workflow context for workflow_editor mode
+        if (result.data.task?.mode === "workflow_editor" && result.data.messages) {
+          // Find the WORKFLOW artifact with workflowId and workflowName
+          for (const msg of result.data.messages) {
+            const workflowArtifact = msg.artifacts?.find(
+              (a: { type: string; content?: { workflowId?: number; workflowName?: string } }) =>
+                a.type === "WORKFLOW" && a.content?.workflowId
+            );
+            if (workflowArtifact?.content?.workflowId) {
+              setCurrentWorkflowContext({
+                workflowId: workflowArtifact.content.workflowId,
+                workflowName: workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
+              });
+              break;
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Error loading task messages:", error);
@@ -316,30 +340,67 @@ export default function TaskChatPage() {
       const newUrl = `/w/${slug}/task/${newTaskId}`;
       window.history.replaceState({}, "", newUrl);
 
-      // Create workflow artifact with the workflow_json
-      const workflowArtifact = createArtifact({
-        id: generateUniqueId(),
-        messageId: "",
-        type: ArtifactType.WORKFLOW,
-        content: {
-          workflowJson: workflowData.properties.workflow_json,
-          workflowId: workflowId,
-          workflowName: workflowName,
+      // Save workflow artifact to database
+      const saveResponse = await fetch(`/api/tasks/${newTaskId}/messages/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          message: `Loaded: ${taskTitle}`,
+          role: "ASSISTANT",
+          artifacts: [{
+            type: ArtifactType.WORKFLOW,
+            content: {
+              workflowJson: workflowData.properties.workflow_json,
+              workflowId: workflowId,
+              workflowName: workflowName,
+            },
+          }],
+        }),
       });
 
-      // Create initial message with workflow artifact
-      const initialMessage: ChatMessage = createChatMessage({
-        id: generateUniqueId(),
-        message: `Loaded: ${taskTitle}`,
-        role: ChatRole.ASSISTANT,
-        status: ChatStatus.SENT,
-        artifacts: [workflowArtifact],
-      });
+      if (!saveResponse.ok) {
+        console.error("Failed to save workflow artifact:", await saveResponse.text());
+      }
+
+      const savedMessage = await saveResponse.json();
+
+      // Create local message from saved response
+      const initialMessage: ChatMessage = savedMessage.success
+        ? createChatMessage({
+            id: savedMessage.data.id,
+            message: savedMessage.data.message,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            artifacts: savedMessage.data.artifacts,
+          })
+        : createChatMessage({
+            id: generateUniqueId(),
+            message: `Loaded: ${taskTitle}`,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            artifacts: [createArtifact({
+              id: generateUniqueId(),
+              messageId: "",
+              type: ArtifactType.WORKFLOW,
+              content: {
+                workflowJson: workflowData.properties.workflow_json,
+                workflowId: workflowId,
+                workflowName: workflowName,
+              },
+            })],
+          });
 
       setMessages([initialMessage]);
       setStarted(true);
       setWorkflowStatus(WorkflowStatus.PENDING);
+
+      // Store workflow context for later use in step editing
+      setCurrentWorkflowContext({
+        workflowId: workflowId,
+        workflowName: workflowName || `Workflow ${workflowId}`,
+      });
     } catch (error) {
       console.error("Error in handleWorkflowSelect:", error);
       toast.error("Error", { description: "Failed to load workflow. Please try again." });
@@ -452,9 +513,69 @@ export default function TaskChatPage() {
   };
 
   const handleSend = async (message: string) => {
-    // Allow sending if we have either text or a pending debug attachment
-    if (!message.trim() && !pendingDebugAttachment) return;
+    // Allow sending if we have either text or a pending debug/step attachment
+    if (!message.trim() && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
+
+    // Handle workflow_editor mode with selected step
+    if (taskMode === "workflow_editor" && selectedStep && currentWorkflowContext && currentTaskId) {
+      const messageText = message.trim() || "Modify this step";
+
+      // Add user message to UI
+      const newMessage: ChatMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: messageText,
+        role: ChatRole.USER,
+        status: ChatStatus.SENDING,
+      });
+      setMessages((msgs) => [...msgs, newMessage]);
+      setIsLoading(true);
+
+      try {
+        const response = await fetch("/api/workflow-editor", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            taskId: currentTaskId,
+            message: messageText,
+            workflowId: currentWorkflowContext.workflowId,
+            workflowName: currentWorkflowContext.workflowName,
+            stepName: selectedStep.name,
+            stepUniqueId: selectedStep.uniqueId,
+            stepDisplayName: selectedStep.displayName || selectedStep.name,
+            stepType: selectedStep.stepType,
+            stepData: selectedStep.stepData,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to send workflow editor request: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || "Failed to send workflow editor request");
+        }
+
+        // Update message status
+        setMessages((msgs) =>
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg))
+        );
+
+        setSelectedStep(null); // Clear step after sending
+      } catch (error) {
+        console.error("Error in workflow editor:", error);
+        setMessages((msgs) =>
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg))
+        );
+        toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
 
     // For artifact-only messages, provide a default message
     const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
@@ -701,6 +822,11 @@ export default function TaskChatPage() {
       // Note: This will be handled by the ChatInput component
     }
   };
+
+  // Handle step selection from workflow artifact panel
+  const handleStepSelect = useCallback((step: SelectedStepContent) => {
+    setSelectedStep(step);
+  }, []);
 
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
@@ -1043,6 +1169,7 @@ export default function TaskChatPage() {
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
+                    onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
                   />
                 ) : (
                   <ChatArea
@@ -1057,6 +1184,8 @@ export default function TaskChatPage() {
                     lastLogLine={lastLogLine}
                     pendingDebugAttachment={pendingDebugAttachment}
                     onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                    pendingStepAttachment={selectedStep}
+                    onRemoveStepAttachment={() => setSelectedStep(null)}
                     workflowStatus={workflowStatus}
                     taskTitle={taskTitle}
                     stakworkProjectId={stakworkProjectId}
@@ -1087,6 +1216,8 @@ export default function TaskChatPage() {
                       lastLogLine={lastLogLine}
                       pendingDebugAttachment={pendingDebugAttachment}
                       onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                      pendingStepAttachment={selectedStep}
+                      onRemoveStepAttachment={() => setSelectedStep(null)}
                       workflowStatus={workflowStatus}
                       taskTitle={taskTitle}
                       stakworkProjectId={stakworkProjectId}
@@ -1106,6 +1237,7 @@ export default function TaskChatPage() {
                       workspaceId={effectiveWorkspaceId || undefined}
                       taskId={currentTaskId || undefined}
                       onDebugMessage={handleDebugMessage}
+                      onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
                     />
                   </div>
                 </ResizablePanel>
@@ -1125,6 +1257,8 @@ export default function TaskChatPage() {
                 logs={logs}
                 pendingDebugAttachment={pendingDebugAttachment}
                 onRemoveDebugAttachment={() => setPendingDebugAttachment(null)}
+                pendingStepAttachment={selectedStep}
+                onRemoveStepAttachment={() => setSelectedStep(null)}
                 workflowStatus={workflowStatus}
                 taskTitle={taskTitle}
                 stakworkProjectId={stakworkProjectId}

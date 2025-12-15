@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
+import { SelectedStepContent } from "@/lib/workflow-step";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -27,6 +28,8 @@ interface ChatAreaProps {
   logs?: LogEntry[];
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
+  pendingStepAttachment?: SelectedStepContent | null;
+  onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   taskTitle?: string | null;
   stakworkProjectId?: number | null;
@@ -51,6 +54,8 @@ export function ChatArea({
   logs = [],
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
+  pendingStepAttachment = null,
+  onRemoveStepAttachment,
   workflowStatus,
   taskTitle,
   stakworkProjectId,
@@ -281,6 +286,8 @@ export function ChatArea({
         isLoading={isLoading}
         pendingDebugAttachment={pendingDebugAttachment}
         onRemoveDebugAttachment={onRemoveDebugAttachment}
+        pendingStepAttachment={pendingStepAttachment}
+        onRemoveStepAttachment={onRemoveStepAttachment}
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
