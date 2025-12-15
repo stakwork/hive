@@ -15,7 +15,7 @@ type TestConnectionsLayerProps = {
 }
 
 const LINE_OPACITY = 0.1
-const LINE_WIDTH = 0.8
+const LINE_WIDTH = 0.5
 
 export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
   ({ enabled, nodeType, color }) => {
