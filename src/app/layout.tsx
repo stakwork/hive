@@ -9,6 +9,8 @@ import "./globals.css";
 import ModalClient from "./ModalClient";
 import QueryProvider from "@/providers/QueryProvider";
 import { getMetadata } from "@/lib/metadata";
+import { config } from "@/config/env";
+import DevPanel from "@/components/DevPanel";
 
 const inter = Inter({ subsets: ["latin"] });
 const roboto = Roboto({
@@ -53,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </WorkspaceProvider>
           </SessionProvider>
         </ThemeProvider>
+        {config.USE_MOCKS && <DevPanel />}
         <Toaster />
       </body>
     </html>

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import type { Task, ChatMessage, Artifact, ArtifactType } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import type { MediaContent } from "@/lib/chat";
+import { TASK_VALUES } from "@/__tests__/support/values";
 
 export interface CreateTestTaskOptions {
   title?: string;
@@ -16,6 +17,7 @@ export interface CreateTestTaskOptions {
   priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   order?: number;
   dependsOnTaskIds?: string[];
+  idempotent?: boolean;
 }
 
 export interface CreateTestChatMessageOptions {
@@ -28,11 +30,30 @@ export async function createTestTask(
   options: CreateTestTaskOptions,
 ): Promise<Task> {
   const uniqueId = generateUniqueId("task");
+  
+  // Use VALUES layer for default data
+  const randomTask = TASK_VALUES.getRandomTask();
+  const title = options.title || randomTask.title;
+  const description = options.description === undefined ? (randomTask.description || null) : options.description;
+
+  // Check for existing task if idempotent flag is true
+  if (options.idempotent === true) {
+    const existingTask = await db.task.findFirst({
+      where: {
+        workspaceId: options.workspaceId,
+        title,
+      },
+    });
+
+    if (existingTask) {
+      return existingTask;
+    }
+  }
 
   return db.task.create({
     data: {
-      title: options.title || `Test Task ${uniqueId}`,
-      description: options.description || `Test task description ${uniqueId}`,
+      title,
+      description,
       workspaceId: options.workspaceId,
       createdById: options.createdById,
       updatedById: options.createdById, // Required field

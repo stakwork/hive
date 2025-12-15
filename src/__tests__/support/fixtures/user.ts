@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import type { User, GitHubAuth } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { EncryptionService } from "@/lib/encryption";
+import { USER_VALUES } from "@/__tests__/support/values";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -11,6 +12,7 @@ export interface CreateTestUserOptions {
   role?: "USER" | "ADMIN";
   withGitHubAuth?: boolean;
   githubUsername?: string;
+  idempotent?: boolean;
 }
 
 export async function createTestUser(
@@ -18,21 +20,30 @@ export async function createTestUser(
 ): Promise<User> {
   const uniqueId = generateUniqueId("user");
   const githubUsername = options.githubUsername || `testuser-${uniqueId}`;
+  
+  // Use VALUES layer for default data
+  const randomUser = USER_VALUES.getRandomUser();
+  const email = options.email || `test-${uniqueId}@example.com`;
+  const name = options.name || randomUser.name;
+  const role = options.role;
 
-  // Check if user with this email already exists
-  const existingUser = await db.user.findUnique({
-    where: { email: options.email || `test-${uniqueId}@example.com` },
-  });
+  // Check for existing user if idempotent flag is true (or always check by email)
+  const shouldCheckExisting = options.idempotent !== false; // Default to true for backwards compatibility
+  if (shouldCheckExisting) {
+    const existingUser = await db.user.findUnique({
+      where: { email },
+    });
 
-  if (existingUser) {
-    return existingUser;
+    if (existingUser) {
+      return existingUser;
+    }
   }
 
   const user = await db.user.create({
     data: {
-      name: options.name || `Test User ${uniqueId}`,
-      email: options.email || `test-${uniqueId}@example.com`,
-      role: options.role || "USER",
+      name,
+      email,
+      role: role || "USER",
     },
   });
 

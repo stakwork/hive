@@ -15,6 +15,7 @@ import {
   createTestSwarm,
   type CreateTestSwarmOptions,
 } from "./swarm";
+import { WORKSPACE_VALUES } from "@/__tests__/support/values";
 
 export interface CreateTestWorkspaceOptions {
   name?: string;
@@ -24,6 +25,7 @@ export interface CreateTestWorkspaceOptions {
   stakworkApiKey?: string | null;
   sourceControlOrgId?: string | null;
   repositoryDraft?: string | null;
+  idempotent?: boolean;
 }
 
 export interface CreateTestMembershipOptions {
