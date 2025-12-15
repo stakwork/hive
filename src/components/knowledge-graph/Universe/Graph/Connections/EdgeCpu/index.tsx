@@ -37,7 +37,7 @@ export function EdgesGPU({
 
     const { size } = useThree();
     const storeId = useStoreId();
-    const { dataInitial, nodesNormalized } = useDataStore((s) => s);
+    const { nodesNormalized, linksNormalized } = useDataStore((s) => s);
 
     const linksArray = [...linksPosition.values()];
     const edgeCount = linksArray.length;
@@ -190,6 +190,8 @@ export function EdgesGPU({
         return { geometry, material };
     }, [edgeCount]);
 
+
+
     // 🛡 2. Guard: If geo not ready – don't render anything
     useFrame(() => {
         if (!geoAndMat || !startRef.current || !endRef.current || !highlightRef.current) return;
@@ -216,7 +218,7 @@ export function EdgesGPU({
             const { sx, sy, sz, tx, ty, tz } = linkPos;
 
             // Find the corresponding link data to get source/target info
-            const linkData = dataInitial?.links?.find(l => l.ref_id === linkRefId);
+            const linkData = linksNormalized?.get(linkRefId) as Link;
             let highlightState = 0; // 0 = normal, 1 = hovered, 2 = selected
 
             if (linkData) {

@@ -6,6 +6,7 @@ import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget"
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
+import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
 import { GraphComponent } from "@/components/knowledge-graph";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { useGraphPolling } from "@/hooks/useGraphPolling";
@@ -16,7 +17,6 @@ import { logStoreInstances } from "@/stores/createStoreFactory";
 import { FilterTab } from "@/stores/graphStore.types";
 import { StoreProvider } from "@/stores/StoreProvider";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
-import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
 
 export function Dashboard() {
   const { id } = useWorkspace();

@@ -65,10 +65,24 @@ export function useTestNodesFetch(testLayerVisibility?: TestLayerVisibility) {
       // Fetch test nodes for this type
       const fetchTestNodes = async () => {
         try {
-          const endpoint = encodeURIComponent("graph/search");
-          const nodeTypeParam = encodeURIComponent(JSON.stringify([nodeType]));
-          const url = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${endpoint}&node_type=${nodeTypeParam}`;
 
+          const depth = 1;
+          const limit = 5000;
+          const topNodeCount = 5000;
+
+          const nodeTypes = Array.isArray(nodeType) ? nodeType : [nodeType];
+
+          const endpoint =
+            `/graph/search` +
+            `?depth=${depth}` +
+            `&limit=${limit}` +
+            `&top_node_count=${topNodeCount}` +
+            `&node_type=${encodeURIComponent(JSON.stringify(nodeTypes))}`;
+
+          const url =
+            `/api/swarm/jarvis/nodes` +
+            `?id=${workspaceId}` +
+            `&endpoint=${encodeURIComponent(endpoint)}`;
           console.log(`[useTestNodesFetch] Fetching ${nodeType} nodes from:`, url);
 
           const response = await fetch(url);
