@@ -119,6 +119,46 @@ describe("Workspace Members API Integration Tests", () => {
 
       await expectNotFound(response, "Workspace not found or access denied");
     });
+
+    test("should not return duplicate owner when owner exists in WorkspaceMember table", async () => {
+      const { ownerUser, workspace } = await createTestWorkspaceWithUsers();
+
+      // Manually insert owner into WorkspaceMember table
+      await db.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: ownerUser.id,
+          role: "DEVELOPER",
+        },
+      });
+
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
+
+      const request = createGetRequest(`http://localhost:3000/api/workspaces/${workspace.slug}/members`);
+      const response = await GET(request, { params: Promise.resolve({ slug: workspace.slug }) });
+
+      const data = await expectSuccess(response);
+      
+      // Verify owner is only in owner field
+      expect(data.owner).toBeDefined();
+      expect(data.owner.userId).toBe(ownerUser.id);
+      expect(data.owner.role).toBe("OWNER");
+
+      // Verify owner is NOT in members array
+      const ownerInMembers = data.members.find((m: any) => m.userId === ownerUser.id);
+      expect(ownerInMembers).toBeUndefined();
+
+      // Verify only the original member is in members array
+      expect(data.members).toHaveLength(1);
+      expect(data.members[0].user.name).toBe("Member User");
+      expect(data.members[0].role).toBe("DEVELOPER");
+
+      // Verify database has 2 WorkspaceMember records (original member + manually inserted owner)
+      const membersInDb = await db.workspaceMember.findMany({
+        where: { workspaceId: workspace.id, leftAt: null },
+      });
+      expect(membersInDb).toHaveLength(2);
+    });
   });
 
   describe("POST /api/workspaces/[slug]/members", () => {

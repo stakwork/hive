@@ -950,8 +950,11 @@ export async function getWorkspaceMembers(workspaceId: string, includeSystemAssi
     },
   ];
 
+  // Filter out owner from members array to prevent duplicates
+  const filteredMembers = members.filter(m => m.userId !== workspace.ownerId);
+
   return {
-    members: mapWorkspaceMembers(members),
+    members: mapWorkspaceMembers(filteredMembers),
     owner,
     ...(includeSystemAssignees && { systemAssignees }),
   };
