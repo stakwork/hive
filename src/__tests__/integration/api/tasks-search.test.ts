@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
 import {
   createAuthenticatedSession,

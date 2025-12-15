@@ -8,7 +8,7 @@ import {
   computeValidWebhookSignature,
   createTestUserWithGitHubAuth,
   createTestSourceControlToken,
-} from "@/__tests__/support/fixtures/github-webhook";
+} from "@/__tests__/support/factories/github-webhook.factory";
 
 describe("GitHub App Webhook - POST /api/github/app/webhook", () => {
   const webhookUrl = "http://localhost:3000/api/github/app/webhook";

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/workspaces/[slug]/user-journeys/route";
 import { db } from "@/lib/db";
-import { resetDatabase } from "@/__tests__/support/fixtures/database";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
 import {
   getMockedSession,
   createAuthenticatedSession,
@@ -16,10 +16,10 @@ import {
 import { createGetRequest } from "@/__tests__/support/helpers/request-builders";
 import { EncryptionService } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
-import { createTestRepository } from "@/__tests__/support/fixtures/repository";
-import { createTestUserJourneyTask } from "@/__tests__/support/fixtures/task";
-import { createTestSwarm } from "@/__tests__/support/fixtures/swarm";
+import { createTestWorkspaceScenario } from "@/__tests__/support/factories/workspace.factory";
+import { createTestRepository } from "@/__tests__/support/factories/repository.factory";
+import { createTestUserJourneyTask } from "@/__tests__/support/factories/task.factory";
+import { createTestSwarm } from "@/__tests__/support/factories/swarm.factory";
 
 vi.mock("@/lib/auth/nextauth");
 vi.mock("next-auth");

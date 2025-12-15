@@ -9,7 +9,6 @@ import type { User, Workspace, Swarm, Task, WorkspaceMember } from "@prisma/clie
 export interface ScenarioMetadata {
   name: string;
   description: string;
-  schemaVersion: string;
   extends?: string;
   tags?: string[];
   executedAt: string;
@@ -75,7 +74,6 @@ export interface ScenarioInfo {
  * API response for listing scenarios
  */
 export interface ListScenariosResponse {
-  schemaVersion: string;
   scenarios: ScenarioInfo[];
 }
 

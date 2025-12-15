@@ -4,8 +4,8 @@ import { PATCH } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
 import { AssignableMemberRoles } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
-import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestWorkspaceScenario } from "@/__tests__/support/factories/workspace.factory";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,

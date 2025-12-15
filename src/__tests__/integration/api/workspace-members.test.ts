@@ -3,8 +3,8 @@ import { GET, POST } from "@/app/api/workspaces/[slug]/members/route";
 import { PATCH, DELETE } from "@/app/api/workspaces/[slug]/members/[userId]/route";
 import { WorkspaceRole } from "@prisma/client";
 import { db } from "@/lib/db";
-import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/support/fixtures/workspace";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestWorkspaceScenario, createTestMembership } from "@/__tests__/support/factories/workspace.factory";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,

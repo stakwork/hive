@@ -5,9 +5,9 @@ import { EncryptionService } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { NextRequest } from "next/server";
 import {
-  createTestRepository,
-} from "@/__tests__/support/fixtures/github-webhook";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+  createWebhookTestScenario,
+} from "@/__tests__/support/factories/github-webhook.factory";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 
 // Mock external services only
 vi.mock("@/lib/auth/nextauth", () => ({
@@ -138,7 +138,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   describe("Authentication", () => {
     test("should return 401 when user is not authenticated", async () => {
-      const { repository } = await createTestRepository();
+      const { repository } = await createWebhookTestScenario();
 
       const request = createUnauthenticatedRequest({
         workspaceId: repository.workspaceId,
@@ -156,7 +156,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should proceed with valid authentication", async () => {
-      const { repository, workspace } = await createTestRepository();
+      const { repository, workspace } = await createWebhookTestScenario();
       
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
@@ -207,7 +207,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should accept request with repositoryUrl", async () => {
-      const { repository, workspace } = await createTestRepository();
+      const { repository, workspace } = await createWebhookTestScenario();
       
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
@@ -230,7 +230,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should accept request with repositoryId", async () => {
-      const { repository, workspace } = await createTestRepository();
+      const { repository, workspace } = await createWebhookTestScenario();
       
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
         username: "testuser",
@@ -255,7 +255,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   describe("Repository Lookup and Workspace Authorization", () => {
     test("should return 404 when repository is not found by repositoryId", async () => {
-      const { workspace } = await createTestRepository();
+      const { workspace } = await createWebhookTestScenario();
 
       const request = createAuthenticatedRequest(
         {
@@ -274,7 +274,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should return 404 when repository workspace does not match provided workspaceId", async () => {
-      const { repository, workspace } = await createTestRepository();
+      const { repository, workspace } = await createWebhookTestScenario();
       
       // Create another workspace
       const differentWorkspace = await db.workspace.create({
@@ -304,7 +304,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   describe("Webhook Creation with Database Persistence", () => {
     test("should create webhook and persist to database with encryption", async () => {
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         // Repository without webhook initially
         githubWebhookId: null as any,
         webhookSecret: null as any,
@@ -366,7 +366,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should reuse existing webhook when already configured", async () => {
       const existingWebhookId = 123456789;
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: String(existingWebhookId),
       });
 
@@ -402,7 +402,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
     test("should create new webhook when existing one is deleted from GitHub", async () => {
       const oldWebhookId = "old-webhook-456";
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: oldWebhookId,
       });
 
@@ -439,7 +439,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   describe("GitHub API Error Handling", () => {
     test("should return 500 when GitHub API returns insufficient permissions error", async () => {
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: null as any,
         webhookSecret: null as any,
       });
@@ -476,7 +476,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should return 500 when GitHub API returns server error", async () => {
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: null as any,
         webhookSecret: null as any,
       });
@@ -512,7 +512,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should return 500 when getGithubUsernameAndPAT returns no credentials", async () => {
-      const { repository, workspace } = await createTestRepository();
+      const { repository, workspace } = await createWebhookTestScenario();
 
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
 
@@ -535,7 +535,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   describe("Encryption Integration", () => {
     test("should properly encrypt webhook secret for storage", async () => {
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: null as any,
         webhookSecret: null as any,
       });
@@ -585,7 +585,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
       const encryptionService = EncryptionService.getInstance();
       const encrypted = encryptionService.encryptField("githubWebhookSecret", plainSecret);
 
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: "webhook-888",
         webhookSecret: null as any, // Will set manually
       });
@@ -635,7 +635,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
 
   describe("Complete Integration Scenarios", () => {
     test("should complete full webhook setup flow with repositoryUrl", async () => {
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: null as any,
         webhookSecret: null as any,
       });
@@ -692,7 +692,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should complete full webhook setup flow with repositoryId", async () => {
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: null as any,
         webhookSecret: null as any,
       });
@@ -739,7 +739,7 @@ describe("GitHub Webhook Ensure Integration Tests - POST /api/github/webhook/ens
     });
 
     test("should handle multiple sequential webhook ensure calls idempotently", async () => {
-      const { repository, workspace } = await createTestRepository({
+      const { repository, workspace } = await createWebhookTestScenario({
         githubWebhookId: null as any,
         webhookSecret: null as any,
       });

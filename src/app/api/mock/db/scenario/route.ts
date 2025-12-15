@@ -34,7 +34,6 @@ function isMockEnabled(): boolean {
  *
  * Response:
  *   {
- *     schemaVersion: string,
  *     scenarios: [{ name, description, extends?, tags? }]
  *   }
  */
@@ -50,7 +49,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const tagFilter = searchParams.get("tag");
 
-    const response = await listScenariosForAPI();
+    const response = listScenariosForAPI();
 
     // Filter by tag if provided
     if (tagFilter) {
@@ -83,7 +82,7 @@ export async function GET(request: NextRequest) {
  * Response:
  *   {
  *     success: boolean,
- *     scenario: { name, description, schemaVersion, ... },
+ *     scenario: { name, description, ... },
  *     data: { workspaceId, workspaceSlug, ownerId, ownerEmail, ... }
  *   }
  */
@@ -109,7 +108,7 @@ export async function POST(request: NextRequest) {
     // Validate scenario exists before running
     const scenario = getScenario(name);
     if (!scenario) {
-      const response = await listScenariosForAPI();
+      const response = listScenariosForAPI();
       const available = response.scenarios.map((s) => s.name).join(", ");
       return NextResponse.json(
         {

@@ -24,7 +24,7 @@ import {
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import { createTestFeature } from "@/__tests__/support/fixtures/feature";
+import { createTestFeature } from "@/__tests__/support/factories/feature.factory";
 
 // Create mock S3 service methods
 const mockS3Service = {

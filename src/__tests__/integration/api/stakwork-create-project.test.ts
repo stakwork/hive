@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "@/app/api/stakwork/create-project/route";
 import { type ApiError } from "@/types";
-import { resetDatabase } from "@/__tests__/support/fixtures/database";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
 import { db } from "@/lib/db";
 import {
   createAuthenticatedSession,

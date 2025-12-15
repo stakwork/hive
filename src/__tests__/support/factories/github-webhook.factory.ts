@@ -10,9 +10,9 @@ import { RepositoryStatus } from "@prisma/client";
 const encryptionService = EncryptionService.getInstance();
 
 /**
- * Options for creating test repository with webhook configuration
+ * Options for creating webhook test scenario
  */
-interface CreateTestRepositoryOptions {
+interface CreateWebhookTestScenarioOptions {
   workspaceId?: string;
   githubWebhookId?: string;
   webhookSecret?: string;
@@ -22,9 +22,9 @@ interface CreateTestRepositoryOptions {
 }
 
 /**
- * Creates a test repository with webhook configuration
+ * Creates a complete test scenario with user, workspace, swarm, and repository configured for webhook testing
  */
-export async function createTestRepository(options?: CreateTestRepositoryOptions) {
+export async function createWebhookTestScenario(options?: CreateWebhookTestScenarioOptions) {
   const {
     workspaceId = generateUniqueId("workspace"),
     githubWebhookId = generateUniqueId("webhook"),

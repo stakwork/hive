@@ -9,8 +9,8 @@ import {
   expectError,
   expectNotFound,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import type { User, Workspace, Task } from "@prisma/client";
 
 // Mock Pusher to verify event broadcasting

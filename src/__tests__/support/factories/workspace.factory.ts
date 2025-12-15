@@ -1,60 +1,62 @@
-/**
- * Workspace Factory - Creates workspace entities with data from values layer
- */
 import { db } from "@/lib/db";
-import type { Workspace, WorkspaceMember } from "@prisma/client";
+import type {
+  Swarm,
+  User,
+  Workspace,
+  WorkspaceMember,
+} from "@prisma/client";
 import type { WorkspaceRole } from "@/lib/auth/roles";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
+import {
+  createTestUser,
+  type CreateTestUserOptions,
+} from "./user.factory";
+import {
+  createTestSwarm,
+  type CreateTestSwarmOptions,
+} from "./swarm.factory";
 import {
   WORKSPACE_VALUES,
   getRandomWorkspace,
   type WorkspaceValueKey,
 } from "../values/workspaces";
 
-export interface CreateWorkspaceOptions {
-  // Use named value from WORKSPACE_VALUES
+export interface CreateTestWorkspaceOptions {
+  /** Use named value from WORKSPACE_VALUES (e.g., "default", "e2eTest") */
   valueKey?: WorkspaceValueKey;
-  // Or provide custom values (overrides valueKey)
   name?: string;
   description?: string | null;
   slug?: string;
-  // Required
   ownerId: string;
-  // Optional fields
   stakworkApiKey?: string | null;
   sourceControlOrgId?: string | null;
   repositoryDraft?: string | null;
-  // Control behavior
-  idempotent?: boolean; // If true, return existing if slug matches
+  /** If true, return existing workspace if slug matches */
+  idempotent?: boolean;
 }
 
-/**
- * Create a single workspace
- *
- * @example
- * // Use named value
- * const workspace = await createWorkspace({ valueKey: "default", ownerId: owner.id });
- *
- * @example
- * // Use random values
- * const workspace = await createWorkspace({ ownerId: owner.id });
- *
- * @example
- * // Use custom values
- * const workspace = await createWorkspace({
- *   ownerId: owner.id,
- *   name: "My Workspace",
- *   slug: "my-workspace"
- * });
- */
-export async function createWorkspace(options: CreateWorkspaceOptions): Promise<Workspace> {
-  // Get base values from valueKey or random pool
+export interface CreateTestMembershipOptions {
+  workspaceId: string;
+  userId: string;
+  role?: WorkspaceRole;
+  leftAt?: Date;
+  lastAccessedAt?: Date;
+  /** If true, return existing membership if workspace+user match */
+  idempotent?: boolean;
+}
+
+export async function createTestWorkspace(
+  options: CreateTestWorkspaceOptions,
+): Promise<Workspace> {
+  // Get base values from valueKey or generate unique defaults
   const baseValues = options.valueKey
     ? WORKSPACE_VALUES[options.valueKey]
-    : getRandomWorkspace();
+    : null;
 
   const uniqueId = generateUniqueId("workspace");
-  const slug = options.slug ?? baseValues.slug ?? `workspace-${uniqueId}`;
+  const slug = options.slug ?? baseValues?.slug ?? `test-workspace-${uniqueId}`;
+  const name = options.name ?? baseValues?.name ?? `Test Workspace ${uniqueId}`;
+  const description = options.description ?? baseValues?.description ?? null;
 
   // Idempotent: check if exists
   if (options.idempotent) {
@@ -64,37 +66,20 @@ export async function createWorkspace(options: CreateWorkspaceOptions): Promise<
 
   return db.workspace.create({
     data: {
-      name: options.name ?? baseValues.name,
-      description: options.description ?? baseValues.description ?? null,
+      name,
+      description,
       slug,
       ownerId: options.ownerId,
-      stakworkApiKey: options.stakworkApiKey ?? "test-api-key",
+      stakworkApiKey: options.stakworkApiKey ?? null,
       sourceControlOrgId: options.sourceControlOrgId ?? null,
       repositoryDraft: options.repositoryDraft ?? null,
     },
   });
 }
 
-export interface CreateMembershipOptions {
-  workspaceId: string;
-  userId: string;
-  role?: WorkspaceRole;
-  leftAt?: Date;
-  lastAccessedAt?: Date;
-  idempotent?: boolean;
-}
-
-/**
- * Create a workspace membership
- *
- * @example
- * const membership = await createMembership({
- *   workspaceId: workspace.id,
- *   userId: user.id,
- *   role: "DEVELOPER"
- * });
- */
-export async function createMembership(options: CreateMembershipOptions): Promise<WorkspaceMember> {
+export async function createTestMembership(
+  options: CreateTestMembershipOptions,
+): Promise<WorkspaceMember> {
   // Idempotent: check if exists
   if (options.idempotent) {
     const existing = await db.workspaceMember.findFirst({
@@ -117,29 +102,117 @@ export async function createMembership(options: CreateMembershipOptions): Promis
   });
 }
 
-/**
- * Create multiple workspaces with varied data
- *
- * @example
- * const workspaces = await createWorkspaces(3, owner.id);
- */
-export async function createWorkspaces(count: number, ownerId: string): Promise<Workspace[]> {
-  const workspaces: Workspace[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const workspace = await createWorkspace({ ownerId });
-    workspaces.push(workspace);
-  }
-
-  return workspaces;
+export interface WorkspaceMemberBlueprint {
+  user?: CreateTestUserOptions;
+  role?: WorkspaceRole;
+  withGitHubAuth?: boolean;
+  githubUsername?: string;
 }
 
-/**
- * Get or create a workspace by slug (always idempotent)
- */
-export async function getOrCreateWorkspace(
-  slug: string,
-  options: Omit<CreateWorkspaceOptions, "slug" | "idempotent">
-): Promise<Workspace> {
-  return createWorkspace({ ...options, slug, idempotent: true });
+export interface CreateTestWorkspaceScenarioOptions {
+  owner?: CreateTestUserOptions;
+  members?: WorkspaceMemberBlueprint[];
+  memberCount?: number;
+  workspace?: Partial<Omit<CreateTestWorkspaceOptions, "ownerId">>;
+  withSwarm?: boolean;
+  swarm?: Partial<CreateTestSwarmOptions>;
+}
+
+export interface TestWorkspaceScenarioResult {
+  owner: User;
+  workspace: Workspace;
+  members: User[];
+  memberships: WorkspaceMember[];
+  swarm: Swarm | null;
+}
+
+export async function createTestWorkspaceScenario(
+  options: CreateTestWorkspaceScenarioOptions = {},
+): Promise<TestWorkspaceScenarioResult> {
+  const {
+    owner: ownerOverrides,
+    members: memberBlueprints = [],
+    memberCount = memberBlueprints.length,
+    workspace: workspaceOverrides = {},
+    withSwarm = false,
+    swarm: swarmOverrides = {},
+  } = options;
+
+  const owner = await createTestUser({
+    name: ownerOverrides?.name || "Workspace Owner",
+    email: ownerOverrides?.email,
+    role: ownerOverrides?.role,
+    withGitHubAuth: ownerOverrides?.withGitHubAuth,
+    githubUsername: ownerOverrides?.githubUsername,
+  });
+
+  const workspace = await createTestWorkspace({
+    ownerId: owner.id,
+    name: workspaceOverrides.name,
+    description: workspaceOverrides.description ?? null,
+    slug: workspaceOverrides.slug,
+    stakworkApiKey: workspaceOverrides.stakworkApiKey ?? "test-api-key",
+  });
+
+  const defaultRoles: WorkspaceRole[] = [
+    "ADMIN",
+    "PM",
+    "DEVELOPER",
+    "STAKEHOLDER",
+    "VIEWER",
+  ];
+
+  const effectiveMemberBlueprints =
+    memberBlueprints.length > 0
+      ? memberBlueprints
+      : Array.from({ length: memberCount }, (_, index) => ({
+          role: defaultRoles[index % defaultRoles.length],
+        }));
+
+  const members: User[] = [];
+  const memberships: WorkspaceMember[] = [];
+
+  for (const blueprint of effectiveMemberBlueprints) {
+    const userOptions = "user" in blueprint ? blueprint.user : undefined;
+    const member = await createTestUser({
+      name: userOptions?.name,
+      email: userOptions?.email,
+      role: userOptions?.role,
+      withGitHubAuth: blueprint.withGitHubAuth || userOptions?.withGitHubAuth,
+      githubUsername: blueprint.githubUsername || userOptions?.githubUsername,
+    });
+
+    members.push(member);
+
+    const membership = await createTestMembership({
+      workspaceId: workspace.id,
+      userId: member.id,
+      role: blueprint.role || "VIEWER",
+    });
+
+    memberships.push(membership);
+  }
+
+  let swarm: Swarm | null = null;
+
+  if (withSwarm) {
+    swarm = await createTestSwarm({
+      workspaceId: workspace.id,
+      name: swarmOverrides.name,
+      swarmUrl: swarmOverrides.swarmUrl,
+      status: swarmOverrides.status,
+      instanceType: swarmOverrides.instanceType,
+      swarmApiKey: swarmOverrides.swarmApiKey ?? (process.env.TOKEN_ENCRYPTION_KEY ? "test-swarm-api-key" : undefined),
+      containerFilesSetUp: swarmOverrides.containerFilesSetUp,
+      poolState: swarmOverrides.poolState,
+    });
+  }
+
+  return {
+    owner,
+    workspace,
+    members,
+    memberships,
+    swarm,
+  };
 }

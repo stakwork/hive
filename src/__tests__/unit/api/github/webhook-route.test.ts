@@ -12,7 +12,7 @@ import {
   createWebhookRequestWithMissingHeaders,
   mockGitHubEvents,
   testBranches,
-} from "@/__tests__/support/fixtures/github-webhook";
+} from "@/__tests__/support/factories/github-webhook.factory";
 import { NextRequest } from "next/server";
 
 // Mock dependencies

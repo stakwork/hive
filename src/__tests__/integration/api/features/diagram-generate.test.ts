@@ -4,9 +4,9 @@ import { POST } from '@/app/api/features/[featureId]/diagram/generate/route'
 import { db } from '@/lib/db'
 import { getDiagramStorageService } from '@/services/diagram-storage'
 import { generateArchitectureDiagram } from '@/services/gemini-image'
-import { createTestUser } from '@/__tests__/support/fixtures/user'
-import { createTestWorkspace } from '@/__tests__/support/fixtures/workspace'
-import { createTestFeature } from '@/__tests__/support/fixtures/feature'
+import { createTestUser } from '@/__tests__/support/factories/user.factory'
+import { createTestWorkspace } from '@/__tests__/support/factories/workspace.factory'
+import { createTestFeature } from '@/__tests__/support/factories/feature.factory'
 
 /**
  * Diagram Generation S3 Integration Tests

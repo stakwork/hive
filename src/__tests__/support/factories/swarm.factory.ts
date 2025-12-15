@@ -1,69 +1,44 @@
-/**
- * Swarm Factory - Creates swarm entities with data from values layer
- */
 import { db } from "@/lib/db";
 import type { Swarm } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
 import {
   SWARM_VALUES,
-  SWARM_POOLS,
   getRandomSwarm,
   type SwarmValueKey,
 } from "../values/swarms";
 
 const encryptionService = EncryptionService.getInstance();
 
-export interface CreateSwarmOptions {
-  // Use named value from SWARM_VALUES
+export interface CreateTestSwarmOptions {
+  /** Use named value from SWARM_VALUES (e.g., "default", "e2eReady") */
   valueKey?: SwarmValueKey;
-  // Required context
-  workspaceId: string;
-  // Custom overrides
   name?: string;
+  swarmId?: string;
   swarmUrl?: string;
-  status?: typeof SWARM_POOLS.statuses[number];
+  workspaceId: string;
+  status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   instanceType?: string;
-  containerFilesSetUp?: boolean;
-  poolState?: typeof SWARM_POOLS.poolStates[number];
-  // API keys (will be encrypted)
   swarmApiKey?: string;
+  containerFilesSetUp?: boolean;
   poolName?: string;
   poolApiKey?: string;
-  // Control behavior
+  poolState?: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE";
+  /** If true, return existing swarm if name+workspace match */
   idempotent?: boolean;
 }
 
-/**
- * Create a single swarm with encrypted API keys
- *
- * @example
- * // Use named value (ready for E2E)
- * const swarm = await createSwarm({
- *   valueKey: "e2eReady",
- *   workspaceId: workspace.id
- * });
- *
- * @example
- * // Use default active swarm
- * const swarm = await createSwarm({
- *   valueKey: "default",
- *   workspaceId: workspace.id,
- *   swarmApiKey: "my-api-key"
- * });
- *
- * @example
- * // Use random values
- * const swarm = await createSwarm({ workspaceId: workspace.id });
- */
-export async function createSwarm(options: CreateSwarmOptions): Promise<Swarm> {
-  // Get base values from valueKey or random pool
+export async function createTestSwarm(
+  options: CreateTestSwarmOptions,
+): Promise<Swarm> {
+  // Get base values from valueKey or generate defaults
   const baseValues = options.valueKey
     ? SWARM_VALUES[options.valueKey]
-    : getRandomSwarm();
+    : null;
 
-  const name = options.name ?? baseValues.name;
+  const timestamp = Date.now();
+  const name = options.name ?? baseValues?.name ?? `test-swarm-${timestamp}`;
 
-  // Idempotent: check if exists by name
+  // Idempotent: check if exists
   if (options.idempotent) {
     const existing = await db.swarm.findFirst({
       where: { workspaceId: options.workspaceId, name },
@@ -73,21 +48,21 @@ export async function createSwarm(options: CreateSwarmOptions): Promise<Swarm> {
 
   const baseData = {
     name,
-    swarmUrl: options.swarmUrl ?? baseValues.swarmUrl ?? `https://${name}.sphinx.chat`,
+    swarmUrl: options.swarmUrl ?? baseValues?.swarmUrl ?? `https://${name}.test.sphinxlabs.ai/api`,
     workspaceId: options.workspaceId,
-    status: options.status ?? baseValues.status ?? "ACTIVE",
-    instanceType: options.instanceType ?? baseValues.instanceType ?? "XL",
+    status: options.status ?? baseValues?.status ?? "ACTIVE",
+    instanceType: options.instanceType ?? baseValues?.instanceType ?? "XL",
     agentRequestId: null,
     agentStatus: null,
-    containerFilesSetUp: options.containerFilesSetUp ?? baseValues.containerFilesSetUp ?? true,
+    containerFilesSetUp: options.containerFilesSetUp ?? baseValues?.containerFilesSetUp ?? true,
     poolName: options.poolName ?? null,
-    poolState: options.poolState ?? baseValues.poolState ?? "COMPLETE",
+    poolState: options.poolState ?? baseValues?.poolState ?? "NOT_STARTED",
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const createData = baseData as any;
 
-  // Encrypt API keys if provided and encryption is available
+  // Encrypt API keys if provided
   const swarmApiKey = options.swarmApiKey ?? (options.valueKey ? "test-swarm-api-key" : undefined);
   if (swarmApiKey && process.env.TOKEN_ENCRYPTION_KEY) {
     createData.swarmApiKey = JSON.stringify(
@@ -105,48 +80,30 @@ export async function createSwarm(options: CreateSwarmOptions): Promise<Swarm> {
 }
 
 /**
- * Create a ready-to-use swarm for E2E testing
- * Convenience wrapper with common defaults for testing
- *
- * @example
- * const swarm = await createE2EReadySwarm(workspace.id);
+ * Creates a test swarm with encrypted API key for learnings API tests
+ * This is a convenience wrapper around createTestSwarm with common defaults
+ * 
+ * @param workspaceId - The workspace ID to associate the swarm with
+ * @param options - Optional overrides for swarm configuration
+ * @returns The created swarm with encrypted API key
  */
-export async function createE2EReadySwarm(
+export async function createTestSwarmWithEncryptedApiKey(
   workspaceId: string,
-  options: Partial<Omit<CreateSwarmOptions, "workspaceId" | "valueKey">> = {}
-): Promise<Swarm> {
-  return createSwarm({
-    valueKey: "e2eReady",
-    workspaceId,
-    swarmApiKey: options.swarmApiKey ?? "test-e2e-api-key",
-    ...options,
-  });
-}
-
-/**
- * Create multiple swarms with varied data
- *
- * @example
- * const swarms = await createSwarms(workspace.id, 3);
- */
-export async function createSwarms(workspaceId: string, count: number): Promise<Swarm[]> {
-  const swarms: Swarm[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const swarm = await createSwarm({ workspaceId });
-    swarms.push(swarm);
+  options?: {
+    name?: string;
+    swarmUrl?: string;
+    apiKey?: string;
+    status?: "PENDING" | "ACTIVE" | "FAILED" | "DELETED";
   }
-
-  return swarms;
-}
-
-/**
- * Get or create a swarm by name (always idempotent)
- */
-export async function getOrCreateSwarm(
-  workspaceId: string,
-  name: string,
-  options: Omit<CreateSwarmOptions, "workspaceId" | "name" | "idempotent"> = {}
 ): Promise<Swarm> {
-  return createSwarm({ ...options, workspaceId, name, idempotent: true });
+  const timestamp = Date.now();
+  const uniqueId = Math.random().toString(36).substring(7);
+  
+  return createTestSwarm({
+    workspaceId,
+    name: options?.name || `test-swarm-${timestamp}-${uniqueId}`,
+    swarmUrl: options?.swarmUrl || "https://test-swarm.sphinx.chat",
+    swarmApiKey: options?.apiKey || "test-swarm-api-key",
+    status: options?.status || "ACTIVE",
+  });
 }

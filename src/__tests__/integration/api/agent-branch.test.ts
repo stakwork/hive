@@ -11,8 +11,8 @@ import {
   getMockedSession,
   generateUniqueSlug,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestTask, createTestChatMessage } from "@/__tests__/support/fixtures/task";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestTask, createTestChatMessage } from "@/__tests__/support/factories/task.factory";
 
 // Mock the AI commit message generator
 vi.mock("@/lib/ai/commit-msg", () => ({

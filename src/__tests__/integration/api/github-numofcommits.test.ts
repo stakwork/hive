@@ -8,14 +8,14 @@ import {
   getMockedSession,
   createGetRequest,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createTestUserWithGitHubCreds,
   mockGitHubApiResponses,
   mockAxiosErrors,
   testRepositoryUrls,
   createMockAxiosResponse,
-} from "@/__tests__/support/fixtures/github-numofcommits";
+} from "@/__tests__/support/factories/github-numofcommits.factory";
 import axios from "axios";
 
 // Mock next-auth for session management

@@ -10,7 +10,7 @@ import {
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
+import { createTestWorkspaceScenario } from "@/__tests__/support/factories/workspace.factory";
 import { EncryptionService } from "@/lib/encryption";
 
 // Mock the fetchSwarmDetails function to avoid real API calls

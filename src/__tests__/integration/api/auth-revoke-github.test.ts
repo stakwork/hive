@@ -11,7 +11,7 @@ import {
   generateUniqueId,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { getGitHubApplicationsApiUrl } from "@/config/services";
 
 // Mock fetch for GitHub API calls

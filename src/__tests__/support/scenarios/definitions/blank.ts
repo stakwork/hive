@@ -5,8 +5,7 @@
  * Use this when you want to start completely fresh.
  */
 import type { ScenarioDefinition, ScenarioResult } from "../types";
-import { getSchemaVersion } from "../schema-version";
-import { resetDatabase } from "../../fixtures/database";
+import { resetDatabase } from "../../utilities/database";
 
 export const blankScenario: ScenarioDefinition = {
   name: "blank",
@@ -21,7 +20,6 @@ export const blankScenario: ScenarioDefinition = {
       metadata: {
         name: "blank",
         description: "Clean database with no data",
-        schemaVersion: await getSchemaVersion(),
         tags: ["base"],
         executedAt: new Date().toISOString(),
       },

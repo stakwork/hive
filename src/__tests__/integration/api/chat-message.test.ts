@@ -13,7 +13,7 @@ import {
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 
 // Mock environment config
 vi.mock("@/config/env", () => ({

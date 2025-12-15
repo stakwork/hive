@@ -13,8 +13,8 @@ import {
   generateUniqueId,
   generateUniqueSlug,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 
 // Mock the config module at the top level
 vi.mock("@/config/env", () => ({
