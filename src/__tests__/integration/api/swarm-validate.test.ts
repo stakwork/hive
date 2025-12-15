@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/swarm/validate/route";
 import { getServerSession } from "next-auth/next";
 import { validateUriApi } from "@/services/swarm/api/swarm";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { resetDatabase } from "@/__tests__/support/fixtures/database";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
 import type { ValidateUriResponse } from "@/types";
 
 // Mock external dependencies

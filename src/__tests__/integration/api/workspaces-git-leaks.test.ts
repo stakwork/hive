@@ -4,7 +4,7 @@ import {
   createTestUser,
   createTestWorkspaceScenario,
 } from "@/__tests__/support/fixtures";
-import { createTestRepository } from "@/__tests__/support/fixtures/repository";
+import { createTestRepository } from "@/__tests__/support/factories/repository.factory";
 import {
   expectSuccess,
   expectUnauthorized,

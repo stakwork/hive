@@ -1,8 +1,8 @@
 import {
   createTestUserWithGitHubTokens,
   testRepositoryUrls,
-} from "@/__tests__/support/fixtures/github-repository-permissions";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+} from "@/__tests__/support/factories/github-permissions.factory";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createAuthenticatedSession,
   createGetRequest,

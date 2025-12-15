@@ -13,7 +13,7 @@ import {
   getMockedSession,
   createGetRequest,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 
 // Mock axios for GitHub API calls
 vi.mock("axios");

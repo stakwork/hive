@@ -18,7 +18,7 @@ import {
   softDeleteMember,
 } from "@/lib/helpers/workspace-member-queries";
 import { mapWorkspaceMember, mapWorkspaceMembers } from "@/lib/mappers/workspace-member";
-import { mockData } from "@/__tests__/support/fixtures/static-fixtures";
+import { mockData } from "@/__tests__/support/fixtures/mock-data";
 import { TEST_DATE, TEST_DATE_ISO } from "@/__tests__/support/helpers/service-mocks/workspace-mocks";
 
 const mockedDb = vi.mocked(db);

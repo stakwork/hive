@@ -2,12 +2,12 @@ import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
 import { POST } from '@/app/api/github/webhook/[workspaceId]/route';
 import { RepositoryStatus } from '@prisma/client';
 import {
-  createTestRepository,
+  createWebhookTestScenario,
   createGitHubPushPayload,
   computeValidWebhookSignature,
   createWebhookRequest,
-} from '@/__tests__/support/fixtures/github-webhook';
-import { resetDatabase } from '@/__tests__/support/fixtures/database';
+} from '@/__tests__/support/factories/github-webhook.factory';
+import { resetDatabase } from '@/__tests__/support/utilities/database';
 import { db } from '@/lib/db';
 import { triggerAsyncSync } from '@/services/swarm/stakgraph-actions';
 import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
@@ -53,7 +53,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
   describe('Authentication & Security', () => {
     test('should reject webhook with invalid signature', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -92,7 +92,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should reject webhook with missing signature header', async () => {
-      testSetup = await createTestRepository();
+      testSetup = await createWebhookTestScenario();
 
       const payload = createGitHubPushPayload(
         'refs/heads/main',
@@ -123,7 +123,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should reject webhook with missing event header', async () => {
-      testSetup = await createTestRepository();
+      testSetup = await createWebhookTestScenario();
 
       const payload = createGitHubPushPayload(
         'refs/heads/main',
@@ -161,7 +161,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
   describe('Push Event Processing', () => {
     test('should successfully process valid push webhook to main branch', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -203,7 +203,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should successfully process push to repository default branch', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'develop',
         status: RepositoryStatus.SYNCED,
         repositoryUrl: 'https://github.com/test-org/test-repo',
@@ -241,7 +241,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should skip processing push to non-tracked branch', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -283,7 +283,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should process push to master branch (fallback branch)', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'develop',
         status: RepositoryStatus.SYNCED,
       });
@@ -322,7 +322,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
   describe('Error Handling', () => {
     test('should return 404 when workspace does not exist', async () => {
-      testSetup = await createTestRepository();
+      testSetup = await createWebhookTestScenario();
 
       const payload = createGitHubPushPayload(
         'refs/heads/main',
@@ -352,7 +352,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should return 404 when repository does not exist', async () => {
-      testSetup = await createTestRepository();
+      testSetup = await createWebhookTestScenario();
 
       // Create payload with non-existent repository URL
       const payload = createGitHubPushPayload(
@@ -383,7 +383,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
     test('should return 400 when swarm does not exist', async () => {
       // Create repository without swarm
-      testSetup = await createTestRepository();
+      testSetup = await createWebhookTestScenario();
 
       // Delete the swarm
       await db.swarm.delete({
@@ -417,7 +417,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should handle GitHub credentials fetch failure', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -454,7 +454,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should handle async sync trigger failure', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -493,7 +493,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
   describe('Database State Transitions', () => {
     test('should update repository status from SYNCED to PENDING', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -527,7 +527,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should update repository status from FAILED to PENDING on retry', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.FAILED,
       });
@@ -561,7 +561,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should store ingest request ID in swarm record', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -604,7 +604,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
   describe('External Service Integration', () => {
     test('should call triggerAsyncSync with correct parameters', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -645,7 +645,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     // NOTE: Pusher notification is not currently implemented in the webhook route
     // This test is skipped until the feature is implemented
     test.skip('should trigger Pusher notification on successful processing', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -681,7 +681,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
   describe('Pull Request Events', () => {
     test('should acknowledge pull request events but skip processing (currently disabled)', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -736,7 +736,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
 
   describe('Encryption & Decryption', () => {
     test('should successfully decrypt webhook secret for signature verification', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });
@@ -768,7 +768,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
     });
 
     test('should successfully decrypt swarm API key for sync trigger', async () => {
-      testSetup = await createTestRepository({
+      testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
       });

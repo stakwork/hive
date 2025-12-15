@@ -7,12 +7,12 @@ import {
   getMockedSession,
   createPostRequest,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import {
   createTestUserWithGitHubTokens,
   testRepositoryUrls,
-} from "@/__tests__/support/fixtures/github-repository-permissions";
+} from "@/__tests__/support/factories/github-permissions.factory";
 
 // Mock next-auth for session management
 vi.mock("next-auth/next");

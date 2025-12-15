@@ -2,7 +2,7 @@ import { describe, test, expect, vi } from "vitest";
 import { PATCH } from "@/app/api/tasks/[taskId]/route";
 import { GET } from "@/app/api/tasks/route";
 import { db } from "@/lib/db";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createAuthenticatedPatchRequest,
   createGetRequest,

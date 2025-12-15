@@ -6,7 +6,7 @@ import {
   resetGitHubApiMocks,
   testRepositoryUrls,
   mockAccessToken,
-} from "@/__tests__/support/fixtures/github-repository-permissions";
+} from "@/__tests__/support/factories/github-permissions.factory";
 
 
 /**

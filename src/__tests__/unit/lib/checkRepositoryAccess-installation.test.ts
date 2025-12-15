@@ -7,7 +7,7 @@ import {
   mockAccessToken,
   mockRefreshToken,
   createTestUserWithGitHubTokens,
-} from "@/__tests__/support/fixtures/github-repository-permissions";
+} from "@/__tests__/support/factories/github-permissions.factory";
 
 
 /**

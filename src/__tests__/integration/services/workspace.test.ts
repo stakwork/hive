@@ -13,8 +13,8 @@ import {
   WORKSPACE_ERRORS,
   WORKSPACE_LIMITS
 } from "@/lib/constants";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestSwarm } from "@/__tests__/support/fixtures/swarm";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestSwarm } from "@/__tests__/support/factories/swarm.factory";
 import { generateUniqueSlug } from "@/__tests__/support/helpers";
 import type { User, Workspace, Swarm } from "@prisma/client";
 

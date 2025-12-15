@@ -12,16 +12,20 @@ export {
   deleteWorkspaces,
   deleteUser,
   deleteUsers,
+} from "@/__tests__/support/utilities/database";
+
+export {
   createJanitorConfig,
   createJanitorRun,
   createJanitorRecommendation,
-} from "@/__tests__/support/fixtures/database";
+  createScreenshot,
+} from "@/__tests__/support/factories/janitor.factory";
 
 export {
   createTestUser,
   createTestUsers,
   type CreateTestUserOptions,
-} from "@/__tests__/support/fixtures/user";
+} from "@/__tests__/support/factories/user.factory";
 
 export {
   createTestWorkspace,
@@ -32,7 +36,7 @@ export {
   type CreateTestWorkspaceScenarioOptions,
   type TestWorkspaceScenarioResult,
   type WorkspaceMemberBlueprint,
-} from "@/__tests__/support/fixtures/workspace";
+} from "@/__tests__/support/factories/workspace.factory";
 
 export {
   createTestTask,
@@ -40,4 +44,4 @@ export {
   createTestTaskWithMessages,
   type CreateTestTaskOptions,
   type CreateTestChatMessageOptions,
-} from "@/__tests__/support/fixtures/task";
+} from "@/__tests__/support/factories/task.factory";

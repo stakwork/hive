@@ -3,7 +3,7 @@ import { POST } from '@/app/api/user-journeys/[taskId]/execute/route';
 import { getServerSession } from 'next-auth';
 import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
-import { resetDatabase } from '@/__tests__/support/fixtures/database';
+import { resetDatabase } from '@/__tests__/support/utilities/database';
 import { WorkflowStatus } from '@prisma/client';
 
 // Mock NextAuth

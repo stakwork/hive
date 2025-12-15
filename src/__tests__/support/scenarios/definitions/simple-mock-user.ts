@@ -10,12 +10,11 @@
  * Use this for quick E2E test setup.
  */
 import type { ScenarioDefinition, ScenarioResult } from "../types";
-import { getSchemaVersion } from "../schema-version";
-import { resetDatabase } from "../../fixtures/database";
-import { createUser } from "../../factories/user.factory";
-import { createWorkspace, createMembership } from "../../factories/workspace.factory";
-import { createSwarm } from "../../factories/swarm.factory";
-import { createTasks } from "../../factories/task.factory";
+import { resetDatabase } from "../../utilities/database";
+import { createTestUser } from "../../factories/user.factory";
+import { createTestWorkspace, createTestMembership } from "../../factories/workspace.factory";
+import { createTestSwarm } from "../../factories/swarm.factory";
+import { createTestTasks } from "../../factories/task.factory";
 import { db } from "@/lib/db";
 import { RepositoryStatus } from "@prisma/client";
 import { slugify } from "@/utils/slugify";
@@ -30,7 +29,7 @@ export const simpleMockUserScenario: ScenarioDefinition = {
     await resetDatabase();
 
     // Create mock auth user (matches E2E mock auth provider)
-    const owner = await createUser({
+    const owner = await createTestUser({
       valueKey: "mockAuthUser",
       withGitHubAuth: true,
       idempotent: true,
@@ -42,7 +41,7 @@ export const simpleMockUserScenario: ScenarioDefinition = {
     const workspaceName = `${displayName}'s Workspace`;
 
     // Create workspace
-    const workspace = await createWorkspace({
+    const workspace = await createTestWorkspace({
       name: workspaceName,
       slug: workspaceSlug,
       description: `Development workspace for ${displayName}`,
@@ -52,7 +51,7 @@ export const simpleMockUserScenario: ScenarioDefinition = {
     });
 
     // Create owner membership
-    await createMembership({
+    await createTestMembership({
       workspaceId: workspace.id,
       userId: owner.id,
       role: "OWNER",
@@ -81,7 +80,7 @@ export const simpleMockUserScenario: ScenarioDefinition = {
 
     // Create E2E-ready swarm
     const swarmName = slugify(`${workspaceSlug}-swarm`);
-    const swarm = await createSwarm({
+    const swarm = await createTestSwarm({
       valueKey: "e2eReady",
       workspaceId: workspace.id,
       name: swarmName,
@@ -90,13 +89,12 @@ export const simpleMockUserScenario: ScenarioDefinition = {
     });
 
     // Create sample tasks (mix of bug, feature, chore, janitor)
-    const tasks = await createTasks(workspace.id, owner.id, 8);
+    const tasks = await createTestTasks(workspace.id, owner.id, 8);
 
     return {
       metadata: {
         name: "simple_mock_user",
         description: "Mock user with workspace, repository, swarm, and sample tasks",
-        schemaVersion: await getSchemaVersion(),
         tags: ["mock", "e2e", "recording"],
         executedAt: new Date().toISOString(),
       },

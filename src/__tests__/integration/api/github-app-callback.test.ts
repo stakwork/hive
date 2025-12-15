@@ -13,8 +13,8 @@ import {
   mockGitHubInstallations,
   mockGitHubRepository,
 } from "@/__tests__/support/helpers/service-mocks";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 

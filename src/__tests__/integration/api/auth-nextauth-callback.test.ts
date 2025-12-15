@@ -4,7 +4,7 @@ import { EncryptionService } from "@/lib/encryption";
 import {
   generateUniqueId,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import { authOptions } from "@/lib/auth/nextauth";
 
 // Mock axios for GitHub API calls (used in session callback)

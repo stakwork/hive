@@ -9,7 +9,7 @@ import {
   expectError,
   expectUnauthorized,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createDefaultMockWorkflowResponse,
   createMockWorkflowResponse,

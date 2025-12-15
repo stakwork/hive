@@ -1,10 +1,7 @@
-/**
- * User Factory - Creates user entities with data from values layer
- */
 import { db } from "@/lib/db";
 import type { User } from "@prisma/client";
-import { EncryptionService } from "@/lib/encryption";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
+import { EncryptionService } from "@/lib/encryption";
 import {
   USER_VALUES,
   getRandomUser,
@@ -13,62 +10,47 @@ import {
 
 const encryptionService = EncryptionService.getInstance();
 
-export interface CreateUserOptions {
-  // Use named value from USER_VALUES
+export interface CreateTestUserOptions {
+  /** Use named value from USER_VALUES (e.g., "owner", "mockAuthUser") */
   valueKey?: UserValueKey;
-  // Or provide custom values (overrides valueKey)
   name?: string;
   email?: string;
   role?: "USER" | "ADMIN";
-  // GitHub auth options
   withGitHubAuth?: boolean;
   githubUsername?: string;
-  // Control behavior
-  idempotent?: boolean; // If true, return existing if email matches
+  /** If true, return existing user if email matches (default: true) */
+  idempotent?: boolean;
 }
 
-/**
- * Create a single user with optional GitHub auth
- *
- * @example
- * // Use named value
- * const owner = await createUser({ valueKey: "owner", idempotent: true });
- *
- * @example
- * // Use random values
- * const user = await createUser({ withGitHubAuth: true });
- *
- * @example
- * // Use custom values
- * const user = await createUser({ name: "Custom Name", email: "custom@test.com" });
- */
-export async function createUser(options: CreateUserOptions = {}): Promise<User> {
-  // Get base values from valueKey or random pool
+export async function createTestUser(
+  options: CreateTestUserOptions = {},
+): Promise<User> {
+  // Get base values from valueKey or generate unique defaults
   const baseValues = options.valueKey
     ? USER_VALUES[options.valueKey]
-    : getRandomUser();
+    : null;
 
   const uniqueId = generateUniqueId("user");
-  const data = {
-    name: options.name ?? baseValues.name,
-    email: options.email ?? baseValues.email,
-    role: options.role ?? baseValues.role ?? "USER",
-  };
+  const email = options.email ?? baseValues?.email ?? `test-${uniqueId}@example.com`;
+  const name = options.name ?? baseValues?.name ?? `Test User ${uniqueId}`;
+  const role = options.role ?? baseValues?.role ?? "USER";
+  const githubUsername = options.githubUsername ??
+    (baseValues && "githubUsername" in baseValues ? baseValues.githubUsername : `testuser-${uniqueId}`);
 
-  // Idempotent: check if exists
-  if (options.idempotent) {
-    const existing = await db.user.findUnique({ where: { email: data.email } });
-    if (existing) return existing;
+  // Idempotent check (default true for backwards compatibility)
+  const idempotent = options.idempotent ?? true;
+  if (idempotent) {
+    const existingUser = await db.user.findUnique({ where: { email } });
+    if (existingUser) return existingUser;
   }
 
-  const user = await db.user.create({ data });
+  const user = await db.user.create({
+    data: { name, email, role },
+  });
 
-  // Create GitHub auth if requested
+  // Create GitHub auth if requested (default true when using valueKey)
   const withGitHubAuth = options.withGitHubAuth ?? (options.valueKey ? true : false);
   if (withGitHubAuth) {
-    const githubUsername = options.githubUsername ??
-      ("githubUsername" in baseValues ? baseValues.githubUsername : `user-${uniqueId}`);
-
     await db.gitHubAuth.create({
       data: {
         userId: user.id,
@@ -105,33 +87,17 @@ export async function createUser(options: CreateUserOptions = {}): Promise<User>
   return user;
 }
 
-/**
- * Create multiple users with varied data
- *
- * @example
- * const users = await createUsers(10); // 10 users with random data
- * const users = await createUsers(5, { withGitHubAuth: true });
- */
-export async function createUsers(
-  count: number,
-  options: Omit<CreateUserOptions, "valueKey" | "name" | "email" | "idempotent"> = {}
-): Promise<User[]> {
+export async function createTestUsers(count: number): Promise<User[]> {
   const users: User[] = [];
 
   for (let i = 0; i < count; i++) {
-    const user = await createUser({
-      ...options,
-      // Each user gets random values from pool
+    const user = await createTestUser({
+      name: `Test User ${i + 1}`,
+      email: `test-user-${i + 1}@example.com`,
     });
+
     users.push(user);
   }
 
   return users;
-}
-
-/**
- * Get or create a user by email (always idempotent)
- */
-export async function getOrCreateUser(email: string, options: Omit<CreateUserOptions, "email" | "idempotent"> = {}): Promise<User> {
-  return createUser({ ...options, email, idempotent: true });
 }

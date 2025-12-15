@@ -1,50 +1,25 @@
 /**
- * Factories Layer - Central exports
+ * Factory exports - DB entity creators
  *
- * This layer contains all factory functions for creating test entities.
- * Factories pull data from the values layer and handle database operations.
+ * Factories are imperative functions that CREATE data in the database.
+ * Use these when you need actual DB records for integration/E2E tests.
  */
 
-// User factory
-export {
-  createUser,
-  createUsers,
-  getOrCreateUser,
-  type CreateUserOptions,
-} from "./user.factory";
+// Core entity factories
+export * from "./user.factory";
+export * from "./workspace.factory";
+export * from "./task.factory";
+export * from "./swarm.factory";
+export * from "./repository.factory";
+export * from "./feature.factory";
 
-// Workspace factory
-export {
-  createWorkspace,
-  createWorkspaces,
-  createMembership,
-  getOrCreateWorkspace,
-  type CreateWorkspaceOptions,
-  type CreateMembershipOptions,
-} from "./workspace.factory";
+// Janitor factories
+export * from "./janitor.factory";
 
-// Task factory
-export {
-  createTask,
-  createTasks,
-  createChatMessage,
-  createTaskWithMessages,
-  createUserJourneyTask,
-  createArtifact,
-  type CreateTaskOptions,
-  type CreateChatMessageOptions,
-  type CreateUserJourneyTaskOptions,
-  type CreateArtifactOptions,
-} from "./task.factory";
+// GitHub-specific factories
+export * from "./github-webhook.factory";
+export * from "./github-numofcommits.factory";
+export * from "./github-permissions.factory";
 
-// Swarm factory
-export {
-  createSwarm,
-  createSwarms,
-  createE2EReadySwarm,
-  getOrCreateSwarm,
-  type CreateSwarmOptions,
-} from "./swarm.factory";
-
-// Re-export values layer for convenience
-export * from "../values";
+// UI testing factory (React Flow nodes)
+export * from "./graphFactory";

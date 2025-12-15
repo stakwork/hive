@@ -11,7 +11,6 @@ import type {
   ListScenariosResponse,
   RunScenarioResponse,
 } from "./types";
-import { getSchemaVersion } from "./schema-version";
 
 // Import scenario definitions
 import { blankScenario } from "./definitions/blank";
@@ -58,9 +57,8 @@ export function listScenarios(): ScenarioInfo[] {
 /**
  * List scenarios for API response
  */
-export async function listScenariosForAPI(): Promise<ListScenariosResponse> {
+export function listScenariosForAPI(): ListScenariosResponse {
   return {
-    schemaVersion: await getSchemaVersion(),
     scenarios: listScenarios(),
   };
 }
@@ -123,6 +121,3 @@ export type {
   ListScenariosResponse,
   RunScenarioResponse,
 } from "./types";
-
-// Re-export schema version utilities
-export { getSchemaVersion, validateSchemaVersion, schemaVersionMatches } from "./schema-version";

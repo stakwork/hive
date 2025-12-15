@@ -3,9 +3,9 @@ import { NextRequest } from "next/server";
 import { GET } from "@/app/api/tests/mocks/route";
 import { getServerSession } from "next-auth";
 import { db } from "@/lib/db";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
-import { resetDatabase } from "@/__tests__/support/fixtures/database";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
 
 // Mock swarmApiRequest at module level
 vi.mock("@/services/swarm/api/swarm", () => ({

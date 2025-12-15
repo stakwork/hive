@@ -8,7 +8,7 @@ import {
   getMockedSession,
   createGetRequest,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import axios from "axios";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
