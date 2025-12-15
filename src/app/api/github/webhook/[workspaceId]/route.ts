@@ -7,8 +7,6 @@ import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { storePullRequest, type PullRequestPayload } from "@/lib/github/storePullRequest";
-import { PullRequestService } from "@/services/github/PullRequestService";
-import { serviceConfigs } from "@/config/services";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -178,99 +176,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } else if (event === "pull_request") {
       const action = payload?.action;
       const merged = payload?.pull_request?.merged;
-      const prNumber = payload?.number;
-      const headBranch = payload?.pull_request?.head?.ref;
 
-      if (action === "opened" && prNumber && headBranch && workspace) {
-        console.log("[GithubWebhook] Processing opened PR", {
-          delivery,
-          workspaceId: repository.workspaceId,
-          prNumber,
-          headBranch,
-        });
-
-        // Try to find the associated task by matching date and janitorType
-        try {
-          console.log("[GithubWebhook] Looking for janitor task", {
-            delivery,
-            workspaceId: repository.workspaceId,
-            headBranch,
-          });
-
-          // Look for a task that matches this repository and is a janitor task
-          const task = await db.task.findFirst({
-            where: {
-              workspaceId: repository.workspaceId,
-              repositoryId: repository.id,
-              janitorType: { not: null },
-              // Only check recent tasks (created in the last 7 days)
-              createdAt: {
-                gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-              },
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-            select: {
-              id: true,
-              janitorType: true,
-            },
-          });
-
-          if (task?.janitorType) {
-            console.log("[GithubWebhook] Found janitor task for PR", {
-              delivery,
-              workspaceId: repository.workspaceId,
-              prNumber,
-              taskId: task.id,
-              janitorType: task.janitorType,
-            });
-
-            // Add janitor label to the PR
-            try {
-              const prService = new PullRequestService(serviceConfigs.github);
-              await prService.addLabelToPullRequest({
-                userId: workspace.ownerId,
-                workspaceSlug: workspace.slug,
-                repositoryUrl: repository.repositoryUrl,
-                prNumber,
-                label: "janitor",
-              });
-
-              console.log("[GithubWebhook] Successfully added janitor label to PR", {
-                delivery,
-                workspaceId: repository.workspaceId,
-                prNumber,
-                taskId: task.id,
-              });
-            } catch (labelError) {
-              console.error("[GithubWebhook] Failed to add janitor label to PR", {
-                delivery,
-                workspaceId: repository.workspaceId,
-                prNumber,
-                taskId: task.id,
-                error: labelError,
-              });
-              // Don't fail the webhook if labeling fails
-            }
-          } else {
-            console.log("[GithubWebhook] No janitor task found for PR", {
-              delivery,
-              workspaceId: repository.workspaceId,
-              prNumber,
-              headBranch,
-            });
-          }
-        } catch (error) {
-          console.error("[GithubWebhook] Error checking for janitor task", {
-            delivery,
-            workspaceId: repository.workspaceId,
-            prNumber,
-            error,
-          });
-          // Don't fail the webhook if task lookup fails
-        }
-      } else if (action === "closed" && merged === true) {
+      if (action === "closed" && merged === true) {
         console.log("[GithubWebhook] Processing merged PR", {
           delivery,
           workspaceId: repository.workspaceId,

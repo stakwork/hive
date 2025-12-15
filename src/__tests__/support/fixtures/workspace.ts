@@ -31,6 +31,7 @@ export interface CreateTestMembershipOptions {
   userId: string;
   role?: WorkspaceRole;
   leftAt?: Date;
+  lastAccessedAt?: Date;
 }
 
 export async function createTestWorkspace(
@@ -64,6 +65,7 @@ export async function createTestMembership(
       userId: options.userId,
       role: options.role || "VIEWER",
       leftAt: options.leftAt || null,
+      lastAccessedAt: options.lastAccessedAt || null,
     },
   });
 }
@@ -170,6 +172,7 @@ export async function createTestWorkspaceScenario(
       instanceType: swarmOverrides.instanceType,
       swarmApiKey: swarmOverrides.swarmApiKey ?? (process.env.TOKEN_ENCRYPTION_KEY ? "test-swarm-api-key" : undefined),
       containerFilesSetUp: swarmOverrides.containerFilesSetUp,
+      poolState: swarmOverrides.poolState,
     });
   }
 

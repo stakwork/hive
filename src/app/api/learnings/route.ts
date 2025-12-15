@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call gitree/process endpoint with token parameter
-    const swarmUrl = `${baseSwarmUrl}/gitree/process?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&token=${encodeURIComponent(token)}&summarize=true&link=true`;
+    const swarmUrl = `${baseSwarmUrl}/gitree/process?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&token=${encodeURIComponent(token)}&summarize=true&link=true&analyze_clues=true`;
 
     fetch(swarmUrl, {
       method: "POST",

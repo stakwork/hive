@@ -20,8 +20,8 @@ vi.mock('ai', () => ({
   streamText: vi.fn(),
 }));
 
-// Mock aieo module
-vi.mock('aieo', () => ({
+// Mock the AI provider module (wrapper around aieo)
+vi.mock('@/lib/ai/provider', () => ({
   getModel: vi.fn(),
   getApiKeyForProvider: vi.fn(() => 'test-api-key'),
 }));
@@ -46,7 +46,7 @@ vi.mock('@/lib/pusher', () => ({
 }));
 
 import { streamText } from 'ai';
-import { getModel } from 'aieo';
+import { getModel } from '@/lib/ai/provider';
 
 const encryptionService = EncryptionService.getInstance();
 

@@ -1,7 +1,6 @@
 import { deepEqual } from '@/lib/utils/deepEqual'
 import { getStoreBundle } from '@/stores/createStoreFactory'
 import { useStoreId } from '@/stores/StoreProvider'
-import { useControlStore } from '@/stores/useControlStore'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { useFrame } from '@react-three/fiber'
@@ -10,6 +9,7 @@ import { useEffect, useRef } from 'react'
 import { Group, Vector3 } from 'three'
 import { Line2 } from 'three-stdlib'
 import { RepositoryScene } from '../GitSeeScene'
+import { CalloutsLayer } from './Callouts'
 import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
@@ -34,34 +34,33 @@ export type NodePosition = {
 }
 
 export const Graph = () => {
-  const { dataInitial, dataNew, resetDataNew, isOnboarding, setIsOnboarding } = useDataStore((s) => s)
+  const dataInitial = useDataStore((s) => s.dataInitial)
+  const dataNew = useDataStore((s) => s.dataNew)
+  const resetDataNew = useDataStore((s) => s.resetDataNew)
+  const isOnboarding = useDataStore((s) => s.isOnboarding)
   const groupRef = useRef<Group>(null)
-  const { normalizedSchemasByType } = useSchemaStore((s) => s)
+  const normalizedSchemasByType = useSchemaStore((s) => s.normalizedSchemasByType)
   const prevRadius = useRef(0)
   const storeId = useStoreId()
-  const nodePositionsNormalized = getStoreBundle(storeId).simulation.getState().nodePositionsNormalized
   const lerpVec = useRef(new Vector3())
 
   const linksPositionRef = useRef(new Map<string, LinkPosition>())
   const justWokeUpRef = useRef(false)
 
-  const { graphStyle, setGraphRadius, activeFilterTab } = useGraphStore((s) => s)
-  const cameraControlsRef = useControlStore((s) => s.cameraControlsRef)
-  const automaticAnimationsDisabled = useControlStore((s) => s.automaticAnimationsDisabled)
+  const graphStyle = useGraphStore((s) => s.graphStyle)
+  const setGraphRadius = useGraphStore((s) => s.setGraphRadius)
+  const activeFilterTab = useGraphStore((s) => s.activeFilterTab)
 
-  const {
-    simulation,
-    simulationCreate,
-    addClusterForce,
-    addNodesAndLinks,
-    simulationRestart,
-    updateSimulationVersion,
-    removeSimulation,
-    setForces,
-    setSimulationInProgress,
-    isSleeping,
-    setIsSleeping,
-  } = useSimulationStore((s) => s)
+  const simulation = useSimulationStore((s) => s.simulation)
+  const simulationCreate = useSimulationStore((s) => s.simulationCreate)
+  const addClusterForce = useSimulationStore((s) => s.addClusterForce)
+  const addNodesAndLinks = useSimulationStore((s) => s.addNodesAndLinks)
+  const simulationRestart = useSimulationStore((s) => s.simulationRestart)
+  const updateSimulationVersion = useSimulationStore((s) => s.updateSimulationVersion)
+  const setForces = useSimulationStore((s) => s.setForces)
+  const setSimulationInProgress = useSimulationStore((s) => s.setSimulationInProgress)
+  const isSleeping = useSimulationStore((s) => s.isSleeping)
+  const setIsSleeping = useSimulationStore((s) => s.setIsSleeping)
 
   const highlightNodes = useGraphStore((s) => s.highlightNodes)
 
@@ -102,6 +101,8 @@ export const Graph = () => {
   }, [highlightNodes, addClusterForce, simulationRestart])
 
   useEffect(() => {
+    console.log('[adding new nodes] useEffect called dataNew', dataNew)
+
     if (!dataNew) {
       return
     }
@@ -121,7 +122,9 @@ export const Graph = () => {
     if (!simulation) {
       simulationCreate(nodesClone)
     }
-  }, [dataNew, simulation, simulationCreate, dataInitial, addNodesAndLinks])
+
+    resetDataNew()
+  }, [dataNew, simulation, simulationCreate, dataInitial, addNodesAndLinks, resetDataNew])
 
   // useEffect(() => {
   //   ; () => removeSimulation()
@@ -137,15 +140,17 @@ export const Graph = () => {
 
   // Onboarding: smoothly lerp node positions from current to simulation targets each frame
   useFrame(() => {
+
+    const { nodePositionsNormalized } = getStoreBundle(storeId).simulation.getState()
     if (!isOnboarding || !simulation || !groupRef.current) return
 
     const gr = groupRef.current.getObjectByName('simulation-3d-group__nodes') as Group
     const grPoints = groupRef.current.getObjectByName('simulation-3d-group__node-points') as Group
     const grConnections = groupRef.current.getObjectByName('simulation-3d-group__connections') as Group
 
-    if (gr && grPoints) {
+    if (gr || grPoints) {
       const nodes = simulation.nodes()
-      const maxLength = Math.max(gr.children.length)
+      const maxLength = Math.max(gr?.children.length || grPoints?.children[0]?.children.length, 0)
 
       for (let index = 0; index < maxLength; index += 1) {
         const simulationNode = nodes[index]
@@ -153,11 +158,11 @@ export const Graph = () => {
         if (simulationNode) {
           const target = lerpVec.current.set(simulationNode.fx || simulationNode.x || 0, simulationNode.fy || simulationNode.y || 0, simulationNode.fz || simulationNode.z || 0)
 
-          if (gr.children[index]) {
+          if (gr?.children[index]) {
             gr.children[index].position.lerp(target, 0.01)
           }
 
-          if (grPoints.children[0]?.children[index]) {
+          if (grPoints?.children[0]?.children[index]) {
             grPoints.children[0].children[index].position.lerp(target, 0.01)
           }
 
@@ -225,6 +230,8 @@ export const Graph = () => {
       return
     }
 
+
+    const { nodePositionsNormalized } = getStoreBundle(storeId).simulation.getState()
     if (!groupRef?.current) {
       return
     }
@@ -237,10 +244,10 @@ export const Graph = () => {
 
     simulation.on('tick', () => {
       if (groupRef?.current) {
-        if (gr && grPoints) {
+        if (gr || grPoints) {
           const nodes = simulation.nodes()
 
-          const maxLength = Math.max(gr.children.length)
+          const maxLength = Math.max(gr?.children.length || grPoints?.children[0]?.children.length, 0)
 
           for (let index = 0; index < maxLength; index += 1) {
             const simulationNode = nodes[index]
@@ -248,11 +255,11 @@ export const Graph = () => {
 
 
             if (simulationNode) {
-              if (gr.children[index]) {
+              if (gr?.children[index]) {
                 gr.children[index].position.set(simulationNode.x, simulationNode.y, simulationNode.z)
               }
 
-              if (grPoints.children[0].children[index]) {
+              if (grPoints?.children[0]?.children[index]) {
                 grPoints.children[0].children[index].position.set(simulationNode.x, simulationNode.y, simulationNode.z)
               }
 
@@ -327,7 +334,6 @@ export const Graph = () => {
     })
 
     simulation.on('end', () => {
-      resetDataNew()
 
       simulation.nodes().forEach((i: NodeExtended) => {
 
@@ -340,20 +346,20 @@ export const Graph = () => {
       })
 
       if (groupRef?.current) {
-        if (gr && grPoints) {
+        if (gr || grPoints) {
           const nodes = simulation.nodes()
 
-          const maxLength = Math.max(gr.children.length, grPoints.children[0].children.length)
+          const maxLength = Math.max(gr?.children?.length || grPoints?.children[0]?.children?.length || 0, 0)
 
           for (let index = 0; index < maxLength; index += 1) {
             const simulationNode = nodes[index]
 
             if (simulationNode) {
-              if (gr.children[index]) {
+              if (gr?.children?.[index]) {
                 gr.children[index].position.set(simulationNode.x, simulationNode.y, simulationNode.z)
               }
 
-              if (grPoints.children[0].children[index]) {
+              if (grPoints?.children[0]?.children[index]) {
                 grPoints.children[0].children[index].position.set(simulationNode.x, simulationNode.y, simulationNode.z)
               }
             }
@@ -421,12 +427,12 @@ export const Graph = () => {
           })
         }
 
-        if (gr) {
+        if (gr || grPoints) {
           if (selectedNode) {
             return
           }
 
-          const newRadius = calculateRadius(gr)
+          const newRadius = calculateRadius(gr || grPoints)
 
           if (prevRadius.current === 0 || Math.abs(prevRadius.current - newRadius) > 200) {
             setGraphRadius(newRadius)
@@ -443,10 +449,10 @@ export const Graph = () => {
     simulation,
     setGraphRadius,
     normalizedSchemasByType,
-    resetDataNew,
     updateSimulationVersion,
     setSimulationInProgress,
     isOnboarding,
+    storeId,
   ])
 
   // if (!simulation) {
@@ -467,6 +473,7 @@ export const Graph = () => {
         <EdgesGPU linksPosition={linksPositionRef.current} />
       </group>
       {!isOnboarding && <HighlightedNodesLayer />}
+      {!isOnboarding && <CalloutsLayer />}
       {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}

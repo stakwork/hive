@@ -18,7 +18,7 @@ const dedupeIds = (ids: (string | undefined)[]) =>
 
 export const useWebhookHighlights = () => {
   const { workspace } = useWorkspace()
-  const { addHighlightChunk } = useGraphStore((s) => s)
+  const { addHighlightChunk, addCallout } = useGraphStore((s) => s)
   const { addNewNode } = useDataStore((s) => s)
 
   const fetchNodes = useCallback(async (nodeIds: string[]) => {
@@ -145,6 +145,10 @@ export const useWebhookHighlights = () => {
         // Create highlight chunk
         if (finalNodeIds.length > 0) {
           console.log('Creating highlight chunk with nodes:', finalNodeIds)
+          const calloutNodeRefId = data.sourceNodeRefId || finalNodeIds[0]
+          if (calloutNodeRefId) {
+            addCallout(data.title, calloutNodeRefId, undefined, data.timestamp)
+          }
           addHighlightChunk(data.title, finalNodeIds, data.sourceNodeRefId)
         }
       }

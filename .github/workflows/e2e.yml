@@ -73,6 +73,7 @@ jobs:
           SWARM_SUPER_ADMIN_URL: placeholder
           GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
+          NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
         run: npm run dev &
 
       - name: Wait for application to be ready

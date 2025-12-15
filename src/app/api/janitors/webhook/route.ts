@@ -23,6 +23,12 @@ const stakworkWebhookSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Check API token authentication
+    const apiToken = request.headers.get("x-api-token");
+    if (!apiToken || apiToken !== process.env.API_TOKEN) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const webhookData = stakworkWebhookSchema.parse(body);
 

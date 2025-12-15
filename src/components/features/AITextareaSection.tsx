@@ -41,6 +41,7 @@ interface AITextareaSectionProps {
   onBlur: (value: string | null) => void;
   rows?: number;
   className?: string;
+  initialDiagramUrl?: string | null;
 }
 
 export function AITextareaSection({
@@ -57,12 +58,13 @@ export function AITextareaSection({
   onBlur,
   rows = 8,
   className,
+  initialDiagramUrl = null,
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [quickGenerating, setQuickGenerating] = useState(false);
   const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
-  const [diagramUrl, setDiagramUrl] = useState<string | null>(null);
+  const [diagramUrl, setDiagramUrl] = useState<string | null>(initialDiagramUrl);
   const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
 
   const { workspace } = useWorkspace();
@@ -180,8 +182,20 @@ export function AITextareaSection({
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to generate diagram");
+        let errorMessage = "Failed to generate diagram";
+        try {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const error = await response.json();
+            errorMessage = error.message || errorMessage;
+          } else {
+            const text = await response.text();
+            errorMessage = text || `Server error: ${response.status} ${response.statusText}`;
+          }
+        } catch (parseError) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();

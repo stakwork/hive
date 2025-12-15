@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, getApiKeyForProvider } from "aieo";
+import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { WAKE_WORD } from "@/lib/constants/voice";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";

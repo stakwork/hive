@@ -1,18 +1,18 @@
 "use client";
 
-import { PageHeader } from "@/components/ui/page-header";
-import { ConnectRepository } from "@/components/ConnectRepository";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { usePoolStatus } from "@/hooks/usePoolStatus";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertCircle, Server } from "lucide-react";
+import { PoolLaunchBanner } from "@/components/pool-launch-banner";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { usePoolStatus } from "@/hooks/usePoolStatus";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { AlertCircle, Loader2, Server } from "lucide-react";
+import { useEffect, useState } from "react";
 
-import { VMData } from "@/types/pool-manager";
-import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
 import { CapacityControls } from "@/components/capacity/CapacityControls";
+import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
 import { VMGrid } from "@/components/capacity/VMGrid";
+import { VMData } from "@/types/pool-manager";
 
 export default function CapacityPage() {
   const { workspace, slug } = useWorkspace();
@@ -69,38 +69,15 @@ export default function CapacityPage() {
     }
   }, [slug, isPoolActive]);
 
-  // Not set up yet
-  if (!workspace?.isCodeGraphSetup) {
+  // Pool not complete - show banner
+  if (workspace?.poolState !== "COMPLETE") {
     return (
       <div className="space-y-6">
         <PageHeader title="Capacity" />
-        <ConnectRepository
-          workspaceSlug={slug}
-          title="Connect repository to view capacity"
-          description="Setup your development environment to monitor resource capacity."
-          buttonText="Connect Repository"
+        <PoolLaunchBanner
+          title="Complete Pool Setup to View Capacity"
+          description="Launch your development pods to monitor resource utilization and capacity metrics."
         />
-      </div>
-    );
-  }
-
-  // Pool not active
-  if (!isPoolActive) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Capacity" />
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Server className="h-5 w-5" />
-              No Active Pool
-            </CardTitle>
-            <CardDescription>
-              Resource pool is not configured or not active yet.
-              Please configure your pool in workspace settings to view capacity metrics.
-            </CardDescription>
-          </CardHeader>
-        </Card>
       </div>
     );
   }

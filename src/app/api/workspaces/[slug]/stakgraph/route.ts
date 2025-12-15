@@ -421,6 +421,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           const files = getDevContainerFilesFromBase64(settings.containerFiles);
 
           const github_pat = await getGithubUsernameAndPAT(userId, slug);
+          
+          // Get the primary repository to access the branch
+          const primaryRepo = await getPrimaryRepository(workspace.id);
+          
           await poolManager.updatePoolData(
             swarm.id,
             decryptedPoolApiKey,
@@ -438,6 +442,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             settings.poolMemory,
             github_pat?.token || "",
             github_pat?.username || "",
+            primaryRepo?.branch || "",
           );
         }
       } catch (err) {

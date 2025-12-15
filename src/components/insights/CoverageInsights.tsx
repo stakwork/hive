@@ -277,7 +277,7 @@ export function CoverageInsights() {
                       />
                     )}
                     {params.nodeType === "mock" ? (
-                      <TableHead className="w-[10%] text-right">Files</TableHead>
+                      <TableHead className="w-[10%] text-right">Linked Files</TableHead>
                     ) : (
                       <SortableHeader
                         label="Lines"

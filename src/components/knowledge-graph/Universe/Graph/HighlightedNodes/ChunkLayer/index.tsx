@@ -3,17 +3,16 @@ import { getStoreBundle } from '@/stores/createStoreFactory'
 import type { HighlightChunk } from '@/stores/graphStore.types'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
-import { Edges, Html, ScreenSizer } from '@react-three/drei'
+import { Edges, ScreenSizer } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { Group, MeshBasicMaterial, Vector3 } from 'three'
-import { CalloutLabel } from './CalloutLabel'
 import { findConnectedNodesAtDepth } from './utils'
 
 
 // Simple configuration
-const HIGHLIGHT_DURATION = 30000 // 30 seconds
+const HIGHLIGHT_DURATION = 10000 // 30 seconds
 const PULSE_SPEED = 2
 const BASE_SCALE = 0.8
 const PULSE_AMPLITUDE = 0.15
@@ -28,20 +27,14 @@ const DEPTH_CONFIG = {
 // Edge configuration
 const EDGE_CONFIG = {
   color: '#08f6fb',
-  width: 1,
+  width: 0.7,
   opacity: 0.3,
 }
 
 // Growth animation configuration
 const EDGE_GROWTH = {
   levelDuration: 4, // seconds per depth level
-  speed: 8,         // global speed multiplier
-}
-
-const COLORS = {
-  highlight: '#7DDCFF',
-  line: EDGE_CONFIG.color,
-  text: '#FFFFFF',
+  speed: 12,         // global speed multiplier
 }
 
 interface ChunkLayerProps {
@@ -51,7 +44,6 @@ interface ChunkLayerProps {
 export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
   const groupRef = useRef<Group>(null)
   const edgeMeshRef = useRef<THREE.Mesh>(null)
-  const htmlRef = useRef<THREE.Group>(null)
   const timeRef = useRef(0)
   const edgePositionsRef = useRef<{ aStart: Float32Array; aEnd: Float32Array } | null>(null)
   const growthTimeRef = useRef(0)
@@ -59,8 +51,6 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
   const [chunkNodes, setChunkNodes] = useState<NodeExtended[]>([])
   const [depthConnections, setDepthConnections] = useState<Array<{ from: string; to: string; level: number }>>([])
-  const [nodesByLevel, setNodesByLevel] = useState<Map<number, Set<string>>>(new Map())
-  const [chunkCreationTime] = useState(Date.now())
 
   const removeHighlightChunk = useGraphStore((s) => s.removeHighlightChunk)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
@@ -149,7 +139,6 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
     // Ensure connections are sorted by level for deterministic growth order
     setDepthConnections([...hierarchicalConnections].sort((a, b) => a.level - b.level))
-    setNodesByLevel(finalNodesByLevel)
     const levelMap = new Map<string, number>()
     for (const [level, ids] of finalNodesByLevel.entries()) {
       ids.forEach(id => levelMap.set(id, level))
@@ -394,51 +383,6 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
 
     // Calculate positions and update edges for depth-based connections
     if (nodePositions.length > 0 && edgeGeometry && edgePositionsRef.current && depthConnections.length > 0) {
-      // Calculate label position (prefer source node position)
-      const labelPosition = new Vector3()
-      let positionFound = false
-
-      if (chunk.sourceNodeRefId) {
-        // Use source node position for label
-        let nodePosition = nodePositionsNormalized.get(chunk.sourceNodeRefId)
-
-        // Fallback to simulation nodes if positions map is not ready
-        if (!nodePosition && nodePositionsNormalized.size === 0) {
-          const simulationNodes = simulation.nodes() || []
-          const simNode = simulationNodes.find((node: NodeExtended) => node.ref_id === chunk.sourceNodeRefId)
-          if (simNode) {
-            nodePosition = { x: simNode.x, y: simNode.y, z: simNode.z }
-          }
-        }
-
-        if (nodePosition) {
-          labelPosition.set(nodePosition.x, nodePosition.y, nodePosition.z)
-          positionFound = true
-        }
-      }
-
-      // Fallback to first ref_id if sourceNodeRefId position not found
-      if (!positionFound && chunk.ref_ids.length > 0) {
-        const firstRefId = chunk.ref_ids[0]
-        if (firstRefId) {
-          let nodePosition = nodePositionsNormalized.get(firstRefId)
-
-          // Fallback to simulation nodes if positions map is not ready
-          if (!nodePosition && nodePositionsNormalized.size === 0) {
-            const simulationNodes = simulation.nodes() || []
-            const simNode = simulationNodes.find((node: NodeExtended) => node.ref_id === firstRefId)
-            if (simNode) {
-              nodePosition = { x: simNode.x, y: simNode.y, z: simNode.z }
-            }
-          }
-
-          if (nodePosition) {
-            labelPosition.set(nodePosition.x, nodePosition.y, nodePosition.z)
-            positionFound = true
-          }
-        }
-      }
-
       // Update depth-based edge positions
       const { aStart, aEnd } = edgePositionsRef.current
 
@@ -491,11 +435,17 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
         edgeMaterial.uniforms.uTime.value = growthTimeRef.current
         edgeMaterial.uniforms.uGrowthSpeed.value = EDGE_GROWTH.speed
         edgeMaterial.uniforms.uLevelDuration.value = EDGE_GROWTH.levelDuration
-      }
-
-      // Update HTML label position
-      if (htmlRef.current) {
-        htmlRef.current.position.copy(labelPosition)
+        // Fade edges out near the end of the highlight duration
+        const edgeFadeStart = HIGHLIGHT_DURATION * 0.8
+        let edgeOpacity = EDGE_CONFIG.opacity
+        if (chunk.timestamp) {
+          const elapsed = Date.now() - chunk.timestamp
+          if (elapsed > edgeFadeStart) {
+            const fadeProgress = (elapsed - edgeFadeStart) / (HIGHLIGHT_DURATION - edgeFadeStart)
+            edgeOpacity = Math.max(0, EDGE_CONFIG.opacity * (1 - fadeProgress))
+          }
+        }
+        edgeMaterial.uniforms.uOpacity.value = edgeOpacity
       }
     }
   })
@@ -512,25 +462,11 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
       <group ref={groupRef} name={`chunk-${chunk.chunkId}`}>
         {validNodes.map((node, nodeIndex) => {
           // Determine node level for visual differentiation
-          let nodeLevel = 0
-          let isSourceNode = false
+          const isSourceNode = chunk.sourceNodeRefId === node.ref_id
 
-          if (chunk.sourceNodeRefId === node.ref_id) {
-            isSourceNode = true
-          } else if (chunk.ref_ids.includes(node.ref_id)) {
-            nodeLevel = 0 // Original ref_ids are level 0
-          } else {
-            // Find the level of this node in the depth structure
-            for (const [level, nodes] of nodesByLevel.entries()) {
-              if (nodes.has(node.ref_id)) {
-                nodeLevel = level
-                break
-              }
-            }
-          }
 
           // Calculate visual properties based on level
-          const levelScale = isSourceNode ? 0.6 : Math.max(0.3, 0.5 - (nodeLevel * 0.05)) // Source nodes larger
+          const levelScale = isSourceNode ? 0.3 : 0.2 // Source nodes larger
           const levelColor = '#4FC3F7' // Gold for source, blue variants for levels
 
           return (
@@ -558,27 +494,6 @@ export const ChunkLayer = memo<ChunkLayerProps>(({ chunk }) => {
           )
         })}
       </group>
-
-      {/* CHUNK LABEL */}
-      {chunk.title && (
-        <group ref={htmlRef} position={[0, 0, 0]}>
-          <Html
-            center
-            zIndexRange={[100, 101]}
-            style={{
-              transition: 'opacity 0.2s',
-              pointerEvents: 'none',
-              willChange: 'transform'
-            }}
-          >
-            <CalloutLabel
-              title={chunk.title}
-              baseColor={COLORS.highlight}
-              node={chunk.sourceNodeRefId ? validNodes.find(node => node.ref_id === chunk.sourceNodeRefId) : undefined}
-            />
-          </Html>
-        </group>
-      )}
 
       {/* DYNAMIC THICK EDGES */}
       {edgeGeometry && edgeMaterial && depthConnections.length > 0 && (

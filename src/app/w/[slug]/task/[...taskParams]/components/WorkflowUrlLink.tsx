@@ -1,5 +1,6 @@
 "use client";
 
+import React, { memo, useCallback } from 'react';
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -8,13 +9,13 @@ interface WorkflowUrlLinkProps {
   className?: string;
 }
 
-export function WorkflowUrlLink({
+export const WorkflowUrlLink = memo(function WorkflowUrlLink({
   workflowUrl,
   className = "",
 }: WorkflowUrlLinkProps) {
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     window.open(workflowUrl, "_blank", "noopener,noreferrer");
-  };
+  }, [workflowUrl]);
 
   return (
     <div 
@@ -31,4 +32,4 @@ export function WorkflowUrlLink({
       </Button>
     </div>
   );
-}
+});

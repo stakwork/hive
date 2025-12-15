@@ -1,6 +1,6 @@
 import z from "zod";
 import { generateObject } from "ai";
-import { getApiKeyForProvider, getModel, Provider } from "aieo";
+import { getApiKeyForProvider, getModel, Provider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
 
 export async function generateCommitMessage(taskId: string) {

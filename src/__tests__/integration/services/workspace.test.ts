@@ -415,10 +415,10 @@ describe("Workspace Service - Integration Tests", () => {
   });
 
   describe("getDefaultWorkspaceForUser", () => {
-    test("should return most recently created workspace", async () => {
+    test("should return most recently accessed workspace", async () => {
       const testUser = await createTestUser({ name: "Test User" });
 
-      // Create workspaces - getDefaultWorkspaceForUser returns the most recently created
+      // Create workspaces with different creation times
       const workspace1 = await db.workspace.create({
         data: {
           name: "Workspace 1",
@@ -428,7 +428,7 @@ describe("Workspace Service - Integration Tests", () => {
       });
 
       // Add a small delay to ensure different timestamps
-      await new Promise(resolve => setTimeout(resolve, 5));
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       const workspace2 = await db.workspace.create({
         data: {
@@ -438,11 +438,63 @@ describe("Workspace Service - Integration Tests", () => {
         },
       });
 
+      // Create workspace members with lastAccessedAt timestamps
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const now = new Date();
+
+      // Update lastAccessedAt for workspace1 (older)
+      await db.workspaceMember.create({
+        data: {
+          workspaceId: workspace1.id,
+          userId: testUser.id,
+          role: "OWNER",
+          lastAccessedAt: yesterday,
+        },
+      });
+
+      // Update lastAccessedAt for workspace2 (most recent)
+      await db.workspaceMember.create({
+        data: {
+          workspaceId: workspace2.id,
+          userId: testUser.id,
+          role: "OWNER",
+          lastAccessedAt: now,
+        },
+      });
+
       const defaultWorkspace = await getDefaultWorkspaceForUser(testUser.id);
 
       expect(defaultWorkspace).toBeDefined();
-      // The function should return the most recently created workspace
-      expect([workspace1.name, workspace2.name]).toContain(defaultWorkspace?.name);
+      // Should return the most recently accessed workspace (workspace2)
+      expect(defaultWorkspace?.id).toBe(workspace2.id);
+      expect(defaultWorkspace?.name).toBe("Workspace 2");
+    });
+
+    test("should return alphabetically first workspace when no lastAccessedAt", async () => {
+      const testUser = await createTestUser({ name: "Test User" });
+
+      // Create workspaces with names that differ alphabetically
+      const workspaceZ = await db.workspace.create({
+        data: {
+          name: "Zebra Workspace",
+          slug: generateUniqueSlug("zebra-workspace"),
+          ownerId: testUser.id,
+        },
+      });
+
+      const workspaceA = await db.workspace.create({
+        data: {
+          name: "Alpha Workspace",
+          slug: generateUniqueSlug("alpha-workspace"),
+          ownerId: testUser.id,
+        },
+      });
+
+      const defaultWorkspace = await getDefaultWorkspaceForUser(testUser.id);
+
+      expect(defaultWorkspace).toBeDefined();
+      // Should return alphabetically first workspace when no lastAccessedAt
+      expect(defaultWorkspace?.name).toBe("Alpha Workspace");
     });
 
     test("should return null if user has no workspaces", async () => {

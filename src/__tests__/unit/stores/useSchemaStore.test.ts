@@ -1,819 +1,655 @@
-import { describe, test, expect, beforeEach } from 'vitest';
-import { useSchemaStore, Schema, SchemaLink, SchemaExtended } from '@/stores/useSchemaStore';
-import { ActionDetail } from '@Universe/types';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { useSchemaStore } from '@/stores/useSchemaStore';
+import type { SchemaExtended, SchemaLink } from '@/stores/useSchemaStore';
+import type { ActionDetail } from '@Universe/types';
+import { resetSchemaStore } from '@/__tests__/support/helpers/store-helpers/schema-store';
 
-/**
- * Test utilities and mock data factories
- */
-
-// Factory for creating mock schemas
-const createMockSchema = (overrides: Partial<SchemaExtended> = {}): SchemaExtended => ({
-  type: `type-${Math.random().toString(36).substr(2, 9)}`,
-  name: 'Test Schema',
-  children: [],
-  ...overrides,
-});
-
-// Factory for creating mock schema links
-const createMockSchemaLink = (overrides: Partial<SchemaLink> = {}): SchemaLink => ({
-  edge_type: 'test_edge',
-  ref_id: `link-${Math.random().toString(36).substr(2, 9)}`,
-  source: 'source-node',
-  target: 'target-node',
-  ...overrides,
-});
-
-// Factory for creating mock action details
-const createMockActionDetail = (overrides: Partial<ActionDetail> = {}): ActionDetail => ({
-  bounty: false,
-  display_name: 'Test Action',
-  name: 'test_action',
-  workflow_id: 'workflow-123',
-  ...overrides,
-});
-
-// Helper to inspect store state
-const inspectStore = () => {
-  const state = useSchemaStore.getState();
-  return {
-    schemaCount: state.schemas.length,
-    linkCount: state.links.length,
-    normalizedTypes: Object.keys(state.normalizedSchemasByType),
-    selectedAction: state.selectedAction,
-  };
-};
-
-/**
- * Unit tests for useSchemaStore
- */
 describe('useSchemaStore', () => {
+  // Reset store before each test to ensure isolation
   beforeEach(() => {
-    // Reset store state before each test by setting empty data
-    useSchemaStore.getState().setSchemas([]);
-    useSchemaStore.getState().setSchemaLinks([]);
-    useSchemaStore.getState().removeSelectedActionDetail();
+    resetSchemaStore();
+  });
+
+  describe('Initialization & Default State', () => {
+    it('should initialize with empty state', () => {
+      const state = useSchemaStore.getState();
+      expect(state.schemas).toEqual([]);
+      expect(state.links).toEqual([]);
+      expect(state.normalizedSchemasByType).toEqual({});
+      expect(state.selectedAction).toBeNull();
+    });
+
+    it('should have all required methods', () => {
+      const state = useSchemaStore.getState();
+      expect(typeof state.setSchemas).toBe('function');
+      expect(typeof state.setSchemaLinks).toBe('function');
+      expect(typeof state.getPrimaryColorByType).toBe('function');
+      expect(typeof state.getIndexByType).toBe('function');
+      expect(typeof state.getNodeKeysByType).toBe('function');
+      expect(typeof state.getSchemaByType).toBe('function');
+      expect(typeof state.setSelectedActionDetail).toBe('function');
+      expect(typeof state.getSelectedActionDetail).toBe('function');
+      expect(typeof state.removeSelectedActionDetail).toBe('function');
+    });
   });
 
   describe('setSchemas', () => {
-    describe('Basic Functionality', () => {
-      test('should set schemas with empty array', () => {
-        const { setSchemas } = useSchemaStore.getState();
+    it('should set schemas with assigned colors from palette', () => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Function', name: 'Test Function', children: [] },
+        { type: 'Endpoint', name: 'Test Endpoint', children: [] },
+      ];
 
-        setSchemas([]);
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
 
-        const state = inspectStore();
-        expect(state.schemaCount).toBe(0);
-        expect(state.normalizedTypes).toHaveLength(0);
-      });
-
-      test('should set schemas with single schema', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const schema = createMockSchema({ type: 'TestType', name: 'Test Schema' });
-
-        setSchemas([schema]);
-
-        const state = inspectStore();
-        expect(state.schemaCount).toBe(1);
-        expect(state.normalizedTypes).toContain('TestType');
-      });
-
-      test('should set schemas with multiple schemas', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const schemas = [
-          createMockSchema({ type: 'Type1', name: 'Schema 1' }),
-          createMockSchema({ type: 'Type2', name: 'Schema 2' }),
-          createMockSchema({ type: 'Type3', name: 'Schema 3' }),
-        ];
-
-        setSchemas(schemas);
-
-        const state = inspectStore();
-        expect(state.schemaCount).toBe(3);
-        expect(state.normalizedTypes).toEqual(['Type1', 'Type2', 'Type3']);
-      });
-
-      test('should replace existing schemas', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const initialSchemas = [createMockSchema({ type: 'Initial', name: 'Initial' })];
-        const newSchemas = [createMockSchema({ type: 'New', name: 'New' })];
-
-        setSchemas(initialSchemas);
-        setSchemas(newSchemas);
-
-        const state = inspectStore();
-        expect(state.schemaCount).toBe(1);
-        expect(state.normalizedTypes).toEqual(['New']);
-        expect(state.normalizedTypes).not.toContain('Initial');
-      });
+      expect(state.schemas).toHaveLength(2);
+      expect(state.schemas[0]).toHaveProperty('primary_color');
+      expect(state.schemas[0]).toHaveProperty('secondary_color');
+      expect(state.schemas[1]).toHaveProperty('primary_color');
+      expect(state.schemas[1]).toHaveProperty('secondary_color');
     });
 
-    describe('Color Assignment', () => {
-      test('should assign colors to schemas without primary_color', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const schema = createMockSchema({ type: 'TestType' });
-        // Explicitly remove color properties
-        delete schema.primary_color;
-        delete schema.secondary_color;
+    it('should assign colors using palette cycling for schemas without colors', () => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Type1', name: 'Schema 1', children: [] },
+        { type: 'Type2', name: 'Schema 2', children: [] },
+      ];
 
-        setSchemas([schema]);
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
 
-        const { schemas } = useSchemaStore.getState();
-        expect(schemas[0].primary_color).toBeDefined();
-        expect(schemas[0].secondary_color).toBeDefined();
-      });
+      // First schema gets COLORS_PALETTE[0]
+      expect(state.schemas[0].primary_color).toBe('#362429');
+      expect(state.schemas[0].secondary_color).toBe('#D25353');
 
-      test('should preserve matching palette colors', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        // Using color from COLORS_PALETTE: ['#D25353', '#362429']
-        const schema = createMockSchema({ 
-          type: 'TestType',
-          primary_color: '#362429' // This is in the palette
-        });
-
-        setSchemas([schema]);
-
-        const { schemas } = useSchemaStore.getState();
-        expect(schemas[0].primary_color).toBe('#362429');
-        expect(schemas[0].secondary_color).toBe('#D25353'); // Matching pair
-      });
-
-      test('should assign new colors when primary_color not in palette', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const schema = createMockSchema({ 
-          type: 'TestType',
-          primary_color: '#FFFFFF' // Not in palette
-        });
-
-        setSchemas([schema]);
-
-        const { schemas } = useSchemaStore.getState();
-        // Should reassign to palette color
-        expect(schemas[0].primary_color).not.toBe('#FFFFFF');
-        expect(schemas[0].secondary_color).toBeDefined();
-      });
-
-      test('should cycle through color palette for multiple schemas', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const schemas = Array(15).fill(null).map((_, i) => 
-          createMockSchema({ type: `Type${i}` })
-        );
-
-        setSchemas(schemas);
-
-        const { schemas: resultSchemas } = useSchemaStore.getState();
-        // All schemas should have colors assigned
-        resultSchemas.forEach(schema => {
-          expect(schema.primary_color).toBeDefined();
-          expect(schema.secondary_color).toBeDefined();
-        });
-
-        // Colors should cycle (palette has 11 colors)
-        // Schema at index 0 and 11 should have same colors
-        expect(resultSchemas[0].primary_color).toBe(resultSchemas[11].primary_color);
-        expect(resultSchemas[0].secondary_color).toBe(resultSchemas[11].secondary_color);
-      });
-
-      test('should handle schemas with partial color information', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const schema = createMockSchema({ 
-          type: 'TestType',
-          primary_color: '#362429',
-          secondary_color: undefined
-        });
-
-        setSchemas([schema]);
-
-        const { schemas } = useSchemaStore.getState();
-        expect(schemas[0].primary_color).toBeDefined();
-        expect(schemas[0].secondary_color).toBeDefined();
-      });
+      // Second schema gets COLORS_PALETTE[1]
+      expect(state.schemas[1].primary_color).toBe('#38243C');
+      expect(state.schemas[1].secondary_color).toBe('#F468D4');
     });
 
-    describe('Normalization', () => {
-      test('should normalize schemas by type', () => {
-        const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-        const schemas = [
-          createMockSchema({ type: 'Type1', name: 'Schema 1' }),
-          createMockSchema({ type: 'Type2', name: 'Schema 2' }),
-        ];
+    it('should preserve existing primary_color if it matches palette', () => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Type1', name: 'Schema 1', primary_color: '#362429', children: [] },
+      ];
 
-        setSchemas(schemas);
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
 
-        expect(getSchemaByType('Type1')).toBeDefined();
-        expect(getSchemaByType('Type1')?.name).toBe('Schema 1');
-        expect(getSchemaByType('Type2')).toBeDefined();
-        expect(getSchemaByType('Type2')?.name).toBe('Schema 2');
-      });
-
-      test('should handle duplicate types (last one wins)', () => {
-        const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-        const schemas = [
-          createMockSchema({ type: 'DuplicateType', name: 'First' }),
-          createMockSchema({ type: 'DuplicateType', name: 'Second' }),
-        ];
-
-        setSchemas(schemas);
-
-        const result = getSchemaByType('DuplicateType');
-        expect(result?.name).toBe('Second');
-      });
-
-      test('should normalize schemas with all optional properties', () => {
-        const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-        const fullSchema = createMockSchema({
-          type: 'FullType',
-          name: 'Full Schema',
-          ref_id: 'ref-123',
-          age: 5,
-          parent: 'parent-type',
-          link: 'https://example.com',
-          icon: 'icon.png',
-          title: 'Schema Title',
-          app_version: '1.0.0',
-          description: 'Test description',
-          mission_statement: 'Our mission',
-          namespace: 'test.namespace',
-          search_term: 'searchable',
-          is_deleted: false,
-          children: ['child1', 'child2'],
-          node_key: 'key-123',
-          index: 'name',
-          media_url: 'https://media.example.com',
-          image_url: 'https://image.example.com',
-          source_link: 'https://source.example.com',
-          type_description: 'Type description',
-          attributes: { custom: 'value', enabled: true },
-          action: ['action1', 'action2'],
-        });
-
-        setSchemas([fullSchema]);
-
-        const result = getSchemaByType('FullType');
-        expect(result).toBeDefined();
-        expect(result?.name).toBe('Full Schema');
-        expect(result?.ref_id).toBe('ref-123');
-        expect(result?.children).toEqual(['child1', 'child2']);
-        expect(result?.attributes).toEqual({ custom: 'value', enabled: true });
-      });
+      expect(state.schemas[0].primary_color).toBe('#362429');
+      expect(state.schemas[0].secondary_color).toBe('#D25353');
     });
 
-    describe('Schema Immutability', () => {
-      test('should create new schema objects (not mutate)', () => {
-        const { setSchemas } = useSchemaStore.getState();
-        const originalSchema = createMockSchema({ type: 'ImmutableType' });
-        const originalColor = originalSchema.primary_color;
+    it('should cycle through palette for large arrays', () => {
+      const schemas: SchemaExtended[] = Array.from({ length: 15 }, (_, i) => ({
+        type: `Type${i}`,
+        name: `Schema ${i}`,
+        children: [],
+      }));
 
-        setSchemas([originalSchema]);
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
 
-        const { schemas } = useSchemaStore.getState();
-        // Store should create new objects
-        expect(schemas[0]).not.toBe(originalSchema);
-        // Original should not be mutated
-        expect(originalSchema.primary_color).toBe(originalColor);
-      });
+      // Schema at index 11 should use COLORS_PALETTE[0] again (11 % 11 = 0)
+      expect(state.schemas[11].primary_color).toBe('#362429');
+      expect(state.schemas[11].secondary_color).toBe('#D25353');
+
+      // Schema at index 12 should use COLORS_PALETTE[1] (12 % 11 = 1)
+      expect(state.schemas[12].primary_color).toBe('#38243C');
+      expect(state.schemas[12].secondary_color).toBe('#F468D4');
+    });
+
+    it('should create normalizedSchemasByType lookup', () => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Function', name: 'Test Function', children: [] },
+        { type: 'Endpoint', name: 'Test Endpoint', children: [] },
+      ];
+
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
+
+      expect(state.normalizedSchemasByType['Function']).toBeDefined();
+      expect(state.normalizedSchemasByType['Function'].name).toBe('Test Function');
+      expect(state.normalizedSchemasByType['Endpoint']).toBeDefined();
+      expect(state.normalizedSchemasByType['Endpoint'].name).toBe('Test Endpoint');
+    });
+
+    it('should handle empty schemas array', () => {
+      useSchemaStore.getState().setSchemas([]);
+      const state = useSchemaStore.getState();
+
+      expect(state.schemas).toEqual([]);
+      expect(state.normalizedSchemasByType).toEqual({});
+    });
+
+    it('should overwrite duplicate types with last occurrence', () => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Function', name: 'First Function', children: [] },
+        { type: 'Function', name: 'Second Function', children: [] },
+      ];
+
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
+
+      expect(state.schemas).toHaveLength(2);
+      expect(state.normalizedSchemasByType['Function'].name).toBe('Second Function');
+    });
+
+    it('should handle schemas with special characters in type', () => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Type-With-Dashes', name: 'Test', children: [] },
+        { type: 'Type_With_Underscores', name: 'Test', children: [] },
+        { type: 'Type.With.Dots', name: 'Test', children: [] },
+      ];
+
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
+
+      expect(state.normalizedSchemasByType['Type-With-Dashes']).toBeDefined();
+      expect(state.normalizedSchemasByType['Type_With_Underscores']).toBeDefined();
+      expect(state.normalizedSchemasByType['Type.With.Dots']).toBeDefined();
     });
   });
 
   describe('setSchemaLinks', () => {
-    test('should set empty links', () => {
-      const { setSchemaLinks } = useSchemaStore.getState();
-
-      setSchemaLinks([]);
-
-      const state = inspectStore();
-      expect(state.linkCount).toBe(0);
-    });
-
-    test('should set single link', () => {
-      const { setSchemaLinks } = useSchemaStore.getState();
-      const link = createMockSchemaLink({ edge_type: 'parent_of' });
-
-      setSchemaLinks([link]);
-
-      const state = inspectStore();
-      expect(state.linkCount).toBe(1);
-      expect(useSchemaStore.getState().links[0].edge_type).toBe('parent_of');
-    });
-
-    test('should set multiple links', () => {
-      const { setSchemaLinks } = useSchemaStore.getState();
-      const links = [
-        createMockSchemaLink({ edge_type: 'parent_of', source: 'A', target: 'B' }),
-        createMockSchemaLink({ edge_type: 'child_of', source: 'B', target: 'C' }),
-        createMockSchemaLink({ edge_type: 'related_to', source: 'A', target: 'C' }),
+    it('should set schema links', () => {
+      const links: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+        { edge_type: 'USES', ref_id: 'link2', source: 'src2', target: 'tgt2' },
       ];
 
-      setSchemaLinks(links);
+      useSchemaStore.getState().setSchemaLinks(links);
+      const state = useSchemaStore.getState();
 
-      const state = inspectStore();
-      expect(state.linkCount).toBe(3);
+      expect(state.links).toEqual(links);
+      expect(state.links).toHaveLength(2);
     });
 
-    test('should replace existing links', () => {
-      const { setSchemaLinks } = useSchemaStore.getState();
-      const initialLinks = [createMockSchemaLink({ edge_type: 'initial' })];
-      const newLinks = [createMockSchemaLink({ edge_type: 'new' })];
+    it('should handle empty links array', () => {
+      useSchemaStore.getState().setSchemaLinks([]);
+      const state = useSchemaStore.getState();
 
-      setSchemaLinks(initialLinks);
-      setSchemaLinks(newLinks);
-
-      const { links } = useSchemaStore.getState();
-      expect(links).toHaveLength(1);
-      expect(links[0].edge_type).toBe('new');
+      expect(state.links).toEqual([]);
     });
 
-    test('should handle links with all properties', () => {
-      const { setSchemaLinks } = useSchemaStore.getState();
-      const link = createMockSchemaLink({
-        edge_type: 'custom_edge',
-        ref_id: 'link-ref-123',
-        source: 'source-id',
-        target: 'target-id',
-      });
+    it('should replace existing links', () => {
+      const initialLinks: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+      ];
+      const newLinks: SchemaLink[] = [
+        { edge_type: 'USES', ref_id: 'link2', source: 'src2', target: 'tgt2' },
+      ];
 
-      setSchemaLinks([link]);
+      useSchemaStore.getState().setSchemaLinks(initialLinks);
+      useSchemaStore.getState().setSchemaLinks(newLinks);
+      const state = useSchemaStore.getState();
 
-      const { links } = useSchemaStore.getState();
-      expect(links[0]).toEqual(link);
+      expect(state.links).toEqual(newLinks);
+      expect(state.links).toHaveLength(1);
+    });
+
+    it('should handle multiple links with same source or target', () => {
+      const links: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+        { edge_type: 'USES', ref_id: 'link2', source: 'src1', target: 'tgt2' },
+        { edge_type: 'IMPORTS', ref_id: 'link3', source: 'src2', target: 'tgt1' },
+      ];
+
+      useSchemaStore.getState().setSchemaLinks(links);
+      const state = useSchemaStore.getState();
+
+      expect(state.links).toHaveLength(3);
+      expect(state.links.filter(l => l.source === 'src1')).toHaveLength(2);
+      expect(state.links.filter(l => l.target === 'tgt1')).toHaveLength(2);
     });
   });
 
   describe('getPrimaryColorByType', () => {
-    test('should return primary color for existing type', () => {
-      const { setSchemas, getPrimaryColorByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'ColorType',
-        primary_color: '#362429'
-      });
-
-      setSchemas([schema]);
-
-      const color = getPrimaryColorByType('ColorType');
-      expect(color).toBeDefined();
+    beforeEach(() => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Function', name: 'Test', primary_color: '#362429', children: [] },
+        { type: 'Endpoint', name: 'Test', primary_color: '#38243C', children: [] },
+      ];
+      useSchemaStore.getState().setSchemas(schemas);
     });
 
-    test('should return undefined for non-existing type', () => {
-      const { getPrimaryColorByType } = useSchemaStore.getState();
+    it('should return primary color for existing type', () => {
+      const color = useSchemaStore.getState().getPrimaryColorByType('Function');
+      expect(color).toBe('#362429');
+    });
 
-      const color = getPrimaryColorByType('NonExistingType');
-
+    it('should return undefined for non-existing type', () => {
+      const color = useSchemaStore.getState().getPrimaryColorByType('NonExistent');
       expect(color).toBeUndefined();
     });
 
-    test('should return correct color when multiple schemas exist', () => {
-      const { setSchemas, getPrimaryColorByType } = useSchemaStore.getState();
-      const schemas = [
-        createMockSchema({ type: 'Type1', primary_color: '#362429' }),
-        createMockSchema({ type: 'Type2', primary_color: '#38243C' }),
-      ];
-
-      setSchemas(schemas);
-
-      expect(getPrimaryColorByType('Type1')).toBe('#362429');
-      expect(getPrimaryColorByType('Type2')).toBe('#38243C');
-    });
-  });
-
-  describe('getNodeKeysByType', () => {
-    test('should return node_key when available', () => {
-      const { setSchemas, getNodeKeysByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'KeyType',
-        node_key: 'custom_key'
-      });
-
-      setSchemas([schema]);
-
-      const key = getNodeKeysByType('KeyType');
-      expect(key).toBe('custom_key');
+    it('should handle empty string type', () => {
+      const color = useSchemaStore.getState().getPrimaryColorByType('');
+      expect(color).toBeUndefined();
     });
 
-    test('should return index when node_key not available', () => {
-      const { setSchemas, getNodeKeysByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'IndexType',
-        index: 'ref_id',
-        node_key: undefined
-      });
-
-      setSchemas([schema]);
-
-      const key = getNodeKeysByType('IndexType');
-      expect(key).toBe('ref_id');
-    });
-
-    test('should prioritize index over node_key', () => {
-      const { setSchemas, getNodeKeysByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'BothType',
-        index: 'id_field',
-        node_key: 'key_field'
-      });
-
-      setSchemas([schema]);
-
-      const key = getNodeKeysByType('BothType');
-      expect(key).toBe('id_field');
-    });
-
-    test('should return node_key when index is not set but node_key is', () => {
-      const { setSchemas, getNodeKeysByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'OnlyKeyType',
-        node_key: 'only_key',
-        index: undefined
-      });
-
-      setSchemas([schema]);
-
-      const key = getNodeKeysByType('OnlyKeyType');
-      expect(key).toBe('only_key');
-    });
-
-    test('should return undefined for non-existing type', () => {
-      const { getNodeKeysByType } = useSchemaStore.getState();
-
-      const key = getNodeKeysByType('NonExistingType');
-
-      expect(key).toBeUndefined();
-    });
-
-    test('should return undefined when neither index nor node_key exists', () => {
-      const { setSchemas, getNodeKeysByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'NoKeyType',
-        index: undefined,
-        node_key: undefined
-      });
-
-      setSchemas([schema]);
-
-      const key = getNodeKeysByType('NoKeyType');
-      expect(key).toBeUndefined();
+    it('should return different colors for different types', () => {
+      const color1 = useSchemaStore.getState().getPrimaryColorByType('Function');
+      const color2 = useSchemaStore.getState().getPrimaryColorByType('Endpoint');
+      expect(color1).not.toBe(color2);
     });
   });
 
   describe('getIndexByType', () => {
-    test('should return index when available', () => {
-      const { setSchemas, getIndexByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'IndexedType',
-        index: 'custom_index'
-      });
-
-      setSchemas([schema]);
-
-      const index = getIndexByType('IndexedType');
-      expect(index).toBe('custom_index');
+    beforeEach(() => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Function', name: 'Test', index: 'function_name', children: [] },
+        { type: 'Endpoint', name: 'Test', children: [] },
+      ];
+      useSchemaStore.getState().setSchemas(schemas);
     });
 
-    test('should return undefined for existing type without index', () => {
-      const { setSchemas, getIndexByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'NoIndexType',
-        index: undefined
-      });
+    it('should return index property when available', () => {
+      const index = useSchemaStore.getState().getIndexByType('Function');
+      expect(index).toBe('function_name');
+    });
 
-      setSchemas([schema]);
-
-      const index = getIndexByType('NoIndexType');
+    it('should return undefined when schema exists but index is not available', () => {
+      const index = useSchemaStore.getState().getIndexByType('Endpoint');
       expect(index).toBeUndefined();
     });
 
-    test('should return default "name" for non-existing type', () => {
-      const { getIndexByType } = useSchemaStore.getState();
-
-      const index = getIndexByType('NonExistingType');
-
+    it('should return "name" for non-existing type', () => {
+      const index = useSchemaStore.getState().getIndexByType('NonExistent');
       expect(index).toBe('name');
     });
 
-    test('should return empty string when index is empty string', () => {
-      const { setSchemas, getIndexByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'EmptyIndexType',
-        index: ''
-      });
+    it('should handle empty string type with name fallback', () => {
+      const index = useSchemaStore.getState().getIndexByType('');
+      expect(index).toBe('name');
+    });
+  });
 
-      setSchemas([schema]);
+  describe('getNodeKeysByType', () => {
+    beforeEach(() => {
+      const schemas: SchemaExtended[] = [
+        { type: 'WithIndex', name: 'Test', index: 'id', children: [] },
+        { type: 'WithNodeKey', name: 'Test', node_key: 'key', children: [] },
+        { type: 'WithBoth', name: 'Test', index: 'id', node_key: 'key', children: [] },
+        { type: 'WithNeither', name: 'Test', children: [] },
+      ];
+      useSchemaStore.getState().setSchemas(schemas);
+    });
 
-      const index = getIndexByType('EmptyIndexType');
-      // Returns actual value (empty string), not default 'name'
-      expect(index).toBe('');
+    it('should return index when available', () => {
+      const key = useSchemaStore.getState().getNodeKeysByType('WithIndex');
+      expect(key).toBe('id');
+    });
+
+    it('should return node_key when index is not available', () => {
+      const key = useSchemaStore.getState().getNodeKeysByType('WithNodeKey');
+      expect(key).toBe('key');
+    });
+
+    it('should prefer index over node_key when both available', () => {
+      const key = useSchemaStore.getState().getNodeKeysByType('WithBoth');
+      expect(key).toBe('id');
+    });
+
+    it('should return undefined when neither index nor node_key available', () => {
+      const key = useSchemaStore.getState().getNodeKeysByType('WithNeither');
+      expect(key).toBeUndefined();
+    });
+
+    it('should return undefined for non-existing type', () => {
+      const key = useSchemaStore.getState().getNodeKeysByType('NonExistent');
+      expect(key).toBeUndefined();
+    });
+
+    it('should handle empty string type', () => {
+      const key = useSchemaStore.getState().getNodeKeysByType('');
+      expect(key).toBeUndefined();
     });
   });
 
   describe('getSchemaByType', () => {
-    test('should return schema for existing type', () => {
-      const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'GetType',
-        name: 'Get Schema'
-      });
-
-      setSchemas([schema]);
-
-      const result = getSchemaByType('GetType');
-      expect(result).toBeDefined();
-      expect(result?.name).toBe('Get Schema');
+    beforeEach(() => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Function', name: 'Test Function', description: 'A test', children: [] },
+        { type: 'Endpoint', name: 'Test Endpoint', children: [] },
+      ];
+      useSchemaStore.getState().setSchemas(schemas);
     });
 
-    test('should return undefined for non-existing type', () => {
-      const { getSchemaByType } = useSchemaStore.getState();
-
-      const result = getSchemaByType('NonExisting');
-
-      expect(result).toBeUndefined();
+    it('should return schema for existing type', () => {
+      const schema = useSchemaStore.getState().getSchemaByType('Function');
+      expect(schema).toBeDefined();
+      expect(schema?.name).toBe('Test Function');
+      expect(schema?.description).toBe('A test');
     });
 
-    test('should return complete schema object', () => {
-      const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'CompleteType',
-        name: 'Complete',
-        ref_id: 'ref-complete',
-        children: ['child1'],
-        attributes: { key: 'value' }
-      });
-
-      setSchemas([schema]);
-
-      const result = getSchemaByType('CompleteType');
-      expect(result?.type).toBe('CompleteType');
-      expect(result?.name).toBe('Complete');
-      expect(result?.ref_id).toBe('ref-complete');
-      expect(result?.children).toEqual(['child1']);
-      expect(result?.attributes).toEqual({ key: 'value' });
+    it('should return undefined for non-existing type', () => {
+      const schema = useSchemaStore.getState().getSchemaByType('NonExistent');
+      expect(schema).toBeUndefined();
     });
 
-    test('should return updated schema after replacement', () => {
-      const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-      const schema1 = createMockSchema({ type: 'UpdateType', name: 'Original' });
-      const schema2 = createMockSchema({ type: 'UpdateType', name: 'Updated' });
+    it('should return complete schema object with all properties', () => {
+      const schema = useSchemaStore.getState().getSchemaByType('Function');
+      expect(schema).toHaveProperty('type');
+      expect(schema).toHaveProperty('name');
+      expect(schema).toHaveProperty('children');
+      expect(schema).toHaveProperty('primary_color');
+      expect(schema).toHaveProperty('secondary_color');
+    });
 
-      setSchemas([schema1]);
-      expect(getSchemaByType('UpdateType')?.name).toBe('Original');
+    it('should handle empty string type', () => {
+      const schema = useSchemaStore.getState().getSchemaByType('');
+      expect(schema).toBeUndefined();
+    });
 
-      setSchemas([schema2]);
-      expect(getSchemaByType('UpdateType')?.name).toBe('Updated');
+    it('should return schema with optional properties when present', () => {
+      const schemas: SchemaExtended[] = [
+        {
+          type: 'Complete',
+          name: 'Test',
+          icon: 'test-icon',
+          action: ['action1', 'action2'],
+          children: [],
+        },
+      ];
+      useSchemaStore.getState().setSchemas(schemas);
+
+      const schema = useSchemaStore.getState().getSchemaByType('Complete');
+      expect(schema?.icon).toBe('test-icon');
+      expect(schema?.action).toEqual(['action1', 'action2']);
     });
   });
 
-  describe('Selected Action Management', () => {
+  describe('Action Detail Management', () => {
+    const mockAction: ActionDetail = {
+      ref_id: 'action1',
+      action_type: 'test_action',
+    } as ActionDetail;
+
     describe('setSelectedActionDetail', () => {
-      test('should set selected action', () => {
-        const { setSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
-        const action = createMockActionDetail({ name: 'test_action' });
+      it('should set selected action', () => {
+        useSchemaStore.getState().setSelectedActionDetail(mockAction);
+        const state = useSchemaStore.getState();
 
-        setSelectedActionDetail(action);
-
-        const result = getSelectedActionDetail();
-        expect(result).toEqual(action);
+        expect(state.selectedAction).toEqual(mockAction);
       });
 
-      test('should replace existing selected action', () => {
-        const { setSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
-        const action1 = createMockActionDetail({ name: 'action1' });
-        const action2 = createMockActionDetail({ name: 'action2' });
+      it('should replace existing selected action', () => {
+        const firstAction: ActionDetail = { ...mockAction, ref_id: 'action1' } as ActionDetail;
+        const secondAction: ActionDetail = { ...mockAction, ref_id: 'action2' } as ActionDetail;
 
-        setSelectedActionDetail(action1);
-        setSelectedActionDetail(action2);
+        useSchemaStore.getState().setSelectedActionDetail(firstAction);
+        useSchemaStore.getState().setSelectedActionDetail(secondAction);
+        const state = useSchemaStore.getState();
 
-        const result = getSelectedActionDetail();
-        expect(result?.name).toBe('action2');
+        expect(state.selectedAction).toEqual(secondAction);
+        expect(state.selectedAction?.ref_id).toBe('action2');
       });
 
-      test('should set action with all properties', () => {
-        const { setSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
-        const action = createMockActionDetail({
-          bounty: true,
-          display_name: 'Test Action Display',
-          name: 'test_action_name',
-          workflow_id: 'workflow-abc-123',
-        });
+      it('should handle action with complex properties', () => {
+        const complexAction: ActionDetail = {
+          ...mockAction,
+          ref_id: 'complex1',
+          action_type: 'complex_action',
+        } as ActionDetail;
 
-        setSelectedActionDetail(action);
+        useSchemaStore.getState().setSelectedActionDetail(complexAction);
+        const state = useSchemaStore.getState();
 
-        const result = getSelectedActionDetail();
-        expect(result).toEqual(action);
-        expect(result?.bounty).toBe(true);
-        expect(result?.display_name).toBe('Test Action Display');
-        expect(result?.workflow_id).toBe('workflow-abc-123');
+        expect(state.selectedAction).toEqual(complexAction);
       });
     });
 
     describe('getSelectedActionDetail', () => {
-      test('should return null when no action is selected', () => {
-        const { getSelectedActionDetail } = useSchemaStore.getState();
-
-        const result = getSelectedActionDetail();
-
-        expect(result).toBeNull();
+      it('should return null when no action is selected', () => {
+        const action = useSchemaStore.getState().getSelectedActionDetail();
+        expect(action).toBeNull();
       });
 
-      test('should return selected action', () => {
-        const { setSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
-        const action = createMockActionDetail({ name: 'get_action' });
+      it('should return selected action', () => {
+        useSchemaStore.getState().setSelectedActionDetail(mockAction);
+        const action = useSchemaStore.getState().getSelectedActionDetail();
 
-        setSelectedActionDetail(action);
+        expect(action).toEqual(mockAction);
+      });
 
-        const result = getSelectedActionDetail();
-        expect(result).toEqual(action);
+      it('should return same action on multiple calls', () => {
+        useSchemaStore.getState().setSelectedActionDetail(mockAction);
+        const action1 = useSchemaStore.getState().getSelectedActionDetail();
+        const action2 = useSchemaStore.getState().getSelectedActionDetail();
+
+        expect(action1).toEqual(action2);
       });
     });
 
     describe('removeSelectedActionDetail', () => {
-      test('should remove selected action', () => {
-        const { setSelectedActionDetail, removeSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
-        const action = createMockActionDetail({ name: 'remove_action' });
+      it('should clear selected action', () => {
+        useSchemaStore.getState().setSelectedActionDetail(mockAction);
+        useSchemaStore.getState().removeSelectedActionDetail();
+        const state = useSchemaStore.getState();
 
-        setSelectedActionDetail(action);
-        expect(getSelectedActionDetail()).toEqual(action);
-
-        removeSelectedActionDetail();
-
-        expect(getSelectedActionDetail()).toBeNull();
+        expect(state.selectedAction).toBeNull();
       });
 
-      test('should handle removing when no action is selected', () => {
-        const { removeSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
+      it('should handle removing when no action is set', () => {
+        useSchemaStore.getState().removeSelectedActionDetail();
+        const state = useSchemaStore.getState();
 
-        removeSelectedActionDetail();
-
-        expect(getSelectedActionDetail()).toBeNull();
+        expect(state.selectedAction).toBeNull();
       });
 
-      test('should allow setting action again after removal', () => {
-        const { setSelectedActionDetail, removeSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
-        const action1 = createMockActionDetail({ name: 'action1' });
-        const action2 = createMockActionDetail({ name: 'action2' });
+      it('should allow setting action after removal', () => {
+        useSchemaStore.getState().setSelectedActionDetail(mockAction);
+        useSchemaStore.getState().removeSelectedActionDetail();
+        useSchemaStore.getState().setSelectedActionDetail(mockAction);
+        const state = useSchemaStore.getState();
 
-        setSelectedActionDetail(action1);
-        removeSelectedActionDetail();
-        setSelectedActionDetail(action2);
-
-        const result = getSelectedActionDetail();
-        expect(result?.name).toBe('action2');
+        expect(state.selectedAction).toEqual(mockAction);
       });
     });
   });
 
-  describe('Integration Tests', () => {
-    test('should handle complete workflow: set schemas, links, and action', () => {
-      const { setSchemas, setSchemaLinks, setSelectedActionDetail, getSchemaByType, getSelectedActionDetail } = useSchemaStore.getState();
-      
-      const schemas = [
-        createMockSchema({ type: 'Type1', name: 'Schema 1' }),
-        createMockSchema({ type: 'Type2', name: 'Schema 2' }),
+  describe('Edge Cases & Error Handling', () => {
+    it('should handle schema with minimal properties', () => {
+      const schemas: SchemaExtended[] = [
+        { type: 'Minimal', children: [] },
       ];
-      const links = [
-        createMockSchemaLink({ source: 'Type1', target: 'Type2' }),
+
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
+
+      expect(state.schemas).toHaveLength(1);
+      expect(state.schemas[0].type).toBe('Minimal');
+      expect(state.schemas[0]).toHaveProperty('primary_color');
+      expect(state.schemas[0]).toHaveProperty('secondary_color');
+    });
+
+    it('should handle schema with all optional properties', () => {
+      const schemas: SchemaExtended[] = [
+        {
+          type: 'Complete',
+          name: 'Test',
+          ref_id: 'ref1',
+          age: 5,
+          parent: 'parent1',
+          link: 'http://test.com',
+          icon: 'icon.svg',
+          title: 'Title',
+          app_version: '1.0.0',
+          description: 'Description',
+          mission_statement: 'Mission',
+          namespace: 'test.namespace',
+          search_term: 'search',
+          is_deleted: false,
+          children: ['child1', 'child2'],
+          primary_color: '#FF0000',
+          secondary_color: '#00FF00',
+          node_key: 'key',
+          index: 'id',
+          media_url: 'http://media.com',
+          image_url: 'http://image.com',
+          source_link: 'http://source.com',
+          type_description: 'Type desc',
+          attributes: { key: 'value', flag: true },
+          action: ['action1', 'action2'],
+        },
       ];
-      const action = createMockActionDetail({ name: 'integration_action' });
 
-      setSchemas(schemas);
-      setSchemaLinks(links);
-      setSelectedActionDetail(action);
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
 
-      expect(getSchemaByType('Type1')).toBeDefined();
-      expect(getSchemaByType('Type2')).toBeDefined();
-      expect(useSchemaStore.getState().links).toHaveLength(1);
-      expect(getSelectedActionDetail()?.name).toBe('integration_action');
+      expect(state.schemas[0]).toEqual(expect.objectContaining({
+        type: 'Complete',
+        name: 'Test',
+        description: 'Description',
+      }));
     });
 
-    test('should maintain state independence between schemas, links, and actions', () => {
-      const { setSchemas, setSchemaLinks, setSelectedActionDetail, removeSelectedActionDetail } = useSchemaStore.getState();
-      
-      const schemas = [createMockSchema({ type: 'IndependentType' })];
-      const links = [createMockSchemaLink()];
-      const action = createMockActionDetail();
+    it('should handle very large schema arrays', () => {
+      const schemas: SchemaExtended[] = Array.from({ length: 1000 }, (_, i) => ({
+        type: `Type${i}`,
+        name: `Schema ${i}`,
+        children: [],
+      }));
 
-      setSchemas(schemas);
-      setSchemaLinks(links);
-      setSelectedActionDetail(action);
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
 
-      // Clear only action
-      removeSelectedActionDetail();
-      
-      expect(useSchemaStore.getState().schemas).toHaveLength(1);
-      expect(useSchemaStore.getState().links).toHaveLength(1);
-      expect(useSchemaStore.getState().selectedAction).toBeNull();
-
-      // Clear only links
-      setSchemaLinks([]);
-      
-      expect(useSchemaStore.getState().schemas).toHaveLength(1);
-      expect(useSchemaStore.getState().links).toHaveLength(0);
-
-      // Clear schemas
-      setSchemas([]);
-      
-      expect(useSchemaStore.getState().schemas).toHaveLength(0);
+      expect(state.schemas).toHaveLength(1000);
+      expect(Object.keys(state.normalizedSchemasByType)).toHaveLength(1000);
     });
 
-    test('should handle rapid updates to schemas', () => {
-      const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-      
-      // Simulate rapid schema updates
-      for (let i = 0; i < 10; i++) {
-        const schemas = Array(5).fill(null).map((_, j) => 
-          createMockSchema({ type: `Rapid${i}-${j}`, name: `Schema ${i}-${j}` })
-        );
-        setSchemas(schemas);
-      }
+    it('should handle multiple rapid updates', () => {
+      const schemas1: SchemaExtended[] = [{ type: 'Type1', children: [] }];
+      const schemas2: SchemaExtended[] = [{ type: 'Type2', children: [] }];
+      const schemas3: SchemaExtended[] = [{ type: 'Type3', children: [] }];
 
-      // Should have last batch of schemas
-      expect(useSchemaStore.getState().schemas).toHaveLength(5);
-      expect(getSchemaByType('Rapid9-0')).toBeDefined();
-      expect(getSchemaByType('Rapid0-0')).toBeUndefined(); // Old schemas gone
+      useSchemaStore.getState().setSchemas(schemas1);
+      useSchemaStore.getState().setSchemas(schemas2);
+      useSchemaStore.getState().setSchemas(schemas3);
+
+      const state = useSchemaStore.getState();
+      expect(state.schemas).toHaveLength(1);
+      expect(state.schemas[0].type).toBe('Type3');
     });
 
-    test('should handle large dataset', () => {
-      const { setSchemas, setSchemaLinks } = useSchemaStore.getState();
-      
-      const schemas = Array(100).fill(null).map((_, i) => 
-        createMockSchema({ type: `LargeType${i}` })
-      );
-      const links = Array(200).fill(null).map((_, i) => 
-        createMockSchemaLink({ 
-          source: `LargeType${i % 100}`,
-          target: `LargeType${(i + 1) % 100}`
-        })
-      );
+    it('should handle schemas with undefined optional properties', () => {
+      const schemas: SchemaExtended[] = [
+        {
+          type: 'Test',
+          name: undefined,
+          description: undefined,
+          children: [],
+        },
+      ];
 
-      setSchemas(schemas);
-      setSchemaLinks(links);
+      useSchemaStore.getState().setSchemas(schemas);
+      const state = useSchemaStore.getState();
 
-      expect(useSchemaStore.getState().schemas).toHaveLength(100);
-      expect(useSchemaStore.getState().links).toHaveLength(200);
-      expect(Object.keys(useSchemaStore.getState().normalizedSchemasByType)).toHaveLength(100);
+      expect(state.schemas).toHaveLength(1);
+      expect(state.schemas[0].type).toBe('Test');
+      expect(state.schemas[0].name).toBeUndefined();
+    });
+
+    it('should handle zero-length links array after having links', () => {
+      const links: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+      ];
+
+      useSchemaStore.getState().setSchemaLinks(links);
+      useSchemaStore.getState().setSchemaLinks([]);
+
+      const state = useSchemaStore.getState();
+      expect(state.links).toEqual([]);
     });
   });
 
-  describe('Edge Cases', () => {
-    test('should handle schema with no type (edge case)', () => {
-      const { setSchemas } = useSchemaStore.getState();
-      const schema = createMockSchema({ type: '' });
+  describe('State Isolation', () => {
+    it('should not affect other state properties when updating schemas', () => {
+      const links: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+      ];
+      const mockAction: ActionDetail = { ref_id: 'action1' } as ActionDetail;
 
-      setSchemas([schema]);
+      useSchemaStore.getState().setSchemaLinks(links);
+      useSchemaStore.getState().setSelectedActionDetail(mockAction);
 
-      // Empty type should be normalized
-      const { normalizedSchemasByType } = useSchemaStore.getState();
-      expect(normalizedSchemasByType['']).toBeDefined();
+      const schemas: SchemaExtended[] = [{ type: 'Function', children: [] }];
+      useSchemaStore.getState().setSchemas(schemas);
+
+      const state = useSchemaStore.getState();
+      expect(state.links).toEqual(links);
+      expect(state.selectedAction).toEqual(mockAction);
     });
 
-    test('should handle link with empty strings', () => {
-      const { setSchemaLinks } = useSchemaStore.getState();
-      const link = createMockSchemaLink({
-        edge_type: '',
-        source: '',
-        target: '',
-        ref_id: '',
+    it('should not affect schemas when updating links', () => {
+      const schemas: SchemaExtended[] = [{ type: 'Function', children: [] }];
+      useSchemaStore.getState().setSchemas(schemas);
+
+      const links: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+      ];
+      useSchemaStore.getState().setSchemaLinks(links);
+
+      const state = useSchemaStore.getState();
+      expect(state.schemas).toHaveLength(1);
+      expect(state.schemas[0].type).toBe('Function');
+    });
+
+    it('should not affect other properties when managing action details', () => {
+      const schemas: SchemaExtended[] = [{ type: 'Function', children: [] }];
+      const links: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+      ];
+
+      useSchemaStore.getState().setSchemas(schemas);
+      useSchemaStore.getState().setSchemaLinks(links);
+
+      const mockAction: ActionDetail = { ref_id: 'action1' } as ActionDetail;
+      useSchemaStore.getState().setSelectedActionDetail(mockAction);
+      useSchemaStore.getState().removeSelectedActionDetail();
+
+      const state = useSchemaStore.getState();
+      expect(state.schemas).toHaveLength(1);
+      expect(state.links).toEqual(links);
+      expect(state.selectedAction).toBeNull();
+    });
+
+    it('should handle concurrent operations on different state properties', () => {
+      const schemas: SchemaExtended[] = [{ type: 'Type1', children: [] }];
+      const links: SchemaLink[] = [
+        { edge_type: 'CALLS', ref_id: 'link1', source: 'src1', target: 'tgt1' },
+      ];
+      const mockAction: ActionDetail = { ref_id: 'action1' } as ActionDetail;
+
+      useSchemaStore.getState().setSchemas(schemas);
+      useSchemaStore.getState().setSchemaLinks(links);
+      useSchemaStore.getState().setSelectedActionDetail(mockAction);
+
+      const state = useSchemaStore.getState();
+      expect(state.schemas).toHaveLength(1);
+      expect(state.links).toHaveLength(1);
+      expect(state.selectedAction).toEqual(mockAction);
+    });
+
+    it('should properly reset all state in beforeEach', () => {
+      // Set some state
+      const schemas: SchemaExtended[] = [{ type: 'Function', children: [] }];
+      useSchemaStore.getState().setSchemas(schemas);
+
+      // Manually trigger reset like beforeEach does
+      useSchemaStore.setState({
+        schemas: [],
+        links: [],
+        normalizedSchemasByType: {},
+        selectedAction: null,
       });
 
-      setSchemaLinks([link]);
-
-      expect(useSchemaStore.getState().links[0]).toEqual(link);
-    });
-
-    test('should handle schema with undefined children', () => {
-      const { setSchemas } = useSchemaStore.getState();
-      const schema: SchemaExtended = {
-        type: 'UndefinedChildren',
-        children: [] // SchemaExtended requires children
-      };
-
-      setSchemas([schema]);
-
-      const { schemas } = useSchemaStore.getState();
-      expect(schemas[0].children).toEqual([]);
-    });
-
-    test('should handle schema with null attributes', () => {
-      const { setSchemas, getSchemaByType } = useSchemaStore.getState();
-      const schema = createMockSchema({ 
-        type: 'NullAttrs',
-        attributes: null as any
-      });
-
-      setSchemas([schema]);
-
-      const result = getSchemaByType('NullAttrs');
-      expect(result?.attributes).toBeNull();
-    });
-
-    test('should handle action with minimal fields', () => {
-      const { setSelectedActionDetail, getSelectedActionDetail } = useSchemaStore.getState();
-      const minimalAction: ActionDetail = {
-        bounty: false,
-        display_name: '',
-        name: '',
-        workflow_id: '',
-      };
-
-      setSelectedActionDetail(minimalAction);
-
-      expect(getSelectedActionDetail()).toEqual(minimalAction);
+      const state = useSchemaStore.getState();
+      expect(state.schemas).toEqual([]);
+      expect(state.links).toEqual([]);
+      expect(state.normalizedSchemasByType).toEqual({});
+      expect(state.selectedAction).toBeNull();
     });
   });
 });

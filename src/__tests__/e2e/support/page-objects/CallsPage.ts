@@ -34,14 +34,22 @@ export class CallsPage {
    * Check if Start Call button is visible
    */
   async isStartCallButtonVisible(): Promise<boolean> {
-    return await this.page.locator(selectors.calls.startCallButton).isVisible();
+    try {
+      return await this.page.locator(selectors.calls.startCallButton).isVisible();
+    } catch (error) {
+      return false;
+    }
   }
 
   /**
    * Check if Call Recordings card is visible
    */
   async isCallRecordingsCardVisible(): Promise<boolean> {
-    return await this.page.locator(selectors.calls.callRecordingsCard).isVisible();
+    try {
+      return await this.page.locator(selectors.calls.callRecordingsCard).isVisible();
+    } catch (error) {
+      return false;
+    }
   }
 
   /**
@@ -49,7 +57,7 @@ export class CallsPage {
    */
   async navigateViaNavigation(): Promise<void> {
     // First, expand Context section if it's not already expanded
-    const contextButton = this.page.locator('[data-testid="nav-context"]');
+    const contextButton = this.page.locator(selectors.navigation.contextButton);
     const callsLink = this.page.locator(selectors.navigation.callsLink);
 
     // Check if calls link is visible, if not, click context to expand

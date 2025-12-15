@@ -22,6 +22,10 @@ export const selectors = {
     userJourneysLink: '[data-testid="nav-user-journeys"]',
     roadmapLink: '[data-testid="nav-plan"]',
     callsLink: '[data-testid="nav-calls"]',
+    buildButton: '[data-testid="nav-build"]',
+    protectButton: '[data-testid="nav-protect"]',
+    contextButton: '[data-testid="nav-context"]',
+    janitorsLink: '[data-testid="nav-janitors"]',
   },
 
   // Page titles
@@ -33,6 +37,7 @@ export const selectors = {
     settings: '[data-testid="page-title"]:has-text("Workspace Settings")',
     calls: '[data-testid="page-title"]:has-text("Calls")',
     capacity: '[data-testid="page-title"]:has-text("Capacity")',
+    testing: '[data-testid="page-title"]:has-text("Testing")',
   },
 
   // Page descriptions
@@ -109,7 +114,7 @@ export const selectors = {
     chatMessageSubmit: '[data-testid="chat-message-submit"]',
     taskTitle: '[data-testid="task-title"]',
     taskCard: '[data-testid="task-card"]',
-    connectRepoButton: 'button:has-text("Connect Repository")',
+    launchPodsButton: 'button:has-text("Launch Pods")',
     taskListContainer: '[data-testid="task-card"]',
     recentTasksHeading: 'text=/Recent Tasks|Tasks/i',
   },
@@ -135,6 +140,17 @@ export const selectors = {
     toggleButton: 'button[role="switch"], input[type="checkbox"]',
     acceptButton: 'button:has-text("Accept"), button[aria-label*="accept" i]',
     dismissButton: 'button:has-text("Dismiss"), button[aria-label*="dismiss" i]',
+  },
+
+  // Recommendations
+  recommendations: {
+    card: '[data-testid="recommendation-card"]',
+    title: '[data-testid="recommendation-title"]',
+    description: '[data-testid="recommendation-description"]',
+    impact: '[data-testid="recommendation-impact"]',
+    reviewBadge: '[data-testid="recommendation-review-badge"]',
+    acceptButton: '[data-testid="recommendation-accept-button"]',
+    dismissButton: '[data-testid="recommendation-dismiss-button"]',
   },
 
   // Onboarding
@@ -172,8 +188,46 @@ export const selectors = {
 
   // Calls
   calls: {
-    startCallButton: 'button:has-text("Start Call")',
-    callRecordingsCard: 'text=/Call Recordings/i',
+    startCallButton: '[data-testid="start-call-button"]',
+    callRecordingsCard: '[data-testid="call-recordings-card"]',
+    poolLaunchBanner: '[data-testid="pool-launch-banner"]',
+  },
+
+  // Learn / Context Learn
+  learn: {
+    messageInput: '[data-testid="learn-message-input"]',
+    messageSend: '[data-testid="learn-message-send"]',
+    chatMessage: '[data-testid="learn-chat-message"]',
+  },
+
+  // Janitors
+  janitors: {
+    pageTitle: '[data-testid="page-title"]:has-text("Janitors")',
+    taskCoordinatorSection: '[data-testid="janitor-section-task-coordinator"]',
+    testingSection: '[data-testid="janitor-section-testing"]',
+    maintainabilitySection: '[data-testid="janitor-section-maintainability"]',
+    securitySection: '[data-testid="janitor-section-security"]',
+	},
+  // Testing
+  testing: {
+    tabs: '[data-testid="testing-tabs"]',
+    coverageTab: '[data-testid="coverage-tab"]',
+    userJourneysTab: '[data-testid="user-journeys-tab"]',
+  },
+
+  // User Journeys
+  userJourneys: {
+    createButton: '[data-testid="create-user-journey-button"]',
+    browserPanel: '[data-testid="browser-artifact-panel"]',
+  },
+
+  // Janitors
+  janitors: {
+    pageTitle: '[data-testid="page-title"]:has-text("Janitors")',
+    taskCoordinatorSection: '[data-testid="janitor-section-task-coordinator"]',
+    testingSection: '[data-testid="janitor-section-testing"]',
+    maintainabilitySection: '[data-testid="janitor-section-maintainability"]',
+    securitySection: '[data-testid="janitor-section-security"]',
   },
 
   // Common UI elements
@@ -225,4 +279,28 @@ export const dynamicSelectors = {
 
   workspaceMemberRoleBadgeByUsername: (username: string) =>
     `[data-testid="workspace-member-row"][data-member-username="${username}"] [data-testid="member-role-badge"]`,
+
+  /**
+   * Select janitor item by ID
+   */
+  janitorItem: (janitorId: string) =>
+    `[data-testid="janitor-item-${janitorId}"]`,
+
+  /**
+   * Select janitor toggle switch by ID
+   */
+  janitorToggle: (janitorId: string) =>
+    `[data-testid="janitor-toggle-${janitorId}"]`,
+
+  /**
+   * Select janitor run button by ID
+   */
+  janitorRunButton: (janitorId: string) =>
+    `[data-testid="janitor-run-button-${janitorId}"]`,
+
+  /**
+   * Select janitor name by ID
+   */
+  janitorName: (janitorId: string) =>
+    `[data-testid="janitor-name-${janitorId}"]`,
 };
