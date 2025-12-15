@@ -842,6 +842,7 @@ export default function TaskChatPage() {
             isLoading={isLoading}
             hasAvailablePods={hasAvailablePods}
             isCheckingPods={poolStatusLoading}
+            workspaceSlug={slug}
           />
         </motion.div>
       ) : (

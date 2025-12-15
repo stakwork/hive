@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -18,6 +18,7 @@ interface TaskStartInputProps {
   isLoading?: boolean;
   hasAvailablePods?: boolean | null;
   isCheckingPods?: boolean;
+  workspaceSlug?: string;
 }
 
 export function TaskStartInput({
@@ -27,6 +28,7 @@ export function TaskStartInput({
   isLoading = false,
   hasAvailablePods,
   isCheckingPods = false,
+  workspaceSlug,
 }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -96,13 +98,15 @@ export function TaskStartInput({
   const getModeConfig = (mode: string) => {
     switch (mode) {
       case "live":
-        return { icon: Workflow, label: "Workflow" };
+        return { icon: Clock, label: "Async" };
       case "agent":
         return { icon: Bot, label: "Agent" };
+      case "workflow_editor":
+        return { icon: Workflow, label: "Workflow Editor" };
       case "test":
         return { icon: Beaker, label: "Test" };
       default:
-        return { icon: Workflow, label: "Workflow" };
+        return { icon: Clock, label: "Async" };
     }
   };
 
@@ -136,8 +140,8 @@ export function TaskStartInput({
             <SelectContent>
               <SelectItem value="live">
                 <div className="flex items-center gap-2">
-                  <Workflow className="h-3.5 w-3.5" />
-                  <span>Workflow</span>
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>Async</span>
                 </div>
               </SelectItem>
               <SelectItem value="agent">
@@ -146,6 +150,14 @@ export function TaskStartInput({
                   <span>Agent</span>
                 </div>
               </SelectItem>
+              {workspaceSlug === "stakwork" && (
+                <SelectItem value="workflow_editor">
+                  <div className="flex items-center gap-2">
+                    <Workflow className="h-3.5 w-3.5" />
+                    <span>Workflow Editor</span>
+                  </div>
+                </SelectItem>
+              )}
               {devMode && (
                 <SelectItem value="test">
                   <div className="flex items-center gap-2">
