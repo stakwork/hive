@@ -10,6 +10,7 @@ import { streamText, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
         messages: modelMessages,
         stopWhen: createHasEndMarkerCondition(),
         stopSequences: ["[END_OF_ANSWER]"],
-        onStepFinish: (sf) => logStep(sf.content),
+        onStepFinish: (sf) => processStep(sf.content, workspaceSlug),
       });
       return result.toUIMessageStreamResponse();
     } catch {
@@ -121,6 +122,34 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: "Failed to process quick ask" }, { status: 500 });
   }
+}
+
+async function processStep(contents: unknown, workspaceSlug: string) {
+  logStep(contents);
+  if (!Array.isArray(contents)) return;
+  let conceptId: string | undefined;
+  for (const content of contents) {
+    if (content.type === "tool-call") {
+      if (content.toolName === "learn_concept") {
+        conceptId = content.input.conceptId;
+      }
+    }
+  }
+  if (!conceptId) return;
+  const channelName = getWorkspaceChannelName(workspaceSlug);
+  const eventPayload = {
+    nodeIds: [],
+    workspaceId: workspaceSlug,
+    depth: 3,
+    title: "Researching...",
+    timestamp: Date.now(),
+    sourceNodeRefId: conceptId,
+  };
+  await pusherServer.trigger(
+    channelName,
+    PUSHER_EVENTS.HIGHLIGHT_NODES,
+    eventPayload,
+  );
 }
 
 function logStep(contents: unknown) {
