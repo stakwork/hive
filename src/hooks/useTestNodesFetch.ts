@@ -1,8 +1,8 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDataStore } from "@/stores/useDataStore";
-import { useGraphStore } from "@/stores/useGraphStore";
+import { TestLayerVisibility } from "@/stores/useGraphStore";
+import { useDataStore } from "@/stores/useStores";
 import { useEffect, useRef } from "react";
 
 type VisibilityKey = "unitTests" | "integrationTests" | "e2eTests";
@@ -18,27 +18,43 @@ const VISIBILITY_TO_NODE_TYPE: Record<VisibilityKey, NodeType> = {
  * Hook that subscribes to test layer visibility changes and fetches test nodes on-demand.
  * Prevents duplicate fetches by tracking which node types have already been fetched.
  */
-export function useTestNodesFetch() {
+export function useTestNodesFetch(testLayerVisibility?: TestLayerVisibility) {
   const { id: workspaceId } = useWorkspace();
   const addNewNode = useDataStore((s) => s.addNewNode);
-  const testLayerVisibility = useGraphStore((s) => s.testLayerVisibility);
+  const addNewNodeRef = useRef(addNewNode);
+
+  // Keep ref in sync without retriggering effect
+  addNewNodeRef.current = addNewNode;
 
   // Track which node types have been fetched to prevent duplicates
   const fetchedNodeTypes = useRef<Set<NodeType>>(new Set());
+  const prevVisibility = useRef<TestLayerVisibility | null>(null);
+  const prevWorkspace = useRef<string | null>(null);
 
   useEffect(() => {
-    // Skip if workspace is not loaded
-    if (!workspaceId) {
+    // Skip if workspace is not loaded or visibility is missing
+    if (!workspaceId || !testLayerVisibility) {
       return;
     }
 
-    // Check each visibility key for false → true transitions
-    Object.entries(testLayerVisibility).forEach(([key, isVisible]) => {
-      if (!isVisible) {
-        return; // Skip if layer is not visible
-      }
+    // Reset fetched set when workspace changes
+    if (prevWorkspace.current !== workspaceId) {
+      fetchedNodeTypes.current = new Set();
+      prevWorkspace.current = workspaceId;
+    }
 
-      const visibilityKey = key as VisibilityKey;
+    // Check each visibility key for false → true transitions
+    const visibilityEntries: Array<[VisibilityKey, boolean]> = [
+      ["unitTests", testLayerVisibility.unitTests],
+      ["integrationTests", testLayerVisibility.integrationTests],
+      ["e2eTests", testLayerVisibility.e2eTests],
+    ];
+
+    visibilityEntries.forEach(([visibilityKey, isVisible]) => {
+      const wasVisible = prevVisibility.current?.[visibilityKey] ?? false;
+      // Only react to rising edge
+      if (!isVisible || wasVisible) return;
+
       const nodeType = VISIBILITY_TO_NODE_TYPE[visibilityKey];
 
       // Skip if already fetched
@@ -81,7 +97,7 @@ export function useTestNodesFetch() {
           console.log(`[useTestNodesFetch] Fetched ${nodes.length} ${nodeType} nodes, ${edges.length} edges`);
 
           // Add nodes to the graph
-          addNewNode({ nodes, edges });
+          addNewNodeRef.current({ nodes, edges });
 
           // Mark this node type as fetched
           fetchedNodeTypes.current.add(nodeType);
@@ -92,5 +108,12 @@ export function useTestNodesFetch() {
 
       fetchTestNodes();
     });
-  }, [testLayerVisibility, workspaceId, addNewNode]);
+
+    prevVisibility.current = testLayerVisibility;
+  }, [
+    testLayerVisibility?.unitTests,
+    testLayerVisibility?.integrationTests,
+    testLayerVisibility?.e2eTests,
+    workspaceId,
+  ]);
 }
