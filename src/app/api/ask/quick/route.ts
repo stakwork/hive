@@ -83,9 +83,12 @@ export async function POST(request: NextRequest) {
 
     const concepts = await listConcepts(baseSwarmUrl, decryptedSwarmApiKey);
 
+    const features = concepts.features as Record<string, unknown>[];
+
+    // console.log("features:", features);
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const modelMessages: ModelMessage[] = [
-      ...getQuickAskPrefixMessages(concepts, repoUrl),
+      ...getQuickAskPrefixMessages(features, repoUrl),
       // Conversation history (convert from LearnMessage to ModelMessage format)
       ...messages.map((msg: { role: string; content: string }) => ({
         role: msg.role as "user" | "assistant",
@@ -107,7 +110,7 @@ export async function POST(request: NextRequest) {
         messages: modelMessages,
         stopWhen: createHasEndMarkerCondition(),
         stopSequences: ["[END_OF_ANSWER]"],
-        onStepFinish: (sf) => processStep(sf.content, workspaceSlug),
+        onStepFinish: (sf) => processStep(sf.content, workspaceSlug, features),
       });
       return result.toUIMessageStreamResponse();
     } catch {
@@ -124,18 +127,23 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processStep(contents: unknown, workspaceSlug: string) {
+async function processStep(contents: unknown, workspaceSlug: string, features: Record<string, unknown>[]) {
   logStep(contents);
   if (!Array.isArray(contents)) return;
-  let conceptId: string | undefined;
+  let conceptRefId: string | undefined;
   for (const content of contents) {
     if (content.type === "tool-call") {
       if (content.toolName === "learn_concept") {
-        conceptId = content.input.conceptId;
+        const conceptId = content.input.conceptId;
+        const feature = features.find((f) => f.id === conceptId);
+        if (feature) {
+          conceptRefId = feature.ref_id as string;
+        }
       }
     }
   }
-  if (!conceptId) return;
+  if (!conceptRefId) return;
+  console.log("learned conceptRefId:", conceptRefId);
   const channelName = getWorkspaceChannelName(workspaceSlug);
   const eventPayload = {
     nodeIds: [],
@@ -143,7 +151,7 @@ async function processStep(contents: unknown, workspaceSlug: string) {
     depth: 3,
     title: "Researching...",
     timestamp: Date.now(),
-    sourceNodeRefId: conceptId,
+    sourceNodeRefId: conceptRefId,
   };
   await pusherServer.trigger(
     channelName,
