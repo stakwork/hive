@@ -89,6 +89,7 @@ export type GraphStore = {
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
   testLayerVisibility: TestLayerVisibility
+  testNodesFetched: Record<keyof TestLayerVisibility, boolean>
   setDisableCameraRotation: (rotation: boolean) => void
   setScrollEventsDisabled: (rotation: boolean) => void
   setData: (data: GraphData) => void
@@ -129,6 +130,7 @@ export type GraphStore = {
   clearWebhookHighlights: () => void
   setActiveFilterTab: (tab: FilterTab) => void
   setTestLayerVisibility: (updates: Partial<TestLayerVisibility>) => void
+  setTestNodesFetched: (key: keyof TestLayerVisibility, fetched: boolean) => void
 }
 
 const defaultData: Omit<
@@ -176,6 +178,7 @@ const defaultData: Omit<
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
   | 'setTestLayerVisibility'
+  | 'setTestNodesFetched'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -212,6 +215,11 @@ const defaultData: Omit<
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
   testLayerVisibility: {
+    unitTests: false,
+    integrationTests: false,
+    e2eTests: false,
+  },
+  testNodesFetched: {
     unitTests: false,
     integrationTests: false,
     e2eTests: false,
@@ -392,6 +400,9 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
     setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
     setTestLayerVisibility: (updates) => set(({ testLayerVisibility }) => ({
       testLayerVisibility: { ...testLayerVisibility, ...updates }
+    })),
+    setTestNodesFetched: (key, fetched) => set(({ testNodesFetched }) => ({
+      testNodesFetched: { ...testNodesFetched, [key]: fetched }
     })),
   }
 })

@@ -10,6 +10,7 @@ import { GraphComponent } from "@/components/knowledge-graph";
 import { WorkspaceMembersPreview } from "@/components/workspace/WorkspaceMembersPreview";
 import { useGraphPolling } from "@/hooks/useGraphPolling";
 import { useTasksHighlight } from "@/hooks/useTasksHighlight";
+import { useTestLayerFetching } from "@/hooks/useTestLayerFetching";
 import { useWebhookHighlights } from "@/hooks/useWebhookHighlights";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { logStoreInstances } from "@/stores/createStoreFactory";
@@ -42,6 +43,8 @@ function DashboardInner() {
     enabled: !isOnboarding && activeFilterTab === 'all',
     interval: 5000
   });
+
+  useTestLayerFetching();
 
   useWebhookHighlights()
   useTasksHighlight({

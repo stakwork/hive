@@ -65,6 +65,7 @@ export type GraphStore = {
   activeFilterTab: FilterTab
   webhookHighlightDepth: number
   testLayerVisibility: TestLayerVisibility
+  testNodesFetched: Record<keyof TestLayerVisibility, boolean>
 
   // setters
   setDisableCameraRotation(rotation: boolean): void
@@ -107,4 +108,5 @@ export type GraphStore = {
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
   setTestLayerVisibility(updates: Partial<TestLayerVisibility>): void
+  setTestNodesFetched(key: keyof TestLayerVisibility, fetched: boolean): void
 }
