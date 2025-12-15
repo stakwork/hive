@@ -93,7 +93,7 @@ describe('signIn callback', () => {
       (db.workspace.findFirst as any).mockResolvedValue({ slug: 'test-workspace' });
 
       // Act
-      const result = await signInCallback({
+      const result = await authOptions.callbacks?.signIn!({
         user: mockUser,
         account: mockAccount,
       });
