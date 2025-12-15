@@ -12,6 +12,7 @@ import {
   getMockedSession,
 } from "@/__tests__/support/helpers";
 import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { getGitHubApplicationsApiUrl } from "@/config/services";
 
 // Mock fetch for GitHub API calls
 const mockFetch = vi.fn();
@@ -222,14 +223,15 @@ describe("POST /api/auth/revoke-github Integration Tests", () => {
       expect(data).toEqual({ success: true });
 
       // Verify GitHub API was called with decrypted token
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.github.com/applications/revoke",
-        expect.objectContaining({
-          body: JSON.stringify({
-            access_token: originalToken,
-          }),
-        })
-      );
+      expect(mockFetch).toHaveBeenCalled();
+      const fetchCall = mockFetch.mock.calls[0];
+      const expectedUrl = getGitHubApplicationsApiUrl("/applications/revoke");
+      expect(fetchCall[0]).toMatch(expectedUrl); // URL ends with /applications/revoke
+      expect(fetchCall[1]).toMatchObject({
+        body: JSON.stringify({
+          access_token: originalToken,
+        }),
+      });
     });
 
     test("should handle encryption/decryption errors gracefully", async () => {

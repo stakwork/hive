@@ -6,7 +6,7 @@ import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { WAKE_WORD } from "@/lib/constants/voice";
 import { CallRecording, CallsResponse } from "@/types/calls";
 import { CallsTable } from "@/components/calls/CallsTable";
-import { ConnectRepository } from "@/components/ConnectRepository";
+import { PoolLaunchBanner } from "@/components/pool-launch-banner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from "@/components/ui/pagination";
@@ -132,7 +132,7 @@ export default function CallsPage() {
           console.log(`🎤 Wake word "${WAKE_WORD}" detected, checking if feature request...`);
 
           // Call API to detect if this is a feature request (requires AI/LLM)
-          const detectionResponse = await fetch("/api/voice/detect-feature-request", {
+          const detectionResponse = await fetch("/api/features/detect-feature-request", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -177,7 +177,7 @@ export default function CallsPage() {
               });
 
               // Create feature in background
-              const response = await fetch("/api/voice/create-feature", {
+              const response = await fetch("/api/features/create-feature", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -225,7 +225,7 @@ export default function CallsPage() {
   }, [transcriptBuffer, currentTranscript, isRecording, slug, processingFeature, getRecentTranscript]);
 
   useEffect(() => {
-    if (!slug || !workspace?.isCodeGraphSetup) {
+    if (!slug || workspace?.poolState !== "COMPLETE") {
       setLoading(false);
       return;
     }
@@ -255,17 +255,15 @@ export default function CallsPage() {
     };
 
     fetchCalls();
-  }, [slug, workspace?.isCodeGraphSetup, page]);
+  }, [slug, workspace?.poolState, page]);
 
-  if (!workspace?.isCodeGraphSetup) {
+  if (workspace?.poolState !== "COMPLETE") {
     return (
       <div className="space-y-6">
         <PageHeader title="Calls" />
-        <ConnectRepository
-          workspaceSlug={slug}
-          title="Connect repository to view call recordings"
-          description="Setup your development environment to access call recordings."
-          buttonText="Connect Repository"
+        <PoolLaunchBanner
+          title="Complete Pool Setup to View Call Recordings"
+          description="Launch your development pods to access call recordings and transcripts."
         />
       </div>
     );
@@ -276,7 +274,7 @@ export default function CallsPage() {
       <PageHeader
         title="Calls"
         actions={
-          workspace?.isCodeGraphSetup ? (
+          workspace?.poolState === "COMPLETE" ? (
             <div className="flex gap-2">
               {isVoiceSupported && (
                 <TranscriptTooltip
@@ -307,7 +305,7 @@ export default function CallsPage() {
                   </Button>
                 </TranscriptTooltip>
               )}
-              <Button onClick={handleStartCall} disabled={generatingLink}>
+              <Button onClick={handleStartCall} disabled={generatingLink} data-testid="start-call-button">
                 {generatingLink ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -349,7 +347,7 @@ export default function CallsPage() {
         </Card>
       )}
 
-      <Card>
+      <Card data-testid="call-recordings-card">
         <CardHeader>
           <CardTitle>Call Recordings</CardTitle>
         </CardHeader>

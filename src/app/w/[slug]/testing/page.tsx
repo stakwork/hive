@@ -13,6 +13,7 @@ import { useState } from "react";
 export default function DefenseTestingPage() {
   const canAccessDefense = useFeatureFlag(FEATURE_FLAGS.CODEBASE_RECOMMENDATION);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isBrowserMode, setIsBrowserMode] = useState(false);
 
   if (!canAccessDefense) {
     redirect("/");
@@ -47,6 +48,27 @@ export default function DefenseTestingPage() {
 
       {/* In fullscreen mode, render UserJourneys directly */}
       {isFullScreen && <UserJourneys onFullScreenChange={setIsFullScreen} />}
+      {!isBrowserMode && <PageHeader title="Testing" />}
+
+      <div className={isBrowserMode ? "w-full" : "max-w-5xl"}>
+        <Tabs defaultValue="coverage" className="w-full">
+          {!isBrowserMode && (
+            <TabsList data-testid="testing-tabs">
+              <TabsTrigger value="coverage" data-testid="coverage-tab">Coverage</TabsTrigger>
+              <TabsTrigger value="user-journeys" data-testid="user-journeys-tab">User Journeys</TabsTrigger>
+            </TabsList>
+          )}
+
+          <TabsContent value="coverage" className="space-y-6 mt-6">
+            <TestCoverageCard />
+            <CoverageInsights />
+          </TabsContent>
+
+          <TabsContent value="user-journeys" className={isBrowserMode ? "" : "mt-6"}>
+            <UserJourneys onBrowserModeChange={setIsBrowserMode} />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

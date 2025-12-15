@@ -105,8 +105,8 @@ class MockPoolStateManager {
   // Pod Management
   private createPod(poolName: string, index: number): MockPod {
     const podId = `${poolName}-pod-${index}`;
-    // Use POD_URL env var for mock pods, fallback to localhost
-    const podUrl = process.env.POD_URL || "http://localhost:3000";
+    // Use NEXTAUTH_URL for mock pods
+    const podUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
     return {
       id: podId,
       state: "running",

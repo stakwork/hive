@@ -60,8 +60,9 @@ export function LearnChatInput({
         autoFocus
         disabled={disabled}
         rows={1}
+        data-testid="learn-message-input"
       />
-      <Button type="submit" size="sm" disabled={!input.trim() || disabled} className="px-3">
+      <Button type="submit" size="sm" disabled={!input.trim() || disabled} className="px-3" data-testid="learn-message-send">
         <Send className="w-4 h-4" />
       </Button>
     </form>

@@ -29,14 +29,14 @@ export class DashboardPage {
    */
   async goToTasks(): Promise<void> {
     // First expand the Build section if not already expanded
-    const buildButton = this.page.locator('[data-testid="nav-build"]');
+    const buildButton = this.page.locator(selectors.navigation.buildButton);
     const tasksLink = this.page.locator(selectors.navigation.tasksLink).first();
 
     // Check if tasks link is visible, if not, click Build to expand
-    const isTasksVisible = await tasksLink.isVisible();
+    const isTasksVisible = await tasksLink.isVisible().catch(() => false);
     if (!isTasksVisible) {
       await buildButton.click();
-      await this.page.waitForTimeout(300); // Wait for expand animation
+      await tasksLink.waitFor({ state: 'visible', timeout: 5000 });
     }
 
     await tasksLink.click();
@@ -48,14 +48,14 @@ export class DashboardPage {
    */
   async goToRoadmap(): Promise<void> {
     // First expand the Build section if not already expanded
-    const buildButton = this.page.locator('[data-testid="nav-build"]');
+    const buildButton = this.page.locator(selectors.navigation.buildButton);
     const planLink = this.page.locator(selectors.navigation.roadmapLink).first();
 
     // Check if plan link is visible, if not, click Build to expand
-    const isPlanVisible = await planLink.isVisible();
+    const isPlanVisible = await planLink.isVisible().catch(() => false);
     if (!isPlanVisible) {
       await buildButton.click();
-      await this.page.waitForTimeout(300); // Wait for expand animation
+      await planLink.waitFor({ state: 'visible', timeout: 5000 });
     }
 
     await planLink.click();
@@ -67,14 +67,14 @@ export class DashboardPage {
    */
   async goToRecommendations(): Promise<void> {
     // First expand the Protect section if not already expanded
-    const protectButton = this.page.locator('[data-testid="nav-protect"]');
+    const protectButton = this.page.locator(selectors.navigation.protectButton);
     const recommendationsLink = this.page.locator(selectors.navigation.recommendationsLink).first();
 
     // Check if recommendations link is visible, if not, click Protect to expand
-    const isRecommendationsVisible = await recommendationsLink.isVisible();
+    const isRecommendationsVisible = await recommendationsLink.isVisible().catch(() => false);
     if (!isRecommendationsVisible) {
       await protectButton.click();
-      await this.page.waitForTimeout(300); // Wait for expand animation
+      await recommendationsLink.waitFor({ state: 'visible', timeout: 5000 });
     }
 
     await recommendationsLink.click();
@@ -82,10 +82,30 @@ export class DashboardPage {
   }
 
   /**
+   * Navigate to janitors page
+   */
+  async goToJanitors(): Promise<void> {
+    // First expand the Protect section if not already expanded
+    const protectButton = this.page.locator(selectors.navigation.protectButton);
+    const janitorsLink = this.page.locator(selectors.navigation.janitorsLink).first();
+
+    // Check if janitors link is visible, if not, click Protect to expand
+    const isJanitorsVisible = await janitorsLink.isVisible().catch(() => false);
+    if (!isJanitorsVisible) {
+      await protectButton.click();
+      await janitorsLink.waitFor({ state: 'visible', timeout: 5000 });
+    }
+
+    await janitorsLink.click();
+    await this.page.waitForURL(/\/w\/.*\/janitors/, { timeout: 10000 });
+  }
+
+  /**
    * Navigate to settings page
    */
   async goToSettings(): Promise<void> {
     await this.page.locator(selectors.navigation.settingsButton).click();
+    await this.page.waitForURL(/\/w\/.*\/settings/, { timeout: 10000 });
     await expect(this.page.locator(selectors.pageTitle.settings)).toBeVisible();
   }
 

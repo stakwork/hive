@@ -368,8 +368,10 @@ export async function getUserWorkspaces(
         userId,
         leftAt: null,
       },
-      include: {
+      select: {
         workspace: true,
+        role: true,
+        lastAccessedAt: true,
       },
     }),
   ]);
@@ -381,6 +383,24 @@ export async function getUserWorkspaces(
       .filter(m => m.workspace && !m.workspace.deleted)
       .map(m => m.workspace!.id)
   ];
+
+  // Query self-referencing WorkspaceMember records for owners to get lastAccessedAt
+  const ownerMemberships = await db.workspaceMember.findMany({
+    where: {
+      workspaceId: { in: ownedWorkspaces.map(w => w.id) },
+      userId,
+    },
+    select: {
+      workspaceId: true,
+      lastAccessedAt: true,
+    },
+  });
+
+  // Create a map of workspaceId to lastAccessedAt for owners
+  const ownerLastAccessedMap: Record<string, Date | null> = {};
+  for (const ownerMembership of ownerMemberships) {
+    ownerLastAccessedMap[ownerMembership.workspaceId] = ownerMembership.lastAccessedAt;
+  }
 
   // Get all member counts in a single query if we have workspace IDs
   const memberCountMap: Record<string, number> = {};
@@ -406,6 +426,7 @@ export async function getUserWorkspaces(
   // Add owned workspaces
   for (const workspace of ownedWorkspaces) {
     const memberCount = memberCountMap[workspace.id] || 0;
+    const lastAccessedAt = ownerLastAccessedMap[workspace.id];
     result.push({
       id: workspace.id,
       name: workspace.name,
@@ -418,12 +439,17 @@ export async function getUserWorkspaces(
       memberCount: memberCount + 1, // +1 for owner
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
+      lastAccessedAt: lastAccessedAt ? lastAccessedAt.toISOString() : null,
     });
   }
 
-  // Add member workspaces
+  // Add member workspaces (exclude already-added owned workspaces)
+  const ownedWorkspaceIds = new Set(ownedWorkspaces.map(w => w.id));
+  
   for (const membership of memberships) {
-    if (membership.workspace && !membership.workspace.deleted) {
+    if (membership.workspace && 
+        !membership.workspace.deleted &&
+        !ownedWorkspaceIds.has(membership.workspace.id)) {
       const memberCount = memberCountMap[membership.workspace.id] || 0;
       result.push({
         id: membership.workspace.id,
@@ -437,12 +463,18 @@ export async function getUserWorkspaces(
         memberCount: memberCount + 1, // +1 for owner
         logoKey: membership.workspace.logoKey,
         logoUrl: membership.workspace.logoUrl,
+        lastAccessedAt: membership.lastAccessedAt ? membership.lastAccessedAt.toISOString() : null,
       });
     }
   }
 
-  // Sort by name and return
-  return result.sort((a, b) => a.name.localeCompare(b.name));
+  // Sort by lastAccessedAt (most recent first), with null values falling back to alphabetical order
+  return result.sort((a, b) => {
+    if (!a.lastAccessedAt && !b.lastAccessedAt) return a.name.localeCompare(b.name);
+    if (!a.lastAccessedAt) return 1;
+    if (!b.lastAccessedAt) return -1;
+    return new Date(b.lastAccessedAt).getTime() - new Date(a.lastAccessedAt).getTime();
+  });
 }
 
 /**
@@ -527,44 +559,31 @@ export async function validateWorkspaceAccessById(
 export async function getDefaultWorkspaceForUser(
   userId: string,
 ): Promise<WorkspaceResponse | null> {
-  // Try to get the first owned workspace
-  const ownedWorkspace = await db.workspace.findFirst({
-    where: {
-      ownerId: userId,
-      deleted: false,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  if (ownedWorkspace) {
-    return {
-      ...ownedWorkspace,
-      nodeTypeOrder: (ownedWorkspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
-      createdAt: ownedWorkspace.createdAt.toISOString(),
-      updatedAt: ownedWorkspace.updatedAt.toISOString(),
-    };
+  // Get all user workspaces sorted by lastAccessedAt descending
+  const userWorkspaces = await getUserWorkspaces(userId);
+  
+  // Return the first workspace (most recently accessed)
+  if (userWorkspaces.length === 0) {
+    return null;
   }
 
-  // Get first workspace where user is a member
-  const membership = await db.workspaceMember.findFirst({
-    where: {
-      userId,
-      leftAt: null,
-    },
-    include: { workspace: true },
-    orderBy: { joinedAt: "asc" },
+  const workspace = userWorkspaces[0];
+  
+  // Fetch the full workspace details to return WorkspaceResponse
+  const fullWorkspace = await db.workspace.findUnique({
+    where: { id: workspace.id },
   });
 
-  if (membership?.workspace) {
-    return {
-      ...membership.workspace,
-      nodeTypeOrder: (membership.workspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
-      createdAt: membership.workspace.createdAt.toISOString(),
-      updatedAt: membership.workspace.updatedAt.toISOString(),
-    };
+  if (!fullWorkspace) {
+    return null;
   }
 
-  return null;
+  return {
+    ...fullWorkspace,
+    nodeTypeOrder: (fullWorkspace.nodeTypeOrder as unknown) as Array<{ type: string; value: number }> | null,
+    createdAt: fullWorkspace.createdAt.toISOString(),
+    updatedAt: fullWorkspace.updatedAt.toISOString(),
+  };
 }
 
 // Enhanced functions

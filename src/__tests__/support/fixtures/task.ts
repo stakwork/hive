@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
-import type { Task, ChatMessage } from "@prisma/client";
+import type { Task, ChatMessage, Artifact, ArtifactType } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
+import type { MediaContent } from "@/lib/chat";
 
 export interface CreateTestTaskOptions {
   title?: string;
@@ -124,6 +125,41 @@ export async function createTestUserJourneyTask(
       stakworkProjectId: options.stakworkProjectId || null,
       createdById: options.createdById,
       updatedById: options.createdById,
+    },
+  });
+}
+
+export interface CreateTestArtifactOptions {
+  messageId: string;
+  type?: ArtifactType;
+  content?: MediaContent | Record<string, any>;
+  icon?: string;
+  s3Key?: string;
+  filename?: string;
+  mediaType?: "video" | "audio";
+}
+
+export async function createTestArtifact(
+  options: CreateTestArtifactOptions,
+): Promise<Artifact> {
+  const uniqueId = generateUniqueId("artifact");
+  
+  // Default to MEDIA type with proper content structure
+  const defaultContent: MediaContent = {
+    s3Key: options.s3Key || `test/artifacts/${uniqueId}.webm`,
+    filename: options.filename || `test-video-${uniqueId}.webm`,
+    mediaType: options.mediaType || "video",
+    size: 1024000,
+    contentType: options.mediaType === "audio" ? "audio/webm" : "video/webm",
+    uploadedAt: new Date().toISOString(),
+  };
+
+  return db.artifact.create({
+    data: {
+      messageId: options.messageId,
+      type: options.type || "MEDIA",
+      content: options.content || defaultContent,
+      icon: options.icon || null,
     },
   });
 }

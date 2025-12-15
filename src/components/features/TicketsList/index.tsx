@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { AIButton } from "@/components/ui/ai-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
+import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
 import { RoadmapTasksTable } from "@/components/features/RoadmapTasksTable";
 import { DependencyGraph } from "@/components/features/DependencyGraph";
 import { RoadmapTaskNode } from "@/components/features/DependencyGraph/nodes";
@@ -348,6 +349,11 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
         </EmptyDescription>
       </Empty>
     );
+  }
+
+  // Show progress overlay while deep research is running
+  if (latestRun?.status === "IN_PROGRESS" && latestRun.projectId) {
+    return <DeepResearchProgress projectId={latestRun.projectId} />;
   }
 
   // Show generation preview if we have generated task content (JSON format)

@@ -66,6 +66,8 @@ export function CoverageInsights() {
     setNodeType,
     toggleSort,
     setCoverage,
+    setMocked,
+    mocked,
     prefetchNext,
     prefetchPrev,
   } = useCoverageNodes();
@@ -104,13 +106,16 @@ export function CoverageInsights() {
     () =>
       (items as CoverageNodeConcise[]).map((item) => {
         const displayName = item.verb && params.nodeType === "endpoint" ? `${item.verb} ${item.name}` : item.name;
+        // For mocks, use the item.covered value (mapped from mocked field)
+        // For other types, derive from test_count
+        const isCovered = params.nodeType === "mock" ? item.covered : (item.test_count || 0) > 0;
         return {
           key: `${item.name}-${item.file}`,
           name: displayName,
           file: item.file,
           coverage: item.test_count,
           weight: item.weight,
-          covered: (item.test_count || 0) > 0,
+          covered: isCovered,
           bodyLength: item.body_length,
           lineCount: item.line_count,
         };
@@ -134,7 +139,7 @@ export function CoverageInsights() {
               <span className="text-sm font-medium text-muted-foreground">Type:</span>
               <Select
                 value={params.nodeType}
-                onValueChange={(v) => setNodeType(v as "endpoint" | "function" | "class")}
+                onValueChange={(v) => setNodeType(v as "endpoint" | "function" | "class" | "mock")}
               >
                 <SelectTrigger className="h-8 w-[120px] text-xs">
                   <SelectValue />
@@ -149,28 +154,52 @@ export function CoverageInsights() {
                   <SelectItem value="class" className="text-xs">
                     Classes
                   </SelectItem>
+                  <SelectItem value="mock" className="text-xs">
+                    Mocks
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Status:</span>
-              <Select value={params.coverage} onValueChange={(v) => setCoverage(v as "all" | "tested" | "untested")}>
-                <SelectTrigger className="h-8 w-[120px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-xs">
-                    All
-                  </SelectItem>
-                  <SelectItem value="tested" className="text-xs">
-                    Tested
-                  </SelectItem>
-                  <SelectItem value="untested" className="text-xs">
-                    Untested
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <span className="text-sm font-medium text-muted-foreground">
+                {params.nodeType === "mock" ? "Mocked:" : "Status:"}
+              </span>
+              {params.nodeType === "mock" ? (
+                <Select value={mocked} onValueChange={(v) => setMocked(v as "all" | "mocked" | "unmocked")}>
+                  <SelectTrigger className="h-8 w-[120px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">
+                      All
+                    </SelectItem>
+                    <SelectItem value="mocked" className="text-xs">
+                      Mocked
+                    </SelectItem>
+                    <SelectItem value="unmocked" className="text-xs">
+                      Unmocked
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={params.coverage} onValueChange={(v) => setCoverage(v as "all" | "tested" | "untested")}>
+                  <SelectTrigger className="h-8 w-[120px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">
+                      All
+                    </SelectItem>
+                    <SelectItem value="tested" className="text-xs">
+                      Tested
+                    </SelectItem>
+                    <SelectItem value="untested" className="text-xs">
+                      Untested
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="relative">
@@ -184,25 +213,33 @@ export function CoverageInsights() {
               />
             </div>
 
-            <AdvancedFiltersPopover
-              ignoreDirs={ignoreDirs}
-              setIgnoreDirs={setIgnoreDirs}
-              repo={repo}
-              setRepo={setRepo}
-              unitGlob={unitGlob}
-              setUnitGlob={setUnitGlob}
-              integrationGlob={integrationGlob}
-              setIntegrationGlob={setIntegrationGlob}
-              e2eGlob={e2eGlob}
-              setE2eGlob={setE2eGlob}
-            />
+            {params.nodeType !== "mock" && (
+              <AdvancedFiltersPopover
+                ignoreDirs={ignoreDirs}
+                setIgnoreDirs={setIgnoreDirs}
+                repo={repo}
+                setRepo={setRepo}
+                unitGlob={unitGlob}
+                setUnitGlob={setUnitGlob}
+                integrationGlob={integrationGlob}
+                setIntegrationGlob={setIntegrationGlob}
+                e2eGlob={e2eGlob}
+                setE2eGlob={setE2eGlob}
+              />
+            )}
           </div>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between pb-2">
           <CardTitle>
-            {params.nodeType === "endpoint" ? "Endpoints" : params.nodeType === "function" ? "Functions" : "Classes"}
+            {params.nodeType === "endpoint"
+              ? "Endpoints"
+              : params.nodeType === "function"
+                ? "Functions"
+                : params.nodeType === "class"
+                  ? "Classes"
+                  : "Mock Services"}
           </CardTitle>
           {filterLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -228,23 +265,29 @@ export function CoverageInsights() {
                       onSort={toggleSort}
                       className="w-[30%]"
                     />
-                    <TableHead className="w-[40%]">File</TableHead>
-                    <SortableHeader
-                      label="Coverage"
-                      sortKey="test_count"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
-                      className="w-[12%] text-right"
-                    />
-                    <SortableHeader
-                      label="Lines"
-                      sortKey="line_count"
-                      currentSort={params.sort}
-                      sortDirection={params.sortDirection}
-                      onSort={toggleSort}
-                      className="w-[10%] text-right"
-                    />
+                    <TableHead className="w-[40%]">{params.nodeType === "mock" ? "Description" : "File"}</TableHead>
+                    {params.nodeType !== "mock" && (
+                      <SortableHeader
+                        label="Coverage"
+                        sortKey="test_count"
+                        currentSort={params.sort}
+                        sortDirection={params.sortDirection}
+                        onSort={toggleSort}
+                        className="w-[12%] text-right"
+                      />
+                    )}
+                    {params.nodeType === "mock" ? (
+                      <TableHead className="w-[10%] text-right">Linked Files</TableHead>
+                    ) : (
+                      <SortableHeader
+                        label="Lines"
+                        sortKey="line_count"
+                        currentSort={params.sort}
+                        sortDirection={params.sortDirection}
+                        onSort={toggleSort}
+                        className="w-[10%] text-right"
+                      />
+                    )}
                     <TableHead className="w-[8%] text-right">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -258,9 +301,11 @@ export function CoverageInsights() {
                           <TableCell className="w-[40%]">
                             <Skeleton className="h-4 w-full max-w-[300px]" />
                           </TableCell>
-                          <TableCell className="text-right w-[12%]">
-                            <Skeleton className="h-4 w-12 ml-auto" />
-                          </TableCell>
+                          {params.nodeType !== "mock" && (
+                            <TableCell className="text-right w-[12%]">
+                              <Skeleton className="h-4 w-12 ml-auto" />
+                            </TableCell>
+                          )}
                           <TableCell className="text-right w-[10%]">
                             <Skeleton className="h-4 w-12 ml-auto" />
                           </TableCell>
@@ -281,21 +326,34 @@ export function CoverageInsights() {
                           <TableCell className="truncate max-w-[400px] text-muted-foreground text-xs" title={r.file}>
                             {r.file}
                           </TableCell>
-                          <TableCell
-                            className="text-right font-medium tabular-nums"
-                            title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
-                          >
-                            {formatNumber(r.coverage)}
-                          </TableCell>
-                          <TableCell
-                            className="text-right text-muted-foreground tabular-nums text-sm"
-                            title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
-                          >
-                            {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
-                          </TableCell>
+                          {params.nodeType !== "mock" && (
+                            <TableCell
+                              className="text-right font-medium tabular-nums"
+                              title={`${formatNumber(r.coverage)} test${r.coverage !== 1 ? "s" : ""}`}
+                            >
+                              {formatNumber(r.coverage)}
+                            </TableCell>
+                          )}
+                          {params.nodeType === "mock" ? (
+                            <TableCell
+                              className="text-right font-medium tabular-nums"
+                              title={`${formatNumber(r.coverage)} file${r.coverage !== 1 ? "s" : ""}`}
+                            >
+                              {formatNumber(r.coverage)}
+                            </TableCell>
+                          ) : (
+                            <TableCell
+                              className="text-right text-muted-foreground tabular-nums text-sm"
+                              title={r.lineCount != null ? `${formatNumber(r.lineCount)} lines` : "N/A"}
+                            >
+                              {r.lineCount != null ? formatNumber(r.lineCount) : "-"}
+                            </TableCell>
+                          )}
                           <TableCell className="text-right">
                             <Badge variant={r.covered ? "default" : "outline"}>
-                              {r.covered ? "Tested" : "Untested"}
+                              {params.nodeType === "mock"
+                                ? r.covered ? "Mocked" : "Unmocked"
+                                : r.covered ? "Tested" : "Untested"}
                             </Badge>
                           </TableCell>
                         </TableRow>

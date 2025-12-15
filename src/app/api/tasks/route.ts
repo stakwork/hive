@@ -25,6 +25,19 @@ export async function GET(request: NextRequest) {
     const sourceType = searchParams.get("sourceType");
     const includeArchived = searchParams.get("includeArchived");
     const search = searchParams.get("search") || undefined;
+    const requestContext = {
+      workspaceId,
+      page,
+      limit,
+      includeLatestMessage,
+      sourceType,
+      includeArchived,
+      search,
+      userId,
+      url: request.url,
+    };
+
+    console.log("[api/tasks] GET start", requestContext);
 
     if (!workspaceId) {
       return NextResponse.json({ error: "workspaceId query parameter is required" }, { status: 400 });
@@ -111,7 +124,7 @@ export async function GET(request: NextRequest) {
     // Add search filter if provided
     if (search && search.trim()) {
       const existingOR = whereClause.OR;
-      
+
       // Create search conditions
       const searchConditions = [
         {
@@ -232,6 +245,15 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
     const hasMore = page < totalPages;
 
+    console.log("[api/tasks] GET success", {
+      ...requestContext,
+      returned: tasks.length,
+      totalCount,
+      totalPages,
+      hasMore,
+      isShowingArchived,
+    });
+
     // Process tasks to add hasActionArtifact flag and PR artifact info
     const processedTasks = await Promise.all(
       tasks.map(async (task) => {
@@ -283,7 +305,10 @@ export async function GET(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    console.error("Error fetching tasks:", error);
+    console.error("[api/tasks] Error fetching tasks", {
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 }

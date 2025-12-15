@@ -15,7 +15,22 @@ export interface StakgraphStatusResponse {
   result?: { nodes?: number; edges?: number };
 }
 
-export type UncoveredNodeType = "function" | "endpoint" | "class";
+export type UncoveredNodeType = "function" | "endpoint" | "class" | "mock";
+
+export interface MockServiceItem {
+  name: string;
+  ref_id: string;
+  description: string;
+  linked_files: string[];
+  file_count: number;
+  mocked: boolean;
+}
+
+export interface MockInventoryResponse {
+  items: MockServiceItem[];
+  total_count: number;
+  total_returned: number;
+}
 
 export type TestStatus = "all" | "tested" | "untested";
 
