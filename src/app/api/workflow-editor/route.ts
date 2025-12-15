@@ -114,6 +114,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // Restrict workflow editor to stakwork workspace only
+    if (task.workspace.slug !== "stakwork") {
+      return NextResponse.json(
+        { error: "Workflow editor is not available for this workspace" },
+        { status: 403 }
+      );
+    }
+
     // Create the chat message
     const chatMessage = await db.chatMessage.create({
       data: {
