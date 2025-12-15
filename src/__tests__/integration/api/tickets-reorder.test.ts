@@ -5,8 +5,6 @@ import { TaskStatus, Priority } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
-  createTestTask,
-  findTestTask
 } from "@/__tests__/support/fixtures";
 import {
   expectSuccess,
@@ -16,12 +14,12 @@ import {
   createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
 
-describe("Tasks Reorder API - Integration Tests", () => {
+describe("Tickets Reorder API - Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("POST /api/tasks/reorder", () => {
+  describe("POST /api/tickets/reorder", () => {
     test("reorders tasks successfully and persists new order", async () => {
       // Setup
       const user = await createTestUser();
@@ -82,7 +80,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       // Reorder to [Task 3, Task 1, Task 2] with new order [0, 1, 2]
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [
             { id: task3.id, order: 0 },
@@ -178,7 +176,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       // Move task1 to phase2 and reorder
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [
             { id: task2.id, order: 0, phaseId: phase1.id },
@@ -208,7 +206,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
     });
 
     test("requires authentication", async () => {
-      const request = createPostRequest("http://localhost:3000/api/tasks/reorder", {
+      const request = createPostRequest("http://localhost:3000/api/tickets/reorder", {
         tasks: [{ id: "task-id", order: 0 }],
       });
 
@@ -249,7 +247,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [{ id: task.id, order: 0 }],
         },
@@ -265,7 +263,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       const user = await createTestUser();
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         { tasks: "not-an-array" },
         user
       );
@@ -279,7 +277,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       const user = await createTestUser();
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         { tasks: [] },
         user
       );
@@ -293,7 +291,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       const user = await createTestUser();
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [{ id: "non-existent-task-id", order: 0 }],
         },
@@ -367,7 +365,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       // Attempt to reorder tasks from different features together
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [
             { id: task1.id, order: 0 },
@@ -441,7 +439,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       // Attempt reorder with one invalid task ID in the middle
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [
             { id: task1.id, order: 0 },
@@ -515,7 +513,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       // Reorder with duplicate order values (both order: 0)
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [
             { id: task1.id, order: 0 },
@@ -577,7 +575,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [{ id: task.id, order: 0 }],
         },
@@ -621,7 +619,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [{ id: task.id, order: 5 }],
         },
@@ -681,7 +679,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
       });
 
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [{ id: task.id, order: 3 }],
         },
@@ -747,7 +745,7 @@ describe("Tasks Reorder API - Integration Tests", () => {
 
       // Reverse order
       const request = createAuthenticatedPostRequest(
-        "http://localhost:3000/api/tasks/reorder",
+        "http://localhost:3000/api/tickets/reorder",
         {
           tasks: [
             { id: task2.id, order: 0 },
