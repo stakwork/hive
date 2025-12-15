@@ -7,22 +7,18 @@ vi.mock("@/hooks/useWorkspace", () => ({
   useWorkspace: vi.fn(),
 }));
 
-vi.mock("@/stores/useDataStore", () => ({
+vi.mock("@/stores/useStores", () => ({
   useDataStore: vi.fn(),
-}));
-
-vi.mock("@/stores/useGraphStore", () => ({
-  useGraphStore: vi.fn(),
 }));
 
 // Import mocked modules
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDataStore } from "@/stores/useDataStore";
-import { useGraphStore } from "@/stores/useGraphStore";
+import { useDataStore } from "@/stores/useStores";
 
 describe("useTestNodesFetch", () => {
   const mockAddNewNode = vi.fn();
   const mockWorkspaceId = "workspace-123";
+  const defaultVisibility = { unitTests: false, integrationTests: false, e2eTests: false };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,33 +54,13 @@ describe("useTestNodesFetch", () => {
   describe("initialization", () => {
     it("should not fetch when workspace is not loaded", () => {
       vi.mocked(useWorkspace).mockReturnValue({ id: undefined } as any);
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true }));
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it("should not fetch when all test layers are hidden", () => {
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: false,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch(defaultVisibility));
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -108,17 +84,7 @@ describe("useTestNodesFetch", () => {
         }),
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true }));
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith(
@@ -161,17 +127,7 @@ describe("useTestNodesFetch", () => {
         }),
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: false,
-            integrationTests: true,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, integrationTests: true }));
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalled();
@@ -195,17 +151,7 @@ describe("useTestNodesFetch", () => {
         }),
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: false,
-            integrationTests: false,
-            e2eTests: true,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, e2eTests: true }));
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalled();
@@ -229,17 +175,7 @@ describe("useTestNodesFetch", () => {
         }),
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: true,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true, integrationTests: true }));
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledTimes(2);
@@ -266,24 +202,17 @@ describe("useTestNodesFetch", () => {
         }),
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      const { rerender } = renderHook(() => useTestNodesFetch());
+      const { rerender } = renderHook(
+        (visibility) => useTestNodesFetch(visibility),
+        { initialProps: { ...defaultVisibility, unitTests: true } }
+      );
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledTimes(1);
       });
 
       // Rerender the hook (simulating visibility staying true)
-      rerender();
+      rerender({ ...defaultVisibility, unitTests: true });
 
       // Should not fetch again
       expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -302,34 +231,17 @@ describe("useTestNodesFetch", () => {
       } as Response);
 
       // First render with unitTests visible
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      const { rerender } = renderHook(() => useTestNodesFetch());
+      const { rerender } = renderHook(
+        (visibility) => useTestNodesFetch(visibility),
+        { initialProps: { ...defaultVisibility, unitTests: true } }
+      );
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledTimes(1);
       });
 
       // Change to show integrationTests (unitTests still visible)
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: true,
-            e2eTests: false,
-          },
-        });
-      });
-
-      rerender();
+      rerender({ ...defaultVisibility, unitTests: true, integrationTests: true });
 
       // Should fetch integrationTests but not unitTests again
       await waitFor(() => {
@@ -358,17 +270,7 @@ describe("useTestNodesFetch", () => {
         }),
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true }));
 
       await waitFor(() => {
         expect(mockAddNewNode).toHaveBeenCalledWith({
@@ -400,17 +302,7 @@ describe("useTestNodesFetch", () => {
 
       vi.mocked(global.fetch).mockRejectedValueOnce(new Error("Network error"));
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true }));
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -432,17 +324,7 @@ describe("useTestNodesFetch", () => {
         statusText: "Internal Server Error",
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true }));
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalled();
@@ -464,17 +346,7 @@ describe("useTestNodesFetch", () => {
         }),
       } as Response);
 
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      renderHook(() => useTestNodesFetch());
+      renderHook(() => useTestNodesFetch({ ...defaultVisibility, unitTests: true }));
 
       await waitFor(() => {
         expect(consoleErrorSpy).toHaveBeenCalled();
@@ -500,17 +372,10 @@ describe("useTestNodesFetch", () => {
       } as Response);
 
       // Start with unitTests visible
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: true,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      const { rerender } = renderHook(() => useTestNodesFetch());
+      const { rerender } = renderHook(
+        (visibility) => useTestNodesFetch(visibility),
+        { initialProps: { ...defaultVisibility, unitTests: true } }
+      );
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -519,17 +384,7 @@ describe("useTestNodesFetch", () => {
       vi.clearAllMocks();
 
       // Change to hide unitTests
-      vi.mocked(useGraphStore).mockImplementation((selector: any) => {
-        return selector({
-          testLayerVisibility: {
-            unitTests: false,
-            integrationTests: false,
-            e2eTests: false,
-          },
-        });
-      });
-
-      rerender();
+      rerender(defaultVisibility);
 
       // Should not fetch again
       expect(global.fetch).not.toHaveBeenCalled();
