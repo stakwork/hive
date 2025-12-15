@@ -10,6 +10,7 @@ import { streamText, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
+import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
@@ -82,9 +83,12 @@ export async function POST(request: NextRequest) {
 
     const concepts = await listConcepts(baseSwarmUrl, decryptedSwarmApiKey);
 
+    const features = concepts.features as Record<string, unknown>[];
+
+    // console.log("features:", features);
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const modelMessages: ModelMessage[] = [
-      ...getQuickAskPrefixMessages(concepts, repoUrl),
+      ...getQuickAskPrefixMessages(features, repoUrl),
       // Conversation history (convert from LearnMessage to ModelMessage format)
       ...messages.map((msg: { role: string; content: string }) => ({
         role: msg.role as "user" | "assistant",
@@ -106,7 +110,7 @@ export async function POST(request: NextRequest) {
         messages: modelMessages,
         stopWhen: createHasEndMarkerCondition(),
         stopSequences: ["[END_OF_ANSWER]"],
-        onStepFinish: (sf) => logStep(sf.content),
+        onStepFinish: (sf) => processStep(sf.content, workspaceSlug, features),
       });
       return result.toUIMessageStreamResponse();
     } catch {
@@ -121,6 +125,39 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: "Failed to process quick ask" }, { status: 500 });
   }
+}
+
+async function processStep(contents: unknown, workspaceSlug: string, features: Record<string, unknown>[]) {
+  logStep(contents);
+  if (!Array.isArray(contents)) return;
+  let conceptRefId: string | undefined;
+  for (const content of contents) {
+    if (content.type === "tool-call") {
+      if (content.toolName === "learn_concept") {
+        const conceptId = content.input.conceptId;
+        const feature = features.find((f) => f.id === conceptId);
+        if (feature) {
+          conceptRefId = feature.ref_id as string;
+        }
+      }
+    }
+  }
+  if (!conceptRefId) return;
+  console.log("learned conceptRefId:", conceptRefId);
+  const channelName = getWorkspaceChannelName(workspaceSlug);
+  const eventPayload = {
+    nodeIds: [],
+    workspaceId: workspaceSlug,
+    depth: 3,
+    title: "Researching...",
+    timestamp: Date.now(),
+    sourceNodeRefId: conceptRefId,
+  };
+  await pusherServer.trigger(
+    channelName,
+    PUSHER_EVENTS.HIGHLIGHT_NODES,
+    eventPayload,
+  );
 }
 
 function logStep(contents: unknown) {
