@@ -53,21 +53,17 @@ describe("GitHub App Check API Integration Tests", () => {
           accessToken,
         });
 
-        // Mock successful installation repositories fetch
+        // Mock successful direct repo check
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
           json: async () => ({
-            repositories: [
-              {
-                full_name: "test-owner/test-repo",
-                permissions: {
-                  push: true,
-                  admin: false,
-                  maintain: false,
-                },
-              },
-            ],
+            full_name: "test-owner/test-repo",
+            permissions: {
+              push: true,
+              admin: false,
+              maintain: false,
+            },
           }),
         });
 
@@ -84,13 +80,13 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true);
 
-        // Verify installation repositories API was called correctly
+        // Verify direct repo API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
-              Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${accessToken}`,
               "X-GitHub-Api-Version": "2022-11-28",
             },
           }
@@ -118,16 +114,12 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            repositories: [
-              {
-                full_name: "test-owner/test-repo",
-                permissions: {
-                  admin: true,
-                  maintain: true,
-                  push: true,
-                },
-              },
-            ],
+            full_name: "test-owner/test-repo",
+            permissions: {
+              admin: true,
+              maintain: true,
+              push: true,
+            },
           }),
         });
 
@@ -144,13 +136,13 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true); // Admin grants push
 
-        // Verify installation repositories API was called correctly
+        // Verify direct repo API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
-              Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${accessToken}`,
               "X-GitHub-Api-Version": "2022-11-28",
             },
           }
@@ -172,16 +164,12 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            repositories: [
-              {
-                full_name: "test-owner/test-repo",
-                permissions: {
-                  admin: false,
-                  maintain: true,
-                  push: false,
-                },
-              },
-            ],
+            full_name: "test-owner/test-repo",
+            permissions: {
+              admin: false,
+              maintain: true,
+              push: false,
+            },
           }),
         });
 
@@ -198,13 +186,13 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true); // Maintain grants push
 
-        // Verify installation repositories API was called correctly
+        // Verify direct repo API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
-              Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${accessToken}`,
               "X-GitHub-Api-Version": "2022-11-28",
             },
           }
@@ -226,17 +214,13 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            repositories: [
-              {
-                full_name: "test-owner/test-repo",
-                permissions: {
-                  admin: false,
-                  maintain: false,
-                  push: false,
-                  pull: true,
-                },
-              },
-            ],
+            full_name: "test-owner/test-repo",
+            permissions: {
+              admin: false,
+              maintain: false,
+              push: false,
+              pull: true,
+            },
           }),
         });
 
@@ -253,13 +237,13 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(false); // Only pull, no push
 
-        // Verify installation repositories API was called correctly
+        // Verify direct repo API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
-              Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${accessToken}`,
               "X-GitHub-Api-Version": "2022-11-28",
             },
           }
@@ -283,16 +267,12 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            repositories: [
-              {
-                full_name: "nodejs/node",
-                permissions: {
-                  push: true,
-                  admin: false,
-                  maintain: false,
-                },
-              },
-            ],
+            full_name: "nodejs/node",
+            permissions: {
+              push: true,
+              admin: false,
+              maintain: false,
+            },
           }),
         });
 
@@ -309,7 +289,7 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true);
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/nodejs/node`,
           expect.any(Object)
         );
       });
@@ -329,15 +309,11 @@ describe("GitHub App Check API Integration Tests", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            repositories: [
-              {
-                full_name: "test-owner/test-repo",
-                permissions: {
-                  push: true,
-                  pull: true,
-                },
-              },
-            ],
+            full_name: "test-owner/test-repo",
+            permissions: {
+              push: true,
+              pull: true,
+            },
           }),
         });
 
@@ -354,13 +330,13 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true);
 
-        // Verify installation repositories API was called correctly
+        // Verify direct repo API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
-              Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${accessToken}`,
               "X-GitHub-Api-Version": "2022-11-28",
             },
           }
@@ -378,20 +354,11 @@ describe("GitHub App Check API Integration Tests", () => {
           accessToken,
         });
 
-        // Mock installation repositories response without the target repository
+        // Mock 404 response for repository not accessible by installation
         mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            repositories: [
-              {
-                full_name: "test-owner/other-repo",
-                permissions: {
-                  push: true,
-                },
-              },
-            ],
-          }),
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
         });
 
         const request = createGetRequest(
@@ -406,15 +373,17 @@ describe("GitHub App Check API Integration Tests", () => {
 
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(false);
-        expect(data.error).toBe("Repository 'test-owner/test-repo' is not accessible through the GitHub App installation. Please ensure the repository is included in the app's permissions or reinstall the app with access to this repository.");
+        expect(data.error).toBe("Repository 'test-owner/test-repo' is not accessible through the GitHub App installation.");
+        expect(data.requiresInstallationUpdate).toBe(true);
+        expect(data.installationId).toBe(sourceControlOrg.githubInstallationId);
 
-        // Verify installation repositories API was called correctly
+        // Verify direct repo API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
-              Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${accessToken}`,
               "X-GitHub-Api-Version": "2022-11-28",
             },
           }
@@ -606,7 +575,7 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(data.error).toBe("No GitHub App installation found for this repository owner");
       });
 
-      test("should handle GitHub API 404 (installation not found)", async () => {
+      test("should handle GitHub API 403 (forbidden access)", async () => {
         const { testUser, sourceControlOrg, accessToken } = await createTestUserWithGitHubTokens();
 
         getMockedSession().mockResolvedValue(
@@ -619,8 +588,8 @@ describe("GitHub App Check API Integration Tests", () => {
 
         mockFetch.mockResolvedValue({
           ok: false,
-          status: 404,
-          statusText: "Not Found",
+          status: 403,
+          statusText: "Forbidden",
         });
 
         const request = createGetRequest(
@@ -635,15 +604,16 @@ describe("GitHub App Check API Integration Tests", () => {
 
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(false);
-        expect(data.error).toBe("Installation not found or no access to this installation");
+        expect(data.error).toBe("GitHub API error 403");
+        expect(data.requiresReauth).toBe(true);
 
-        // Verify installation repositories API was called correctly
+        // Verify direct repo API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          `${serviceConfigs.github.baseURL}/repos/test-owner/test-repo`,
           {
             headers: {
-              Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${accessToken}`,
               "X-GitHub-Api-Version": "2022-11-28",
             },
           }
