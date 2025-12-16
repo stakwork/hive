@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getQuickAskPrefixMessages } from "@/lib/constants/prompt";
-import { askTools, listConcepts, createHasEndMarkerCondition } from "@/lib/ai/askTools";
+import { askTools, listConcepts, createHasEndMarkerCondition, clueToolMsgs } from "@/lib/ai/askTools";
 import { streamText, ModelMessage } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
@@ -85,16 +85,20 @@ export async function POST(request: NextRequest) {
 
     const features = concepts.features as Record<string, unknown>[];
 
+    const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, messages[messages.length - 1].content);
+
     // console.log("features:", features);
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const modelMessages: ModelMessage[] = [
-      ...getQuickAskPrefixMessages(features, repoUrl),
+      ...getQuickAskPrefixMessages(features, repoUrl, clueMsgs),
       // Conversation history (convert from LearnMessage to ModelMessage format)
       ...messages.map((msg: { role: string; content: string }) => ({
         role: msg.role as "user" | "assistant",
         content: msg.content,
       })),
     ];
+
+    console.log("========= clueMsgs:", JSON.stringify(modelMessages, null, 2));
 
     console.log("🤖 Creating generateText with:", {
       model: model?.modelId,
@@ -148,7 +152,7 @@ async function processStep(contents: unknown, workspaceSlug: string, features: R
   const eventPayload = {
     nodeIds: [],
     workspaceId: workspaceSlug,
-    depth: 3,
+    depth: 2,
     title: "Researching...",
     timestamp: Date.now(),
     sourceNodeRefId: conceptRefId,
@@ -167,7 +171,8 @@ function logStep(contents: unknown) {
       console.log("TOOL CALL:", content.toolName, ":", content.input);
     }
     if (content.type === "tool-result") {
-      console.log("TOOL RESULT:", content.toolName, ":", content.output);
+      // console.log("TOOL RESULT:", content.toolName, ":", content.output);
+      console.log("TOOL RESULT:", content.toolName);
     }
   }
 }

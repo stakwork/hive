@@ -1,8 +1,8 @@
-import { StopCondition, tool, ToolSet } from "ai";
+import { StopCondition, tool, ToolSet, ModelMessage } from "ai";
 import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
-import { getProviderTool } from "@/lib/ai/provider";
+import {  getProviderTool} from "@/lib/ai/provider";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${swarmUrl}/gitree/features`, {
@@ -201,4 +201,74 @@ export function createHasEndMarkerCondition<T extends ToolSet>(): StopCondition<
     }
     return false;
   };
+}
+
+export interface ClueResult {
+  clue: Clue;
+  score: number;
+  relevanceBreakdown:{
+    vector: number;
+    content: number;
+    centrality: number;
+  }
+}
+interface Clue {
+  id: string;
+  content: string;
+}
+
+
+export async function searchClues(swarmUrl: string, swarmApiKey: string, query: string, minScore: number = 0.73): Promise<ClueResult[]> {
+  const r = await fetch(`${swarmUrl}/gitree/search-clues`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": swarmApiKey,
+    },
+    body: JSON.stringify({ query }),
+  });
+  const data = await r.json();
+  const res = data.results as ClueResult[];
+  return res.filter((result) => result.relevanceBreakdown.vector >= minScore);
+}
+
+export async function clueToolMsgs(swarmUrl: string, swarmApiKey: string, query: string): Promise<ModelMessage[] | null> {
+  try {
+    const relevantClues = await searchClues(swarmUrl, swarmApiKey, query, 0.73);
+    if (relevantClues.length === 0) return null;
+    const limitedClues = relevantClues.slice(0, 10);
+    const arr = [];
+    arr.push({
+      role: "assistant" as const,
+      content: [
+        {
+          type: "tool-call" as const,
+          toolCallId: "select-1",
+          toolName: "search_relevant_clues",
+          input: {
+            query,
+          },
+        },
+      ],
+    });
+    arr.push({
+      role: "tool" as const,
+      content: [
+        {
+          type: "tool-result" as const,
+          toolCallId: "select-1",
+          toolName: "search_relevant_clues",
+          output: {
+            type: "json" as const,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            value: limitedClues as unknown as any,
+          },
+        },
+      ],
+    });
+    return arr;
+  } catch (e) {
+    console.error("Error searching clues:", e);
+    return null;
+  }
 }
