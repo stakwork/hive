@@ -236,6 +236,7 @@ export async function clueToolMsgs(swarmUrl: string, swarmApiKey: string, query:
   try {
     const relevantClues = await searchClues(swarmUrl, swarmApiKey, query, 0.73);
     if (relevantClues.length === 0) return null;
+    const limitedClues = relevantClues.slice(0, 10);
     const arr = [];
     arr.push({
       role: "assistant" as const,
@@ -260,7 +261,7 @@ export async function clueToolMsgs(swarmUrl: string, swarmApiKey: string, query:
           output: {
             type: "json" as const,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            value: relevantClues as unknown as any,
+            value: limitedClues as unknown as any,
           },
         },
       ],
