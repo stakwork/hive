@@ -109,7 +109,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   }
 
   return (
-    <Card>
+    <Card data-testid="tasks-list-loaded">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <CardHeader>
           <TabsList>

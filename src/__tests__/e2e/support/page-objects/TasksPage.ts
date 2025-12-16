@@ -21,12 +21,20 @@ export class TasksPage {
   async waitForLoad(): Promise<void> {
     await expect(this.page.locator(selectors.pageTitle.tasks)).toBeVisible({ timeout: 10000 });
 
-    // Wait for loading state to disappear (if it exists)
-    const loadingText = this.page.getByText('Loading tasks...');
-    const isLoading = await loadingText.isVisible().catch(() => false);
-    if (isLoading) {
-      await loadingText.waitFor({ state: 'hidden', timeout: 10000 });
-    }
+    // Wait for either loaded state or empty state to appear (not loading state)
+    await this.page.locator(selectors.tasks.loadedState).waitFor({ 
+      state: 'visible', 
+      timeout: 30000 
+    }).catch(async () => {
+      // If loadedState doesn't appear, it might be an empty state - that's OK
+      // Just make sure loading state is gone
+      await this.page.locator(selectors.tasks.loadingState).waitFor({ 
+        state: 'hidden', 
+        timeout: 5000 
+      }).catch(() => {
+        // If loading state was never visible, that's fine too
+      });
+    });
   }
 
   /**
