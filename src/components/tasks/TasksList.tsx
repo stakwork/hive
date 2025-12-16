@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { FilterButton } from "@/components/filters/FilterButton";
 import { useWorkspaceTasks } from "@/hooks/useWorkspaceTasks";
 import { useTaskStats } from "@/hooks/useTaskStats";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -99,10 +100,13 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     <Card>
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <CardHeader>
-          <TabsList>
-            <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="archived">Archived</TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between gap-4">
+            <TabsList>
+              <TabsTrigger value="active">Active</TabsTrigger>
+              <TabsTrigger value="archived">Archived</TabsTrigger>
+            </TabsList>
+            <FilterButton />
+          </div>
         </CardHeader>
 
         <CardContent>
