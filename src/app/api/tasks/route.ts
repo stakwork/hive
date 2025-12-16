@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
     const sourceType = searchParams.get("sourceType");
     const includeArchived = searchParams.get("includeArchived");
     const search = searchParams.get("search") || undefined;
+    const status = searchParams.get("status") || undefined;
+    const hasPod = searchParams.get("hasPod") || undefined;
     const requestContext = {
       workspaceId,
       page,
@@ -33,6 +35,8 @@ export async function GET(request: NextRequest) {
       sourceType,
       includeArchived,
       search,
+      status,
+      hasPod,
       userId,
       url: request.url,
     };
@@ -119,6 +123,41 @@ export async function GET(request: NextRequest) {
     // Add sourceType filter if provided
     if (sourceType && Object.values(TaskSourceType).includes(sourceType as TaskSourceType)) {
       whereClause.sourceType = sourceType as TaskSourceType;
+    }
+
+    // Add status filter if provided (status=running maps to workflowStatus=IN_PROGRESS)
+    if (status) {
+      if (status === "running") {
+        whereClause.workflowStatus = WorkflowStatus.IN_PROGRESS;
+      } else {
+        // Validate against WorkflowStatus enum
+        if (Object.values(WorkflowStatus).includes(status as WorkflowStatus)) {
+          whereClause.workflowStatus = status as WorkflowStatus;
+        } else {
+          return NextResponse.json(
+            {
+              error: `Invalid status parameter. Must be 'running' or one of: ${Object.values(WorkflowStatus).join(", ")}`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    // Add hasPod filter if provided
+    if (hasPod !== undefined) {
+      if (hasPod === "true") {
+        whereClause.podId = { not: null };
+      } else if (hasPod === "false") {
+        whereClause.podId = null;
+      } else {
+        return NextResponse.json(
+          {
+            error: "Invalid hasPod parameter. Must be 'true' or 'false'",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Add search filter if provided
