@@ -1,9 +1,15 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { TestLayerVisibility } from "@/stores/useGraphStore";
+import { TestLayerType } from "@/stores/useGraphStore";
 import { useDataStore } from "@/stores/useStores";
 import { useEffect, useRef } from "react";
+
+type TestLayerBooleans = {
+  unitTests: boolean;
+  integrationTests: boolean;
+  e2eTests: boolean;
+};
 
 type VisibilityKey = "unitTests" | "integrationTests" | "e2eTests";
 type NodeType = "unittest" | "integrationtest" | "e2etest";
@@ -17,8 +23,10 @@ const VISIBILITY_TO_NODE_TYPE: Record<VisibilityKey, NodeType> = {
 /**
  * Hook that subscribes to test layer visibility changes and fetches test nodes on-demand.
  * Prevents duplicate fetches by tracking which node types have already been fetched.
+ *
+ * @param testLayerVisibility - Boolean flags for each test layer type for backwards compatibility
  */
-export function useTestNodesFetch(testLayerVisibility?: TestLayerVisibility) {
+export function useTestNodesFetch(testLayerVisibility?: TestLayerBooleans) {
   const { id: workspaceId } = useWorkspace();
   const addNewNode = useDataStore((s) => s.addNewNode);
   const addNewNodeRef = useRef(addNewNode);
@@ -28,7 +36,7 @@ export function useTestNodesFetch(testLayerVisibility?: TestLayerVisibility) {
 
   // Track which node types have been fetched to prevent duplicates
   const fetchedNodeTypes = useRef<Set<NodeType>>(new Set());
-  const prevVisibility = useRef<TestLayerVisibility | null>(null);
+  const prevVisibility = useRef<TestLayerBooleans | null>(null);
   const prevWorkspace = useRef<string | null>(null);
 
   useEffect(() => {

@@ -1,21 +1,22 @@
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+import type { TestLayerType } from "@/stores/graphStore.types";
+import { useGraphStore } from "@/stores/useStores";
 import { Filter } from "lucide-react";
 import { useMemo } from "react";
-import { useGraphStore } from "@/stores/useStores";
-import type { TestLayerVisibility } from "@/stores/graphStore.types";
 
 export function TestFilterDropdown() {
   const testLayerVisibility = useGraphStore((s) => s.testLayerVisibility);
   const setTestLayerVisibility = useGraphStore((s) => s.setTestLayerVisibility);
 
-  const testToggles = useMemo(
+  const testOptions = useMemo(
     () => [
       { key: "unitTests", label: "Unit Tests" },
       { key: "integrationTests", label: "Integration Tests" },
@@ -23,6 +24,9 @@ export function TestFilterDropdown() {
     ] as const,
     []
   );
+
+  const selectedLayer = testLayerVisibility.selectedLayer;
+  const selectedLabel = testOptions.find(option => option.key === selectedLayer)?.label || "Tests";
 
   return (
     <DropdownMenu>
@@ -33,25 +37,30 @@ export function TestFilterDropdown() {
           className="gap-2 h-9 px-3 border border-input bg-background shadow-sm"
         >
           <Filter className="w-4 h-4" />
-          Tests
+          {selectedLabel}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Toggle test layers
+          Select test layer
         </DropdownMenuLabel>
-        {testToggles.map((toggle) => (
-          <DropdownMenuCheckboxItem
-            key={toggle.key}
-            checked={Boolean(testLayerVisibility[toggle.key])}
-            onCheckedChange={(checked) =>
-              setTestLayerVisibility({ [toggle.key]: checked } as Partial<TestLayerVisibility>)
-            }
-            className="capitalize"
-          >
-            {toggle.label}
-          </DropdownMenuCheckboxItem>
-        ))}
+        <DropdownMenuRadioGroup
+          value={selectedLayer || "none"}
+          onValueChange={(value) => setTestLayerVisibility(value === "none" ? null : value as TestLayerType)}
+        >
+          <DropdownMenuRadioItem value="none">
+            None
+          </DropdownMenuRadioItem>
+          {testOptions.map((option) => (
+            <DropdownMenuRadioItem
+              key={option.key}
+              value={option.key}
+              className="capitalize"
+            >
+              {option.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

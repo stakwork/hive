@@ -23,10 +23,10 @@ export type GraphCallout = {
   addedAt: number
 }
 
+export type TestLayerType = 'unitTests' | 'integrationTests' | 'e2eTests' | null
+
 export type TestLayerVisibility = {
-  unitTests: boolean
-  integrationTests: boolean
-  e2eTests: boolean
+  selectedLayer: TestLayerType
 }
 
 export type GraphStore = {
@@ -106,5 +106,5 @@ export type GraphStore = {
   removeHighlightChunk(chunkId: string): void
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
-  setTestLayerVisibility(updates: Partial<TestLayerVisibility>): void
+  setTestLayerVisibility(layer: TestLayerType): void
 }
