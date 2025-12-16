@@ -15,7 +15,7 @@ import { InputStepAttachment } from "@/components/InputStepAttachment";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
-import { SelectedStepContent } from "@/lib/workflow-step";
+import { WorkflowTransition } from "@/types/stakwork/workflow";
 
 interface ChatInputProps {
   logs: LogEntry[];
@@ -24,7 +24,7 @@ interface ChatInputProps {
   isLoading?: boolean;
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
-  pendingStepAttachment?: SelectedStepContent | null;
+  pendingStepAttachment?: WorkflowTransition | null;
   onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   hasPrArtifact?: boolean;

@@ -3,10 +3,10 @@
 import React from "react";
 import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SelectedStepContent, StepType } from "@/lib/workflow-step";
+import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 
 interface StepDetailsModalProps {
-  step: SelectedStepContent | null;
+  step: WorkflowTransition | null;
   isOpen: boolean;
   onClose: () => void;
   onSelect: () => void;
@@ -50,15 +50,15 @@ function JsonDisplay({ data }: { data: unknown }) {
 export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetailsModalProps) {
   if (!step || !isOpen) return null;
 
-  const { stepData } = step;
+  const stepType = getStepType(step);
   // The data structure from the workflow has attributes at the top level
-  const rawData = stepData as unknown as Record<string, unknown>;
-  const stepAttributes = (rawData.attributes as Record<string, unknown>) || stepData.step?.attributes || {};
+  const rawData = step as unknown as Record<string, unknown>;
+  const stepAttributes = (rawData.attributes as Record<string, unknown>) || step.step?.attributes || {};
   const stepVars = (stepAttributes.vars as Record<string, unknown>) || {};
 
   // Get step name and id from top level
-  const skillName = (rawData.name as string) || step.name;
-  const stepId = (rawData.id as string) || step.displayId;
+  const skillName = step.name;
+  const stepId = step.id || step.display_id;
 
   return (
     <div
@@ -71,10 +71,10 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-3">
-            <span className={`p-2 rounded-md ${STEP_TYPE_COLORS[step.stepType]}`}>
-              {STEP_TYPE_ICONS[step.stepType]}
+            <span className={`p-2 rounded-md ${STEP_TYPE_COLORS[stepType]}`}>
+              {STEP_TYPE_ICONS[stepType]}
             </span>
-            <div className="text-lg font-semibold">{skillName || step.displayName || step.name}</div>
+            <div className="text-lg font-semibold">{step.display_name || step.name}</div>
           </div>
           <button
             onClick={onClose}
