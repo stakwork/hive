@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
@@ -6,8 +6,9 @@ import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getQuickAskPrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition, clueToolMsgs } from "@/lib/ai/askTools";
-import { streamText, ModelMessage } from "ai";
+import { streamText, ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { z } from "zod";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
@@ -85,20 +86,29 @@ export async function POST(request: NextRequest) {
 
     const features = concepts.features as Record<string, unknown>[];
 
-    const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, messages[messages.length - 1].content);
+    // Extract text content from last message (handle both string and array content)
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageContent = typeof lastMessage?.content === "string"
+      ? lastMessage.content
+      : Array.isArray(lastMessage?.content)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? lastMessage.content.find((part: any) => part.type === "text")?.text || ""
+        : "";
+
+    const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, lastMessageContent);
 
     // console.log("features:", features);
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const modelMessages: ModelMessage[] = [
       ...getQuickAskPrefixMessages(features, repoUrl, clueMsgs),
-      // Conversation history (convert from LearnMessage to ModelMessage format)
-      ...messages.map((msg: { role: string; content: string }) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-      })),
+      // Conversation history (pass through as-is to support tool calls/results)
+      ...messages as ModelMessage[],
     ];
 
-    console.log("========= clueMsgs:", JSON.stringify(modelMessages, null, 2));
+    console.log("========= clueMsgs:");
+    for (const msg of modelMessages) {
+      console.log("========= msg:", JSON.stringify(msg, null, 2).slice(0, 400))
+    }
 
     console.log("🤖 Creating generateText with:", {
       model: model?.modelId,
@@ -116,6 +126,52 @@ export async function POST(request: NextRequest) {
         stopSequences: ["[END_OF_ANSWER]"],
         onStepFinish: (sf) => processStep(sf.content, workspaceSlug, features),
       });
+
+
+      after(async () => {
+        // Generate follow-up questions
+        try {
+          const followUpSchema = z.object({
+            questions: z
+              .array(z.string())
+              .length(3)
+              .describe("3 short, specific follow-up questions (max 10 words each)"),
+          });
+
+          // Convert messages to a format suitable for follow-up generation
+          // const conversationMessages: ModelMessage[] = messages
+          //   .filter((m) => m.role === "user" || m.role === "assistant")
+          //   .map((m): ModelMessage => ({
+          //     role: m.role,
+          //     content: typeof m.content === "string" ? m.content : "",
+          //   }));
+
+          const followUpModel = await getModel("anthropic", apiKey, workspaceSlug);
+
+          const result = await generateObject({
+            model: followUpModel,
+            schema: followUpSchema,
+            messages: modelMessages,
+            system:
+              "You are a helpful code learning assistant. Your job is to generate 3 short follow-up questions based on this conversation. Questions should be specific, contextual, and help the user dig deeper or explore related topics. Don't ask very general questions! Try to guess what the user might ask next as part of the conversation, and output that! Avoid repeating questions that have already been asked. Keep each question under 10 words.",
+            temperature: 0.3,
+          });
+
+          const channelName = getWorkspaceChannelName(workspaceSlug);
+          const payload = {
+            questions: result.object.questions,
+            timestamp: Date.now(),
+          };
+
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, payload);
+
+          console.log("✅ Follow-up questions generated and sent:", result.object.questions);
+        } catch (error) {
+          console.error("❌ Error generating follow-up questions:", error);
+          // Silent failure - don't break the chat flow
+        }
+      });
+
       return result.toUIMessageStreamResponse();
     } catch {
       throw serverError("Failed to create stream");

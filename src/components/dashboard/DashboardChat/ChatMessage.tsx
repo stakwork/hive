@@ -24,8 +24,8 @@ export function ChatMessage({ message, isStreaming = false, onDelete }: ChatMess
 
   const isUser = message.role === "user";
 
-  // Don't show user message if there's no content
-  if (isUser && !message.content.trim()) {
+  // Don't show message if there's no content (for both user and assistant)
+  if (!message.content.trim()) {
     return null;
   }
 

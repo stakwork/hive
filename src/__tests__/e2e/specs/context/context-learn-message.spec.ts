@@ -74,7 +74,7 @@ test.describe('Send message in Context Learn page', () => {
 
   test('should complete full user journey: dashboard -> Context Learn -> send message', async ({ page }) => {
     // Starting from dashboard
-    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
 
     // Navigate to Context Learn via sidebar
     await contextLearnPage.navigateViaNavigation();

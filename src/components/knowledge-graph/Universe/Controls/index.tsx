@@ -41,11 +41,11 @@ export const Controls = ({ disableAnimations, enableRotation = false }: Props) =
       ref={(ref) => {
         if (ref && !isCameraControlsRefSet.current) {
           isCameraControlsRefSet.current = true
-          console.log('Controls: setting camera controls ref', ref)
+          // console.log('Controls: setting camera controls ref', ref)
           const randomId = Math.random().toString(36).slice(2, 6)
           // @ts-expect-error - this is a temporary fix to get the camera controls ref to work
           ref._debugId = `cameraControlsRefSetter_${randomId}`
-          console.log('Controls-CameraAnimations: randomId', randomId)
+          // console.log('Controls-CameraAnimations: randomId', randomId)
           setCameraControlsRef(ref)
         }
       }}

@@ -460,8 +460,8 @@ export const Graph = () => {
   // }
 
 
-  console.log('activeFilterTab', activeFilterTab)
-  console.log('graphStyle', graphStyle)
+  // console.log('activeFilterTab', activeFilterTab)
+  // console.log('graphStyle', graphStyle)
 
 
   return (

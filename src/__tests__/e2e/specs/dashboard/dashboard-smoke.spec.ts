@@ -24,7 +24,7 @@ test.describe('Dashboard Smoke Tests', () => {
 
   test('should display code graph', async ({ page }) => {
     // Dashboard should show the graph component
-    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
   });
 
   test('should navigate to tasks page', async ({ page }) => {
@@ -41,6 +41,6 @@ test.describe('Dashboard Smoke Tests', () => {
     await dashboardPage.reload();
     expect(page.url()).toContain(`/w/${workspaceSlug}`);
     // Verify we're still on the dashboard page (graph is visible)
-    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
   });
 });

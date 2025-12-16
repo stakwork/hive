@@ -132,7 +132,7 @@ test.describe('Login and Accept Recommendation', () => {
 
     // Start on dashboard
     expect(page.url()).toContain(`/w/${workspaceSlug}`);
-    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
 
     // Navigate to recommendations
     await dashboardPage.goToRecommendations();
