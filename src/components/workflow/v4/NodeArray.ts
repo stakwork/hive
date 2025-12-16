@@ -545,7 +545,7 @@ class NodeArray {
     let stepType = '';
     let time = '';
     let stepIconHtml = '';
-    const displayName = step.display_name;
+    const displayName = step.display_name || step.name;
 
     if (this.isAdmin && stepLog) {
       stepIconHtml = `<span class="">${stepLog}</span>`;
@@ -600,7 +600,12 @@ class NodeArray {
     if (id.length > 30) {
       id = id.substring(0, 30) + '...';
     }
-    const sub = `<div class="workflow-name-container"><span class="workflow-step-name" title=${idFull}>Skill: ${displayName}</span><span class="workflow-step-name" title=${idFull}>Alias: ${id}</span></div>`;
+    const displayNameFull = displayName;
+    let truncatedDisplayName = displayName;
+    if (displayName && displayName.length > 30) {
+      truncatedDisplayName = displayName.substring(0, 30) + '...';
+    }
+    const sub = `<div class="workflow-name-container"><span class="workflow-step-name" title="${displayNameFull}">Skill: ${truncatedDisplayName}</span><span class="workflow-step-name" title="${idFull}">Alias: ${id}</span></div>`;
     let menu: string;
     let main: string;
 
@@ -620,7 +625,7 @@ class NodeArray {
       menu = `<div class="workflow-step-actions-menu" data-unique-id="${uniqueId}">${copyButton}${editButton}</div>`;
       main = `<div class="workflow-step-main workflow-step-menu-edit workflow-show-modal" data-unique-id="${uniqueId}" data-wizard-step="${step.wizard_step}" data-show-only="${this.show_only}">${stepIconHtml}</div>`;
     } else {
-      menu = ``;
+      menu = `<div class="workflow-step-actions-menu"></div>`;
       main = `<div class="workflow-step-main workflow-show-modal" >${stepIconHtml}</div>`;
     }
     const top = `<div class="workflow-top">${iconElement}${stepType}${time}</div>`;

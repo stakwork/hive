@@ -10,18 +10,25 @@ import { config } from "@/config/env";
 // Re-export types
 export type { Provider } from "aieo";
 
+import {
+  type Provider,
+  type ProviderTool,
+  getModel as getModelAieo,
+  getProviderTool as getProviderToolAieo,
+  getApiKeyForProvider as getApiKeyForProviderAieo
+} from "aieo";
+
 /**
  * Get API key for provider with mock support
  */
-export function getApiKeyForProvider(provider: string): string {
+export function getApiKeyForProvider(provider: Provider): string {
   // In mock mode, return mock key for Anthropic
   if (config.USE_MOCKS && provider === "anthropic") {
     return "mock-anthropic-key-12345";
   }
 
   // Otherwise, use the real aieo implementation
-  const { getApiKeyForProvider: realGetApiKey } = require("aieo");
-  return realGetApiKey(provider);
+  return getApiKeyForProviderAieo(provider);
 }
 
 /**
@@ -31,7 +38,7 @@ export function getApiKeyForProvider(provider: string): string {
  * The baseURL override makes all Anthropic API calls go to our local mock.
  */
 export async function getModel(
-  provider: string,
+  provider: Provider,
   apiKey: string,
   workspaceSlug?: string,
   modelType?: string
@@ -55,17 +62,16 @@ export async function getModel(
   }
 
   // Otherwise, use the real aieo implementation
-  const { getModel: realGetModel } = require("aieo");
-  return realGetModel(provider, apiKey, workspaceSlug, modelType);
+  return getModelAieo(provider, apiKey, workspaceSlug, modelType);
 }
 
 /**
  * Get provider tool with mock support
  */
 export function getProviderTool(
-  provider: string,
+  provider: Provider,
   apiKey: string,
-  toolName: string
+  toolName: ProviderTool
 ) {
   // In mock mode, return a mock tool
   if (config.USE_MOCKS && provider === "anthropic") {
@@ -80,6 +86,6 @@ export function getProviderTool(
   }
 
   // Otherwise, use the real aieo implementation
-  const { getProviderTool: realGetProviderTool } = require("aieo");
-  return realGetProviderTool(provider, apiKey, toolName);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return getProviderToolAieo(provider, apiKey, toolName as ProviderTool) as any;
 }
