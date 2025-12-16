@@ -2,7 +2,7 @@
 
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStreamProcessor } from "@/lib/streaming";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
 import { CreateFeatureModal } from "./CreateFeatureModal";
@@ -36,7 +36,13 @@ export function DashboardChat() {
   const [showFeatureModal, setShowFeatureModal] = useState(false);
   const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
   const hasReceivedContentRef = useRef(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { processStream } = useStreamProcessor();
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, activeToolCalls]);
 
   // Get the most recent image from the messages array
   const currentImageData = messages
@@ -92,7 +98,7 @@ export function DashboardChat() {
         },
         body: JSON.stringify({
           messages: updatedMessages
-            .filter((m) => m.content.trim()) // Filter out empty messages
+            .filter((m) => m.content.trim() || m.toolCalls) // Keep messages with content or tool calls
             .flatMap((m): ModelMessage[] => {
               // Handle content with images (always from user)
               if (m.imageData) {
@@ -186,53 +192,79 @@ export function DashboardChat() {
             clearInput(); // Clear input when response starts
           }
 
-          // Extract only text content (no tool calls or reasoning)
-          const textContent =
-            updatedMessage.textParts?.map((part) => part.content).join("") ||
-            updatedMessage.content ||
-            "";
+          // Use timeline to split messages at tool call boundaries
+          const timeline = updatedMessage.timeline || [];
 
-          // Store tool calls (with results in AI SDK format) in message state
-          const toolCallsForMessage = updatedMessage.toolCalls?.map(call => ({
-            id: call.id,
-            toolName: call.toolName,
-            input: call.input,
-            status: call.status,
-            output: call.output,
-            errorText: call.errorText,
-          })) || [];
+          // Build messages from timeline
+          const timelineMessages: Message[] = [];
+          let currentText = "";
+          let currentToolCalls: ToolCall[] = [];
+          let msgCounter = 0;
 
-          // Keep showing tool indicator until we have text content
-          const hasTextContent = textContent.trim().length > 0;
+          for (const item of timeline) {
+            if (item.type === "text") {
+              currentText += (item.data as { content: string }).content;
+            } else if (item.type === "toolCall") {
+              // Flush any accumulated text as a message
+              if (currentText.trim()) {
+                timelineMessages.push({
+                  id: `${messageId}-${msgCounter++}`,
+                  role: "assistant",
+                  content: currentText,
+                  timestamp: new Date(),
+                });
+                currentText = "";
+              }
 
-          if (!hasTextContent && toolCallsForMessage.length > 0) {
-            // Show tool indicator if we have tool calls but no text yet
-            setActiveToolCalls(toolCallsForMessage);
-          } else if (hasTextContent) {
-            // Clear tool indicator once we have text
+              // Add tool call to current batch
+              const toolCall = item.data as { id: string; toolName: string; input?: unknown; output?: unknown; status: string };
+              currentToolCalls.push({
+                id: toolCall.id,
+                toolName: toolCall.toolName,
+                input: toolCall.input,
+                status: toolCall.status,
+                output: toolCall.output,
+                errorText: toolCall.status === "output-error" ? "Tool call failed" : undefined,
+              });
+            }
+          }
+
+          // Flush any remaining tool calls as a message
+          if (currentToolCalls.length > 0) {
+            timelineMessages.push({
+              id: `${messageId}-${msgCounter++}`,
+              role: "assistant",
+              content: "", // Empty content for tool message
+              timestamp: new Date(),
+              toolCalls: currentToolCalls,
+            });
+            currentToolCalls = [];
+          }
+
+          // Flush any remaining text as a message
+          if (currentText.trim()) {
+            timelineMessages.push({
+              id: `${messageId}-${msgCounter++}`,
+              role: "assistant",
+              content: currentText,
+              timestamp: new Date(),
+            });
+          }
+
+          // Show tool indicator if the last message has tool calls but no following text yet
+          const lastMsg = timelineMessages[timelineMessages.length - 1];
+          if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
+            setActiveToolCalls(lastMsg.toolCalls);
+          } else {
             setActiveToolCalls([]);
           }
 
-          // Only add/update message if there's actual text content
-          if (hasTextContent) {
-            setMessages((prev) => {
-              const existing = prev.findIndex((m) => m.id === messageId);
-              const simpleMessage: Message = {
-                id: messageId,
-                role: "assistant",
-                content: textContent,
-                timestamp: new Date(),
-                toolCalls: toolCallsForMessage.length > 0 ? toolCallsForMessage : undefined,
-              };
-
-              if (existing >= 0) {
-                const updated = [...prev];
-                updated[existing] = simpleMessage;
-                return updated;
-              }
-              return [...prev, simpleMessage];
-            });
-          }
+          // Update messages state
+          setMessages((prev) => {
+            // Remove old messages for this response
+            const filteredPrev = prev.filter(m => !m.id.startsWith(messageId));
+            return [...filteredPrev, ...timelineMessages];
+          });
         }
       );
 
@@ -304,7 +336,7 @@ export function DashboardChat() {
       // Filter out empty messages and add objective as a user message
       const messagesWithObjective: ModelMessage[] = [
         ...messages
-          .filter((m) => m.content.trim()) // Filter out empty messages
+          .filter((m) => m.content.trim() || m.toolCalls) // Keep messages with content or tool calls
           .flatMap((m): ModelMessage[] => {
             // Handle content with images (always from user in this context)
             if (m.imageData) {
@@ -447,6 +479,8 @@ export function DashboardChat() {
             {activeToolCalls.length > 0 && (
               <ToolCallIndicator toolCalls={activeToolCalls} />
             )}
+            {/* Scroll anchor */}
+            <div ref={messagesEndRef} />
           </div>
         </div>
       )}
