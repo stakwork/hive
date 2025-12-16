@@ -42,7 +42,7 @@ export function useGraphPolling({
 
     // Check if request is already in progress - exit early to prevent race conditions
     if (isPollingRequestInProgress.current) {
-      console.log('Polling: Request already in progress, skipping...');
+      // console.log('Polling: Request already in progress, skipping...');
       return;
     }
 
@@ -65,13 +65,13 @@ export function useGraphPolling({
       if (latestNode?.date_added_to_graph) {
         const dateParam = Math.floor(latestNode.date_added_to_graph); // Remove decimal part
         pollingEndpoint += `&start_date_added_to_graph=${dateParam}`;
-        console.log(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`);
+        // console.log(`Polling: Using latest node date: ${latestNode.date_added_to_graph} -> ${dateParam}`);
       } else {
-        console.log(`Polling: No existing nodes, using base endpoint`);
+        // console.log(`Polling: No existing nodes, using base endpoint`);
       }
 
       const requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(pollingEndpoint)}`;
-      console.log(`Polling endpoint: ${pollingEndpoint}`);
+      // console.log(`Polling endpoint: ${pollingEndpoint}`);
 
       const response = await fetch(requestUrl, {
         signal: abortControllerRef.current.signal
@@ -93,7 +93,7 @@ export function useGraphPolling({
 
         // Log polling results
         if (data.data.nodes.length > 0) {
-          console.log(`Polling: Found ${data.data.nodes.length} nodes, ${data.data.edges?.length || 0} edges`);
+          // console.log(`Polling: Found ${data.data.nodes.length} nodes, ${data.data.edges?.length || 0} edges`);
         }
       }
     } catch (err) {

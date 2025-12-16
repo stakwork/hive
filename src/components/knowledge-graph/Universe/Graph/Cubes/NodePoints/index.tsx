@@ -45,7 +45,7 @@ const NodePointsComponent = () => {
   const nodeTypes = useNodeTypes()
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
-  console.log('NodePointsComponent re-rendered')
+  // console.log('NodePointsComponent re-rendered')
 
   // Create shared geometry for all instances
   const sharedGeometry = useMemo(

@@ -150,24 +150,24 @@ export const useTasksHighlight = ({
 
   // Fetch tasks function (Jarvis-backed to avoid inconsistent DB column issues)
   const fetchInProgressTasks = useCallback(async () => {
-    console.log("[useTasksHighlight] fetchInProgressTasks called", {
-      activeWorkspaceId,
-      hasSession: !!session?.user,
-      activeWorkspaceSlug,
-    });
+    // console.log("[useTasksHighlight] fetchInProgressTasks called", {
+    //   activeWorkspaceId,
+    //   hasSession: !!session?.user,
+    //   activeWorkspaceSlug,
+    // });
 
     if (!activeWorkspaceId || !session?.user) {
-      console.log("[useTasksHighlight] Skipping fetch - missing workspace ID or session");
+      // console.log("[useTasksHighlight] Skipping fetch - missing workspace ID or session");
       return;
     }
 
-    console.log("[useTasksHighlight] Starting task fetch...");
+    // console.log("[useTasksHighlight] Starting task fetch...");
     setTasksLoading(true);
     setTasksError(null);
 
     try {
       const requestUrl = `/api/swarm/jarvis/search-by-types?id=${workspaceId}`;
-      console.log("[useTasksHighlight] Making request to:", requestUrl);
+      // console.log("[useTasksHighlight] Making request to:", requestUrl);
 
       const searchPayload = {
         nodeTypes: {
@@ -176,7 +176,7 @@ export const useTasksHighlight = ({
         include_properties: true,
         namespace: "default"
       };
-      console.log("[useTasksHighlight] Request payload:", searchPayload);
+      // console.log("[useTasksHighlight] Request payload:", searchPayload);
 
       const response = await fetch(requestUrl, {
         method: 'POST',
@@ -186,31 +186,31 @@ export const useTasksHighlight = ({
         body: JSON.stringify(searchPayload),
       });
 
-      console.log("[useTasksHighlight] Response status:", response.status);
+      // console.log("[useTasksHighlight] Response status:", response.status);
       const result = await response.json();
-      console.log("[useTasksHighlight] Response result:", result);
+      // console.log("[useTasksHighlight] Response result:", result);
 
       const nodes = result?.data?.nodes;
-      console.log("[useTasksHighlight] Extracted nodes:", {
-        success: result.success,
-        nodeCount: Array.isArray(nodes) ? nodes.length : 0,
-        nodes: nodes?.slice(0, 3), // Log first 3 nodes for debugging
-      });
+      // console.log("[useTasksHighlight] Extracted nodes:", {
+      //   success: result.success,
+      //   nodeCount: Array.isArray(nodes) ? nodes.length : 0,
+      //   nodes: nodes?.slice(0, 3), // Log first 3 nodes for debugging
+      // });
 
       if (result.success && Array.isArray(nodes)) {
         const tasks = nodes.map(mapJarvisNodeToTask);
-        console.log("[useTasksHighlight] Mapped tasks:", {
-          totalTasks: tasks.length,
-          taskSample: tasks.slice(0, 3),
-        });
+        // console.log("[useTasksHighlight] Mapped tasks:", {
+        //   totalTasks: tasks.length,
+        //   taskSample: tasks.slice(0, 3),
+        // });
 
         const inProgressOnly = tasks.filter(
           (task) => task.status === TaskStatus.IN_PROGRESS
         );
-        console.log("[useTasksHighlight] Filtered in-progress tasks:", {
-          inProgressCount: inProgressOnly.length,
-          inProgressTasks: inProgressOnly,
-        });
+        // console.log("[useTasksHighlight] Filtered in-progress tasks:", {
+        //   inProgressCount: inProgressOnly.length,
+        //   inProgressTasks: inProgressOnly,
+        // });
 
         setInProgressTasks(inProgressOnly);
         onTasksUpdate?.(inProgressOnly);
@@ -219,12 +219,12 @@ export const useTasksHighlight = ({
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch tasks";
-      console.error("[useTasksHighlight] Error fetching tasks:", {
-        error: err,
-        errorMessage,
-        activeWorkspaceId,
-        requestUrl: `/api/swarm/jarvis/search-by-types?id=${workspaceId}`,
-      });
+      // console.error("[useTasksHighlight] Error fetching tasks:", {
+      //   error: err,
+      //   errorMessage,
+      //   activeWorkspaceId,
+      //   requestUrl: `/api/swarm/jarvis/search-by-types?id=${workspaceId}`,
+      // });
       setTasksError(errorMessage);
     } finally {
       console.log("[useTasksHighlight] Task fetch completed");
@@ -246,31 +246,31 @@ export const useTasksHighlight = ({
 
   // Subscribe to Pusher updates
   useEffect(() => {
-    console.log("[useTasksHighlight] Pusher effect starting", {
-      enabled,
-      activeWorkspaceSlug,
-      hasOnRunUpdate: !!onRunUpdate,
-    });
+    // console.log("[useTasksHighlight] Pusher effect starting", {
+    //   enabled,
+    //   activeWorkspaceSlug,
+    //   hasOnRunUpdate: !!onRunUpdate,
+    // });
 
     if (!enabled || !activeWorkspaceSlug) {
-      console.log("[useTasksHighlight] Pusher effect skipped - not enabled or no workspace slug");
+      // console.log("[useTasksHighlight] Pusher effect skipped - not enabled or no workspace slug");
       return;
     }
 
     try {
-      console.log("[useTasksHighlight] Getting Pusher client...");
+      // console.log("[useTasksHighlight] Getting Pusher client...");
       const pusher = getPusherClient();
-      console.log("[useTasksHighlight] Pusher client obtained:", pusher);
+      // console.log("[useTasksHighlight] Pusher client obtained:", pusher);
 
       const channelName = getWorkspaceChannelName(activeWorkspaceSlug);
-      console.log("[useTasksHighlight] Subscribing to channel:", channelName);
+      // console.log("[useTasksHighlight] Subscribing to channel:", channelName);
 
       const channel = pusher.subscribe(channelName);
-      console.log("[useTasksHighlight] Channel subscription created:", channel);
+      // console.log("[useTasksHighlight] Channel subscription created:", channel);
 
       // Log channel connection state
       channel.bind('pusher:subscription_succeeded', () => {
-        console.log("[useTasksHighlight] Channel subscription succeeded:", channelName);
+        // console.log("[useTasksHighlight] Channel subscription succeeded:", channelName);
       });
 
       channel.bind('pusher:subscription_error', (error: any) => {
@@ -278,11 +278,11 @@ export const useTasksHighlight = ({
       });
 
       const handleRunUpdate = (data: StakworkRunUpdateEvent) => {
-        console.log("[useTasksHighlight] Received Stakwork run update:", {
-          data,
-          timestamp: new Date().toISOString(),
-          activeWorkspaceSlug,
-        });
+        // console.log("[useTasksHighlight] Received Stakwork run update:", {
+        //   data,
+        //   timestamp: new Date().toISOString(),
+        //   activeWorkspaceSlug,
+        // });
         onRunUpdate?.(data);
 
         // Refresh tasks when run updates occur
@@ -290,7 +290,7 @@ export const useTasksHighlight = ({
         fetchInProgressTasks();
       };
 
-      console.log("[useTasksHighlight] Binding to event:", PUSHER_EVENTS.STAKWORK_RUN_UPDATE);
+      // console.log("[useTasksHighlight] Binding to event:", PUSHER_EVENTS.STAKWORK_RUN_UPDATE);
       channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
 
       // Log all events for debugging
@@ -303,14 +303,14 @@ export const useTasksHighlight = ({
         });
       });
 
-      console.log("[useTasksHighlight] Pusher setup complete for workspace:", activeWorkspaceSlug);
+      // console.log("[useTasksHighlight] Pusher setup complete for workspace:", activeWorkspaceSlug);
 
       return () => {
-        console.log("[useTasksHighlight] Cleaning up Pusher subscription for:", channelName);
+        // console.log("[useTasksHighlight] Cleaning up Pusher subscription for:", channelName);
         channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
         channel.unbind_global();
         pusher.unsubscribe(channelName);
-        console.log("[useTasksHighlight] Pusher cleanup complete");
+        // console.log("[useTasksHighlight] Pusher cleanup complete");
       };
     } catch (error) {
       console.error("[useTasksHighlight] Error setting up Pusher subscription:", {

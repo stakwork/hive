@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { validationError, notFoundError, serverError, forbiddenError, isApiError } from "@/types/errors";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
@@ -98,7 +98,10 @@ export async function POST(request: NextRequest) {
       })),
     ];
 
-    console.log("========= clueMsgs:", JSON.stringify(modelMessages, null, 2));
+    console.log("========= clueMsgs:");
+    for (const msg of modelMessages) {
+      console.log("========= msg:", JSON.stringify(msg, null, 2).slice(0, 50))
+    }
 
     console.log("🤖 Creating generateText with:", {
       model: model?.modelId,
@@ -116,6 +119,12 @@ export async function POST(request: NextRequest) {
         stopSequences: ["[END_OF_ANSWER]"],
         onStepFinish: (sf) => processStep(sf.content, workspaceSlug, features),
       });
+
+
+      after(async () => {
+        // ask ai for follow-up questions
+      });
+
       return result.toUIMessageStreamResponse();
     } catch {
       throw serverError("Failed to create stream");

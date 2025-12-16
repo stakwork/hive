@@ -11,7 +11,7 @@ export function useIngestStatus() {
   const [statusMessage, setStatusMessage] = useState<string>("Ingesting your codebase...");
 
   const ingestRefId = workspace?.ingestRefId;
-  console.log(workspace?.repositories);
+  // console.log(workspace?.repositories);
   const codeIsSynced = workspace?.repositories.every((repo) => repo.status === "SYNCED");
 
   useEffect(() => {

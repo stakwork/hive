@@ -8,6 +8,16 @@ import { ChatMessage } from "./ChatMessage";
 import { CreateFeatureModal } from "./CreateFeatureModal";
 import { toast } from "sonner";
 import type { ModelMessage } from "ai";
+import { ToolCallIndicator } from "./ToolCallIndicator";
+
+interface ToolCall {
+  id: string;
+  toolName: string;
+  input?: unknown;
+  status: string;
+  output?: unknown;
+  errorText?: string;
+}
 
 interface Message {
   id: string;
@@ -15,6 +25,7 @@ interface Message {
   content: string;
   timestamp: Date;
   imageData?: string;
+  toolCalls?: ToolCall[];
 }
 
 export function DashboardChat() {
@@ -23,6 +34,7 @@ export function DashboardChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingFeature, setIsCreatingFeature] = useState(false);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
+  const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
   const hasReceivedContentRef = useRef(false);
   const { processStream } = useStreamProcessor();
 
@@ -81,20 +93,69 @@ export function DashboardChat() {
         body: JSON.stringify({
           messages: updatedMessages
             .filter((m) => m.content.trim()) // Filter out empty messages
-            .map((m) => {
+            .flatMap((m): ModelMessage[] => {
+              // Handle content with images (always from user)
               if (m.imageData) {
-                return {
-                  role: m.role,
+                return [{
+                  role: "user" as const,
                   content: [
                     { type: "image", image: m.imageData },
                     { type: "text", text: m.content },
                   ],
-                };
+                }];
               }
-              return {
+
+              // Build separate messages for tool calls, results, and text (AI SDK format)
+              if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+                console.log("========= tool calls:", JSON.stringify(m.toolCalls, null, 2));
+
+                const messages: ModelMessage[] = [];
+
+                // First message: tool calls only
+                const toolCallMessage: ModelMessage = {
+                  role: m.role,
+                  content: m.toolCalls.map(tc => ({
+                    type: "tool-call" as const,
+                    toolCallId: tc.id,
+                    toolName: tc.toolName,
+                    input: tc.input || {},
+                  })),
+                };
+                messages.push(toolCallMessage);
+
+                // Second message: tool results (if any tool has output)
+                const toolResults = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
+                if (toolResults.length > 0) {
+                  const toolResultMessage = {
+                    role: "tool" as const,
+                    content: toolResults.map(tc => ({
+                      type: "tool-result" as const,
+                      toolCallId: tc.id,
+                      toolName: tc.toolName,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      output: tc.output as any,
+                    })),
+                  } satisfies ModelMessage;
+                  messages.push(toolResultMessage);
+                }
+
+                // Third message: text content (if any)
+                if (m.content) {
+                  const textMessage: ModelMessage = {
+                    role: m.role,
+                    content: m.content,
+                  };
+                  messages.push(textMessage);
+                }
+
+                return messages;
+              }
+
+              // Simple text message
+              return [{
                 role: m.role,
                 content: m.content,
-              };
+              }];
             }),
           workspaceSlug: slug,
         }),
@@ -123,24 +184,52 @@ export function DashboardChat() {
             updatedMessage.content ||
             "";
 
-          setMessages((prev) => {
-            const existing = prev.findIndex((m) => m.id === messageId);
-            const simpleMessage: Message = {
-              id: messageId,
-              role: "assistant",
-              content: textContent,
-              timestamp: new Date(),
-            };
+          // Store tool calls (without results) in message state
+          const toolCallsForMessage = updatedMessage.toolCalls?.map(call => ({
+            id: call.id,
+            toolName: call.toolName,
+            input: call.input,
+            status: call.status,
+            output: call.output,
+            errorText: call.errorText,
+          })) || [];
 
-            if (existing >= 0) {
-              const updated = [...prev];
-              updated[existing] = simpleMessage;
-              return updated;
-            }
-            return [...prev, simpleMessage];
-          });
+          // Keep showing tool indicator until we have text content
+          const hasTextContent = textContent.trim().length > 0;
+
+          if (!hasTextContent && toolCallsForMessage.length > 0) {
+            // Show tool indicator if we have tool calls but no text yet
+            setActiveToolCalls(toolCallsForMessage);
+          } else if (hasTextContent) {
+            // Clear tool indicator once we have text
+            setActiveToolCalls([]);
+          }
+
+          // Only add/update message if there's actual text content
+          if (hasTextContent) {
+            setMessages((prev) => {
+              const existing = prev.findIndex((m) => m.id === messageId);
+              const simpleMessage: Message = {
+                id: messageId,
+                role: "assistant",
+                content: textContent,
+                timestamp: new Date(),
+                toolCalls: toolCallsForMessage.length > 0 ? toolCallsForMessage : undefined,
+              };
+
+              if (existing >= 0) {
+                const updated = [...prev];
+                updated[existing] = simpleMessage;
+                return updated;
+              }
+              return [...prev, simpleMessage];
+            });
+          }
         }
       );
+
+      // Clear active tool call indicator when streaming is complete
+      setActiveToolCalls([]);
     } catch (error) {
       console.error("Error calling ask API:", error);
       const errorMessage: Message = {
@@ -151,6 +240,7 @@ export function DashboardChat() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+      setActiveToolCalls([]); // Clear tool calls on error
     } finally {
       setIsLoading(false);
     }
@@ -207,21 +297,67 @@ export function DashboardChat() {
       const messagesWithObjective: ModelMessage[] = [
         ...messages
           .filter((m) => m.content.trim()) // Filter out empty messages
-          .map((m): ModelMessage => {
+          .flatMap((m): ModelMessage[] => {
+            // Handle content with images (always from user in this context)
             if (m.imageData) {
-              // Images are always from user messages
-              return {
+              return [{
                 role: "user" as const,
                 content: [
                   { type: "image" as const, image: m.imageData },
                   { type: "text" as const, text: m.content },
                 ],
-              };
+              }];
             }
-            return {
+
+            // Build separate messages for tool calls, results, and text (AI SDK format)
+            if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+              const messages: ModelMessage[] = [];
+
+              // First message: tool calls only
+              const toolCallMessage: ModelMessage = {
+                role: m.role,
+                content: m.toolCalls.map(tc => ({
+                  type: "tool-call" as const,
+                  toolCallId: tc.id,
+                  toolName: tc.toolName,
+                  input: tc.input || {},
+                })),
+              };
+              messages.push(toolCallMessage);
+
+              // Second message: tool results (if any tool has output)
+              const toolResults = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
+              if (toolResults.length > 0) {
+                const toolResultMessage = {
+                  role: "tool" as const,
+                  content: toolResults.map(tc => ({
+                    type: "tool-result" as const,
+                    toolCallId: tc.id,
+                    toolName: tc.toolName,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    output: tc.output as any,
+                  })),
+                } satisfies ModelMessage;
+                messages.push(toolResultMessage);
+              }
+
+              // Third message: text content (if any)
+              if (m.content) {
+                const textMessage: ModelMessage = {
+                  role: m.role,
+                  content: m.content,
+                };
+                messages.push(textMessage);
+              }
+
+              return messages;
+            }
+
+            // Simple text message
+            return [{
               role: m.role as "user" | "assistant",
               content: m.content,
-            };
+            }];
           }),
         {
           role: "user" as const,
@@ -275,7 +411,7 @@ export function DashboardChat() {
   return (
     <div className="pointer-events-none">
       {/* Message history */}
-      {messages.length > 0 && (
+      {(messages.length > 0 || activeToolCalls.length > 0) && (
         <div className="max-h-[300px] overflow-y-auto pb-2">
           <div className="space-y-2 px-4">
             {messages.map((message, index) => {
@@ -291,6 +427,10 @@ export function DashboardChat() {
                 />
               );
             })}
+            {/* Show tool call indicator when tools are active */}
+            {activeToolCalls.length > 0 && (
+              <ToolCallIndicator toolCalls={activeToolCalls} />
+            )}
           </div>
         </div>
       )}
