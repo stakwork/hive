@@ -198,6 +198,18 @@ export function createAuthenticatedGetRequest(
 }
 
 /**
+ * Creates a PUT request with middleware auth headers
+ */
+export function createAuthenticatedPutRequest(
+  url: string,
+  user: { id: string; email: string; name: string },
+  body: object
+): NextRequest {
+  const baseRequest = createPutRequest(url, body);
+  return addMiddlewareHeaders(baseRequest, user);
+}
+
+/**
  * Creates a PATCH request with middleware auth headers
  */
 export function createAuthenticatedPatchRequest(
