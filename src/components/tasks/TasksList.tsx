@@ -18,6 +18,7 @@ import { LoadingState } from "./LoadingState";
 import { useEffect, useState } from "react";
 import { Search, X } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
+import { TaskFilters, TaskFiltersType } from "./TaskFilters";
 
 interface TasksListProps {
   workspaceId: string;
@@ -40,6 +41,9 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
+  // Filter state
+  const [filters, setFilters] = useState<TaskFiltersType>({});
+
   // showArchived is true when activeTab is "archived"
   const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
     workspaceId,
@@ -47,7 +51,8 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     true,
     10,
     activeTab === "archived",
-    debouncedSearchQuery
+    debouncedSearchQuery,
+    filters
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -65,6 +70,14 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
   const handleClearSearch = () => {
     setSearchQuery("");
+  };
+
+  const handleFiltersChange = (newFilters: TaskFiltersType) => {
+    setFilters(newFilters);
+  };
+
+  const handleClearFilters = () => {
+    setFilters({});
   };
 
   // Refresh task list when global notification count changes
@@ -106,8 +119,14 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
         </CardHeader>
 
         <CardContent>
-          {/* Search Bar */}
-          <div className="relative mb-4">
+          {/* Filters and Search Bar */}
+          <div className="flex items-center gap-2 mb-4">
+            <TaskFilters
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onClearFilters={handleClearFilters}
+            />
+            <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
@@ -124,6 +143,7 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
                 <X className="h-4 w-4" />
               </button>
             )}
+            </div>
           </div>
 
           <TabsContent value="active" className="mt-4 space-y-3">
