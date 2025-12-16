@@ -128,13 +128,21 @@ export function DashboardChat() {
                 if (toolResults.length > 0) {
                   const toolResultMessage = {
                     role: "tool" as const,
-                    content: toolResults.map(tc => ({
-                      type: "tool-result" as const,
-                      toolCallId: tc.id,
-                      toolName: tc.toolName,
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      output: tc.output as any,
-                    })),
+                    content: toolResults.map(tc => {
+                      // Ensure output is wrapped in AI SDK format
+                      let wrappedOutput = tc.output;
+                      if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
+                        wrappedOutput = { type: "json", value: tc.output };
+                      }
+
+                      return {
+                        type: "tool-result" as const,
+                        toolCallId: tc.id,
+                        toolName: tc.toolName,
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        output: wrappedOutput as any,
+                      };
+                    }),
                   } satisfies ModelMessage;
                   messages.push(toolResultMessage);
                 }
@@ -184,7 +192,7 @@ export function DashboardChat() {
             updatedMessage.content ||
             "";
 
-          // Store tool calls (without results) in message state
+          // Store tool calls (with results in AI SDK format) in message state
           const toolCallsForMessage = updatedMessage.toolCalls?.map(call => ({
             id: call.id,
             toolName: call.toolName,
@@ -330,13 +338,21 @@ export function DashboardChat() {
               if (toolResults.length > 0) {
                 const toolResultMessage = {
                   role: "tool" as const,
-                  content: toolResults.map(tc => ({
-                    type: "tool-result" as const,
-                    toolCallId: tc.id,
-                    toolName: tc.toolName,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    output: tc.output as any,
-                  })),
+                  content: toolResults.map(tc => {
+                    // Ensure output is wrapped in AI SDK format
+                    let wrappedOutput = tc.output;
+                    if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
+                      wrappedOutput = { type: "json", value: tc.output };
+                    }
+
+                    return {
+                      type: "tool-result" as const,
+                      toolCallId: tc.id,
+                      toolName: tc.toolName,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      output: wrappedOutput as any,
+                    };
+                  }),
                 } satisfies ModelMessage;
                 messages.push(toolResultMessage);
               }

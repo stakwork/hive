@@ -85,22 +85,28 @@ export async function POST(request: NextRequest) {
 
     const features = concepts.features as Record<string, unknown>[];
 
-    const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, messages[messages.length - 1].content);
+    // Extract text content from last message (handle both string and array content)
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageContent = typeof lastMessage?.content === "string"
+      ? lastMessage.content
+      : Array.isArray(lastMessage?.content)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? lastMessage.content.find((part: any) => part.type === "text")?.text || ""
+        : "";
+
+    const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, lastMessageContent);
 
     // console.log("features:", features);
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const modelMessages: ModelMessage[] = [
       ...getQuickAskPrefixMessages(features, repoUrl, clueMsgs),
-      // Conversation history (convert from LearnMessage to ModelMessage format)
-      ...messages.map((msg: { role: string; content: string }) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-      })),
+      // Conversation history (pass through as-is to support tool calls/results)
+      ...messages as ModelMessage[],
     ];
 
     console.log("========= clueMsgs:");
     for (const msg of modelMessages) {
-      console.log("========= msg:", JSON.stringify(msg, null, 2).slice(0, 50))
+      console.log("========= msg:", JSON.stringify(msg, null, 2).slice(0, 400))
     }
 
     console.log("🤖 Creating generateText with:", {
