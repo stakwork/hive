@@ -86,14 +86,14 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
-          expect.objectContaining({
-            headers: expect.objectContaining({
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          {
+            headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
+            },
+          }
         );
 
         // Verify token retrieval was called with correct parameters
@@ -146,14 +146,14 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
-          expect.objectContaining({
-            headers: expect.objectContaining({
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          {
+            headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
+            },
+          }
         );
       });
 
@@ -200,14 +200,14 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
-          expect.objectContaining({
-            headers: expect.objectContaining({
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          {
+            headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
+            },
+          }
         );
       });
 
@@ -255,14 +255,14 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
-          expect.objectContaining({
-            headers: expect.objectContaining({
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          {
+            headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
+            },
+          }
         );
       });
 
@@ -309,7 +309,7 @@ describe("GitHub App Check API Integration Tests", () => {
         expect(response.status).toBe(200);
         expect(data.hasPushAccess).toBe(true);
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
           expect.any(Object)
         );
       });
@@ -356,14 +356,14 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
-          expect.objectContaining({
-            headers: expect.objectContaining({
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          {
+            headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
+            },
+          }
         );
       });
 
@@ -410,14 +410,14 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
-          expect.objectContaining({
-            headers: expect.objectContaining({
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          {
+            headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
+            },
+          }
         );
       });
     });
@@ -639,14 +639,14 @@ describe("GitHub App Check API Integration Tests", () => {
 
         // Verify installation repositories API was called correctly
         expect(mockFetch).toHaveBeenCalledWith(
-          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories`,
-          expect.objectContaining({
-            headers: expect.objectContaining({
+          `${serviceConfigs.github.baseURL}/user/installations/${sourceControlOrg.githubInstallationId}/repositories?per_page=100`,
+          {
+            headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
-            }),
-          })
+            },
+          }
         );
       });
 
