@@ -518,25 +518,24 @@ export function DashboardChat() {
             {activeToolCalls.length > 0 && (
               <ToolCallIndicator toolCalls={activeToolCalls} />
             )}
+            {/* Follow-up question bubbles */}
+            {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
+              <div className="pointer-events-auto pt-2">
+                <div className="flex flex-col items-end gap-1.5">
+                  {followUpQuestions.map((question, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleFollowUpClick(question)}
+                      className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />
-          </div>
-        </div>
-      )}
-
-      {/* Follow-up question bubbles */}
-      {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
-        <div className="pointer-events-auto px-4 pb-2">
-          <div className="flex flex-col items-end gap-1.5">
-            {followUpQuestions.map((question, index) => (
-              <button
-                key={index}
-                onClick={() => handleFollowUpClick(question)}
-                className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
-              >
-                {question}
-              </button>
-            ))}
           </div>
         </div>
       )}
