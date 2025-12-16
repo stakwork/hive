@@ -23,7 +23,7 @@ import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal } from "./components";
-import { useWorkflowNodes, WorkflowNode } from "@/hooks/useWorkflowNodes";
+import { WorkflowNode } from "@/hooks/useWorkflowNodes";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
 import { agentToolProcessors } from "./lib/streaming-config";
@@ -85,13 +85,6 @@ export default function TaskChatPage() {
     isNewTask && taskMode === "agent"
   );
   const hasAvailablePods = poolStatus ? poolStatus.unusedVms > 0 : null;
-
-  // Fetch workflows when in workflow_editor mode
-  const {
-    workflows,
-    isLoading: isLoadingWorkflows,
-    error: workflowsError,
-  } = useWorkflowNodes(slug, isNewTask && taskMode === "workflow_editor");
 
   // Wrapper to handle mode changes and trigger pod status check
   const handleModeChange = (newMode: string) => {
@@ -303,89 +296,91 @@ export default function TaskChatPage() {
   }, [taskIdFromUrl, loadTaskMessages]);
 
   // Handle workflow selection in workflow_editor mode
-  const handleWorkflowSelect = async (workflowId: number, workflowData: WorkflowNode) => {
-    if (isLoading) return;
-    setIsLoading(true);
+  const handleWorkflowSelect = useCallback(
+    async (workflowId: number) => {
+      setIsLoading(true);
 
-    try {
-      // Use workflow_name directly from properties
-      const workflowName = workflowData.properties.workflow_name;
+      try {
+        // Step 1: Validate workflow exists in Stakwork
+        const stakworkValidation = await fetch('/api/stakwork/validate-workflow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workflow_id: workflowId }),
+        });
 
-      // Create new task with workflow info
-      const taskTitle = workflowName || `Workflow ${workflowId}`;
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: taskTitle,
-          description: `Editing workflow ${workflowId}`,
-          status: "active",
-          workspaceSlug: slug,
-          mode: taskMode,
-        }),
-      });
+        if (!stakworkValidation.ok) {
+          toast.error(`Workflow ID ${workflowId} not found in Stakwork`);
+          setIsLoading(false);
+          return;
+        }
 
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.statusText}`);
-      }
+        // Step 2: Fetch workflow from local graph
+        const graphResponse = await fetch(
+          `/api/workspaces/${slug}/nodes?node_type=Workflow&workflow_id=${workflowId}`
+        );
 
-      const result = await response.json();
-      const newTaskId = result.data.id;
-      setCurrentTaskId(newTaskId);
+        if (!graphResponse.ok) {
+          toast.error(`Failed to fetch workflow from graph`);
+          setIsLoading(false);
+          return;
+        }
 
-      // Set the task title
-      setTaskTitle(taskTitle);
+        const graphData = await graphResponse.json();
+        
+        if (!graphData.data?.nodes?.length) {
+          toast.error(
+            `Workflow ID ${workflowId} exists in Stakwork but not in local graph. Please sync workflow first.`
+          );
+          setIsLoading(false);
+          return;
+        }
 
-      // Update URL without reloading
-      const newUrl = `/w/${slug}/task/${newTaskId}`;
-      window.history.replaceState({}, "", newUrl);
+        const workflowData = graphData.data.nodes[0];
 
-      // Save workflow artifact to database
-      const saveResponse = await fetch(`/api/tasks/${newTaskId}/messages/save`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: `Loaded: ${taskTitle}`,
-          role: "ASSISTANT",
-          artifacts: [{
-            type: ArtifactType.WORKFLOW,
-            content: {
-              workflowJson: workflowData.properties.workflow_json,
-              workflowId: workflowId,
-              workflowName: workflowName,
-              workflowRefId: workflowData.ref_id,
-            },
-          }],
-        }),
-      });
+        // Use workflow_name directly from properties
+        const workflowName = workflowData.properties.workflow_name;
 
-      if (!saveResponse.ok) {
-        console.error("Failed to save workflow artifact:", await saveResponse.text());
-      }
+        // Create new task with workflow info
+        const taskTitle = workflowName || `Workflow ${workflowId}`;
+        const response = await fetch("/api/tasks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: taskTitle,
+            description: `Editing workflow ${workflowId}`,
+            status: "active",
+            workspaceSlug: slug,
+            mode: taskMode,
+          }),
+        });
 
-      const savedMessage = await saveResponse.json();
+        if (!response.ok) {
+          throw new Error(`Failed to create task: ${response.statusText}`);
+        }
 
-      // Create local message from saved response
-      const initialMessage: ChatMessage = savedMessage.success
-        ? createChatMessage({
-            id: savedMessage.data.id,
-            message: savedMessage.data.message,
-            role: ChatRole.ASSISTANT,
-            status: ChatStatus.SENT,
-            artifacts: savedMessage.data.artifacts,
-          })
-        : createChatMessage({
-            id: generateUniqueId(),
+        const result = await response.json();
+        const newTaskId = result.data.id;
+        setCurrentTaskId(newTaskId);
+
+        // Set the task title
+        setTaskTitle(taskTitle);
+
+        // Update URL without reloading
+        const newUrl = `/w/${slug}/task/${newTaskId}`;
+        window.history.replaceState({}, "", newUrl);
+
+        // Save workflow artifact to database
+        const saveResponse = await fetch(`/api/tasks/${newTaskId}/messages/save`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
             message: `Loaded: ${taskTitle}`,
-            role: ChatRole.ASSISTANT,
-            status: ChatStatus.SENT,
-            artifacts: [createArtifact({
-              id: generateUniqueId(),
-              messageId: "",
+            role: "ASSISTANT",
+            artifacts: [{
               type: ArtifactType.WORKFLOW,
               content: {
                 workflowJson: workflowData.properties.workflow_json,
@@ -393,26 +388,62 @@ export default function TaskChatPage() {
                 workflowName: workflowName,
                 workflowRefId: workflowData.ref_id,
               },
-            })],
-          });
+            }],
+          }),
+        });
 
-      setMessages([initialMessage]);
-      setStarted(true);
-      setWorkflowStatus(WorkflowStatus.PENDING);
+        if (!saveResponse.ok) {
+          console.error("Failed to save workflow artifact:", await saveResponse.text());
+        }
 
-      // Store workflow context for later use in step editing
-      setCurrentWorkflowContext({
-        workflowId: workflowId,
-        workflowName: workflowName || `Workflow ${workflowId}`,
-        workflowRefId: workflowData.ref_id,
-      });
-    } catch (error) {
-      console.error("Error in handleWorkflowSelect:", error);
-      toast.error("Error", { description: "Failed to load workflow. Please try again." });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+        const savedMessage = await saveResponse.json();
+
+        // Create local message from saved response
+        const initialMessage: ChatMessage = savedMessage.success
+          ? createChatMessage({
+              id: savedMessage.data.id,
+              message: savedMessage.data.message,
+              role: ChatRole.ASSISTANT,
+              status: ChatStatus.SENT,
+              artifacts: savedMessage.data.artifacts,
+            })
+          : createChatMessage({
+              id: generateUniqueId(),
+              message: `Loaded: ${taskTitle}`,
+              role: ChatRole.ASSISTANT,
+              status: ChatStatus.SENT,
+              artifacts: [createArtifact({
+                id: generateUniqueId(),
+                messageId: "",
+                type: ArtifactType.WORKFLOW,
+                content: {
+                  workflowJson: workflowData.properties.workflow_json,
+                  workflowId: workflowId,
+                  workflowName: workflowName,
+                  workflowRefId: workflowData.ref_id,
+                },
+              })],
+            });
+
+        setMessages([initialMessage]);
+        setStarted(true);
+        setWorkflowStatus(WorkflowStatus.PENDING);
+
+        // Store workflow context for later use in step editing
+        setCurrentWorkflowContext({
+          workflowId: workflowId,
+          workflowName: workflowName || `Workflow ${workflowId}`,
+          workflowRefId: workflowData.ref_id,
+        });
+      } catch (error) {
+        console.error("Error in handleWorkflowSelect:", error);
+        toast.error("Error", { description: "Failed to load workflow. Please try again." });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [slug, taskMode]
+  );
 
   const handleStart = async (msg: string) => {
     if (isLoading) return; // Prevent duplicate sends
@@ -1055,10 +1086,7 @@ export default function TaskChatPage() {
             hasAvailablePods={hasAvailablePods}
             isCheckingPods={poolStatusLoading}
             workspaceSlug={slug}
-            workflows={workflows}
             onWorkflowSelect={handleWorkflowSelect}
-            isLoadingWorkflows={isLoadingWorkflows}
-            workflowsError={workflowsError}
           />
         </motion.div>
       ) : (

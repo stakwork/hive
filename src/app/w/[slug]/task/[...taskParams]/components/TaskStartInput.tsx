@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,11 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2, AlertTriangle, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
-import { WorkflowNode } from "@/hooks/useWorkflowNodes";
 
 interface TaskStartInputProps {
   onStart: (task: string) => void;
@@ -22,11 +21,7 @@ interface TaskStartInputProps {
   hasAvailablePods?: boolean | null;
   isCheckingPods?: boolean;
   workspaceSlug?: string;
-  // Workflow editor props
-  workflows?: WorkflowNode[];
-  onWorkflowSelect?: (workflowId: number, workflowData: WorkflowNode) => void;
-  isLoadingWorkflows?: boolean;
-  workflowsError?: string | null;
+  onWorkflowSelect?: (workflowId: number) => void;
 }
 
 export function TaskStartInput({
@@ -37,10 +32,7 @@ export function TaskStartInput({
   hasAvailablePods,
   isCheckingPods = false,
   workspaceSlug,
-  workflows = [],
   onWorkflowSelect,
-  isLoadingWorkflows = false,
-  workflowsError,
 }: TaskStartInputProps) {
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
@@ -62,17 +54,7 @@ export function TaskStartInput({
     }
   }, [isWorkflowMode]);
 
-  // Find matching workflow as user types
-  const matchedWorkflow = useMemo(() => {
-    if (!workflowIdValue.trim()) return null;
-    const searchId = parseInt(workflowIdValue.trim(), 10);
-    if (isNaN(searchId)) return null;
-    return workflows.find((w) => w.properties.workflow_id === searchId) || null;
-  }, [workflowIdValue, workflows]);
-
-  const workflowName = matchedWorkflow?.properties.workflow_name || null;
   const hasValidWorkflowId = workflowIdValue.trim().length > 0 && !isNaN(parseInt(workflowIdValue.trim(), 10));
-  const workflowNotFound = hasValidWorkflowId && !matchedWorkflow && !isLoadingWorkflows;
 
   useEffect(() => {
     if (transcript) {
@@ -115,9 +97,9 @@ export function TaskStartInput({
   };
 
   const handleWorkflowKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && matchedWorkflow && onWorkflowSelect) {
+    if (e.key === "Enter" && hasValidWorkflowId && onWorkflowSelect) {
       e.preventDefault();
-      onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+      onWorkflowSelect(parseInt(workflowIdValue.trim(), 10));
     }
   };
 
@@ -126,8 +108,8 @@ export function TaskStartInput({
 
   const handleClick = () => {
     if (isWorkflowMode) {
-      if (matchedWorkflow && onWorkflowSelect) {
-        onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+      if (hasValidWorkflowId && onWorkflowSelect) {
+        onWorkflowSelect(parseInt(workflowIdValue.trim(), 10));
       }
     } else {
       if (hasText) {
@@ -142,7 +124,7 @@ export function TaskStartInput({
 
   // Determine if submit button should be enabled
   const isSubmitDisabled = isWorkflowMode
-    ? !matchedWorkflow || isLoadingWorkflows || isLoading
+    ? !hasValidWorkflowId || isLoading
     : !hasText || isLoading || noPodsAvailable;
 
   const getModeConfig = (mode: string) => {
@@ -202,29 +184,6 @@ export function TaskStartInput({
                 autoFocus
                 data-testid="workflow-id-input"
               />
-              {/* Workflow status messages */}
-              <div className="mt-4 min-h-[24px]">
-                {workflowsError && (
-                  <div className="flex items-center gap-2 text-destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <span className="text-sm">{workflowsError}</span>
-                  </div>
-                )}
-                {workflowNotFound && (
-                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
-                    <AlertCircle className="h-4 w-4" />
-                    <span className="text-sm">Workflow not found</span>
-                  </div>
-                )}
-                {matchedWorkflow && (
-                  <div className="flex items-center gap-2 text-green-600 dark:text-green-500">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span className="text-sm">
-                      {workflowName || `Workflow ${matchedWorkflow.properties.workflow_id}`}
-                    </span>
-                  </div>
-                )}
-              </div>
             </motion.div>
           ) : (
             <motion.div
@@ -321,7 +280,7 @@ export function TaskStartInput({
             tabIndex={0}
             data-testid="task-start-submit"
           >
-            {isLoading || isLoadingWorkflows ? (
+            {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <ArrowUp className="w-4 h-4" />
