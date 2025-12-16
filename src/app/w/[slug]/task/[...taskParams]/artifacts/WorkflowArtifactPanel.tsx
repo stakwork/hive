@@ -5,24 +5,22 @@ import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
-import { SelectedStepContent, createSelectedStep } from "@/lib/workflow-step";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
   isActive: boolean;
-  onStepSelect?: (step: SelectedStepContent) => void;
+  onStepSelect?: (step: WorkflowTransition) => void;
 }
 
 export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
-  const [clickedStep, setClickedStep] = useState<SelectedStepContent | null>(null);
+  const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "stakwork">("editor");
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
-    const selectedStep = createSelectedStep(step);
-    setClickedStep(selectedStep);
+    setClickedStep(step);
     setIsModalOpen(true);
   }, []);
 
@@ -58,8 +56,29 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
     if (!workflowJson) return null;
+    if (typeof workflowJson === 'object') return workflowJson;
+
     try {
-      return JSON.parse(workflowJson);
+      let data: string | Record<string, unknown> = workflowJson;
+
+      // Remove wrapper quotes from graph API format
+      if (typeof data === 'string') {
+        // Check for \" (backslash-quote) wrapper first
+        if (data.startsWith('\\"') && data.endsWith('\\"')) {
+          data = data.slice(2, -2);
+        }
+        // Check for " (single quote) wrapper
+        else if (data.startsWith('"') && data.endsWith('"')) {
+          data = data.slice(1, -1);
+        }
+      }
+
+      // Parse until we get an object
+      while (typeof data === 'string') {
+        data = JSON.parse(data);
+      }
+
+      return data;
     } catch (e) {
       console.error("Failed to parse workflow JSON:", e, "Input:", workflowJson?.substring(0, 200));
       return null;

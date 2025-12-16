@@ -1,9 +1,9 @@
 import React from "react";
 import { X, Zap, Bot, Globe, RefreshCw, GitBranch } from "lucide-react";
-import { SelectedStepContent, STEP_TYPE_LABELS, StepType } from "@/lib/workflow-step";
+import { WorkflowTransition, StepType, getStepType } from "@/types/stakwork/workflow";
 
 interface InputStepAttachmentProps {
-  step: SelectedStepContent;
+  step: WorkflowTransition;
   onRemove: () => void;
 }
 
@@ -49,17 +49,18 @@ const STEP_TYPE_COLORS: Record<StepType, { bg: string; border: string; text: str
 };
 
 export function InputStepAttachment({ step, onRemove }: InputStepAttachmentProps) {
-  const colors = STEP_TYPE_COLORS[step.stepType];
+  const stepType = getStepType(step);
+  const colors = STEP_TYPE_COLORS[stepType];
   // name is the skill type (e.g., "JSONBuilder", "SetVar")
-  const skillName = step.displayName || step.name;
+  const skillName = step.display_name || step.name;
   const truncatedSkillName = skillName.length > 25 ? `${skillName.slice(0, 25)}...` : skillName;
-  // alias is the step identifier (e.g., "json_builder_1", "set_var")
-  const stepId = step.alias || step.displayId || "";
+  // id is the step identifier (e.g., "json_builder_1", "set_var")
+  const stepId = step.id || step.display_id || "";
   const truncatedStepId = stepId.length > 20 ? `${stepId.slice(0, 20)}...` : stepId;
 
   return (
     <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm ${colors.bg} ${colors.border}`}>
-      <span className={colors.icon}>{STEP_TYPE_ICONS[step.stepType]}</span>
+      <span className={colors.icon}>{STEP_TYPE_ICONS[stepType]}</span>
       <div className="flex flex-col leading-tight">
         <span className={`font-medium ${colors.text}`} title={skillName}>{truncatedSkillName}</span>
         {stepId && <span className={`text-xs ${colors.text} opacity-70`} title={stepId}>{truncatedStepId}</span>}

@@ -80,3 +80,29 @@ export interface SearchResult {
   title: string;
   skill: string;
 }
+
+// Step type for UI display (extends skill.type with 'condition')
+export type StepType = "automated" | "human" | "api" | "loop" | "condition";
+
+// Helper to extract step type from WorkflowTransition
+export function getStepType(step: WorkflowTransition): StepType {
+  if (step.name === "IfCondition" || step.name === "IfElseCondition") {
+    return "condition";
+  }
+
+  const skillType = step.skill?.type;
+  if (skillType === "human" || skillType === "automated" || skillType === "api" || skillType === "loop") {
+    return skillType;
+  }
+
+  return "automated";
+}
+
+// Step type display labels
+export const STEP_TYPE_LABELS: Record<StepType, string> = {
+  automated: "Automated",
+  human: "Human",
+  api: "API",
+  loop: "Loop",
+  condition: "Condition",
+};

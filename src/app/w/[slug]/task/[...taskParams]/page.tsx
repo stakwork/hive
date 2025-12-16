@@ -30,7 +30,7 @@ import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { SelectedStepContent } from "@/lib/workflow-step";
+import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -123,7 +123,7 @@ export default function TaskChatPage() {
   const [isChainVisible, setIsChainVisible] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus | null>(WorkflowStatus.PENDING);
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
-  const [selectedStep, setSelectedStep] = useState<SelectedStepContent | null>(null);
+  const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
   const [currentWorkflowContext, setCurrentWorkflowContext] = useState<{
     workflowId: number;
     workflowName: string;
@@ -543,10 +543,10 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             stepName: selectedStep.name,
-            stepUniqueId: selectedStep.uniqueId,
-            stepDisplayName: selectedStep.displayName || selectedStep.name,
-            stepType: selectedStep.stepType,
-            stepData: selectedStep.stepData,
+            stepUniqueId: selectedStep.unique_id,
+            stepDisplayName: selectedStep.display_name || selectedStep.name,
+            stepType: getStepType(selectedStep),
+            stepData: selectedStep,
           }),
         });
 
@@ -824,7 +824,7 @@ export default function TaskChatPage() {
   };
 
   // Handle step selection from workflow artifact panel
-  const handleStepSelect = useCallback((step: SelectedStepContent) => {
+  const handleStepSelect = useCallback((step: WorkflowTransition) => {
     setSelectedStep(step);
   }, []);
 
