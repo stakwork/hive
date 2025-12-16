@@ -124,6 +124,7 @@ function normalizeResponse(
   const mapToConcise = (n: unknown): CoverageNodeConcise => {
     const o = n as Record<string, unknown> | null;
     const props = (o?.properties as Record<string, unknown> | undefined) || undefined;
+    const meta = (o?.meta as Record<string, unknown> | undefined) || undefined;
     const name = (o?.name as string) || (props?.name as string) || "";
     const file = (o?.file as string) || (props?.file as string) || "";
     const ref_id = (o?.ref_id as string) || "";
@@ -133,7 +134,11 @@ function normalizeResponse(
     const body_length = typeof o?.body_length === "number" ? (o?.body_length as number) : null;
     const line_count = typeof o?.line_count === "number" ? (o?.line_count as number) : null;
     const verb = (o?.verb as string | undefined) || undefined;
-    return { name, file, ref_id, weight, test_count: testCount, covered, body_length, line_count, verb };
+    // is_muted can be in meta as string "true"/"false", or elsewhere as boolean
+    const is_muted = meta?.is_muted === "true" || meta?.is_muted === true ||
+                     o?.is_muted === "true" || o?.is_muted === true ||
+                     props?.is_muted === "true" || props?.is_muted === true;
+    return { name, file, ref_id, weight, test_count: testCount, covered, body_length, line_count, verb, is_muted };
   };
 
     if (isItemsOrNodes(payload)) {

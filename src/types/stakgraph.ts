@@ -69,6 +69,7 @@ export interface CoverageNodeConcise {
   line_count: number | null;
   verb?: string;
   meta?: Record<string, unknown>;
+  is_muted?: boolean;
 }
 
 export interface CoverageNodesResponse {

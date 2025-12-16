@@ -1,19 +1,23 @@
 "use client";
 
 import { useCoverageNodes } from "@/hooks/useCoverageNodes";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, Archive, ArchiveRestore } from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
 import type { CoverageNodeConcise } from "@/types/stakgraph";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CoverageSortOption } from "@/stores/useCoverageStore";
+import { CoverageSortOption, IgnoredFilter } from "@/stores/useCoverageStore";
 import { formatNumber } from "@/lib/utils/format";
 import { AdvancedFiltersPopover } from "./AdvancedFiltersPopover";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 interface SortableHeaderProps {
   label: string;
@@ -50,6 +54,9 @@ function SortableHeader({ label, sortKey, currentSort, sortDirection, onSort, cl
 }
 
 export function CoverageInsights() {
+  const { slug } = useWorkspace();
+  const queryClient = useQueryClient();
+
   const {
     items,
     loading,
@@ -68,6 +75,8 @@ export function CoverageInsights() {
     setCoverage,
     setMocked,
     mocked,
+    ignored,
+    setIgnored,
     prefetchNext,
     prefetchPrev,
   } = useCoverageNodes();
@@ -88,6 +97,30 @@ export function CoverageInsights() {
   } = useCoverageNodes();
 
   const [searchInput, setSearchInput] = useState(search);
+  const [togglingIgnoreId, setTogglingIgnoreId] = useState<string | null>(null);
+
+  const handleToggleIgnore = async (refId: string, currentlyIgnored: boolean) => {
+    setTogglingIgnoreId(refId);
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/nodes/${refId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { is_muted: !currentlyIgnored } }),
+      });
+      if (!response.ok) throw new Error("Failed to update");
+      toast(currentlyIgnored ? "Node Restored" : "Node Ignored", {
+        description: currentlyIgnored ? "This item is now visible in the inventory." : "This item has been hidden from the inventory.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["coverage-nodes"] });
+    } catch (error) {
+      console.error("Error toggling ignore:", error);
+      toast.error("Failed to update node", {
+        description: "Unable to update this item. Please try again.",
+      });
+    } finally {
+      setTogglingIgnoreId(null);
+    }
+  };
 
   useEffect(() => {
     setSearchInput(search);
@@ -110,7 +143,8 @@ export function CoverageInsights() {
         // For other types, derive from test_count
         const isCovered = params.nodeType === "mock" ? item.covered : (item.test_count || 0) > 0;
         return {
-          key: `${item.name}-${item.file}`,
+          key: item.ref_id,
+          ref_id: item.ref_id,
           name: displayName,
           file: item.file,
           coverage: item.test_count,
@@ -118,6 +152,7 @@ export function CoverageInsights() {
           covered: isCovered,
           bodyLength: item.body_length,
           lineCount: item.line_count,
+          is_muted: item.is_muted ?? false,
         };
       }),
     [items, params.nodeType],
@@ -200,6 +235,26 @@ export function CoverageInsights() {
                   </SelectContent>
                 </Select>
               )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Ignored:</span>
+              <Select value={ignored} onValueChange={(v) => setIgnored(v as IgnoredFilter)}>
+                <SelectTrigger className="h-8 w-[80px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">
+                    All
+                  </SelectItem>
+                  <SelectItem value="ignored" className="text-xs">
+                    Yes
+                  </SelectItem>
+                  <SelectItem value="not_ignored" className="text-xs">
+                    No
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="relative">
@@ -289,6 +344,8 @@ export function CoverageInsights() {
                       />
                     )}
                     <TableHead className="w-[8%] text-right">Status</TableHead>
+                    <TableHead className="w-[8%] text-right">Ignored</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -311,6 +368,12 @@ export function CoverageInsights() {
                           </TableCell>
                           <TableCell className="text-right">
                             <Skeleton className="h-5 w-16 ml-auto" />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Skeleton className="h-5 w-16 ml-auto" />
+                          </TableCell>
+                          <TableCell className="w-[50px]">
+                            <Skeleton className="h-8 w-8 ml-auto" />
                           </TableCell>
                         </TableRow>
                       ))
@@ -355,6 +418,37 @@ export function CoverageInsights() {
                                 ? r.covered ? "Mocked" : "Unmocked"
                                 : r.covered ? "Tested" : "Untested"}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={r.is_muted ? "secondary" : "outline"}>
+                              {r.is_muted ? "Yes" : "No"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="w-[50px]">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleToggleIgnore(r.ref_id, r.is_muted)}
+                                    disabled={togglingIgnoreId === r.ref_id}
+                                    className="h-8 w-8 p-0"
+                                  >
+                                    {togglingIgnoreId === r.ref_id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : r.is_muted ? (
+                                      <ArchiveRestore className="h-4 w-4" />
+                                    ) : (
+                                      <Archive className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{r.is_muted ? "Unignore" : "Ignore"}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </TableCell>
                         </TableRow>
                       ))}
