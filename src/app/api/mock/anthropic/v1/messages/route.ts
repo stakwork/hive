@@ -165,15 +165,23 @@ export async function POST(request: NextRequest) {
     const prompt = userMessage?.content || "";
     const promptStr = typeof prompt === "string" ? prompt : JSON.stringify(prompt);
 
+    // Check if this is a continuation of a tool conversation
+    const hasToolResults = messages.some(
+      (m: { role: string; content?: { type?: string }[] }) =>
+        m.role === "tool" || (Array.isArray(m.content) && m.content.some((c) => c.type === "tool_result"))
+    );
+
     console.log("[Mock Anthropic] Received request:", {
       model,
       messageCount: messages.length,
       stream,
       hasTools: tools.length > 0,
+      hasToolResults,
     });
 
     // Check if this is a structured generation request (streamObject)
-    const generationType = detectGenerationType(promptStr, system, tools);
+    // Don't treat it as structured generation if there are tool results (ongoing conversation)
+    const generationType = hasToolResults ? null : detectGenerationType(promptStr, system, tools);
 
     if (generationType && tools.length > 0) {
       console.log("[Mock Anthropic] Detected generation type:", generationType);
@@ -251,7 +259,13 @@ function streamTextResponse(model: string, text: string) {
         encoder.encode(
           `event: message_start\ndata: ${JSON.stringify({
             type: "message_start",
-            message: { id: mockAnthropicState.generateRequestId(), type: "message", role: "assistant", model },
+            message: {
+              id: mockAnthropicState.generateRequestId(),
+              type: "message",
+              role: "assistant",
+              model,
+              usage: { input_tokens: 0, output_tokens: 0 }
+            },
           })}\n\n`
         )
       );
@@ -320,7 +334,13 @@ function streamToolUseResponse(model: string, toolName: string, data: unknown) {
         encoder.encode(
           `event: message_start\ndata: ${JSON.stringify({
             type: "message_start",
-            message: { id: mockAnthropicState.generateRequestId(), type: "message", role: "assistant", model },
+            message: {
+              id: mockAnthropicState.generateRequestId(),
+              type: "message",
+              role: "assistant",
+              model,
+              usage: { input_tokens: 0, output_tokens: 0 }
+            },
           })}\n\n`
         )
       );

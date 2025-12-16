@@ -12,7 +12,7 @@ You have access to tools called list_concepts and learn_concept. list_concepts f
 When you are done print "[END_OF_ANSWER]"`;
 }
 
-export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrl: string): ModelMessage[] {
+export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], repoUrl: string, clueMsgs: ModelMessage[] | null): ModelMessage[] {
   return [
     { role: "system", content: getQuickAskSystemPrompt(repoUrl) },
     {
@@ -41,8 +41,10 @@ export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], r
         },
       ],
     },
+    ...(clueMsgs || []),
   ];
 }
+
 // System prompt for generating user journeys/flows from feature details
 export const GENERATE_STORIES_SYSTEM_PROMPT = `
 You are a product management assistant helping to generate brief user journey flows for software features.
