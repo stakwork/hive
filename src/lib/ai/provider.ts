@@ -42,7 +42,7 @@ export async function getModel(
   apiKey: string,
   workspaceSlug?: string,
   modelType?: string
-) {
+): Promise<ReturnType<typeof getModelAieo>> {
   // In mock mode for Anthropic, override baseURL
   if (config.USE_MOCKS && provider === "anthropic") {
     const { createAnthropic } = await import("@ai-sdk/anthropic");
@@ -58,7 +58,8 @@ export async function getModel(
         ? "claude-3-haiku-20240307"
         : "claude-3-5-sonnet-20241022";
 
-    return mockProvider(modelId);
+    // Type assertion to match aieo's return type (cast through unknown for type compatibility)
+    return Promise.resolve(mockProvider(modelId) as unknown) as ReturnType<typeof getModelAieo>;
   }
 
   // Otherwise, use the real aieo implementation
