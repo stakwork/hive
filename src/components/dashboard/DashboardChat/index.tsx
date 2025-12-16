@@ -48,7 +48,7 @@ export function DashboardChat() {
 
   // Subscribe to Pusher for follow-up questions
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || !process.env.NEXT_PUBLIC_PUSHER_KEY) return;
 
     const channelName = getWorkspaceChannelName(slug);
     const pusher = getPusherClient();
