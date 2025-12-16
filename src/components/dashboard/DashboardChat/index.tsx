@@ -3,6 +3,7 @@
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useStreamProcessor } from "@/lib/streaming";
 import { useRef, useState, useEffect } from "react";
+import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
 import { CreateFeatureModal } from "./CreateFeatureModal";
@@ -35,6 +36,7 @@ export function DashboardChat() {
   const [isCreatingFeature, setIsCreatingFeature] = useState(false);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
   const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { processStream } = useStreamProcessor();
@@ -44,6 +46,29 @@ export function DashboardChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeToolCalls]);
 
+  // Subscribe to Pusher for follow-up questions
+  useEffect(() => {
+    if (!slug) return;
+
+    const channelName = getWorkspaceChannelName(slug);
+    const pusher = getPusherClient();
+    const channel = pusher.subscribe(channelName);
+
+    const handleFollowUpQuestions = (payload: { questions: string[]; timestamp: number }) => {
+      // Only update if not currently loading (streaming has completed)
+      if (!isLoading) {
+        setFollowUpQuestions(payload.questions);
+      }
+    };
+
+    channel.bind(PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, handleFollowUpQuestions);
+
+    return () => {
+      channel.unbind(PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, handleFollowUpQuestions);
+      pusher.unsubscribe(channelName);
+    };
+  }, [slug, isLoading]);
+
   // Get the most recent image from the messages array
   const currentImageData = messages
     .slice()
@@ -52,6 +77,9 @@ export function DashboardChat() {
 
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
+
+    // Clear follow-up questions when user sends a message
+    setFollowUpQuestions([]);
 
     // Check if the last message is an empty user message with an image
     const lastMessage = messages[messages.length - 1];
@@ -323,6 +351,17 @@ export function DashboardChat() {
     });
   };
 
+  const handleFollowUpClick = (question: string) => {
+    // Clear follow-up questions immediately
+    setFollowUpQuestions([]);
+
+    // Create a dummy clearInput function since we don't need to clear anything
+    const noop = () => {};
+
+    // Send the question as a new message
+    handleSend(question, noop);
+  };
+
   const handleOpenFeatureModal = () => {
     setShowFeatureModal(true);
   };
@@ -481,6 +520,23 @@ export function DashboardChat() {
             )}
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />
+          </div>
+        </div>
+      )}
+
+      {/* Follow-up question bubbles */}
+      {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
+        <div className="pointer-events-auto px-4 pb-2">
+          <div className="flex flex-col items-end gap-1.5">
+            {followUpQuestions.map((question, index) => (
+              <button
+                key={index}
+                onClick={() => handleFollowUpClick(question)}
+                className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
+              >
+                {question}
+              </button>
+            ))}
           </div>
         </div>
       )}

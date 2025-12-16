@@ -6,8 +6,9 @@ import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getQuickAskPrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition, clueToolMsgs } from "@/lib/ai/askTools";
-import { streamText, ModelMessage } from "ai";
+import { streamText, ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
+import { z } from "zod";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
@@ -128,7 +129,47 @@ export async function POST(request: NextRequest) {
 
 
       after(async () => {
-        // ask ai for follow-up questions
+        // Generate follow-up questions
+        try {
+          const followUpSchema = z.object({
+            questions: z
+              .array(z.string())
+              .length(3)
+              .describe("3 short, specific follow-up questions (max 10 words each)"),
+          });
+
+          // Convert messages to a format suitable for follow-up generation
+          // const conversationMessages: ModelMessage[] = messages
+          //   .filter((m) => m.role === "user" || m.role === "assistant")
+          //   .map((m): ModelMessage => ({
+          //     role: m.role,
+          //     content: typeof m.content === "string" ? m.content : "",
+          //   }));
+
+          const followUpModel = await getModel("anthropic", apiKey, workspaceSlug);
+
+          const result = await generateObject({
+            model: followUpModel,
+            schema: followUpSchema,
+            messages: modelMessages,
+            system:
+              "You are a helpful code learning assistant. Your job is to generate 3 short follow-up questions based on this conversation. Questions should be specific, contextual, and help the user dig deeper or explore related topics. Don't ask very general questions! Try to guess what the user might ask next as part of the conversation, and output that! Avoid repeating questions that have already been asked. Keep each question under 10 words.",
+            temperature: 0.3,
+          });
+
+          const channelName = getWorkspaceChannelName(workspaceSlug);
+          const payload = {
+            questions: result.object.questions,
+            timestamp: Date.now(),
+          };
+
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, payload);
+
+          console.log("✅ Follow-up questions generated and sent:", result.object.questions);
+        } catch (error) {
+          console.error("❌ Error generating follow-up questions:", error);
+          // Silent failure - don't break the chat flow
+        }
       });
 
       return result.toUIMessageStreamResponse();
