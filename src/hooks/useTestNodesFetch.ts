@@ -1,7 +1,6 @@
 "use client";
 
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { TestLayerType } from "@/stores/useGraphStore";
 import { useDataStore } from "@/stores/useStores";
 import { useEffect, useRef } from "react";
 

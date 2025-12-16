@@ -8,7 +8,7 @@ import { type ChatMessage, type ContextTag, type Artifact } from "@/lib/chat";
 export const fetchCache = "force-no-store";
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> },
 ) {
   try {

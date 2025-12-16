@@ -49,24 +49,4 @@ export class FieldEncryptionService {
       throw decryptionError;
     }
   }
-
-  private isEncryptableField(fieldName: string): fieldName is EncryptableField {
-    const encryptableFields: EncryptableField[] = [
-      "access_token",
-      "refresh_token",
-      "id_token",
-      "environmentVariables",
-      "poolApiKey",
-      "swarmApiKey",
-      "swarmPassword",
-      "stakworkApiKey",
-      "githubWebhookSecret",
-      "app_access_token",
-      "app_refresh_token",
-      "source_control_token",
-      "source_control_refresh_token",
-    ];
-
-    return encryptableFields.includes(fieldName as EncryptableField);
-  }
 }

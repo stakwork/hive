@@ -65,7 +65,7 @@ async function archiveTaskAndRedirect(taskId: string, slug: string, errorTitle: 
 
 export default function TaskChatPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { data: session } = useSession(); // TODO: Use for authentication when creating tasks
+  const { data: _session } = useSession(); // TODO: Use for authentication when creating tasks
   const params = useParams();
   const { id: workspaceId, workspace } = useWorkspace();
   const isMobile = useIsMobile();

@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const FeedbackIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const FeedbackIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 25 22" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <path
       fill-rule="evenodd"

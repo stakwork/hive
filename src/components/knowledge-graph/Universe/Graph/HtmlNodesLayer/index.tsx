@@ -1,4 +1,4 @@
-import { useDataStore, useSimulationStore } from '@/stores/useStores'
+import { useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { Html } from '@react-three/drei'
 import { memo, useMemo } from 'react'
@@ -10,7 +10,6 @@ interface HtmlNodesLayerProps {
 
 export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = true }) => {
   const { simulation } = useSimulationStore((s) => s)
-  const nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
   const simulationNodes = simulation?.nodes() || []
 

@@ -9,6 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
+- `npm run lint:unused` - Check for unused code (imports, exports, dependencies)
+- `npm run lint:unused-imports` - Check for unused imports and variables
+- `npm run lint:unused-exports` - Check for unused exports with ts-prune
+- `npm run lint:unused-deps` - Check for unused npm dependencies
 - `npm run format` - Format code with Prettier
 - `npm run setup` - Generate JWT secret for development
 
@@ -327,6 +331,14 @@ Required environment variables (see `env.example` for complete list):
 - Components should own their data and handlers (avoid prop drilling)
 - Move static functions/configs outside components to prevent recreations
 - Avoid setTimeout for delays - use proper async/loading states instead
+
+### Unused Code Detection
+- Run `npm run lint:unused` before committing to detect unused code
+- ESLint automatically flags unused imports and variables
+- TypeScript compiler warns about unused locals and parameters
+- Use `ts-prune` to find unused exports across the codebase
+- Remove dead code promptly - don't leave it "just in case"
+- See `/docs/unused-code-linting.md` for detailed guidelines
 
 ### Feature Flags
 The application uses environment-based feature flags with role-based access control. See `/docs/feature-flags.md` for complete documentation.

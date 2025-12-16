@@ -1,0 +1,3 @@
+{
+  "ignore": "src/__tests__|src/.*\\.test\\.tsx?$|src/.*\\.spec\\.tsx?$|src/app/.*/layout\\.tsx$|src/app/.*/page\\.tsx$|src/app/.*/route\\.ts$|src/app/.*/error\\.tsx$|src/app/.*/loading\\.tsx$|src/app/.*/not-found\\.tsx$|src/middleware\\.ts$|next\\.config\\.ts$|postcss\\.config\\.mjs$|tailwind\\.config\\.ts$|vitest\\.config\\.ts$|playwright\\.config\\.ts$"
+}

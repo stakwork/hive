@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { Handle, Position, useHandleConnections, NodeProps } from '@xyflow/react';
+import React from 'react';
+import { Handle, Position, NodeProps } from '@xyflow/react';
 
 interface StepNodeData {
   id: string;
@@ -19,18 +19,6 @@ interface StepNodeData {
 
 export default function StepNode({ data: rawData }: NodeProps) {
   const data = rawData as unknown as StepNodeData;
-
-  const onChange = useCallback((evt: React.ChangeEvent<HTMLInputElement>) => {
-    console.log(evt.target.value);
-  }, []);
-
-  const sourceConnections = useHandleConnections({
-    type: 'source',
-  });
-
-  const targetConnections = useHandleConnections({
-    type: 'target',
-  });
 
   let isSourceConnectable = data.id !== 'start';
   let isTargetConnectable = data.id !== 'start';

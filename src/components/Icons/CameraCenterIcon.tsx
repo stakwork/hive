@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const CameraCenterIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const CameraCenterIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 18 17" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <g id="center">
       <path id="Vector 121" d="M9 4L9 1" stroke="white" stroke-linecap="round" />

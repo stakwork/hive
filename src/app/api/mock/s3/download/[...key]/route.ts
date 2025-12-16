@@ -14,7 +14,7 @@ import { s3MockState } from '@/lib/mock/s3-state';
 const USE_MOCKS = config.USE_MOCKS;
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ key: string[] }> }
 ) {
   // Mock gating - return 404 if mocks are disabled

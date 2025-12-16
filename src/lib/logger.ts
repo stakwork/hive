@@ -1,5 +1,3 @@
-import { config } from '@/config/env';
-
 // Log levels with numeric values for comparison
 export enum LogLevel {
   ERROR = 0,
@@ -69,7 +67,7 @@ function sanitizeData(data: any): any {
     
     // Mask email addresses
     if (EMAIL_PATTERN.test(data)) {
-      return data.replace(EMAIL_PATTERN, (match, p1, p2) => {
+      return data.replace(EMAIL_PATTERN, (_match, p1, p2) => {
         return `${p1}***@${p2 ? '***.' : ''}***`;
       });
     }

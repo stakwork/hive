@@ -19,7 +19,7 @@ interface OnboardingWorkspaceClientProps {
 }
 
 export function OnboardingWorkspaceClient({
-  user,
+  user: _user,
 }: OnboardingWorkspaceClientProps) {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">

@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const ChevronRightIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const ChevronRightIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 18 18" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <g id="chevron_right">
       <mask id="mask0_1247_21809" maskUnits="userSpaceOnUse" x="0" y="0" width="18" height="18">

@@ -13,7 +13,7 @@ export function useWorkspaceLogos(workspaces: WorkspaceWithRole[]) {
   const canAccessWorkspaceLogo = useFeatureFlag(FEATURE_FLAGS.WORKSPACE_LOGO);
 
   // Function to fetch a single workspace logo
-  const fetchWorkspaceLogo = useCallback(async (workspaceId: string, slug: string): Promise<string | null> => {
+  const fetchWorkspaceLogo = useCallback(async (_workspaceId: string, slug: string): Promise<string | null> => {
     try {
       const response = await fetch(`/api/workspaces/${slug}/image`);
       if (response.ok) {

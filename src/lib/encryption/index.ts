@@ -34,7 +34,7 @@ export class EncryptionService {
     return EncryptionService.instance;
   }
 
-  encryptField(fieldName: EncryptableField, value: string): EncryptedData {
+  encryptField(_fieldName: EncryptableField, value: string): EncryptedData {
     this.getFieldEncryption();
     const keyId = this.activeKeyId || "default";
     const keyBuffer = this.keyRegistry.get(keyId);
@@ -46,7 +46,7 @@ export class EncryptionService {
   }
 
   encryptFieldWithKeyId(
-    fieldName: EncryptableField,
+    _fieldName: EncryptableField,
     value: string,
     keyId: string,
   ): EncryptedData {
@@ -60,7 +60,7 @@ export class EncryptionService {
   }
 
   decryptField(
-    fieldName: EncryptableField,
+    _fieldName: EncryptableField,
     encryptedData: EncryptedData | string,
   ): string {
     this.getFieldEncryption();

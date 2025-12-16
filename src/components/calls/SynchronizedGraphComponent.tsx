@@ -97,16 +97,16 @@ export const SynchronizedGraphComponent = ({
 
 const SynchronizedGraphComponentInner = ({
   endpoint: propEndpoint,
-  title = "Synchronized Knowledge Graph",
+  title: _title = "Synchronized Knowledge Graph",
   className,
   height = "h-full",
   width = "w-full",
   currentTime = 0,
-  onTimeMarkerClick
+  onTimeMarkerClick: _onTimeMarkerClick
 }: SynchronizedGraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
-  const [markers, setMarkers] = useState<NodeWithTimestamp[]>([]);
+  const [_markers, setMarkers] = useState<NodeWithTimestamp[]>([]);
   const [activeEdge, setActiveEdge] = useState<LinkWithTimestamp | null>(null);
 
   const requestRef = useRef<number | null>(null);
@@ -120,7 +120,6 @@ const SynchronizedGraphComponentInner = ({
 
   // Graph filter state
   const activeFilterTab = useGraphStoreStandalone((s) => s.activeFilterTab);
-  const setActiveFilterTab = useGraphStoreStandalone((s) => s.setActiveFilterTab);
 
   // Calculate markers from data
   const calculateMarkers = useCallback((data: { nodes: Node[], edges: Link[] }): NodeWithTimestamp[] => {
@@ -392,12 +391,6 @@ const SynchronizedGraphComponentInner = ({
       setNodesLoading(false);
     }
   }, [workspaceId, resetData, addNewNode, propEndpoint]);
-
-  // Handle filter tab changes
-  const handleTabChange = useCallback((tab: FilterTab) => {
-    setActiveFilterTab(tab);
-    fetchFilteredData(tab);
-  }, [setActiveFilterTab, fetchFilteredData]);
 
   // Load initial data when filter tab changes
   useEffect(() => {

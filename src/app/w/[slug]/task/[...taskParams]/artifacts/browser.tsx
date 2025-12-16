@@ -9,8 +9,6 @@ import {
   Circle,
   Square,
   Target,
-  FlaskConical,
-  Bug,
   List,
   CheckCircle2,
   ArrowLeft,
@@ -38,7 +36,7 @@ export function BrowserArtifactPanel({
   onUserJourneySave,
   externalTestCode,
   externalTestTitle,
-  isMobile = false,
+  isMobile: _isMobile = false,
   onClose,
 }: {
   artifacts: Artifact[];
@@ -97,7 +95,7 @@ export function BrowserArtifactPanel({
     navigateToUrl,
   } = useStaktrak(
     activeContent?.url,
-    (test: string, error?: string) => {
+    (_test: string, error?: string) => {
       // Show error toast if test generation failed
       if (error) {
         console.error("[Browser] Test generation failed:", error);
@@ -159,7 +157,7 @@ export function BrowserArtifactPanel({
     debugMode,
     isSubmittingDebug,
     setDebugMode,
-    handleDebugElement,
+    handleDebugElement: _handleDebugElement,
     handleDebugSelection: handleDebugSelectionHook,
   } = useDebugSelection({ onDebugMessage, iframeRef });
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);

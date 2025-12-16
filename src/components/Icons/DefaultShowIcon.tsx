@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const DefaultShowIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const DefaultShowIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 34 34" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <mask id="mask0_2777_4506" maskUnits="userSpaceOnUse" x="0" y="0" width="34" height="34">
       <rect width="1em" height="1em" fill="currentColor" />

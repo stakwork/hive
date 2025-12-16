@@ -5,7 +5,7 @@ import { createJanitorRun } from "@/services/janitor";
 
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ slug: string; type: string }> },
 ) {
   try {

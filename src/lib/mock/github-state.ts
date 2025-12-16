@@ -163,7 +163,6 @@ class MockGitHubStateManager {
   private installationIdCounter = 1000;
   private repositoryIdCounter = 1000;
   private webhookIdCounter = 1000;
-  private commitCounter = 1000;
 
   /**
    * Create or get a user. Auto-creates if doesn't exist.
@@ -313,7 +312,7 @@ class MockGitHubStateManager {
    * Returns true if token was found and revoked, false otherwise
    */
   revokeToken(accessToken: string): boolean {
-    for (const [code, token] of this.tokens.entries()) {
+    for (const [_code, token] of this.tokens.entries()) {
       if (token.access_token === accessToken) {
         // Return false if token is already revoked
         if (token.revoked) {
@@ -593,7 +592,6 @@ class MockGitHubStateManager {
     this.installationIdCounter = 1000;
     this.repositoryIdCounter = 1000;
     this.webhookIdCounter = 1000;
-    this.commitCounter = 1000;
     this.authCodeCounter = 1000;
   }
 

@@ -161,7 +161,7 @@ class NodeArray {
     return this.finishedNodePos;
   }
 
-  createTrueFalseEdge(type: string, index: number | string, source: string, target: string): any {
+  createTrueFalseEdge(_type: string, index: number | string, source: string, target: string): any {
     return this.createEdge('default', index, source, target);
   }
 
@@ -252,7 +252,7 @@ class NodeArray {
     }
   }
 
-  setIfConditionEdges(node: any, i: number): void {
+  setIfConditionEdges(node: any, _i: number): void {
     if (node.status) {
       node.bgColor = '#67C083';
       node.borderColor = '#67C083';
@@ -426,7 +426,7 @@ class NodeArray {
     return this.edges;
   }
 
-  nodeBuilder(step: WorkflowTransition, type: string, connections: string | string[], name: string): void {
+  nodeBuilder(step: WorkflowTransition, type: string, connections: string | string[], _name: string): void {
     const id = step.id;
     const status = this.getStatus(step);
 

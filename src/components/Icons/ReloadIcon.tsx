@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const ReloadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const ReloadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <mask id="mask0_5099_7163" maskUnits="userSpaceOnUse" x="2" y="2" width="16" height="16">
       <rect x="2" y="2" width="1em" height="1em" fill="currentColor" />

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { repo_url, username, use_lsp = false } = body;
+    const { repo_url, username: _username, use_lsp: _use_lsp = false } = body;
 
     if (!repo_url) {
       return NextResponse.json(

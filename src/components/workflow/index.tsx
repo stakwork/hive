@@ -14,9 +14,6 @@ declare global {
 
 import {
   ReactFlow,
-  MiniMap,
-  Controls,
-  ControlButton,
   Background,
   BackgroundVariant,
   useNodesState,
@@ -45,147 +42,6 @@ import ContextMenu from './ContextMenu';
 import NodeContextMenu from './NodeContextMenu';
 
 import { SmartLayoutButton } from './SmartLayoutButton';
-
-interface SearchResult {
-  unique_id: string;
-  workflow_version_id: string;
-  id: string;
-  workflow_name: string;
-  title: string;
-  skill: string;
-}
-
-const SearchButton = ({ workflowId }: { workflowId: string }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  // Focus input when expanded
-  useEffect(() => {
-    if (isExpanded && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isExpanded]);
-
-  // Close search when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setIsExpanded(false);
-        setShowResults(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleSearch = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      setShowResults(false);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // Replace with your actual API endpoint
-      const response = await fetch(`/admin/workflow_tools/search?workflow_id=${workflowId}&term=${encodeURIComponent(query)}`);
-      const results = await response.json();
-      setSearchResults(results);
-      setShowResults(true);
-    } catch (error) {
-      console.error('Search failed:', error);
-      setSearchResults([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchQuery(value);
-
-    // Debounce search
-    clearTimeout((window as any).searchTimeout);
-    (window as any).searchTimeout = setTimeout(() => {
-      handleSearch(value);
-    }, 300);
-  };
-
-  return (
-    <div ref={searchRef} className="search-control-inline">
-      <ControlButton
-        onClick={() => setIsExpanded(!isExpanded)}
-        title="Search"
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-          <path
-            d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-        </svg>
-      </ControlButton>
-
-      {isExpanded && (
-        <div className="search-expandable">
-          <div className="search-input-container">
-            <input
-              ref={inputRef}
-              type="text"
-              value={searchQuery}
-              onChange={handleInputChange}
-              placeholder="Search..."
-              className="search-input"
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setIsExpanded(false);
-                  setShowResults(false);
-                }
-              }}
-            />
-            {isLoading && (
-              <div className="search-loading">
-                <svg className="spinner" width="12" height="12" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="32" strokeDashoffset="32">
-                    <animate attributeName="stroke-dashoffset" dur="1s" values="32;0;32" repeatCount="indefinite"/>
-                  </circle>
-                </svg>
-              </div>
-            )}
-          </div>
-
-          {showResults && searchResults.length > 0 && (
-            <div className="search-results">
-              {searchResults.map((result, index) => (
-                <div
-                  key={index}
-                  className="search-result-item"
-                  data-controller='project-buttons'
-                  data-action='click->project-buttons#redirectToWorkflow'
-                  data-unique-id={result.unique_id}
-                  data-workflow-version={result.workflow_version_id}
-                  data-workflow-id={result.id}
-                >
-                  <div className="result-title">{result.workflow_name}</div>
-                  <div className="result-description">{result.title} ({result.skill})</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {showResults && searchResults.length === 0 && searchQuery.trim() && !isLoading && (
-            <div className="search-results">
-              <div className="no-results">No results found</div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const getUrlParameter = (name: string): string | null => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -235,9 +91,6 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   const requestQueue = useRef<RequestQueue>(new RequestQueue());
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
-
-  // Ref for workflow spec field
-  const workflowSpecRef = useRef<HTMLInputElement | null>(null);
 
   // Store transitions for step click lookup
   const transitionsRef = useRef<Record<string, WorkflowTransitionType>>({});
@@ -357,7 +210,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   }, []);
 
   useEffect(() => {
-    const handlePublishWorkflow = (event: any) => {
+    const handlePublishWorkflow = (_event: any) => {
       // Create the request function for the queue
       const requestFn = () => {
         return axios.put(`/admin/workflows/${workflowId}/publish.json?workflow_version_id=${workflowVersionId}`);
@@ -1303,7 +1156,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     setNodeMenu(null)
   }, [setMenu, setNodeMenu]);
 
-  const handleImportSuccess = (responseData: any, contextData?: any) => {
+  const handleImportSuccess = (responseData: any, _contextData?: any) => {
     if (responseData.data.workflow_spec) {
       const newVersionId = responseData.data.workflow_version_id;
       if (newVersionId) {

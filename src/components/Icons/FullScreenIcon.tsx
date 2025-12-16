@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const FullScreenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const FullScreenIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 22 22" fill="currentColor">
     <mask id="mask0_3130_18463" maskUnits="userSpaceOnUse" x="0" y="0" width="22" height="22">
       <rect width="1em" height="1em" fill="currentColor" />

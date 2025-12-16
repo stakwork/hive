@@ -15,7 +15,7 @@ const USE_MOCKS = config.USE_MOCKS;
  * 4. Allow testing without LiveKit credentials
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   // Mock gating - return 404 if mocks are disabled
@@ -41,7 +41,7 @@ export async function GET(
 }
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   if (!USE_MOCKS) {

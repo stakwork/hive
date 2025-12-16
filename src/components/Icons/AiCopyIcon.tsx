@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const AiCopyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const AiCopyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <rect x="4" y="6.5" width="1em" height="1em" rx="1.85294" stroke="#909BAA" stroke-width="1.125" />
     <path

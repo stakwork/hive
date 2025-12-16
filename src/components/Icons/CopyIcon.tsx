@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const CopyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const CopyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 14 14" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <g id="content_copy">
       <mask id="mask0_1489_75628" maskUnits="userSpaceOnUse" x="0" y="0" width="14" height="14">

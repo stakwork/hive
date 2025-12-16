@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const DeleteIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const DeleteIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <g id="delete">
       <mask id="mask0_2401_3378" maskUnits="userSpaceOnUse" x="0" y="0" width="20" height="20">

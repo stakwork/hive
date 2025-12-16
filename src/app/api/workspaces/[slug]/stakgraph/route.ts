@@ -86,7 +86,7 @@ const stakgraphSettingsSchema = z.object({
     .default([]),
 });
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { slug } = await params;

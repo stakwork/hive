@@ -29,7 +29,7 @@ export function ServerParticles({ position, active, intensity }: ServerParticles
         return temp;
     }, []);
 
-    useFrame((state) => {
+    useFrame((_state) => {
         if (!mesh.current || !active) return;
 
         particles.forEach((particle, i) => {

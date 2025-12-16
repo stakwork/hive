@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { TaskStatus, Priority, SystemAssigneeType } from "@prisma/client";
+import { TaskStatus, Priority } from "@prisma/client";
 import type {
   CreateRoadmapTaskRequest,
   UpdateRoadmapTaskRequest,

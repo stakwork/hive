@@ -2,7 +2,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, EyeOff, Clipboard, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Clipboard } from "lucide-react";
 import { EnvironmentData, FormSectionProps } from "../types";
 import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
 import { FileDropZone } from "@/components/ui/file-drop-zone";

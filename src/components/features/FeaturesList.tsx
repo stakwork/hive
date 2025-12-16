@@ -134,7 +134,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [workspaceHasFeatures, setWorkspaceHasFeatures] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [, setHasMore] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
 
   // Filter and sort state with localStorage persistence

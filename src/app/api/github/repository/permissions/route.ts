@@ -96,7 +96,7 @@ async function checkRepositoryPermissions(accessToken: string, repoUrl: string):
 
 export async function POST(request: NextRequest) {
   try {
-    const { repositoryUrl, workspaceSlug } = await request.json();
+    const { repositoryUrl, workspaceSlug: _workspaceSlug } = await request.json();
 
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {

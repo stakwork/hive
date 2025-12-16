@@ -11,12 +11,10 @@ class WorkflowTransition {
   private projectId: string;
   private onUpdate: (data: WorkflowTransitionData) => void;
   private lastProcessedTime: number = 0;
-  private lastReceivedTime: number = 0;
   private pendingUpdate: WorkflowTransitionData | null = null;
   private updateTimeout: NodeJS.Timeout | null = null;
-  private updateQueue: any[] = [];
 
-  constructor(railsEnv: string, projectId: string, onUpdate: (data: WorkflowTransitionData) => void) {
+  constructor(_railsEnv: string, projectId: string, onUpdate: (data: WorkflowTransitionData) => void) {
     this.cable = createConsumer();
     this.projectId = projectId;
     this.onUpdate = onUpdate;
@@ -67,9 +65,6 @@ class WorkflowTransition {
 
   private received = (data: WorkflowTransitionData): void => {
     const now = new Date().getTime();
-
-    // Always update our tracking of when we last received an update
-    this.lastReceivedTime = now;
 
     // Always store the latest update
     this.pendingUpdate = data;

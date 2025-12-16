@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text, useCursor } from '@react-three/drei';
 import * as THREE from 'three';
@@ -35,7 +35,7 @@ function getUsageColor(percentage: number): string {
     return '#ef4444'; // Red
 }
 
-export function ServerModel({ position, state, usageStatus, cpuUsage = "0", memoryUsage = "0", name, subdomain, userInfo, created, repoName, onClick, selected }: ServerModelProps) {
+export function ServerModel({ position, state, usageStatus, cpuUsage = "0", memoryUsage = "0", name: _name, subdomain, userInfo, created: _created, repoName, onClick, selected }: ServerModelProps) {
     const meshRef = useRef<THREE.Group>(null);
     const [hovered, setHover] = useState(false);
     useCursor(hovered);

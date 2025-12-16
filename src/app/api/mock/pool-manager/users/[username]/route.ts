@@ -16,7 +16,7 @@ interface RouteContext {
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   context: RouteContext
 ) {
   try {

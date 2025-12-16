@@ -4,7 +4,6 @@ import { ServerModel } from "./ServerModel";
 import { ServerParticles } from "./ServerParticles";
 import { VMData } from "@/types/pool-manager";
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
-import * as THREE from "three";
 import CameraCenterIcon from "@/components/Icons/CameraCenterIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 

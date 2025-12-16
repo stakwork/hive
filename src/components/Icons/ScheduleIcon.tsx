@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const ScheduleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const ScheduleIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <g id="schedule">
       <mask id="mask0_4051_4016" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">

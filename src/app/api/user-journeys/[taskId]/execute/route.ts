@@ -35,7 +35,7 @@ export const fetchCache = "force-no-store";
 
 const encryptionService = EncryptionService.getInstance();
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
     // Step 1: Request Validation & Authentication
     const { taskId } = await params;

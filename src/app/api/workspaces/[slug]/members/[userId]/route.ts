@@ -64,7 +64,7 @@ export async function PATCH(
 
 // DELETE /api/workspaces/[slug]/members/[userId] - Remove member from workspace
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ slug: string; userId: string }> }
 ) {
   try {

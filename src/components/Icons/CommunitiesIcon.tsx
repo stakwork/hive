@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const CommunitiesIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const CommunitiesIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <g id="communities">
       <mask id="mask0_1551_39" maskUnits="userSpaceOnUse" x="0" y="0" width="20" height="20">

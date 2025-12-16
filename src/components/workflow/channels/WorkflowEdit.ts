@@ -3,18 +3,17 @@ import type { WorkflowEditData } from '@/types/stakwork/websocket';
 
 class WorkflowEdit {
   private cable: ReturnType<typeof createConsumer>;
-  private channel: any | null = null;
   private workflowId: string;
   private onUpdate: (data: WorkflowEditData) => void;
 
-  constructor(railsEnv: string, workflowId: string, onUpdate: (data: WorkflowEditData) => void) {
+  constructor(_railsEnv: string, workflowId: string, onUpdate: (data: WorkflowEditData) => void) {
     this.cable = createConsumer();
     this.workflowId = workflowId;
     this.onUpdate = onUpdate;
   }
 
   subscribe = (): void => {
-    this.channel = this.cable.subscriptions.create(
+    this.cable.subscriptions.create(
       { channel: 'WorkflowEditChannel', id: this.workflowId },
       {
         connected: this.connected,

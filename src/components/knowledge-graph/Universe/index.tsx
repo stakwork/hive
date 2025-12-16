@@ -2,7 +2,7 @@
 
 import { Flex } from '@/components/common/Flex'
 import { useControlStore } from '@/stores/useControlStore'
-import { useDataStore, useGraphStore } from '@/stores/useStores'
+import { useGraphStore } from '@/stores/useStores'
 import { AdaptiveDpr, AdaptiveEvents, Html, Loader, Preload } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Suspense, memo, useCallback } from 'react'
@@ -20,8 +20,6 @@ const Fallback = () => (
 )
 
 const Content = ({ enableRotation }: { enableRotation: boolean }) => {
-
-  const dataInitial = useDataStore((s) => s.dataInitial)
 
   return (
     <>

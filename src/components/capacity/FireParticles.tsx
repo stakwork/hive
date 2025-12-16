@@ -21,18 +21,15 @@ export function FireParticles({ position }: { position: [number, number, number]
         return temp;
     }, [count]);
 
-    useFrame((state) => {
+    useFrame((_state) => {
         if (!mesh.current) return;
 
         particles.forEach((particle, i) => {
-            let { t, factor, speed, xFactor, yFactor, zFactor } = particle;
-            t = particle.t += speed / 2;
-            const a = Math.cos(t) + Math.sin(t * 1) / 10;
-            const b = Math.sin(t) + Math.cos(t * 2) / 10;
+            let t = particle.t += particle.speed / 2;
             const s = Math.cos(t);
 
             // Move up and fade
-            particle.my = (particle.my + speed) % 1.5;
+            particle.my = (particle.my + particle.speed) % 1.5;
 
             dummy.position.set(
                 (particle.xFactor + Math.cos(t / 10)) * 0.2 + position[0],

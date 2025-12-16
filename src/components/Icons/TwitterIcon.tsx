@@ -1,7 +1,7 @@
 /* eslint-disable */
 import React from 'react'
 
-const TwitterIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+const TwitterIcon: React.FC<React.SVGProps<SVGSVGElement>> = (_props) => (
   <svg width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <g id="Twitter">
       <mask id="mask0_1506_167" maskUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">

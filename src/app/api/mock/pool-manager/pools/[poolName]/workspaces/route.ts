@@ -16,7 +16,7 @@ interface RouteContext {
   }>;
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { poolName } = await context.params;
     // Auto-create pool if it doesn't exist - makes mock work with any workspace config

@@ -90,7 +90,7 @@ export function KanbanView<T, S extends string>({
   getItemStatus,
   getItemId,
   renderCard,
-  loading,
+  loading: _loading,
   sortItems,
   onStatusChange,
   enableDragDrop = false,

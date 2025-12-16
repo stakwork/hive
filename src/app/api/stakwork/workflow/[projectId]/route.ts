@@ -5,7 +5,7 @@ import { stakworkService } from "@/lib/service-factory";
 import { type ApiError } from "@/types";
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
