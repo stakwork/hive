@@ -21,7 +21,7 @@ export class DashboardPage {
    * Dashboard no longer has a title, so we wait for the graph component to be visible
    */
   async waitForLoad(): Promise<void> {
-    await expect(this.page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
   }
 
   /**

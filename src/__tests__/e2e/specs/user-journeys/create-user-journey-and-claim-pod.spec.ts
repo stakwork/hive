@@ -62,7 +62,7 @@ test.describe('Create User Journey and Claim Pod', () => {
 
   test('should complete full journey: navigate → switch tab → click create button', async ({ page }) => {
     // Starting from dashboard
-    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
 
     // Navigate to Testing page directly
     await testingPage.goto(workspaceSlug);

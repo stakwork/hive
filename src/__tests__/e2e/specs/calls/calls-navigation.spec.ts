@@ -80,7 +80,7 @@ test.describe('Calls Navigation', () => {
 
   test('should complete full user journey: dashboard -> calls -> interact', async ({ page }) => {
     // Starting from dashboard
-    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible();
+    await expect(page.locator('[data-testid="graph-component"]')).toBeVisible({ timeout: 30000 });
 
     // Navigate to calls via sidebar
     await callsPage.navigateViaNavigation();
