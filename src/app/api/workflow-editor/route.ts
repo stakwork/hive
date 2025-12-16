@@ -17,6 +17,7 @@ interface WorkflowEditorRequest {
   message: string;
   workflowId: number;
   workflowName: string;
+  workflowRefId: string;
   stepName: string;
   stepUniqueId: string;
   stepDisplayName: string;
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
       message,
       workflowId,
       workflowName,
+      workflowRefId,
       stepName,
       stepUniqueId,
       stepDisplayName,
@@ -160,6 +162,7 @@ export async function POST(request: NextRequest) {
       // Workflow context
       workflow_id: workflowId,
       workflow_name: workflowName,
+      workflow_ref_id: workflowRefId,
       workflow_step_name: stepName,
       step_unique_id: stepUniqueId,
       step_display_name: stepDisplayName,

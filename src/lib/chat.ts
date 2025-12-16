@@ -86,6 +86,7 @@ export interface WorkflowContent {
   workflowJson?: string;        // For direct rendering from graph
   workflowId?: number;          // Workflow ID from graph
   workflowName?: string;        // Optional workflow name
+  workflowRefId?: string;       // Graph node ref_id
 }
 
 export interface PullRequestContent {
