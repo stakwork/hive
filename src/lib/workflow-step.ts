@@ -16,32 +16,6 @@ export interface SelectedStepContent {
   stepData: WorkflowTransition;
 }
 
-// Vars sent to Stakwork workflow editor workflow
-export interface WorkflowEditorVars {
-  // Task context
-  taskId: string;
-  message: string;
-  webhookUrl: string;
-
-  // Workflow context
-  workflow_id: number;
-  workflow_name: string;
-  workflow_step_name: string;
-  step_unique_id: string;
-  step_display_name: string;
-  step_type: StepType;
-  step_data: Record<string, unknown>;
-
-  // Standard swarm vars
-  swarmUrl: string;
-  swarmSecretAlias: string;
-  poolName: string;
-  repo2graphUrl: string;
-  accessToken: string;
-  username: string;
-  workspaceId: string;
-}
-
 // Helper to extract step type from WorkflowTransition
 export function getStepType(step: WorkflowTransition): StepType {
   if (step.name === "IfCondition" || step.name === "IfElseCondition") {
