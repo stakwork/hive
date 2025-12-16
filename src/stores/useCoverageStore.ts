@@ -5,6 +5,8 @@ import type { UncoveredNodeType } from "@/types/stakgraph";
 export type CoverageSortOption = "test_count" | "name" | "body_length" | "line_count";
 export type SortDirection = "asc" | "desc";
 
+export type IgnoredFilter = "all" | "ignored" | "not_ignored";
+
 type CoverageStore = {
   nodeType: UncoveredNodeType;
   sort: CoverageSortOption;
@@ -13,6 +15,7 @@ type CoverageStore = {
   offset: number;
   coverage: "all" | "tested" | "untested";
   mocked: "all" | "mocked" | "unmocked";
+  ignored: IgnoredFilter;
   ignoreDirs: string;
   repo: string;
   unitGlob: string;
@@ -27,6 +30,7 @@ type CoverageStore = {
   setOffset: (n: number) => void;
   setCoverage: (c: "all" | "tested" | "untested") => void;
   setMocked: (m: "all" | "mocked" | "unmocked") => void;
+  setIgnored: (i: IgnoredFilter) => void;
   setIgnoreDirs: (dirs: string) => void;
   setRepo: (repo: string) => void;
   setUnitGlob: (glob: string) => void;
@@ -45,6 +49,7 @@ export const useCoverageStore = create<CoverageStore>()(
     offset: 0,
     coverage: "all",
     mocked: "all",
+    ignored: "all",
     ignoreDirs: "",
     repo: "",
     unitGlob: "",
@@ -66,6 +71,7 @@ export const useCoverageStore = create<CoverageStore>()(
     setOffset: (n) => set({ offset: Math.max(0, n) }),
     setCoverage: (c) => set({ coverage: c, offset: 0 }),
     setMocked: (m) => set({ mocked: m, offset: 0 }),
+    setIgnored: (i) => set({ ignored: i, offset: 0 }),
     setIgnoreDirs: (dirs) => set({ ignoreDirs: dirs, offset: 0 }),
     setRepo: (repo) => set({ repo, offset: 0 }),
     setUnitGlob: (glob) => set({ unitGlob: glob, offset: 0 }),
