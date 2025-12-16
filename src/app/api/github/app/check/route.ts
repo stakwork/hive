@@ -1,6 +1,6 @@
+import { serviceConfigs } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { serviceConfigs } from "@/config/services";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
@@ -73,18 +73,19 @@ export async function GET(request: Request) {
 
     // Check installation-specific repository access
     const installationId = sourceControlOrg.githubInstallationId;
-    const installationReposUrl = `${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories`;
+    const installationReposUrl = `${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories?per_page=100`;
 
 
-    console.log('installationReposUrl')
     console.log('installationReposUrl', installationReposUrl)
     console.log(tokens.accessToken, installationId)
     console.log('installationReposUrl')
 
+    const token = tokens.accessToken;
+
     const response = await fetch(installationReposUrl, {
       headers: {
         Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${tokens.accessToken}`,
+        Authorization: `Bearer ${token}`,
         "X-GitHub-Api-Version": "2022-11-28",
       },
     });
@@ -123,6 +124,7 @@ export async function GET(request: Request) {
       (repository: { full_name: string; permissions?: { push?: boolean; admin?: boolean; maintain?: boolean } }) =>
         repository.full_name.toLowerCase() === targetRepoFullName
     );
+
 
     if (!repositoryAccess) {
       console.warn(`[REPO CHECK] Repository '${targetRepoFullName}' not found in installation ${installationId}`);
