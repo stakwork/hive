@@ -1,3 +1,4 @@
+import React from "react";
 import { X, Zap, Bot, Globe, RefreshCw, GitBranch } from "lucide-react";
 import { SelectedStepContent, STEP_TYPE_LABELS, StepType } from "@/lib/workflow-step";
 

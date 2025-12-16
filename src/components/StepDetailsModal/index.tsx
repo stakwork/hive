@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Bot, Zap, Globe, RefreshCw, GitBranch, X, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SelectedStepContent, StepType } from "@/lib/workflow-step";
