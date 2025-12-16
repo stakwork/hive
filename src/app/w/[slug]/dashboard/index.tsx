@@ -5,6 +5,7 @@ import { GitLeaksWidget } from "@/components/dashboard/git-leaks-widget";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
+import { TestCoverageStats } from "@/components/dashboard/TestCoverageStats";
 import { GraphFilterDropdown } from "@/components/graph/GraphFilterDropdown";
 import { TestFilterDropdown } from "@/components/graph/TestFilterDropdown";
 import { GraphComponent } from "@/components/knowledge-graph";
@@ -72,16 +73,19 @@ function DashboardInner() {
       </div>
 
       {/* Top-right widgets */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-        {(workspace?.poolState === "COMPLETE" || true) && (
-          <GraphFilterDropdown
-            value={activeFilterTab}
-            onValueChange={handleFilterChange}
-          />
-        )}
-        <TestFilterDropdown />
-        <GitHubStatusWidget />
-        <PoolStatusWidget />
+      <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
+        <div className="flex items-center gap-2">
+          {(workspace?.poolState === "COMPLETE" || true) && (
+            <GraphFilterDropdown
+              value={activeFilterTab}
+              onValueChange={handleFilterChange}
+            />
+          )}
+          <TestFilterDropdown />
+          <GitHubStatusWidget />
+          <PoolStatusWidget />
+        </div>
+        <TestCoverageStats />
       </div>
 
       {/* Bottom-left widget */}

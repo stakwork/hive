@@ -15,7 +15,6 @@ import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
 import { HtmlNodesLayer } from './HtmlNodesLayer'
 import { LayerLabels } from './LayerLabels'
-import CoverageStatsLabel from './CoverageStatsLabel'
 import { NodeDetailsPanel } from './UI'
 import { calculateRadius } from './utils/calculateGroupRadius'
 
@@ -478,12 +477,6 @@ export const Graph = () => {
       {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
-      {graphStyle === 'split' &&
-      storeId?.startsWith('workspace-') &&
-      !storeId?.includes('calls') &&
-      !storeId?.includes('learn') ? (
-        <CoverageStatsLabel />
-      ) : null}
       <NodeDetailsPanel />
 
     </group>

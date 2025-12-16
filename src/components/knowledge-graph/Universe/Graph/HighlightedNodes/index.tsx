@@ -7,16 +7,34 @@ import { TestConnectionsLayer } from './TestConnectionsLayer'
 
 export const HighlightedNodesLayer = memo(() => {
   const highlightChunks = useGraphStore((s) => s.highlightChunks)
-  const { unitTests, integrationTests, e2eTests } = useGraphStore((s) => s.testLayerVisibility)
+  const { selectedLayer } = useGraphStore((s) => s.testLayerVisibility)
 
-  // Fetch test nodes when any test layer is enabled
-  useTestNodesFetch({ unitTests, integrationTests, e2eTests })
+  // Fetch test nodes when a test layer is selected
+  useTestNodesFetch({
+    unitTests: selectedLayer === 'unitTests',
+    integrationTests: selectedLayer === 'integrationTests',
+    e2eTests: selectedLayer === 'e2eTests'
+  })
+
+  // Map selectedLayer to the correct nodeType format
+  const getNodeType = () => {
+    switch (selectedLayer) {
+      case 'unitTests':
+        return 'unittest'
+      case 'integrationTests':
+        return 'integrationtest'
+      case 'e2eTests':
+        return 'e2etest'
+      default:
+        return null
+    }
+  }
+
+  const nodeType = getNodeType()
 
   return (
     <group name="highlighted-nodes-layer">
-      {unitTests && <TestConnectionsLayer enabled={unitTests} nodeType="unittest" color="#8b5cf6" />}
-      {integrationTests && <TestConnectionsLayer enabled={integrationTests} nodeType="integrationtest" color="#10b981" />}
-      {e2eTests && <TestConnectionsLayer enabled={e2eTests} nodeType="e2etest" color="#f59e0b" />}
+      {nodeType && <TestConnectionsLayer enabled={true} nodeType={nodeType} color="#10b981" />}
       {highlightChunks.map((chunk: HighlightChunk) => {
         // Example camera configurations for different chunk types:
 

@@ -47,10 +47,10 @@ export type GraphCallout = {
   addedAt: number
 }
 
+export type TestLayerType = 'unitTests' | 'integrationTests' | 'e2eTests' | null
+
 export type TestLayerVisibility = {
-  unitTests: boolean
-  integrationTests: boolean
-  e2eTests: boolean
+  selectedLayer: TestLayerType
 }
 
 export type GraphStore = {
@@ -128,7 +128,7 @@ export type GraphStore = {
   removeHighlightChunk: (chunkId: string) => void
   clearWebhookHighlights: () => void
   setActiveFilterTab: (tab: FilterTab) => void
-  setTestLayerVisibility: (updates: Partial<TestLayerVisibility>) => void
+  setTestLayerVisibility: (layer: TestLayerType) => void
 }
 
 const defaultData: Omit<
@@ -212,9 +212,7 @@ const defaultData: Omit<
   activeFilterTab: 'all',
   webhookHighlightDepth: 0,
   testLayerVisibility: {
-    unitTests: false,
-    integrationTests: false,
-    e2eTests: false,
+    selectedLayer: null,
   },
 }
 
@@ -390,9 +388,9 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
       highlightTimestamp: null
     }),
     setActiveFilterTab: (activeFilterTab) => set({ activeFilterTab }),
-    setTestLayerVisibility: (updates) => set(({ testLayerVisibility }) => ({
-      testLayerVisibility: { ...testLayerVisibility, ...updates }
-    })),
+    setTestLayerVisibility: (layer) => set({
+      testLayerVisibility: { selectedLayer: layer }
+    }),
   }
 })
 
