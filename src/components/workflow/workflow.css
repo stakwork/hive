@@ -212,6 +212,7 @@ p.workflow-start-text {
   font-weight: 700;
   font-size: 14px;
   line-height: 16px;
+  width: 100%;
 }
 
 .workflow-sub > .workflow-step-name {
@@ -230,6 +231,16 @@ p.workflow-start-text {
   align-items: flex-start;
   justify-content: flex-start;
   padding-left: 20px;
+  width: 100%;
+}
+
+.workflow-sub > .workflow-name-container > .workflow-step-name {
+  width: 100%;
+  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 16px;
 }
 
 .workflow-sub > .workflow-step-menu {

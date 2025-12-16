@@ -127,6 +127,7 @@ export default function TaskChatPage() {
   const [currentWorkflowContext, setCurrentWorkflowContext] = useState<{
     workflowId: number;
     workflowName: string;
+    workflowRefId: string;
   } | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
@@ -269,13 +270,14 @@ export default function TaskChatPage() {
           // Find the WORKFLOW artifact with workflowId and workflowName
           for (const msg of result.data.messages) {
             const workflowArtifact = msg.artifacts?.find(
-              (a: { type: string; content?: { workflowId?: number; workflowName?: string } }) =>
+              (a: { type: string; content?: { workflowId?: number; workflowName?: string; workflowRefId?: string } }) =>
                 a.type === "WORKFLOW" && a.content?.workflowId
             );
             if (workflowArtifact?.content?.workflowId) {
               setCurrentWorkflowContext({
                 workflowId: workflowArtifact.content.workflowId,
                 workflowName: workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
+                workflowRefId: workflowArtifact.content.workflowRefId || "",
               });
               break;
             }
@@ -355,6 +357,7 @@ export default function TaskChatPage() {
               workflowJson: workflowData.properties.workflow_json,
               workflowId: workflowId,
               workflowName: workflowName,
+              workflowRefId: workflowData.ref_id,
             },
           }],
         }),
@@ -388,6 +391,7 @@ export default function TaskChatPage() {
                 workflowJson: workflowData.properties.workflow_json,
                 workflowId: workflowId,
                 workflowName: workflowName,
+                workflowRefId: workflowData.ref_id,
               },
             })],
           });
@@ -400,6 +404,7 @@ export default function TaskChatPage() {
       setCurrentWorkflowContext({
         workflowId: workflowId,
         workflowName: workflowName || `Workflow ${workflowId}`,
+        workflowRefId: workflowData.ref_id,
       });
     } catch (error) {
       console.error("Error in handleWorkflowSelect:", error);
@@ -542,6 +547,7 @@ export default function TaskChatPage() {
             message: messageText,
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
+            workflowRefId: currentWorkflowContext.workflowRefId,
             stepName: selectedStep.name,
             stepUniqueId: selectedStep.unique_id,
             stepDisplayName: selectedStep.display_name || selectedStep.name,
