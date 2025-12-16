@@ -37,13 +37,34 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function JsonDisplay({ data }: { data: unknown }) {
-  if (!data) return <span className="text-muted-foreground">None</span>;
+function KeyValueTable({ data }: { data: Record<string, unknown> }) {
+  const entries = Object.entries(data).filter(([, value]) => value !== null && value !== undefined);
+
+  if (entries.length === 0) {
+    return <span className="text-muted-foreground">None</span>;
+  }
 
   return (
-    <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
-      {JSON.stringify(data, null, 2)}
-    </pre>
+    <div className="border rounded-md overflow-hidden">
+      <div className="grid grid-cols-[1fr_2fr] text-xs font-medium text-muted-foreground bg-muted px-3 py-2 border-b">
+        <div>Name</div>
+        <div>Value</div>
+      </div>
+      <div className="divide-y">
+        {entries.map(([key, value]) => (
+          <div key={key} className="grid grid-cols-[1fr_2fr] text-sm">
+            <div className="px-3 py-2 font-medium bg-muted/30 border-r">{key}</div>
+            <div className="px-3 py-2 break-all">
+              {typeof value === 'object' ? (
+                <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+              ) : (
+                <span className="whitespace-pre-wrap">{String(value)}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -96,7 +117,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
           {/* Variables - only show vars */}
           {Object.keys(stepVars).length > 0 && (
             <Section title="Variables">
-              <JsonDisplay data={stepVars} />
+              <KeyValueTable data={stepVars} />
             </Section>
           )}
 
