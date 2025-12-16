@@ -2,10 +2,10 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { POST } from "@/app/api/tasks/[taskId]/recording/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { resetDatabase } from "@/__tests__/support/fixtures/database";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
-import { createTestTask } from "@/__tests__/support/fixtures/task";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
+import { createTestTask } from "@/__tests__/support/factories/task.factory";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import {
   expectSuccess,

@@ -284,6 +284,7 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
 
     try {
       setIsLoading(true);
+
       const response = await fetch(`/api/pool-manager/claim-pod/${id}`, {
         method: "POST",
         headers: {
@@ -588,14 +589,23 @@ export default function UserJourneys({ onBrowserModeChange }: UserJourneysProps)
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-                <Button 
-                  className="flex items-center gap-2" 
-                  onClick={handleCreateUserJourney} 
+                <Button
+                  className="flex items-center gap-2"
+                  onClick={handleCreateUserJourney}
                   disabled={isLoading}
                   data-testid="create-user-journey-button"
                 >
-                  <Plus className="w-4 h-4" />
-                  Create User Journey
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Claiming pod...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Create User Journey
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

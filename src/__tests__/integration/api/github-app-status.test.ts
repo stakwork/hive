@@ -2,9 +2,9 @@ import { describe, it, beforeEach, expect, vi } from "vitest";
 import { NextResponse } from "next/server";
 import { GET } from "@/app/api/github/app/status/route";
 import { getServerSession } from "next-auth/next";
-import { createTestUserWithGitHubTokens } from "@/__tests__/support/fixtures/github-repository-permissions";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestUserWithGitHubTokens } from "@/__tests__/support/factories/github-permissions.factory";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 import {
   createAuthenticatedSession,
   getMockedSession,
@@ -20,7 +20,7 @@ import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { getUserAppTokens, checkRepositoryAccess } from "@/lib/githubApp";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { db } from "@/lib/db";
-import { resetDatabase } from "@/__tests__/support/fixtures/database";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
 
 // Mock external dependencies
 vi.mock("next-auth/next");

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { GET } from "@/app/api/tasks/stats/route";
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@/lib/chat";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createAuthenticatedGetRequest,
   createGetRequest,

@@ -2,20 +2,37 @@ import { db } from "@/lib/db";
 import type { Task, ChatMessage, Artifact, ArtifactType } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import type { MediaContent } from "@/lib/chat";
+import {
+  TASK_VALUES,
+  getRandomTask,
+  type TaskValueKey,
+  type TaskCategory,
+} from "../values/tasks";
 
 export interface CreateTestTaskOptions {
+  /** Use named value from TASK_VALUES (e.g., "loginFeature", "dashboardBug") */
+  valueKey?: TaskValueKey;
+  /** Generate random task by category */
+  category?: TaskCategory;
   title?: string;
   description?: string;
   workspaceId: string;
   createdById: string;
   assigneeId?: string;
-  status?: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED";
-  sourceType?: "USER" | "JANITOR" | "SYSTEM";
+  status?: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED" | "BLOCKED";
+  sourceType?: "USER" | "JANITOR" | "SYSTEM" | "USER_JOURNEY";
+  workflowStatus?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ERROR" | "FAILED" | "HALTED" | null;
   featureId?: string;
   phaseId?: string;
+  repositoryId?: string;
   priority?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   order?: number;
   dependsOnTaskIds?: string[];
+  testFilePath?: string;
+  testFileUrl?: string;
+  stakworkProjectId?: number;
+  /** If true, return existing task if title+workspace match */
+  idempotent?: boolean;
 }
 
 export interface CreateTestChatMessageOptions {
@@ -27,25 +44,89 @@ export interface CreateTestChatMessageOptions {
 export async function createTestTask(
   options: CreateTestTaskOptions,
 ): Promise<Task> {
+  // Get base values from valueKey, category, or generate defaults
+  let baseValues;
+  if (options.valueKey) {
+    baseValues = TASK_VALUES[options.valueKey];
+  } else if (options.category) {
+    baseValues = getRandomTask(options.category);
+  } else {
+    baseValues = null;
+  }
+
   const uniqueId = generateUniqueId("task");
+  const title = options.title ?? baseValues?.title ?? `Test Task ${uniqueId}`;
+  const description = options.description ?? baseValues?.description ?? `Test task description ${uniqueId}`;
+  const status = options.status ?? baseValues?.status ?? "TODO";
+  const priority = options.priority ?? baseValues?.priority ?? "MEDIUM";
+  const sourceType = options.sourceType ?? baseValues?.sourceType ?? "USER";
+
+  // Idempotent: check if exists
+  if (options.idempotent) {
+    const existing = await db.task.findFirst({
+      where: {
+        workspaceId: options.workspaceId,
+        title,
+      },
+    });
+    if (existing) return existing;
+  }
 
   return db.task.create({
     data: {
-      title: options.title || `Test Task ${uniqueId}`,
-      description: options.description || `Test task description ${uniqueId}`,
+      title,
+      description,
       workspaceId: options.workspaceId,
       createdById: options.createdById,
-      updatedById: options.createdById, // Required field
-      assigneeId: options.assigneeId || null,
-      status: options.status || "TODO",
-      priority: options.priority || "MEDIUM",
-      sourceType: options.sourceType || "USER",
-      featureId: options.featureId || null,
-      phaseId: options.phaseId || null,
-      order: options.order !== undefined ? options.order : 0,
-      dependsOnTaskIds: options.dependsOnTaskIds || [],
+      updatedById: options.createdById,
+      assigneeId: options.assigneeId ?? null,
+      status,
+      priority,
+      sourceType,
+      workflowStatus: options.workflowStatus ?? null,
+      featureId: options.featureId ?? null,
+      phaseId: options.phaseId ?? null,
+      repositoryId: options.repositoryId ?? null,
+      order: options.order ?? 0,
+      dependsOnTaskIds: options.dependsOnTaskIds ?? [],
+      testFilePath: options.testFilePath ?? null,
+      testFileUrl: options.testFileUrl ?? null,
+      stakworkProjectId: options.stakworkProjectId ?? null,
     },
   });
+}
+
+/**
+ * Create multiple tasks with varied data by category distribution
+ *
+ * @example
+ * // 10 tasks with mixed categories
+ * const tasks = await createTestTasks(workspace.id, owner.id, 10);
+ *
+ * @example
+ * // 5 bug tasks only
+ * const bugs = await createTestTasks(workspace.id, owner.id, 5, { category: "bug" });
+ */
+export async function createTestTasks(
+  workspaceId: string,
+  createdById: string,
+  count: number,
+  options: { category?: TaskCategory } = {}
+): Promise<Task[]> {
+  const categories: TaskCategory[] = ["bug", "feature", "chore", "janitor"];
+  const tasks: Task[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const category = options.category ?? categories[i % categories.length];
+    const task = await createTestTask({
+      workspaceId,
+      createdById,
+      category,
+    });
+    tasks.push(task);
+  }
+
+  return tasks;
 }
 
 export async function createTestChatMessage(

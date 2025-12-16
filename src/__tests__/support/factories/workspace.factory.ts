@@ -10,13 +10,20 @@ import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import {
   createTestUser,
   type CreateTestUserOptions,
-} from "./user";
+} from "./user.factory";
 import {
   createTestSwarm,
   type CreateTestSwarmOptions,
-} from "./swarm";
+} from "./swarm.factory";
+import {
+  WORKSPACE_VALUES,
+  getRandomWorkspace,
+  type WorkspaceValueKey,
+} from "../values/workspaces";
 
 export interface CreateTestWorkspaceOptions {
+  /** Use named value from WORKSPACE_VALUES (e.g., "default", "e2eTest") */
+  valueKey?: WorkspaceValueKey;
   name?: string;
   description?: string | null;
   slug?: string;
@@ -24,6 +31,8 @@ export interface CreateTestWorkspaceOptions {
   stakworkApiKey?: string | null;
   sourceControlOrgId?: string | null;
   repositoryDraft?: string | null;
+  /** If true, return existing workspace if slug matches */
+  idempotent?: boolean;
 }
 
 export interface CreateTestMembershipOptions {
@@ -32,26 +41,38 @@ export interface CreateTestMembershipOptions {
   role?: WorkspaceRole;
   leftAt?: Date;
   lastAccessedAt?: Date;
+  /** If true, return existing membership if workspace+user match */
+  idempotent?: boolean;
 }
 
 export async function createTestWorkspace(
   options: CreateTestWorkspaceOptions,
 ): Promise<Workspace> {
+  // Get base values from valueKey or generate unique defaults
+  const baseValues = options.valueKey
+    ? WORKSPACE_VALUES[options.valueKey]
+    : null;
+
   const uniqueId = generateUniqueId("workspace");
+  const slug = options.slug ?? baseValues?.slug ?? `test-workspace-${uniqueId}`;
+  const name = options.name ?? baseValues?.name ?? `Test Workspace ${uniqueId}`;
+  const description = options.description ?? baseValues?.description ?? null;
+
+  // Idempotent: check if exists
+  if (options.idempotent) {
+    const existing = await db.workspace.findUnique({ where: { slug } });
+    if (existing) return existing;
+  }
 
   return db.workspace.create({
     data: {
-      name: options.name || `Test Workspace ${uniqueId}`,
-      description:
-        options.description === undefined ? null : options.description,
-      slug: options.slug || `test-workspace-${uniqueId}`,
+      name,
+      description,
+      slug,
       ownerId: options.ownerId,
-      stakworkApiKey:
-        options.stakworkApiKey === undefined ? null : options.stakworkApiKey,
-      sourceControlOrgId:
-        options.sourceControlOrgId === undefined ? null : options.sourceControlOrgId,
-      repositoryDraft:
-        options.repositoryDraft === undefined ? null : options.repositoryDraft,
+      stakworkApiKey: options.stakworkApiKey ?? null,
+      sourceControlOrgId: options.sourceControlOrgId ?? null,
+      repositoryDraft: options.repositoryDraft ?? null,
     },
   });
 }
@@ -59,6 +80,17 @@ export async function createTestWorkspace(
 export async function createTestMembership(
   options: CreateTestMembershipOptions,
 ): Promise<WorkspaceMember> {
+  // Idempotent: check if exists
+  if (options.idempotent) {
+    const existing = await db.workspaceMember.findFirst({
+      where: {
+        workspaceId: options.workspaceId,
+        userId: options.userId,
+      },
+    });
+    if (existing) return existing;
+  }
+
   return db.workspaceMember.create({
     data: {
       workspaceId: options.workspaceId,

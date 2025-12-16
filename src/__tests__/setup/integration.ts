@@ -2,7 +2,7 @@ import "./global";
 import { beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
 import { db } from "@/lib/db";
-import { resetDatabase } from "../support/fixtures";
+import { resetDatabase } from "../support/utilities/database";
 import { ensureTestEnv } from "./env";
 
 const TEST_DATABASE_URL =

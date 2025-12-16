@@ -14,8 +14,8 @@ import {
   createGetRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
-import { createTestWorkspace } from "@/__tests__/support/fixtures/workspace";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
+import { createTestWorkspace } from "@/__tests__/support/factories/workspace.factory";
 
 describe("GET /api/tasks/[taskId]/messages", () => {
   let testUser: { id: string; email: string; name: string };

@@ -1,10 +1,17 @@
 import { db } from "@/lib/db";
 import type { Swarm } from "@prisma/client";
 import { EncryptionService } from "@/lib/encryption";
+import {
+  SWARM_VALUES,
+  getRandomSwarm,
+  type SwarmValueKey,
+} from "../values/swarms";
 
 const encryptionService = EncryptionService.getInstance();
 
 export interface CreateTestSwarmOptions {
+  /** Use named value from SWARM_VALUES (e.g., "default", "e2eReady") */
+  valueKey?: SwarmValueKey;
   name?: string;
   swarmId?: string;
   swarmUrl?: string;
@@ -16,36 +23,54 @@ export interface CreateTestSwarmOptions {
   poolName?: string;
   poolApiKey?: string;
   poolState?: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE";
+  /** If true, return existing swarm if name+workspace match */
+  idempotent?: boolean;
 }
 
 export async function createTestSwarm(
   options: CreateTestSwarmOptions,
 ): Promise<Swarm> {
+  // Get base values from valueKey or generate defaults
+  const baseValues = options.valueKey
+    ? SWARM_VALUES[options.valueKey]
+    : null;
+
   const timestamp = Date.now();
-  const name = options.name || `test-swarm-${timestamp}`;
+  const name = options.name ?? baseValues?.name ?? `test-swarm-${timestamp}`;
+
+  // Idempotent: check if exists
+  if (options.idempotent) {
+    const existing = await db.swarm.findFirst({
+      where: { workspaceId: options.workspaceId, name },
+    });
+    if (existing) return existing;
+  }
 
   const baseData = {
     name,
-    swarmUrl: options.swarmUrl || `https://${name}.test.sphinxlabs.ai/api`,
+    swarmUrl: options.swarmUrl ?? baseValues?.swarmUrl ?? `https://${name}.test.sphinxlabs.ai/api`,
     workspaceId: options.workspaceId,
-    status: options.status || "ACTIVE",
-    instanceType: options.instanceType || "XL",
+    status: options.status ?? baseValues?.status ?? "ACTIVE",
+    instanceType: options.instanceType ?? baseValues?.instanceType ?? "XL",
     agentRequestId: null,
     agentStatus: null,
-    containerFilesSetUp: options.containerFilesSetUp ?? true, // Default to true for E2E tests
+    containerFilesSetUp: options.containerFilesSetUp ?? baseValues?.containerFilesSetUp ?? true,
     poolName: options.poolName ?? null,
-    poolState: options.poolState ?? "NOT_STARTED",
+    poolState: options.poolState ?? baseValues?.poolState ?? "NOT_STARTED",
   };
 
-  let createData = baseData as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const createData = baseData as any;
 
-  if (options.swarmApiKey) {
+  // Encrypt API keys if provided
+  const swarmApiKey = options.swarmApiKey ?? (options.valueKey ? "test-swarm-api-key" : undefined);
+  if (swarmApiKey && process.env.TOKEN_ENCRYPTION_KEY) {
     createData.swarmApiKey = JSON.stringify(
-      encryptionService.encryptField("swarmApiKey", options.swarmApiKey)
+      encryptionService.encryptField("swarmApiKey", swarmApiKey)
     );
   }
 
-  if (options.poolApiKey) {
+  if (options.poolApiKey && process.env.TOKEN_ENCRYPTION_KEY) {
     createData.poolApiKey = JSON.stringify(
       encryptionService.encryptField("poolApiKey", options.poolApiKey)
     );

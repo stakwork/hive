@@ -6,14 +6,14 @@ import { triggerAsyncSync } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { RepositoryStatus } from "@prisma/client";
 import {
-  createTestRepository,
+  createWebhookTestScenario,
   createGitHubPushPayload,
   computeValidWebhookSignature,
   createWebhookRequest,
   testBranches,
   mockGitHubEvents,
-} from "@/__tests__/support/fixtures/github-webhook";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+} from "@/__tests__/support/factories/github-webhook.factory";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 
 // Mock external services
 vi.mock("@/services/swarm/stakgraph-actions", () => ({
@@ -34,7 +34,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
   describe("End-to-End Webhook Processing", () => {
     test("should successfully process webhook with valid signature and encrypted secret", async () => {
       // Create test data with real database operations
-      const { repository, webhookSecret } = await createTestRepository({
+      const { repository, webhookSecret } = await createWebhookTestScenario({
         branch: "main",
         status: RepositoryStatus.SYNCED,
       });
@@ -97,7 +97,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     });
 
     test("should reject webhook with invalid signature", async () => {
-      const { repository } = await createTestRepository();
+      const { repository } = await createWebhookTestScenario();
 
       const payload = createGitHubPushPayload(
         testBranches.main,
@@ -131,7 +131,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
 
     test("should handle webhook with encrypted secrets correctly", async () => {
       const customWebhookSecret = "custom_secret_for_integration_test_12345";
-      const { repository } = await createTestRepository({
+      const { repository } = await createWebhookTestScenario({
         webhookSecret: customWebhookSecret,
       });
 
@@ -167,7 +167,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     });
 
     test("should filter non-allowed branches and not trigger sync", async () => {
-      const { repository, webhookSecret } = await createTestRepository({
+      const { repository, webhookSecret } = await createWebhookTestScenario({
         branch: "main",
       });
 
@@ -202,7 +202,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     });
 
     test("should filter non-push events and not trigger sync", async () => {
-      const { repository, webhookSecret } = await createTestRepository();
+      const { repository, webhookSecret } = await createWebhookTestScenario();
 
       const payload = createGitHubPushPayload(
         testBranches.main,
@@ -229,7 +229,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
 
     test("should process webhook for configured repository branch", async () => {
       const customBranch = "develop";
-      const { repository, webhookSecret } = await createTestRepository({
+      const { repository, webhookSecret } = await createWebhookTestScenario({
         branch: customBranch,
       });
 
@@ -266,7 +266,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
 
   describe("Database Integration", () => {
     test("should return 404 when workspace is deleted", async () => {
-      const { repository, webhookSecret, workspace } = await createTestRepository();
+      const { repository, webhookSecret, workspace } = await createWebhookTestScenario();
 
       // Soft delete the workspace
       await db.workspace.update({
@@ -301,7 +301,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
 
     test("should lookup repository by githubWebhookId", async () => {
       const customWebhookId = "webhook-integration-test-456";
-      const { repository, webhookSecret } = await createTestRepository({
+      const { repository, webhookSecret } = await createWebhookTestScenario({
         githubWebhookId: customWebhookId,
       });
 
@@ -360,7 +360,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     });
 
     test("should handle missing swarm configuration", async () => {
-      const { repository, webhookSecret } = await createTestRepository();
+      const { repository, webhookSecret } = await createWebhookTestScenario();
 
       // Delete swarm to simulate missing configuration
       await db.swarm.deleteMany({
@@ -395,7 +395,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
       const encryptionService = EncryptionService.getInstance();
       const plainSecret = "super_secret_webhook_key_12345";
 
-      const { repository } = await createTestRepository({
+      const { repository } = await createWebhookTestScenario({
         webhookSecret: plainSecret,
       });
 
@@ -442,7 +442,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     });
 
     test("should properly decrypt swarm API key for async sync", async () => {
-      const { repository, webhookSecret } = await createTestRepository();
+      const { repository, webhookSecret } = await createWebhookTestScenario();
 
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
 
@@ -488,7 +488,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
         githubUsername: "webhook-test-user",
       });
 
-      const { repository, webhookSecret, workspace } = await createTestRepository();
+      const { repository, webhookSecret, workspace } = await createWebhookTestScenario();
 
       // Update workspace to have real owner
       await db.workspace.update({
@@ -540,7 +540,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
     });
 
     test("should trigger sync without credentials when user has none", async () => {
-      const { repository, webhookSecret } = await createTestRepository();
+      const { repository, webhookSecret } = await createWebhookTestScenario();
 
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
 
@@ -581,7 +581,7 @@ describe("GitHub Webhook Integration Tests - POST /api/github/webhook", () => {
 
   describe("Callback URL Integration", () => {
     test("should include callback URL in triggerAsyncSync call", async () => {
-      const { repository, webhookSecret } = await createTestRepository();
+      const { repository, webhookSecret } = await createWebhookTestScenario();
 
       vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
 

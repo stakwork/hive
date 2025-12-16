@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, PUT, DELETE } from "@/app/api/workspaces/[slug]/route";
 import { db } from "@/lib/db";
-import { createTestWorkspaceScenario } from "@/__tests__/support/fixtures/workspace";
+import { createTestWorkspaceScenario } from "@/__tests__/support/factories/workspace.factory";
 import {
   createAuthenticatedSession,
   mockUnauthenticatedSession,

@@ -9,13 +9,13 @@ import {
   createPostRequest,
   createGetRequest,
 } from "@/__tests__/support/helpers";
-import { createTestUser } from "@/__tests__/support/fixtures/user";
+import { createTestUser } from "@/__tests__/support/factories/user.factory";
 import {
   createTestUserWithGitHubTokens,
   createAdditionalOrgForUser,
   mockGitHubApiResponses,
   testRepositoryUrls,
-} from "@/__tests__/support/fixtures/github-repository-permissions";
+} from "@/__tests__/support/factories/github-permissions.factory";
 
 // Mock next-auth for session management
 vi.mock("next-auth/next");

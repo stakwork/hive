@@ -1,42 +1,56 @@
 import { db } from "@/lib/db";
-import type { User, GitHubAuth } from "@prisma/client";
+import type { User } from "@prisma/client";
 import { generateUniqueId } from "@/__tests__/support/helpers/ids";
 import { EncryptionService } from "@/lib/encryption";
+import {
+  USER_VALUES,
+  getRandomUser,
+  type UserValueKey,
+} from "../values/users";
 
 const encryptionService = EncryptionService.getInstance();
 
 export interface CreateTestUserOptions {
+  /** Use named value from USER_VALUES (e.g., "owner", "mockAuthUser") */
+  valueKey?: UserValueKey;
   name?: string;
   email?: string;
   role?: "USER" | "ADMIN";
   withGitHubAuth?: boolean;
   githubUsername?: string;
+  /** If true, return existing user if email matches (default: true) */
+  idempotent?: boolean;
 }
 
 export async function createTestUser(
   options: CreateTestUserOptions = {},
 ): Promise<User> {
+  // Get base values from valueKey or generate unique defaults
+  const baseValues = options.valueKey
+    ? USER_VALUES[options.valueKey]
+    : null;
+
   const uniqueId = generateUniqueId("user");
-  const githubUsername = options.githubUsername || `testuser-${uniqueId}`;
+  const email = options.email ?? baseValues?.email ?? `test-${uniqueId}@example.com`;
+  const name = options.name ?? baseValues?.name ?? `Test User ${uniqueId}`;
+  const role = options.role ?? baseValues?.role ?? "USER";
+  const githubUsername = options.githubUsername ??
+    (baseValues && "githubUsername" in baseValues ? baseValues.githubUsername : `testuser-${uniqueId}`);
 
-  // Check if user with this email already exists
-  const existingUser = await db.user.findUnique({
-    where: { email: options.email || `test-${uniqueId}@example.com` },
-  });
-
-  if (existingUser) {
-    return existingUser;
+  // Idempotent check (default true for backwards compatibility)
+  const idempotent = options.idempotent ?? true;
+  if (idempotent) {
+    const existingUser = await db.user.findUnique({ where: { email } });
+    if (existingUser) return existingUser;
   }
 
   const user = await db.user.create({
-    data: {
-      name: options.name || `Test User ${uniqueId}`,
-      email: options.email || `test-${uniqueId}@example.com`,
-      role: options.role || "USER",
-    },
+    data: { name, email, role },
   });
 
-  if (options.withGitHubAuth) {
+  // Create GitHub auth if requested (default true when using valueKey)
+  const withGitHubAuth = options.withGitHubAuth ?? (options.valueKey ? true : false);
+  if (withGitHubAuth) {
     await db.gitHubAuth.create({
       data: {
         userId: user.id,
