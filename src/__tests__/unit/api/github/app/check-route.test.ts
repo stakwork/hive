@@ -86,13 +86,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [
-            {
-              full_name: 'owner/repo',
-              permissions: { push: true },
-            },
-          ],
+          full_name: 'owner/repo',
+          permissions: { push: true },
         }),
       });
 
@@ -151,8 +146,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [{ full_name: 'owner/repo', permissions: { push: true } }],
+          full_name: 'owner/repo',
+          permissions: { push: true },
         }),
       });
 
@@ -181,8 +176,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [{ full_name: 'owner/repo', permissions: { push: true } }],
+          full_name: 'owner/repo',
+          permissions: { push: true },
         }),
       });
 
@@ -211,10 +206,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [
-            { full_name: 'owner/repo-with-dashes_and_underscores', permissions: { push: true } },
-          ],
+          full_name: 'owner/repo-with-dashes_and_underscores',
+          permissions: { push: true },
         }),
       });
 
@@ -334,13 +327,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [
-            {
-              full_name: 'owner/repo',
-              permissions: { push: true, admin: false, maintain: false },
-            },
-          ],
+          full_name: 'owner/repo',
+          permissions: { push: true, admin: false, maintain: false },
         }),
       });
 
@@ -358,13 +346,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [
-            {
-              full_name: 'owner/repo',
-              permissions: { push: false, admin: true, maintain: false },
-            },
-          ],
+          full_name: 'owner/repo',
+          permissions: { push: false, admin: true, maintain: false },
         }),
       });
 
@@ -382,13 +365,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [
-            {
-              full_name: 'owner/repo',
-              permissions: { push: false, admin: false, maintain: true },
-            },
-          ],
+          full_name: 'owner/repo',
+          permissions: { push: false, admin: false, maintain: true },
         }),
       });
 
@@ -406,13 +384,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [
-            {
-              full_name: 'owner/repo',
-              permissions: { push: false, admin: false, maintain: false, pull: true },
-            },
-          ],
+          full_name: 'owner/repo',
+          permissions: { push: false, admin: false, maintain: false, pull: true },
         }),
       });
 
@@ -428,13 +401,8 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 1,
-          repositories: [
-            {
-              full_name: 'Owner/Repo',
-              permissions: { push: true },
-            },
-          ],
+          full_name: 'Owner/Repo',
+          permissions: { push: true },
         }),
       });
 
@@ -448,16 +416,11 @@ describe('GET /api/github/app/check', () => {
       });
     });
 
-    it('should return requiresInstallationUpdate when repository not in installation', async () => {
+    it('should return requiresInstallationUpdate when repository not accessible (404)', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          total_count: 2,
-          repositories: [
-            { full_name: 'owner/other-repo-1', permissions: { push: true } },
-            { full_name: 'owner/other-repo-2', permissions: { push: true } },
-          ],
-        }),
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
       });
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
@@ -473,21 +436,12 @@ describe('GET /api/github/app/check', () => {
       expect(data.error).toContain('owner/repo');
     });
 
-    it('should handle large repository lists (100+ repos)', async () => {
-      const repositories = Array.from({ length: 150 }, (_, i) => ({
-        full_name: `owner/repo-${i}`,
-        permissions: { push: true },
-      }));
-      repositories[75] = {
-        full_name: 'owner/target-repo',
-        permissions: { push: true },
-      };
-
+    it('should handle successful repository access check', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          total_count: 150,
-          repositories,
+          full_name: 'owner/target-repo',
+          permissions: { push: true },
         }),
       });
 
@@ -524,7 +478,7 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
-        json: async () => ({ message: 'Bad credentials' }),
+        statusText: 'Unauthorized',
       });
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
@@ -535,7 +489,7 @@ describe('GET /api/github/app/check', () => {
       expect(data).toMatchObject({
         hasPushAccess: false,
         requiresReauth: true,
-        installationId: '12345',
+        error: 'GitHub API error 401',
       });
     });
 
@@ -543,7 +497,7 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 403,
-        json: async () => ({ message: 'Forbidden' }),
+        statusText: 'Forbidden',
       });
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
@@ -554,15 +508,15 @@ describe('GET /api/github/app/check', () => {
       expect(data).toMatchObject({
         hasPushAccess: false,
         requiresReauth: true,
-        installationId: '12345',
+        error: 'GitHub API error 403',
       });
     });
 
-    it('should return error when GitHub API returns 404', async () => {
+    it('should return requiresInstallationUpdate when GitHub API returns 404', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
-        json: async () => ({ message: 'Not Found' }),
+        statusText: 'Not Found',
       });
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
@@ -572,16 +526,18 @@ describe('GET /api/github/app/check', () => {
       const data = await response.json();
       expect(data).toMatchObject({
         hasPushAccess: false,
+        requiresInstallationUpdate: true,
         installationId: '12345',
       });
-      expect(data.error).toContain('not found');
+      expect(data.error).toContain('owner/repo');
+      expect(data.error).toContain('not accessible');
     });
 
     it('should return error when GitHub API returns 500', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
-        json: async () => ({ message: 'Internal Server Error' }),
+        statusText: 'Internal Server Error',
       });
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
@@ -591,9 +547,8 @@ describe('GET /api/github/app/check', () => {
       const data = await response.json();
       expect(data).toMatchObject({
         hasPushAccess: false,
-        installationId: '12345',
+        error: 'GitHub API error 500',
       });
-      expect(data.error).toContain('unavailable');
     });
 
     it('should handle network errors gracefully', async () => {
@@ -650,7 +605,7 @@ describe('GET /api/github/app/check', () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
-        json: async () => ({ message: 'Token expired' }),
+        statusText: 'Unauthorized',
       });
 
       const request = createMockRequest('/api/github/app/check?repositoryUrl=https://github.com/owner/repo');
@@ -658,6 +613,7 @@ describe('GET /api/github/app/check', () => {
 
       const data = await response.json();
       expect(data.requiresReauth).toBe(true);
+      expect(data.error).toBe('GitHub API error 401');
     });
   });
 });
