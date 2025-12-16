@@ -268,6 +268,7 @@ describe("pusher.ts", () => {
     it("should contain all expected event constants", () => {
       expect(PUSHER_EVENTS).toEqual({
         NEW_MESSAGE: "new-message",
+        FOLLOW_UP_QUESTIONS: "follow-up-questions",
         CONNECTION_COUNT: "connection-count",
         WORKFLOW_STATUS_UPDATE: "workflow-status-update",
         RECOMMENDATIONS_UPDATED: "recommendations-updated",
@@ -315,7 +316,7 @@ describe("pusher.ts", () => {
     });
 
     it("should have correct number of events", () => {
-      expect(Object.keys(PUSHER_EVENTS)).toHaveLength(9);
+      expect(Object.keys(PUSHER_EVENTS)).toHaveLength(10);
     });
 
     it("should follow kebab-case naming convention for event values", () => {
