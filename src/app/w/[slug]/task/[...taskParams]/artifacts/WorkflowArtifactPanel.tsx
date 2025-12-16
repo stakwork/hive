@@ -59,20 +59,10 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   const parsedWorkflowData = useMemo(() => {
     if (!workflowJson) return null;
     try {
-      // Try parsing as normal JSON first
       return JSON.parse(workflowJson);
-    } catch {
-      // If that fails, try converting Ruby hash syntax to JSON
-      try {
-        const jsonString = workflowJson
-          .replace(/=>/g, ':')           // Ruby hash rockets
-          .replace(/:nil/g, ':null')     // Ruby nil to JSON null
-          .replace(/\bnil\b/g, 'null');  // standalone nil
-        return JSON.parse(jsonString);
-      } catch (e) {
-        console.error("Failed to parse workflow JSON:", e, "Input:", workflowJson?.substring(0, 200));
-        return null;
-      }
+    } catch (e) {
+      console.error("Failed to parse workflow JSON:", e, "Input:", workflowJson?.substring(0, 200));
+      return null;
     }
   }, [workflowJson]);
 
