@@ -4,6 +4,7 @@ import ImportNodeModal from './ImportNodeModal';
 import RequestQueue from './RequestQueue';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { WorkflowTransition as WorkflowTransitionType } from '@/types/stakwork/workflow';
 
 declare global {
   interface Window {
@@ -28,7 +29,7 @@ import '@xyflow/react/dist/style.css';
 import './workflow.css';
 import NodeArray from "./v4/NodeArray";
 import StepNode from "./StepNode";
-import WorkflowTransition from "./channels/WorkflowTransition";
+import WorkflowTransitionChannel from "./channels/WorkflowTransition";
 import WorkflowEdit from "./channels/WorkflowEdit";
 import EdgeButtons from './EdgeButtons';
 
@@ -205,6 +206,7 @@ interface WorkflowAppProps {
     useAssistantDimensions?: boolean;
     projectProgress?: string;
     rails_env: string;
+    onStepClick?: (step: WorkflowTransitionType) => void;
   };
 }
 
@@ -236,6 +238,9 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   // Ref for workflow spec field
   const workflowSpecRef = useRef<HTMLInputElement | null>(null);
+
+  // Store transitions for step click lookup
+  const transitionsRef = useRef<Record<string, WorkflowTransitionType>>({});
 
   // Helper to show toast messages (replaces window.showFlashMessage)
   const showFlashMessage = useCallback((message: string, type: 'success' | 'info' | 'error') => {
@@ -280,7 +285,8 @@ export default function App(workflowApp: WorkflowAppProps) {
     defaultZoomLevel,
     useAssistantDimensions,
     projectProgress,
-    rails_env
+    rails_env,
+    onStepClick
   } = workflowApp.props;
 
   let zoomLevel = defaultZoomLevel || 0.65
@@ -334,7 +340,7 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   useEffect(() => {
     if (projectId) {
-      const workflowChannel = new WorkflowTransition(
+      const workflowChannel = new WorkflowTransitionChannel(
         rails_env,
         projectId,
         onWorkflowUpdate
@@ -555,6 +561,56 @@ export default function App(workflowApp: WorkflowAppProps) {
     }
   }, [projectId, reactFlowInstance, nodes.length]);
 
+  // Handle step clicks for workflow editor mode
+  useEffect(() => {
+    if (!onStepClick || !ref.current) return;
+
+    const handleStepClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+
+      // Check if clicked element or its parent has the workflow-show-modal class
+      const clickableElement = target.closest('.workflow-show-modal');
+      if (!clickableElement) return;
+
+      // Find the parent React Flow node element to get the node ID
+      const nodeElement = target.closest('[data-id]');
+      if (!nodeElement) return;
+
+      const nodeId = nodeElement.getAttribute('data-id');
+      if (!nodeId) return;
+
+      // Also check for data-unique-id directly on the clicked element
+      const uniqueIdAttr = (clickableElement as HTMLElement).getAttribute('data-unique-id');
+
+      // Get all transitions as array (handle both array and object formats)
+      const transitions = transitionsRef.current;
+      const transitionsArray = Array.isArray(transitions)
+        ? transitions
+        : Object.values(transitions);
+
+      // Find the step data - try multiple matching strategies
+      const step = transitionsArray.find((t: WorkflowTransitionType) => {
+        if (uniqueIdAttr && t.unique_id === uniqueIdAttr) return true;
+        if (t.id === nodeId) return true;
+        if (t.unique_id === nodeId) return true;
+        return false;
+      });
+
+      if (step) {
+        event.preventDefault();
+        event.stopPropagation();
+        onStepClick(step);
+      }
+    };
+
+    const container = ref.current;
+    container.addEventListener('click', handleStepClick, true);
+
+    return () => {
+      container.removeEventListener('click', handleStepClick, true);
+    };
+  }, [onStepClick]);
+
   const onConnect = useCallback((connection: Connection) => {
       const node = nodes.find((node) => node.id === connection.source);
 
@@ -625,6 +681,9 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   const updateDiagram = (data: any) => {
     // console.log("data", data)
+    // Store transitions for step click lookup
+    transitionsRef.current = data.transitions || {};
+
     let updatedNodes = new NodeArray(
       data.transitions,
       data.connections,

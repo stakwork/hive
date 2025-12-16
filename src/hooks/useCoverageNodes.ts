@@ -14,15 +14,15 @@ export interface UseCoverageParams {
 export function useCoverageNodes() {
   const { id: workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
-  const { nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setMocked, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob, setSearch } = useCoverageStore();
+  const { nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignored, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search, setOffset, setNodeType, setSort, setSortDirection, toggleSort, setCoverage, setMocked, setIgnored, setIgnoreDirs, setRepo, setUnitGlob, setIntegrationGlob, setE2eGlob, setSearch } = useCoverageStore();
   const hasInitializedIgnoreDirs = useRef(false);
   const hasInitializedUnitGlob = useRef(false);
   const hasInitializedIntegrationGlob = useRef(false);
   const hasInitializedE2eGlob = useRef(false);
 
   const queryKey = useMemo(
-    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
-    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
+    () => ["coverage-nodes", workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignored, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
+    [workspaceId, nodeType, sort, sortDirection, limit, offset, coverage, mocked, ignored, ignoreDirs, repo, unitGlob, integrationGlob, e2eGlob, search],
   );
 
   const query = useQuery<CoverageNodesResponse | null>({
@@ -218,12 +218,20 @@ export function useCoverageNodes() {
     });
   };
 
+  const rawItems = query.data?.data?.items || [];
+  const filteredItems = rawItems.filter((item) => {
+    if (ignored === "all") return true;
+    if (ignored === "ignored") return item.is_muted === true;
+    if (ignored === "not_ignored") return !item.is_muted;
+    return true;
+  });
+
   return {
-    items: query.data?.data?.items || [],
+    items: filteredItems,
     loading: query.isLoading,
     filterLoading: query.isFetching && !query.isLoading,
     error: query.error ? (query.error as Error).message : null,
-    params: { nodeType, limit, offset, sort, sortDirection, coverage, mocked },
+    params: { nodeType, limit, offset, sort, sortDirection, coverage, mocked, ignored },
     page: query.data?.data?.page || 1,
     totalPages: query.data?.data?.total_pages,
     totalCount: query.data?.data?.total_count,
@@ -241,6 +249,8 @@ export function useCoverageNodes() {
     setCoverage,
     setMocked,
     mocked,
+    ignored,
+    setIgnored,
     ignoreDirs,
     setIgnoreDirs,
     repo,

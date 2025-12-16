@@ -1,16 +1,40 @@
 "use client";
 
+import { useMemo, useEffect, useState, useCallback } from "react";
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
-import { useEffect } from "react";
+import { StepDetailsModal } from "@/components/StepDetailsModal";
+import { WorkflowTransition } from "@/types/stakwork/workflow";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
   isActive: boolean;
+  onStepSelect?: (step: WorkflowTransition) => void;
 }
 
-export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactPanelProps) {
+export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
+  const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "stakwork">("editor");
+
+  const handleStepClick = useCallback((step: WorkflowTransition) => {
+    setClickedStep(step);
+    setIsModalOpen(true);
+  }, []);
+
+  const handleModalClose = useCallback(() => {
+    setIsModalOpen(false);
+  }, []);
+
+  const handleStepSelectFromModal = useCallback(() => {
+    if (clickedStep && onStepSelect) {
+      onStepSelect(clickedStep);
+    }
+    setIsModalOpen(false);
+  }, [clickedStep, onStepSelect]);
+
   if (artifacts.length === 0) {
     return (
       <div className="flex items-center justify-center h-full p-8">
@@ -23,11 +47,52 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
   const latestArtifact = artifacts[artifacts.length - 1];
   const workflowContent = latestArtifact.content as WorkflowContent;
   const projectId = workflowContent?.projectId;
+  const workflowJson = workflowContent?.workflowJson;
+  const workflowId = workflowContent?.workflowId;
 
-  // Polling hook - only active when tab is active
-  const { workflowData, isLoading, error } = useWorkflowPolling(
-    projectId || null,
-    isActive,
+  // Determine if we're in editor mode (workflowJson present)
+  const isEditorMode = !!workflowJson;
+
+  // Parse workflowJson if present (direct mode from graph)
+  const parsedWorkflowData = useMemo(() => {
+    if (!workflowJson) return null;
+    if (typeof workflowJson === 'object') return workflowJson;
+
+    try {
+      let data: string | Record<string, unknown> = workflowJson;
+
+      // Remove wrapper quotes from graph API format
+      if (typeof data === 'string') {
+        // Check for \" (backslash-quote) wrapper first
+        if (data.startsWith('\\"') && data.endsWith('\\"')) {
+          data = data.slice(2, -2);
+        }
+        // Check for " (single quote) wrapper
+        else if (data.startsWith('"') && data.endsWith('"')) {
+          data = data.slice(1, -1);
+        }
+      }
+
+      // Parse until we get an object
+      while (typeof data === 'string') {
+        data = JSON.parse(data);
+      }
+
+      return data;
+    } catch (e) {
+      console.error("Failed to parse workflow JSON:", e, "Input:", workflowJson?.substring(0, 200));
+      return null;
+    }
+  }, [workflowJson]);
+
+  // Polling hook - in editor mode, only poll when on stakwork tab
+  const shouldPoll = isEditorMode
+    ? (isActive && activeDisplayTab === "stakwork" && !!projectId)
+    : (isActive && !!projectId);
+
+  const { workflowData: polledWorkflowData, isLoading, error } = useWorkflowPolling(
+    shouldPoll && projectId ? projectId : null,
+    shouldPoll,
     1000
   );
 
@@ -37,6 +102,92 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
     }
   }, [error]);
 
+  // Editor mode with tabs
+  if (isEditorMode) {
+    if (!parsedWorkflowData) {
+      return (
+        <div className="flex items-center justify-center h-full p-8">
+          <div className="text-destructive text-sm">Failed to parse workflow data</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="h-full w-full flex flex-col overflow-hidden relative">
+        <Tabs
+          value={activeDisplayTab}
+          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "stakwork")}
+          className="flex flex-col h-full"
+        >
+          <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
+            <TabsTrigger value="editor">Editor</TabsTrigger>
+            <TabsTrigger value="stakwork">Stakwork</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="editor" className="flex-1 overflow-hidden mt-0 relative">
+            <WorkflowComponent
+              props={{
+                workflowData: parsedWorkflowData,
+                show_only: true,
+                mode: "workflow",
+                projectId: "",
+                isAdmin: false,
+                workflowId: workflowId?.toString() || "",
+                workflowVersion: "",
+                defaultZoomLevel: 0.65,
+                useAssistantDimensions: false,
+                rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+                onStepClick: onStepSelect ? handleStepClick : undefined,
+              }}
+            />
+            <StepDetailsModal
+              step={clickedStep}
+              isOpen={isModalOpen}
+              onClose={handleModalClose}
+              onSelect={handleStepSelectFromModal}
+            />
+          </TabsContent>
+
+          <TabsContent value="stakwork" className="flex-1 overflow-hidden mt-0">
+            {!projectId ? (
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-muted-foreground text-sm">No workflow execution started yet</div>
+              </div>
+            ) : isLoading && !polledWorkflowData ? (
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-muted-foreground text-sm">Loading workflow...</div>
+              </div>
+            ) : error && !polledWorkflowData ? (
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-destructive text-sm">Error loading workflow: {error}</div>
+              </div>
+            ) : !polledWorkflowData?.workflowData ? (
+              <div className="flex items-center justify-center h-full p-8">
+                <div className="text-muted-foreground text-sm">Waiting for workflow data...</div>
+              </div>
+            ) : (
+              <WorkflowComponent
+                props={{
+                  workflowData: polledWorkflowData.workflowData,
+                  show_only: true,
+                  mode: "project",
+                  projectId: projectId,
+                  isAdmin: false,
+                  workflowId: "",
+                  workflowVersion: "",
+                  defaultZoomLevel: 0.65,
+                  useAssistantDimensions: false,
+                  rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+                }}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  }
+
+  // Non-editor mode: Polling mode with projectId (existing behavior)
   if (!projectId) {
     return (
       <div className="flex items-center justify-center h-full p-8">
@@ -45,7 +196,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
     );
   }
 
-  if (isLoading && !workflowData) {
+  if (isLoading && !polledWorkflowData) {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <div className="text-muted-foreground text-sm">Loading workflow...</div>
@@ -53,7 +204,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
     );
   }
 
-  if (error && !workflowData) {
+  if (error && !polledWorkflowData) {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <div className="text-destructive text-sm">Error loading workflow: {error}</div>
@@ -61,7 +212,9 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
     );
   }
 
-  if (!workflowData?.workflowData) {
+  const workflowData = polledWorkflowData?.workflowData;
+
+  if (!workflowData) {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <div className="text-muted-foreground text-sm">No workflow data available</div>
@@ -70,10 +223,10 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
   }
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden">
+    <div className="h-full w-full flex flex-col overflow-hidden relative">
       <WorkflowComponent
         props={{
-          workflowData: workflowData.workflowData,
+          workflowData: workflowData,
           show_only: true,
           mode: "project",
           projectId: projectId,
@@ -83,7 +236,14 @@ export function WorkflowArtifactPanel({ artifacts, isActive }: WorkflowArtifactP
           defaultZoomLevel: 0.65,
           useAssistantDimensions: false,
           rails_env: process.env.NEXT_PUBLIC_RAILS_ENV || "production",
+          onStepClick: onStepSelect ? handleStepClick : undefined,
         }}
+      />
+      <StepDetailsModal
+        step={clickedStep}
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        onSelect={handleStepSelectFromModal}
       />
     </div>
   );

@@ -459,6 +459,7 @@ describe("validateFeatureAccess", () => {
         select: {
           id: true,
           workspaceId: true,
+          deleted: true,
           workspace: {
             select: {
               id: true,
@@ -517,6 +518,7 @@ describe("validateFeatureAccess", () => {
         select: {
           id: true,
           workspaceId: true,
+          deleted: true,
           workspace: {
             select: {
               id: true,
@@ -622,6 +624,7 @@ describe("validateFeatureAccess", () => {
         select: {
           id: true,
           workspaceId: true,
+          deleted: true,
           workspace: {
             select: {
               id: true,
@@ -674,6 +677,46 @@ describe("validateFeatureAccess", () => {
         "Feature not found"
       );
     });
+
+    test("throws 'Feature not found' when feature is soft-deleted", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        deleted: true,
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Feature not found"
+      );
+    });
+
+    test("throws 'Feature not found' for soft-deleted feature even if user is owner", async () => {
+      const mockFeature = {
+        id: "feature-123",
+        workspaceId: "ws-456",
+        deleted: true,
+        workspace: {
+          id: "ws-456",
+          ownerId: "user-789",
+          deleted: false,
+          members: [{ role: "OWNER" }],
+        },
+      };
+
+      vi.mocked(db.feature.findUnique).mockResolvedValue(mockFeature);
+
+      await expect(validateFeatureAccess("feature-123", "user-789")).rejects.toThrow(
+        "Feature not found"
+      );
+    });
   });
 
   describe("Access Denied - Permission Errors", () => {
@@ -700,6 +743,7 @@ describe("validateFeatureAccess", () => {
         select: {
           id: true,
           workspaceId: true,
+          deleted: true,
           workspace: {
             select: {
               id: true,
@@ -831,6 +875,7 @@ describe("validateFeatureAccess", () => {
         select: {
           id: true,
           workspaceId: true,
+          deleted: true,
           workspace: {
             select: {
               id: true,

@@ -7,6 +7,7 @@ import { Monitor } from "lucide-react";
 import { Artifact, ArtifactType } from "@/lib/chat";
 import { CodeArtifactPanel, BrowserArtifactPanel, GraphArtifactPanel, WorkflowArtifactPanel, DiffArtifactPanel } from "../artifacts";
 import { ArtifactsHeader } from "./ArtifactsHeader";
+import { WorkflowTransition } from "@/types/stakwork/workflow";
 
 interface ArtifactsPanelProps {
   artifacts: Artifact[];
@@ -15,9 +16,10 @@ interface ArtifactsPanelProps {
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   isMobile?: boolean;
   onTogglePreview?: () => void;
+  onStepSelect?: (step: WorkflowTransition) => void;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage, isMobile = false, onTogglePreview }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -136,6 +138,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
               <WorkflowArtifactPanel
                 artifacts={workflowArtifacts}
                 isActive={activeTab === "WORKFLOW"}
+                onStepSelect={onStepSelect}
               />
             </div>
           )}

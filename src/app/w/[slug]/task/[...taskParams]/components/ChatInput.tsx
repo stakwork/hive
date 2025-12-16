@@ -11,9 +11,11 @@ import { cn } from "@/lib/utils";
 import { Artifact, WorkflowStatus } from "@/lib/chat";
 import { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 import { InputDebugAttachment } from "@/components/InputDebugAttachment";
+import { InputStepAttachment } from "@/components/InputStepAttachment";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
+import { WorkflowTransition } from "@/types/stakwork/workflow";
 
 interface ChatInputProps {
   logs: LogEntry[];
@@ -22,6 +24,8 @@ interface ChatInputProps {
   isLoading?: boolean;
   pendingDebugAttachment?: Artifact | null;
   onRemoveDebugAttachment?: () => void;
+  pendingStepAttachment?: WorkflowTransition | null;
+  onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   hasPrArtifact?: boolean;
   workspaceSlug?: string;
@@ -35,6 +39,8 @@ export function ChatInput({
   isLoading = false,
   pendingDebugAttachment = null,
   onRemoveDebugAttachment,
+  pendingStepAttachment = null,
+  onRemoveStepAttachment,
   workflowStatus,
   hasPrArtifact = false,
   workspaceSlug,
@@ -81,8 +87,8 @@ export function ChatInput({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Allow sending if we have either text or a pending debug attachment
-    if ((!input.trim() && !pendingDebugAttachment) || isLoading || disabled)
+    // Allow sending if we have either text or a pending attachment (debug or step)
+    if ((!input.trim() && !pendingDebugAttachment && !pendingStepAttachment) || isLoading || disabled)
       return;
 
     if (isListening) {
@@ -191,6 +197,16 @@ export function ChatInput({
         </div>
       )}
 
+      {/* Step attachment display */}
+      {pendingStepAttachment && (
+        <div className="px-6 pt-3">
+          <InputStepAttachment
+            step={pendingStepAttachment}
+            onRemove={onRemoveStepAttachment || (() => {})}
+          />
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className={cn(
@@ -240,7 +256,7 @@ export function ChatInput({
             type="submit"
             size={isMobile ? "icon" : "default"}
             disabled={
-              (!input.trim() && !pendingDebugAttachment) || isLoading || disabled
+              (!input.trim() && !pendingDebugAttachment && !pendingStepAttachment) || isLoading || disabled
             }
             className={isMobile ? "h-11 w-11 rounded-full shrink-0" : ""}
             data-testid="chat-message-submit"

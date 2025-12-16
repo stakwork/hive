@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { isDevelopmentMode } from "@/lib/runtime";
 
-export type TaskMode = "live" | "test" | "agent";
+export type TaskMode = "live" | "test" | "agent" | "workflow_editor";
 
 export function useTaskMode() {
   const [taskMode, setTaskModeState] = useState<TaskMode>("live");
@@ -33,7 +33,7 @@ export function useTaskMode() {
 }
 
 function isValidMode(mode: string): boolean {
-  if (mode === "live" || mode === "agent") return true;
+  if (mode === "live" || mode === "agent" || mode === "workflow_editor") return true;
   if (mode === "test" && isDevelopmentMode()) return true;
   return false;
 }
