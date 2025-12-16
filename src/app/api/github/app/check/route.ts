@@ -90,8 +90,6 @@ export async function GET(request: Request) {
       },
     });
 
-    console.log('response', response)
-
     if (!response.ok) {
       console.error(`[REPO CHECK] GitHub API error: ${response.status} ${response.statusText}`);
 
