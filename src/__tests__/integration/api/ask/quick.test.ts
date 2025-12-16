@@ -15,6 +15,18 @@ import { POST } from '@/app/api/ask/quick/route';
 import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
 
+// Mock Next.js after function
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>();
+  return {
+    ...actual,
+    after: vi.fn(() => {
+      // In tests, skip the after callback to avoid side effects
+      return undefined;
+    }),
+  };
+});
+
 // Mock the AI streaming service
 vi.mock('ai', () => ({
   streamText: vi.fn(),
