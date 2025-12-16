@@ -152,7 +152,7 @@ async function processStep(contents: unknown, workspaceSlug: string, features: R
   const eventPayload = {
     nodeIds: [],
     workspaceId: workspaceSlug,
-    depth: 3,
+    depth: 2,
     title: "Researching...",
     timestamp: Date.now(),
     sourceNodeRefId: conceptRefId,
