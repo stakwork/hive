@@ -41,7 +41,6 @@ interface ChatAreaProps {
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
-  onWorkflowPublish?: (updatedWorkflowJson: unknown) => void;
 }
 
 export function ChatArea({
@@ -68,7 +67,6 @@ export function ChatArea({
   podId,
   onReleasePod,
   isReleasingPod = false,
-  onWorkflowPublish,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -243,7 +241,6 @@ export function ChatArea({
                 message={msg}
                 replyMessage={replyMessage}
                 onArtifactAction={onArtifactAction}
-                onWorkflowPublish={onWorkflowPublish}
               />
             );
           })}
