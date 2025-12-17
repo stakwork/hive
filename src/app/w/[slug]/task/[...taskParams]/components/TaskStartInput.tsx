@@ -72,7 +72,9 @@ export function TaskStartInput({
 
   const workflowName = matchedWorkflow?.properties.workflow_name || null;
   const hasValidWorkflowId = workflowIdValue.trim().length > 0 && !isNaN(parseInt(workflowIdValue.trim(), 10));
-  const workflowNotFound = hasValidWorkflowId && !matchedWorkflow && !isLoadingWorkflows;
+  // Only show "not found" if workflows have been successfully loaded (array is not empty)
+  // This prevents showing "not found" when the fetch failed or returned no results
+  const workflowNotFound = hasValidWorkflowId && !matchedWorkflow && !isLoadingWorkflows && workflows.length > 0;
 
   useEffect(() => {
     if (transcript) {
