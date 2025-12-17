@@ -54,12 +54,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const swarmUrlObj = new URL(swarm.swarmUrl);
     const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
     let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
+    let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
 
-    if (workspace.id === process.env.STAKWORK_WORKSPACE_ID && process.env.STAKWORK_GRAPH_URL) {
+    if (
+      workspace.id === process.env.STAKWORK_WORKSPACE_ID &&
+      process.env.STAKWORK_GRAPH_URL &&
+      process.env.STAKWORK_GRAPH_API_KEY
+    ) {
       graphUrl = process.env.STAKWORK_GRAPH_URL ?? graphUrl;
+      apiKey = process.env.STAKWORK_GRAPH_API_KEY ?? apiKey;
     }
 
-    const apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     const apiParams = new URLSearchParams({
       node_type: nodeType,
       output: output,
