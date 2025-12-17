@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { WorkflowStatus, ArtifactType, ChatRole, ChatStatus } from "@prisma/client";
+import { WorkflowStatus } from "@prisma/client";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
@@ -112,17 +112,6 @@ export async function POST(request: NextRequest) {
         id: finalTaskId,
         deleted: false,
       },
-      include: {
-        chatMessages: {
-          include: {
-            artifacts: true,
-          },
-          orderBy: {
-            createdAt: "asc",
-          },
-          take: 1, // Get the first message which contains workflow info
-        },
-      },
     });
 
     if (!task) {
@@ -149,55 +138,6 @@ export async function POST(request: NextRequest) {
       where: { id: finalTaskId },
       data: updateData,
     });
-
-    // Create PUBLISH_WORKFLOW artifact and update WORKFLOW artifact for workflow_editor tasks when completed
-    if (task.mode === "workflow_editor" && workflowStatus === WorkflowStatus.COMPLETED) {
-      try {
-        // Find workflow info from the first message's WORKFLOW artifact
-        const workflowArtifact = task.chatMessages[0]?.artifacts?.find((a) => a.type === ArtifactType.WORKFLOW);
-
-        const workflowContent = workflowArtifact?.content as {
-          workflowId?: number;
-          workflowName?: string;
-          workflowRefId?: string;
-          workflowJson?: string;
-          projectId?: string;
-        } | null;
-
-        if (workflowContent?.workflowId) {
-          // Create a new chat message with PUBLISH_WORKFLOW artifact
-          const publishMessage = await db.chatMessage.create({
-            data: {
-              taskId: finalTaskId,
-              message: "Workflow edit completed. Ready to publish.",
-              role: ChatRole.ASSISTANT,
-              status: ChatStatus.SENT,
-              contextTags: "[]",
-              artifacts: {
-                create: {
-                  type: ArtifactType.PUBLISH_WORKFLOW,
-                  content: {
-                    workflowId: workflowContent.workflowId,
-                    workflowName: workflowContent.workflowName || `Workflow ${workflowContent.workflowId}`,
-                    workflowRefId: workflowContent.workflowRefId,
-                  },
-                },
-              },
-            },
-            include: {
-              artifacts: true,
-            },
-          });
-
-          // Broadcast the new message via Pusher (send just the message ID)
-          const channelName = getTaskChannelName(finalTaskId);
-          await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, publishMessage.id);
-        }
-      } catch (error) {
-        console.error("Error creating PUBLISH_WORKFLOW artifact:", error);
-        // Don't fail the webhook if artifact creation fails
-      }
-    }
 
     try {
       const channelName = getTaskChannelName(finalTaskId);

@@ -43,9 +43,9 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     );
   }
 
-  // Show the most recent workflow artifact
-  const latestArtifact = artifacts[artifacts.length - 1];
-  const workflowContent = latestArtifact.content as WorkflowContent;
+  // Always use the FIRST workflow artifact (from task creation) to ensure consistency
+  const selectedArtifact = artifacts[0];
+  const workflowContent = selectedArtifact.content as WorkflowContent;
   const projectId = workflowContent?.projectId;
   const workflowJson = workflowContent?.workflowJson;
   const workflowId = workflowContent?.workflowId;
@@ -56,13 +56,13 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   // Parse workflowJson if present (direct mode from graph)
   const parsedWorkflowData = useMemo(() => {
     if (!workflowJson) return null;
-    if (typeof workflowJson === 'object') return workflowJson;
+    if (typeof workflowJson === "object") return workflowJson;
 
     try {
       let data: string | Record<string, unknown> = workflowJson;
 
       // Remove wrapper quotes from graph API format
-      if (typeof data === 'string') {
+      if (typeof data === "string") {
         // Check for \" (backslash-quote) wrapper first
         if (data.startsWith('\\"') && data.endsWith('\\"')) {
           data = data.slice(2, -2);
@@ -74,7 +74,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       }
 
       // Parse until we get an object
-      while (typeof data === 'string') {
+      while (typeof data === "string") {
         data = JSON.parse(data);
       }
 
@@ -87,14 +87,14 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
 
   // Polling hook - in editor mode, only poll when on stakwork tab
   const shouldPoll = isEditorMode
-    ? (isActive && activeDisplayTab === "stakwork" && !!projectId)
-    : (isActive && !!projectId);
+    ? isActive && activeDisplayTab === "stakwork" && !!projectId
+    : isActive && !!projectId;
 
-  const { workflowData: polledWorkflowData, isLoading, error } = useWorkflowPolling(
-    shouldPoll && projectId ? projectId : null,
-    shouldPoll,
-    1000
-  );
+  const {
+    workflowData: polledWorkflowData,
+    isLoading,
+    error,
+  } = useWorkflowPolling(shouldPoll && projectId ? projectId : null, shouldPoll, 1000);
 
   useEffect(() => {
     if (error) {
