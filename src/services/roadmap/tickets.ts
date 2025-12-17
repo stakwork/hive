@@ -468,16 +468,28 @@ export async function reorderTickets(
     throw new Error("Tasks must be a non-empty array");
   }
 
-  const firstTask = await db.task.findUnique({
-    where: { id: tasks[0].id },
-    select: { featureId: true },
+  const allTasks = await db.task.findMany({
+    where: { id: { in: tasks.map(t => t.id) } },
+    select: { id: true, featureId: true },
   });
 
-  if (!firstTask) {
+  if (allTasks.length === 0) {
     throw new Error("Task not found");
   }
 
-  const feature = await validateFeatureAccess(firstTask.featureId!, userId);
+  const uniqueFeatureIds = [...new Set(allTasks.map(t => t.featureId).filter(Boolean))];
+
+  if (uniqueFeatureIds.length === 0) {
+    throw new Error("Tasks must belong to a feature");
+  }
+
+  if (uniqueFeatureIds.length > 1) {
+    throw new Error("All tasks must belong to the same feature");
+  }
+
+  const featureId = uniqueFeatureIds[0] as string;
+
+  const feature = await validateFeatureAccess(featureId, userId);
   if (!feature) {
     throw new Error("Access denied");
   }
@@ -489,14 +501,17 @@ export async function reorderTickets(
         updateData.phaseId = task.phaseId;
       }
       return db.task.update({
-        where: { id: task.id },
+        where: {
+          id: task.id,
+          featureId: featureId,
+        },
         data: updateData,
       });
     })
   );
 
   const updatedTasks = await db.task.findMany({
-    where: { featureId: firstTask.featureId, deleted: false },
+    where: { featureId: featureId, deleted: false },
     select: {
       id: true,
       title: true,

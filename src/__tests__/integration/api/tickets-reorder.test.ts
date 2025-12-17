@@ -308,7 +308,7 @@ describe("Tickets Reorder API - Integration Tests", () => {
     // but doesn't check if all tasks belong to the same feature. This allows cross-feature
     // reordering which could be a security/data integrity issue.
     // Production code fix needed in: src/services/roadmap/tasks.ts (reorderTasks function)
-    test.skip("prevents cross-feature task reordering", async () => {
+    test("prevents cross-feature task reordering", async () => {
       const user = await createTestUser();
       const workspace = await createTestWorkspace({
         ownerId: user.id,
