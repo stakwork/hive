@@ -89,6 +89,15 @@ export interface WorkflowContent {
   workflowRefId?: string;       // Graph node ref_id
 }
 
+export interface PublishWorkflowContent {
+  workflowId: number;           // Workflow ID to publish
+  workflowName?: string;        // Workflow name for display
+  workflowRefId?: string;       // Graph node ref_id
+  published?: boolean;          // Whether the workflow has been published
+  publishedAt?: string;         // ISO timestamp of when it was published
+  workflowVersionId?: number;   // Version ID returned from publish API
+}
+
 export interface PullRequestContent {
   repo: string;
   url: string;
@@ -132,7 +141,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | WorkflowContent
     | PullRequestContent
     | DiffContent
-    | MediaContent;
+    | MediaContent
+    | PublishWorkflowContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -191,7 +201,8 @@ export function createArtifact(data: {
     | WorkflowContent
     | PullRequestContent
     | DiffContent
-    | MediaContent;
+    | MediaContent
+    | PublishWorkflowContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {

@@ -3,7 +3,7 @@
 import React, { memo, useState } from "react";
 import { motion } from "framer-motion";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
-import { FormArtifact, LongformArtifactPanel } from "../artifacts";
+import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
@@ -115,6 +115,17 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             <div className="max-w-md w-full">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 <PullRequestArtifact artifact={artifact} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {message.artifacts
+        ?.filter((a) => a.type === "PUBLISH_WORKFLOW")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <PublishWorkflowArtifact artifact={artifact} />
               </motion.div>
             </div>
           </div>

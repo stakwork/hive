@@ -549,18 +549,25 @@ class NodeArray {
 
     if (this.isAdmin && stepLog) {
       stepIconHtml = `<span class="">${stepLog}</span>`;
-    } else {
+    } else if (this.isProject) {
+      // Project view - show step-specific icons
       if (!stepIcon || !stepIcon.mainIcon) {
         stepIconHtml = `<span class="step-icon material-icons">code</span>`;
       } else if (step?.custom_icon) {
         stepIconHtml = `<img class="step-img" src="${stepIcon.mainIcon}" alt="step icon" id="custom-icon" />`;
       } else {
-        if (status !== 'finished' && status !== 'in_progress') {
-          stepIconHtml = `<img class="step-img" src="${(stepIcon.mainIcon as any).default}" alt="step icon" />`;
+        const iconSrc = status !== 'finished' && status !== 'in_progress'
+          ? (stepIcon.mainIcon as any)?.default
+          : (stepIcon.mainIcon as any)?.active;
+        if (iconSrc) {
+          stepIconHtml = `<img class="step-img" src="${iconSrc}" alt="step icon" />`;
         } else {
-          stepIconHtml = `<img class="step-img" src="${(stepIcon.mainIcon as any).active}" alt="step icon" />`;
+          stepIconHtml = `<span class="step-icon material-icons">code</span>`;
         }
       }
+    } else {
+      // Non-project view - show automated icon as default
+      stepIconHtml = `<img class="step-img" src="${AutomatedIcon}" alt="step icon" />`;
     }
 
     const iconElement = `<img class="workflow-step-icon" src="${this.setIcon(type)}" alt="step icon" />`;

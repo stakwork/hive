@@ -529,6 +529,7 @@ enum ArtifactType {
   WORKFLOW
   PULL_REQUEST
   DIFF
+  PUBLISH_WORKFLOW
 }
 
 // =============================================
