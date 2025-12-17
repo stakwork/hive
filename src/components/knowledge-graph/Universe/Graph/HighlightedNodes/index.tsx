@@ -1,4 +1,3 @@
-import { useTestNodesFetch } from '@/hooks/useTestNodesFetch'
 import type { HighlightChunk } from '@/stores/useGraphStore'
 import { useGraphStore } from '@/stores/useStores'
 import { memo } from 'react'
@@ -9,12 +8,6 @@ export const HighlightedNodesLayer = memo(() => {
   const highlightChunks = useGraphStore((s) => s.highlightChunks)
   const { selectedLayer } = useGraphStore((s) => s.testLayerVisibility)
 
-  // Fetch test nodes when a test layer is selected
-  useTestNodesFetch({
-    unitTests: selectedLayer === 'unitTests',
-    integrationTests: selectedLayer === 'integrationTests',
-    e2eTests: selectedLayer === 'e2eTests'
-  })
 
   // Map selectedLayer to the correct nodeType format
   const getNodeType = () => {
