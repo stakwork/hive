@@ -838,38 +838,6 @@ export default function TaskChatPage() {
     setSelectedStep(step);
   }, []);
 
-  // Handle workflow publish - update the WORKFLOW artifact with the new data
-  const handleWorkflowPublish = useCallback((updatedWorkflowJson: unknown) => {
-    if (!updatedWorkflowJson) return;
-
-    // Update the first WORKFLOW artifact with the new workflowJson
-    setMessages((prevMessages) => {
-      return prevMessages.map((msg) => {
-        if (!msg.artifacts) return msg;
-
-        const hasWorkflowArtifact = msg.artifacts.some((a) => a.type === ArtifactType.WORKFLOW);
-        if (!hasWorkflowArtifact) return msg;
-
-        return {
-          ...msg,
-          artifacts: msg.artifacts.map((artifact) => {
-            if (artifact.type !== ArtifactType.WORKFLOW) return artifact;
-
-            // Update the workflowJson in the artifact content
-            const content = artifact.content as { workflowJson?: unknown; [key: string]: unknown };
-            return {
-              ...artifact,
-              content: {
-                ...content,
-                workflowJson: updatedWorkflowJson,
-              },
-            };
-          }),
-        };
-      });
-    });
-  }, []);
-
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
 
