@@ -77,6 +77,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error?.message || "Failed to publish workflow" }, { status: 400 });
     }
 
+    // Fetch the updated workflow from Stakwork
+    let updatedWorkflowJson: unknown = null;
+    try {
+      const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}.json`;
+      const workflowResponse = await fetch(workflowUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        },
+      });
+
+      if (workflowResponse.ok) {
+        const workflowData = await workflowResponse.json();
+        updatedWorkflowJson = workflowData;
+      }
+    } catch (fetchError) {
+      console.error("Error fetching updated workflow:", fetchError);
+      // Continue even if fetch fails
+    }
+
     // Update the artifact to mark it as published
     if (artifactId) {
       try {
@@ -112,6 +132,7 @@ export async function POST(request: NextRequest) {
           workflowRefId,
           published: true,
           workflowVersionId: result.data?.workflow_version_id,
+          updatedWorkflowJson,
           message: "Workflow published successfully",
         },
       },

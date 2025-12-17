@@ -203,6 +203,8 @@ p.workflow-start-text {
   justify-self: start;
   width: 32px;
   height: 32px;
+  min-width: 32px;
+  min-height: 32px;
 }
 
 /* Step Time */

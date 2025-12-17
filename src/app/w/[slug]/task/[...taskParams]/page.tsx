@@ -50,15 +50,15 @@ async function archiveTaskAndRedirect(taskId: string, slug: string, errorTitle: 
         archived: true,
       }),
     });
-    
+
     toast.error(errorTitle, { description: errorDescription });
-    
+
     // Redirect back to task list
     window.location.href = `/w/${slug}/tasks`;
   } catch (archiveError) {
     console.error("Error archiving task:", archiveError);
-    toast.error("Error", { 
-      description: "Failed to claim pod and couldn't archive task. Please contact support." 
+    toast.error("Error", {
+      description: "Failed to claim pod and couldn't archive task. Please contact support.",
     });
   }
 }
@@ -80,10 +80,11 @@ export default function TaskChatPage() {
   const isNewTask = taskParams?.[0] === "new";
 
   // Check pod availability when in agent mode on new task page
-  const { poolStatus, loading: poolStatusLoading, refetch: refetchPoolStatus } = usePoolStatus(
-    slug,
-    isNewTask && taskMode === "agent"
-  );
+  const {
+    poolStatus,
+    loading: poolStatusLoading,
+    refetch: refetchPoolStatus,
+  } = usePoolStatus(slug, isNewTask && taskMode === "agent");
   const hasAvailablePods = poolStatus ? poolStatus.unusedVms > 0 : null;
 
   // Fetch workflows when in workflow_editor mode
@@ -174,7 +175,7 @@ export default function TaskChatPage() {
           console.log(`Task title updated: "${update.previousTitle}" -> "${update.newTitle}"`);
           setTaskTitle(update.newTitle);
         }
-        if ('podId' in update) {
+        if ("podId" in update) {
           console.log(`Task podId updated: ${update.podId}`);
           setPodId(update.podId ?? null);
         }
@@ -271,12 +272,13 @@ export default function TaskChatPage() {
           for (const msg of result.data.messages) {
             const workflowArtifact = msg.artifacts?.find(
               (a: { type: string; content?: { workflowId?: number; workflowName?: string; workflowRefId?: string } }) =>
-                a.type === "WORKFLOW" && a.content?.workflowId
+                a.type === "WORKFLOW" && a.content?.workflowId,
             );
             if (workflowArtifact?.content?.workflowId) {
               setCurrentWorkflowContext({
                 workflowId: workflowArtifact.content.workflowId,
-                workflowName: workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
+                workflowName:
+                  workflowArtifact.content.workflowName || `Workflow ${workflowArtifact.content.workflowId}`,
                 workflowRefId: workflowArtifact.content.workflowRefId || "",
               });
               break;
@@ -351,15 +353,17 @@ export default function TaskChatPage() {
         body: JSON.stringify({
           message: `Loaded: ${taskTitle}`,
           role: "ASSISTANT",
-          artifacts: [{
-            type: ArtifactType.WORKFLOW,
-            content: {
-              workflowJson: workflowData.properties.workflow_json,
-              workflowId: workflowId,
-              workflowName: workflowName,
-              workflowRefId: workflowData.ref_id,
+          artifacts: [
+            {
+              type: ArtifactType.WORKFLOW,
+              content: {
+                workflowJson: workflowData.properties.workflow_json,
+                workflowId: workflowId,
+                workflowName: workflowName,
+                workflowRefId: workflowData.ref_id,
+              },
             },
-          }],
+          ],
         }),
       });
 
@@ -383,17 +387,19 @@ export default function TaskChatPage() {
             message: `Loaded: ${taskTitle}`,
             role: ChatRole.ASSISTANT,
             status: ChatStatus.SENT,
-            artifacts: [createArtifact({
-              id: generateUniqueId(),
-              messageId: "",
-              type: ArtifactType.WORKFLOW,
-              content: {
-                workflowJson: workflowData.properties.workflow_json,
-                workflowId: workflowId,
-                workflowName: workflowName,
-                workflowRefId: workflowData.ref_id,
-              },
-            })],
+            artifacts: [
+              createArtifact({
+                id: generateUniqueId(),
+                messageId: "",
+                type: ArtifactType.WORKFLOW,
+                content: {
+                  workflowJson: workflowData.properties.workflow_json,
+                  workflowId: workflowId,
+                  workflowName: workflowName,
+                  workflowRefId: workflowData.ref_id,
+                },
+              }),
+            ],
           });
 
       setMessages([initialMessage]);
@@ -476,19 +482,14 @@ export default function TaskChatPage() {
                 newTaskId,
                 slug,
                 "No pods available",
-                "Task archived. Please try again later when capacity is available."
+                "Task archived. Please try again later when capacity is available.",
               );
               return;
             }
           } catch (error) {
             // Network or other error during pod claim
             console.error("Error claiming pod:", error);
-            await archiveTaskAndRedirect(
-              newTaskId,
-              slug,
-              "Pod claim error",
-              "Task archived. Please try again later."
-            );
+            await archiveTaskAndRedirect(newTaskId, slug, "Pod claim error", "Task archived. Please try again later.");
             return;
           }
         }
@@ -567,14 +568,14 @@ export default function TaskChatPage() {
 
         // Update message status
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg))
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
         setSelectedStep(null); // Clear step after sending
       } catch (error) {
         console.error("Error in workflow editor:", error);
         setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg))
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
         );
         toast.error("Error", { description: "Failed to send workflow editor request. Please try again." });
       } finally {
@@ -804,21 +805,24 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleArtifactAction = useCallback(async (messageId: string, action: Option, webhook: string) => {
-    // console.log("Action triggered:", action);
+  const handleArtifactAction = useCallback(
+    async (messageId: string, action: Option, webhook: string) => {
+      // console.log("Action triggered:", action);
 
-    // Find the original message that contains artifacts
-    const originalMessage = messages.find((msg) => msg.id === messageId);
+      // Find the original message that contains artifacts
+      const originalMessage = messages.find((msg) => msg.id === messageId);
 
-    if (originalMessage) {
-      setIsChainVisible(true);
-      // Send the artifact action response to the backend
-      await sendMessage(action.optionResponse, {
-        replyId: originalMessage.id,
-        webhook: webhook,
-      });
-    }
-  }, [messages, sendMessage, setIsChainVisible]);
+      if (originalMessage) {
+        setIsChainVisible(true);
+        // Send the artifact action response to the backend
+        await sendMessage(action.optionResponse, {
+          replyId: originalMessage.id,
+          webhook: webhook,
+        });
+      }
+    },
+    [messages, sendMessage, setIsChainVisible],
+  );
 
   const handleDebugMessage = async (_message: string, debugArtifact?: Artifact) => {
     if (debugArtifact) {
@@ -834,6 +838,38 @@ export default function TaskChatPage() {
     setSelectedStep(step);
   }, []);
 
+  // Handle workflow publish - update the WORKFLOW artifact with the new data
+  const handleWorkflowPublish = useCallback((updatedWorkflowJson: unknown) => {
+    if (!updatedWorkflowJson) return;
+
+    // Update the first WORKFLOW artifact with the new workflowJson
+    setMessages((prevMessages) => {
+      return prevMessages.map((msg) => {
+        if (!msg.artifacts) return msg;
+
+        const hasWorkflowArtifact = msg.artifacts.some((a) => a.type === ArtifactType.WORKFLOW);
+        if (!hasWorkflowArtifact) return msg;
+
+        return {
+          ...msg,
+          artifacts: msg.artifacts.map((artifact) => {
+            if (artifact.type !== ArtifactType.WORKFLOW) return artifact;
+
+            // Update the workflowJson in the artifact content
+            const content = artifact.content as { workflowJson?: unknown; [key: string]: unknown };
+            return {
+              ...artifact,
+              content: {
+                ...content,
+                workflowJson: updatedWorkflowJson,
+              },
+            };
+          }),
+        };
+      });
+    });
+  }, []);
+
   const handleReleasePod = async () => {
     if (!effectiveWorkspaceId || !currentTaskId || !podId || isReleasingPod) return;
 
@@ -841,7 +877,7 @@ export default function TaskChatPage() {
     try {
       const response = await fetch(
         `/api/pool-manager/drop-pod/${effectiveWorkspaceId}?podId=${podId}&taskId=${currentTaskId}`,
-        { method: "POST" }
+        { method: "POST" },
       );
 
       const data = await response.json();
@@ -908,7 +944,9 @@ export default function TaskChatPage() {
       setShowCommitModal(true);
     } catch (error) {
       console.error("Error generating commit information:", error);
-      toast.error("Error", { description: error instanceof Error ? error.message : "Failed to generate commit information." });
+      toast.error("Error", {
+        description: error instanceof Error ? error.message : "Failed to generate commit information.",
+      });
     } finally {
       setIsGeneratingCommitInfo(false);
     }
@@ -1025,7 +1063,8 @@ export default function TaskChatPage() {
   const hasNonFormArtifacts = artifactsWithoutOldDiffs.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
   const browserArtifact = artifactsWithoutOldDiffs.find((a) => a.type === "BROWSER");
 
-  const isTerminalState = workflowStatus === WorkflowStatus.HALTED ||
+  const isTerminalState =
+    workflowStatus === WorkflowStatus.HALTED ||
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
   const inputDisabled = isLoading || !isConnected || isTerminalState;
@@ -1203,6 +1242,7 @@ export default function TaskChatPage() {
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
+                    onWorkflowPublish={handleWorkflowPublish}
                   />
                 )}
               </div>
@@ -1232,6 +1272,7 @@ export default function TaskChatPage() {
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
+                      onWorkflowPublish={handleWorkflowPublish}
                     />
                   </div>
                 </ResizablePanel>
@@ -1273,6 +1314,7 @@ export default function TaskChatPage() {
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
+                onWorkflowPublish={handleWorkflowPublish}
               />
             </div>
           )}

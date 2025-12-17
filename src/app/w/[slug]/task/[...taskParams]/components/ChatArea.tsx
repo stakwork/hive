@@ -41,6 +41,7 @@ interface ChatAreaProps {
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
+  onWorkflowPublish?: (updatedWorkflowJson: unknown) => void;
 }
 
 export function ChatArea({
@@ -67,6 +68,7 @@ export function ChatArea({
   podId,
   onReleasePod,
   isReleasingPod = false,
+  onWorkflowPublish,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -75,9 +77,7 @@ export function ChatArea({
   const isMobile = useIsMobile();
 
   // Check if any message has a PULL_REQUEST artifact
-  const hasPrArtifact = messages.some((msg) => 
-    msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST")
-  );
+  const hasPrArtifact = messages.some((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
 
   // Handle scroll events to detect user scrolling
   useEffect(() => {
@@ -114,7 +114,7 @@ export function ChatArea({
   const handleBackToTasks = () => {
     const referrer = document.referrer;
     const currentOrigin = window.location.origin;
-    
+
     // Check if referrer exists and is from same app (same origin)
     if (referrer && referrer.startsWith(currentOrigin)) {
       router.back();
@@ -227,10 +227,10 @@ export function ChatArea({
       </AnimatePresence>
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className={cn(
-        "flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40",
-        isMobile && "pb-28"
-      )}>
+      <div
+        ref={messagesContainerRef}
+        className={cn("flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-muted/40", isMobile && "pb-28")}
+      >
         {messages
           .filter((msg) => !msg.replyId) // Hide messages that are replies
           .map((msg) => {
@@ -238,7 +238,13 @@ export function ChatArea({
             const replyMessage = messages.find((m) => m.replyId === msg.id);
 
             return (
-              <ChatMessage key={msg.id} message={msg} replyMessage={replyMessage} onArtifactAction={onArtifactAction} />
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                replyMessage={replyMessage}
+                onArtifactAction={onArtifactAction}
+                onWorkflowPublish={onWorkflowPublish}
+              />
             );
           })}
 
