@@ -19,7 +19,7 @@ const NODE_SIZE = 50 // Size of test indicator nodes
 const NODE_SCALE = 0.7 // Scale factor for test indicator nodes
 const NODE_OPACITY = 0.8 // Opacity for test indicator nodes
 const CLONE_OFFSET = 15 // Distance to offset the test indicator nodes
-const LINE_WIDTH = 0.2 // Width of test edge lines
+const LINE_WIDTH = 0.1 // Width of test edge lines
 const LINE_OPACITY = 0.3 // Opacity for test edge lines
 
 // Color configuration
@@ -31,17 +31,24 @@ export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
     const nodesNormalized = useDataStore((s) => s.nodesNormalized)
     const dataInitial = useDataStore((s) => s.dataInitial)
     const simulation = useSimulationStore((s) => s.simulation)
+    const addNewNode = useDataStore((s) => s.addNewNode)
     const storeId = useStoreId()
     const { id: workspaceId } = useWorkspace()
 
     // State to store test edges fetched separately
     const [testEdges, setTestEdges] = useState<Array<{ source: string; target: string }>>([])
     const [isLoadingEdges, setIsLoadingEdges] = useState(false)
+    const [fetchedNodeTypes, setFetchedNodeTypes] = useState<Set<string>>(new Set())
 
-    // Fetch test edges for the current node type
-    const fetchTestEdges = useCallback(async () => {
+    // Fetch test nodes and edges for the current node type
+    const fetchTestData = useCallback(async () => {
       if (!enabled || !workspaceId) {
         setTestEdges([])
+        return
+      }
+
+      // Skip if already fetched this node type
+      if (fetchedNodeTypes.has(nodeType)) {
         return
       }
 
@@ -66,35 +73,58 @@ export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
           `?id=${workspaceId}` +
           `&endpoint=${encodeURIComponent(endpoint)}`
 
-        console.log(`[TestConnectionsLayer] Fetching ${nodeType} edges from:`, url)
+        console.log(`[TestConnectionsLayer] Fetching ${nodeType} nodes and edges from:`, url)
 
         const response = await fetch(url)
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch ${nodeType} edges: ${response.statusText}`)
+          throw new Error(`Failed to fetch ${nodeType} data: ${response.statusText}`)
         }
 
         const result = await response.json()
 
         if (!result.success || !result.data) {
-          throw new Error(`API returned unsuccessful response for ${nodeType} edges`)
+          throw new Error(`API returned unsuccessful response for ${nodeType} data`)
         }
 
+        // Get both nodes and edges
+        const nodes = (result.data.nodes || []).map((node: any) => ({
+          ...node,
+          x: node.x ?? 0,
+          y: node.y ?? 0,
+          z: node.z ?? 0,
+          edge_count: node.edge_count ?? 0,
+        }))
         const edges = result.data.edges || []
-        console.log(`[TestConnectionsLayer] Fetched ${edges.length} ${nodeType} edges`)
+
+        console.log(`[TestConnectionsLayer] Fetched ${nodes.length} ${nodeType} nodes, ${edges.length} edges`)
+
+        // Add nodes to the graph (but not edges to avoid affecting simulation)
+        addNewNode({ nodes, edges: [] })
+
+        // Store edges separately for visualization
         setTestEdges(edges)
+
+        // Mark this node type as fetched
+        setFetchedNodeTypes(prev => new Set([...prev, nodeType]))
       } catch (error) {
-        console.error(`[TestConnectionsLayer] Error fetching ${nodeType} edges:`, error)
+        console.error(`[TestConnectionsLayer] Error fetching ${nodeType} data:`, error)
         setTestEdges([])
       } finally {
         setIsLoadingEdges(false)
       }
-    }, [enabled, workspaceId, nodeType])
+    }, [enabled, workspaceId, nodeType, fetchedNodeTypes, addNewNode])
 
-    // Fetch edges when enabled/nodeType changes
+    // Reset fetched node types when workspace changes
     useEffect(() => {
-      fetchTestEdges()
-    }, [fetchTestEdges])
+      setFetchedNodeTypes(new Set())
+      setTestEdges([])
+    }, [workspaceId])
+
+    // Fetch test data when enabled/nodeType changes
+    useEffect(() => {
+      fetchTestData()
+    }, [fetchTestData])
 
     // Find nodes that have connections to test nodes AND nodes that don't
     const { nodesWithTests, untestedNodes } = useMemo(() => {
@@ -378,8 +408,8 @@ export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
 
           // Calculate offset position for the tested node indicator
           const testedPosition = new THREE.Vector3(
-            currentPosition.x + CLONE_OFFSET,
-            currentPosition.y + CLONE_OFFSET * 0.5,
+            currentPosition.x,
+            currentPosition.y,
             currentPosition.z
           )
 
@@ -401,8 +431,8 @@ export const TestConnectionsLayer = memo<TestConnectionsLayerProps>(
 
           // Calculate offset position for the untested node indicator
           const untestedPosition = new THREE.Vector3(
-            currentPosition.x - CLONE_OFFSET, // Offset to the left
-            currentPosition.y + CLONE_OFFSET * 0.3,
+            currentPosition.x, // Offset to the left
+            currentPosition.y,
             currentPosition.z
           )
 

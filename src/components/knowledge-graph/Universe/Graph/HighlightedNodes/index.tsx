@@ -27,7 +27,7 @@ export const HighlightedNodesLayer = memo(() => {
 
   return (
     <group name="highlighted-nodes-layer">
-      {nodeType && <TestConnectionsLayer enabled={true} nodeType={nodeType} color="#10b981" />}
+      {nodeType && <TestConnectionsLayer key={nodeType} enabled={true} nodeType={nodeType} color="#10b981" />}
       {highlightChunks.map((chunk: HighlightChunk) => {
         // Example camera configurations for different chunk types:
 
