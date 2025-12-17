@@ -222,6 +222,7 @@ async function processStep(contents: unknown, workspaceSlug: string, features: R
     PUSHER_EVENTS.HIGHLIGHT_NODES,
     eventPayload,
   );
+  console.log("highlighted node:", conceptRefId);
 }
 
 function logStep(contents: unknown) {
