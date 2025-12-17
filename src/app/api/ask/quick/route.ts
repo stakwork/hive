@@ -12,6 +12,7 @@ import { z } from "zod";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
+import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
@@ -99,11 +100,14 @@ export async function POST(request: NextRequest) {
 
     // console.log("features:", features);
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
-    const modelMessages: ModelMessage[] = [
+    const rawMessages: ModelMessage[] = [
       ...getQuickAskPrefixMessages(features, repoUrl, clueMsgs),
       // Conversation history (pass through as-is to support tool calls/results)
       ...messages as ModelMessage[],
     ];
+
+    // Sanitize messages: execute incomplete tool-calls to get missing results
+    const modelMessages = await sanitizeAndCompleteToolCalls(rawMessages, baseSwarmUrl, decryptedSwarmApiKey);
 
     console.log("========= clueMsgs:");
     for (const msg of modelMessages) {
