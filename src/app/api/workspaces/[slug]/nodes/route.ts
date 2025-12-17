@@ -53,9 +53,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const swarmUrlObj = new URL(swarm.swarmUrl);
     const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
-    const graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
-    const apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
+    let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
 
+    if (workspace.id === process.env.STAKWORK_WORKSPACE_ID && process.env.STAKWORK_GRAPH_URL) {
+      graphUrl = process.env.STAKWORK_GRAPH_URL ?? graphUrl;
+    }
+
+    const apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
     const apiParams = new URLSearchParams({
       node_type: nodeType,
       output: output,
