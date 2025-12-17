@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
     const status = searchParams.get("status") || undefined;
     const hasPod = searchParams.get("hasPod") || undefined;
+    const priority = searchParams.get("priority") || undefined;
     const requestContext = {
       workspaceId,
       page,
@@ -37,6 +38,7 @@ export async function GET(request: NextRequest) {
       search,
       status,
       hasPod,
+      priority,
       userId,
       url: request.url,
     };
@@ -154,6 +156,21 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
           {
             error: "Invalid hasPod parameter. Must be 'true' or 'false'",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Add priority filter if provided
+    if (priority !== undefined) {
+      const validPriorities = ["LOW", "MEDIUM", "HIGH"];
+      if (validPriorities.includes(priority)) {
+        whereClause.priority = priority as "LOW" | "MEDIUM" | "HIGH";
+      } else {
+        return NextResponse.json(
+          {
+            error: `Invalid priority parameter. Must be one of: ${validPriorities.join(", ")}`,
           },
           { status: 400 }
         );
