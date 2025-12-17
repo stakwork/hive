@@ -143,12 +143,28 @@ export function DashboardChat() {
               if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
                 console.log("========= tool calls:", JSON.stringify(m.toolCalls, null, 2));
 
+                // Only include tool calls that have completed (have output or errorText)
+                // This prevents sending incomplete tool calls to the API
+                const completedToolCalls = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
+
+                // If there are no completed tool calls, skip this message entirely
+                if (completedToolCalls.length === 0) {
+                  // Just return the text content if any
+                  if (m.content) {
+                    return [{
+                      role: m.role,
+                      content: m.content,
+                    }];
+                  }
+                  return [];
+                }
+
                 const messages: ModelMessage[] = [];
 
-                // First message: tool calls only
+                // First message: tool calls only (only completed ones)
                 const toolCallMessage: ModelMessage = {
                   role: m.role,
-                  content: m.toolCalls.map(tc => ({
+                  content: completedToolCalls.map(tc => ({
                     type: "tool-call" as const,
                     toolCallId: tc.id,
                     toolName: tc.toolName,
@@ -157,29 +173,26 @@ export function DashboardChat() {
                 };
                 messages.push(toolCallMessage);
 
-                // Second message: tool results (if any tool has output)
-                const toolResults = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
-                if (toolResults.length > 0) {
-                  const toolResultMessage = {
-                    role: "tool" as const,
-                    content: toolResults.map(tc => {
-                      // Ensure output is wrapped in AI SDK format
-                      let wrappedOutput = tc.output;
-                      if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
-                        wrappedOutput = { type: "json", value: tc.output };
-                      }
+                // Second message: tool results
+                const toolResultMessage = {
+                  role: "tool" as const,
+                  content: completedToolCalls.map(tc => {
+                    // Ensure output is wrapped in AI SDK format
+                    let wrappedOutput = tc.output;
+                    if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
+                      wrappedOutput = { type: "json", value: tc.output };
+                    }
 
-                      return {
-                        type: "tool-result" as const,
-                        toolCallId: tc.id,
-                        toolName: tc.toolName,
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        output: wrappedOutput as any,
-                      };
-                    }),
-                  } satisfies ModelMessage;
-                  messages.push(toolResultMessage);
-                }
+                    return {
+                      type: "tool-result" as const,
+                      toolCallId: tc.id,
+                      toolName: tc.toolName,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      output: wrappedOutput as any,
+                    };
+                  }),
+                } satisfies ModelMessage;
+                messages.push(toolResultMessage);
 
                 // Third message: text content (if any)
                 if (m.content) {
@@ -390,12 +403,28 @@ export function DashboardChat() {
 
             // Build separate messages for tool calls, results, and text (AI SDK format)
             if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+              // Only include tool calls that have completed (have output or errorText)
+              // This prevents sending incomplete tool calls to the API
+              const completedToolCalls = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
+
+              // If there are no completed tool calls, skip this message entirely
+              if (completedToolCalls.length === 0) {
+                // Just return the text content if any
+                if (m.content) {
+                  return [{
+                    role: m.role as "user" | "assistant",
+                    content: m.content,
+                  }];
+                }
+                return [];
+              }
+
               const messages: ModelMessage[] = [];
 
-              // First message: tool calls only
+              // First message: tool calls only (only completed ones)
               const toolCallMessage: ModelMessage = {
                 role: m.role,
-                content: m.toolCalls.map(tc => ({
+                content: completedToolCalls.map(tc => ({
                   type: "tool-call" as const,
                   toolCallId: tc.id,
                   toolName: tc.toolName,
@@ -404,34 +433,31 @@ export function DashboardChat() {
               };
               messages.push(toolCallMessage);
 
-              // Second message: tool results (if any tool has output)
-              const toolResults = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
-              if (toolResults.length > 0) {
-                const toolResultMessage = {
-                  role: "tool" as const,
-                  content: toolResults.map(tc => {
-                    // Ensure output is wrapped in AI SDK format
-                    let wrappedOutput = tc.output;
-                    if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
-                      wrappedOutput = { type: "json", value: tc.output };
-                    }
+              // Second message: tool results
+              const toolResultMessage = {
+                role: "tool" as const,
+                content: completedToolCalls.map(tc => {
+                  // Ensure output is wrapped in AI SDK format
+                  let wrappedOutput = tc.output;
+                  if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
+                    wrappedOutput = { type: "json", value: tc.output };
+                  }
 
-                    return {
-                      type: "tool-result" as const,
-                      toolCallId: tc.id,
-                      toolName: tc.toolName,
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      output: wrappedOutput as any,
-                    };
-                  }),
-                } satisfies ModelMessage;
-                messages.push(toolResultMessage);
-              }
+                  return {
+                    type: "tool-result" as const,
+                    toolCallId: tc.id,
+                    toolName: tc.toolName,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    output: wrappedOutput as any,
+                  };
+                }),
+              } satisfies ModelMessage;
+              messages.push(toolResultMessage);
 
               // Third message: text content (if any)
               if (m.content) {
                 const textMessage: ModelMessage = {
-                  role: m.role,
+                  role: m.role as "user" | "assistant",
                   content: m.content,
                 };
                 messages.push(textMessage);
