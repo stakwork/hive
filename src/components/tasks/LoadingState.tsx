@@ -8,7 +8,7 @@ import {
 
 export function LoadingState() {
   return (
-    <Card>
+    <Card data-testid="tasks-loading-state">
       <CardHeader>
         <CardTitle>Loading tasks...</CardTitle>
       </CardHeader>

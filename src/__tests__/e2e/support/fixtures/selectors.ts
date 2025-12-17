@@ -117,6 +117,8 @@ export const selectors = {
     launchPodsButton: 'button:has-text("Launch Pods")',
     taskListContainer: '[data-testid="task-card"]',
     recentTasksHeading: 'text=/Recent Tasks|Tasks/i',
+    loadingState: '[data-testid="tasks-loading-state"]',
+    loadedState: '[data-testid="tasks-list-loaded"]',
   },
 
   // Dashboard

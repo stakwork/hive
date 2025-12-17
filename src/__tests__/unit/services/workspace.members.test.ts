@@ -185,6 +185,73 @@ describe("Workspace Member Management", () => {
         },
       });
     });
+
+    test("should filter owner from members array when owner exists in WorkspaceMember table", async () => {
+      const mockMembers = [
+        {
+          id: "member1",
+          userId: "owner1",
+          role: "DEVELOPER" as const,
+          joinedAt: TEST_DATE,
+          user: {
+            id: "owner1",
+            name: "Owner User",
+            email: "owner@example.com",
+            image: null,
+            githubAuth: null,
+          },
+        },
+        {
+          id: "member2",
+          userId: "user2",
+          role: "PM" as const,
+          joinedAt: TEST_DATE,
+          user: {
+            id: "user2",
+            name: "PM User",
+            email: "pm@example.com",
+            image: null,
+            githubAuth: null,
+          },
+        },
+      ];
+
+      const mockWorkspace = {
+        id: "workspace1",
+        ownerId: "owner1",
+        createdAt: TEST_DATE,
+        owner: {
+          id: "owner1",
+          name: "Owner User",
+          email: "owner@example.com",
+          image: null,
+          githubAuth: null,
+        },
+      };
+
+      const filteredMembers = mockMembers.filter(m => m.userId !== "owner1");
+
+      mockedGetActiveWorkspaceMembers.mockResolvedValue(mockMembers);
+      mockedMapWorkspaceMembers.mockReturnValue(filteredMembers);
+      mockedDb.workspace.findUnique.mockResolvedValue(mockWorkspace);
+
+      const result = await getWorkspaceMembers("workspace1");
+
+      // Verify mapWorkspaceMembers was called with filtered members (excluding owner)
+      expect(mockedMapWorkspaceMembers).toHaveBeenCalledWith(filteredMembers);
+      
+      // Result should only have 1 member (user2), not 2
+      expect(result.members).toHaveLength(1);
+      expect(result.members[0].userId).toBe("user2");
+      
+      // Owner should be in owner field only
+      expect(result.owner.userId).toBe("owner1");
+      expect(result.owner.role).toBe("OWNER");
+      
+      // Verify owner is not in members array
+      const ownerInMembers = result.members.find(m => m.userId === "owner1");
+      expect(ownerInMembers).toBeUndefined();
+    });
   });
 
   describe("addWorkspaceMember", () => {
