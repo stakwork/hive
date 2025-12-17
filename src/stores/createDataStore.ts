@@ -87,8 +87,6 @@ export const createDataStore = () =>
           repositoryNodes: existingRepositoryNodes,
         } = get()
 
-        // console.log('[adding new nodes] addNewNode called with data', data)
-
         if (!data?.nodes) {
           return
         }
