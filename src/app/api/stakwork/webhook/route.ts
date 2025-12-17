@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
 
           // Broadcast the new message via Pusher
           const channelName = getTaskChannelName(finalTaskId);
-          await pusherServer.trigger(channelName, PUSHER_EVENTS.CHAT_MESSAGE, {
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, {
             id: publishMessage.id,
             taskId: finalTaskId,
             message: publishMessage.message,
