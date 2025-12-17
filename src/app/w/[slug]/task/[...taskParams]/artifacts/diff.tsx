@@ -343,7 +343,8 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
             <div key={`${file.fileName}-${index}`} className="diff-artifact-file border border-border rounded-lg overflow-hidden bg-card">
               {/* File header */}
               <div
-                className="diff-artifact-file-header flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                data-testid={`file-header-${file.fileName}`}
+                className="diff-artifact-file-header flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 transition-colors sticky top-0 z-10 bg-card"
                 onClick={() => toggleFile(file.fileName)}
               >
                 <div className="flex items-center gap-3">
