@@ -21,18 +21,24 @@
   overflow: hidden;
   width: 300px;
   height: 95%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .workflow-step-main-log {
   height: 95%;
   overflow-y: scroll;
   overflow-x: hidden;
-  text-align: left;
+  text-align: center;
   padding: 20px 16px 20px 16px;
   color: var(--workflow-gray-dark);
   cursor: pointer;
   width: 100%;
   box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .workflow-step-details-link,
@@ -81,8 +87,11 @@ p.workflow-start-text {
 .step-img {
   max-width: 125px;
   max-height: 125px;
+  min-width: 60px;
+  min-height: 60px;
   width: auto;
   height: auto;
+  object-fit: contain;
 }
 
 #custom-icon {
