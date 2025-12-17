@@ -8,7 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { ArrowUp, Mic, MicOff, Bot, Workflow, Beaker, Loader2, AlertTriangle, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  ArrowUp,
+  Mic,
+  MicOff,
+  Bot,
+  Workflow,
+  Beaker,
+  Loader2,
+  AlertTriangle,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
@@ -79,9 +91,7 @@ export function TaskStartInput({
   useEffect(() => {
     if (transcript) {
       // Append transcript to the initial value
-      const newValue = initialValueRef.current 
-        ? `${initialValueRef.current} ${transcript}`.trim()
-        : transcript;
+      const newValue = initialValueRef.current ? `${initialValueRef.current} ${transcript}`.trim() : transcript;
       setValue(newValue);
     }
   }, [transcript]);
@@ -336,9 +346,7 @@ export function TaskStartInput({
       {taskMode === "agent" && hasAvailablePods === false && !isCheckingPods && (
         <div className="w-full max-w-2xl mt-3 px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
-          <p className="text-sm text-amber-800 dark:text-amber-200">
-            No pods currently available.
-          </p>
+          <p className="text-sm text-amber-800 dark:text-amber-200">No pods currently available.</p>
         </div>
       )}
     </div>

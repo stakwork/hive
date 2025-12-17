@@ -82,20 +82,20 @@ export interface BugReportContent {
 }
 
 export interface WorkflowContent {
-  projectId?: string;           // For polling mode (Stakwork project)
-  workflowJson?: string;        // For direct rendering from graph
-  workflowId?: number;          // Workflow ID from graph
-  workflowName?: string;        // Optional workflow name
-  workflowRefId?: string;       // Graph node ref_id
+  projectId?: string; // For polling mode (Stakwork project)
+  workflowJson?: string; // For direct rendering from graph
+  workflowId?: number; // Workflow ID from graph
+  workflowName?: string; // Optional workflow name
+  workflowRefId?: string; // Graph node ref_id
 }
 
 export interface PublishWorkflowContent {
-  workflowId: number;           // Workflow ID to publish
-  workflowName?: string;        // Workflow name for display
-  workflowRefId?: string;       // Graph node ref_id
-  published?: boolean;          // Whether the workflow has been published
-  publishedAt?: string;         // ISO timestamp of when it was published
-  workflowVersionId?: number;   // Version ID returned from publish API
+  workflowId: number; // Workflow ID to publish
+  workflowName?: string; // Workflow name for display
+  workflowRefId?: string; // Graph node ref_id
+  published?: boolean; // Whether the workflow has been published
+  publishedAt?: string; // ISO timestamp of when it was published
+  workflowVersionId?: number; // Version ID returned from publish API
 }
 
 export interface PullRequestContent {

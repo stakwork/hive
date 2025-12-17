@@ -91,21 +91,12 @@ export function PublishWorkflowArtifact({ artifact }: { artifact: Artifact }) {
           </div>
           <div className="flex-shrink-0">
             {isPublished ? (
-              <Button
-                size="sm"
-                className="gap-2 bg-green-600 hover:bg-green-600 text-white cursor-default"
-                disabled
-              >
+              <Button size="sm" className="gap-2 bg-green-600 hover:bg-green-600 text-white cursor-default" disabled>
                 <CheckCircle2 className="w-4 h-4" />
                 Published
               </Button>
             ) : (
-              <Button
-                onClick={handlePublish}
-                size="sm"
-                className="gap-2"
-                disabled={isPublishing}
-              >
+              <Button onClick={handlePublish} size="sm" className="gap-2" disabled={isPublishing}>
                 {isPublishing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />

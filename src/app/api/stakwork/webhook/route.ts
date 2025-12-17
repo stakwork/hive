@@ -22,18 +22,12 @@ export async function POST(request: NextRequest) {
     // Must provide either task_id or run_id
     if (!finalTaskId && !finalRunId) {
       console.error("No task_id or run_id provided in webhook");
-      return NextResponse.json(
-        { error: "Either task_id or run_id is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Either task_id or run_id is required" }, { status: 400 });
     }
 
     if (!project_status) {
       console.error("No project_status provided in webhook");
-      return NextResponse.json(
-        { error: "project_status is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "project_status is required" }, { status: 400 });
     }
 
     const workflowStatus = mapStakworkStatus(project_status);
@@ -111,10 +105,7 @@ export async function POST(request: NextRequest) {
 
     // Handle Task updates (existing logic)
     if (!finalTaskId) {
-      return NextResponse.json(
-        { error: "task_id is required for task updates" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "task_id is required for task updates" }, { status: 400 });
     }
 
     const task = await db.task.findFirst({
@@ -164,9 +155,7 @@ export async function POST(request: NextRequest) {
     if (task.mode === "workflow_editor" && workflowStatus === WorkflowStatus.COMPLETED) {
       try {
         // Find workflow info from the first message's WORKFLOW artifact
-        const workflowArtifact = task.chatMessages[0]?.artifacts?.find(
-          (a) => a.type === ArtifactType.WORKFLOW
-        );
+        const workflowArtifact = task.chatMessages[0]?.artifacts?.find((a) => a.type === ArtifactType.WORKFLOW);
 
         const workflowContent = workflowArtifact?.content as {
           workflowId?: number;
@@ -276,11 +265,7 @@ export async function POST(request: NextRequest) {
         timestamp: new Date(),
       };
 
-      await pusherServer.trigger(
-        channelName,
-        PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-        eventPayload,
-      );
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE, eventPayload);
     } catch (error) {
       console.error("Error broadcasting to Pusher:", error);
     }
@@ -298,9 +283,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error processing Stakwork webhook:", error);
-    return NextResponse.json(
-      { error: "Failed to process webhook" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 });
   }
 }

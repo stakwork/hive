@@ -15,10 +15,7 @@ interface ChatMessageProps {
 }
 
 // Custom comparison function for React.memo
-function arePropsEqual(
-  prevProps: ChatMessageProps,
-  nextProps: ChatMessageProps
-): boolean {
+function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps): boolean {
   // Compare message objects by id and updatedAt
   const messageEqual =
     prevProps.message.id === nextProps.message.id &&
