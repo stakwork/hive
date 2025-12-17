@@ -270,7 +270,7 @@ export function TaskStartInput({
                   <span>Agent</span>
                 </div>
               </SelectItem>
-              {workspaceSlug === "stakwork" && (
+              {(workspaceSlug === "stakwork" || devMode) && (
                 <SelectItem value="workflow_editor">
                   <div className="flex items-center gap-2">
                     <Workflow className="h-3.5 w-3.5" />

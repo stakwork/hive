@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ArtifactType" ADD VALUE 'PUBLISH_WORKFLOW';
