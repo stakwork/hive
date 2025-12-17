@@ -305,13 +305,6 @@ export const useTasksHighlight = ({
 
       // console.log("[useTasksHighlight] Pusher setup complete for workspace:", activeWorkspaceSlug);
 
-      return () => {
-        // console.log("[useTasksHighlight] Cleaning up Pusher subscription for:", channelName);
-        channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
-        channel.unbind_global();
-        pusher.unsubscribe(channelName);
-        // console.log("[useTasksHighlight] Pusher cleanup complete");
-      };
     } catch (error) {
       console.error("[useTasksHighlight] Error setting up Pusher subscription:", {
         error,
