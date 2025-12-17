@@ -15,6 +15,65 @@ import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/push
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
+/**
+ * Sanitize messages to ensure every tool-call has a corresponding tool-result.
+ * This prevents API errors when tool calls fail or don't complete properly.
+ */
+function sanitizeToolCalls(messages: ModelMessage[]): ModelMessage[] {
+  // First pass: collect all tool call IDs that have results
+  const toolCallIdsWithResults = new Set<string>();
+
+  for (const msg of messages) {
+    if (msg.role === "tool" && Array.isArray(msg.content)) {
+      for (const item of msg.content) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((item as any).type === "tool-result" && (item as any).toolCallId) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          toolCallIdsWithResults.add((item as any).toolCallId);
+        }
+      }
+    }
+  }
+
+  // Second pass: filter out tool-calls that don't have results
+  const sanitized: ModelMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      // Check if this message has tool-calls
+      const hasToolCalls = msg.content.some(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (item: any) => item.type === "tool-call"
+      );
+
+      if (hasToolCalls) {
+        // Filter out tool-calls without results
+        const filteredContent = msg.content.filter((item) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const toolCall = item as any;
+          if (toolCall.type === "tool-call") {
+            return toolCallIdsWithResults.has(toolCall.toolCallId);
+          }
+          return true; // Keep non-tool-call content
+        });
+
+        // Only include this message if it has content after filtering
+        if (filteredContent.length > 0) {
+          sanitized.push({ ...msg, content: filteredContent });
+        }
+      } else {
+        // No tool-calls, keep as-is
+        sanitized.push(msg);
+      }
+    } else {
+      // Not an assistant message or not array content, keep as-is
+      sanitized.push(msg);
+    }
+  }
+
+  return sanitized;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const context = getMiddlewareContext(request);
@@ -99,11 +158,14 @@ export async function POST(request: NextRequest) {
 
     // console.log("features:", features);
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
-    const modelMessages: ModelMessage[] = [
+    const rawMessages: ModelMessage[] = [
       ...getQuickAskPrefixMessages(features, repoUrl, clueMsgs),
       // Conversation history (pass through as-is to support tool calls/results)
       ...messages as ModelMessage[],
     ];
+
+    // Sanitize messages: remove tool-calls that don't have corresponding tool-results
+    const modelMessages = sanitizeToolCalls(rawMessages);
 
     console.log("========= clueMsgs:");
     for (const msg of modelMessages) {
