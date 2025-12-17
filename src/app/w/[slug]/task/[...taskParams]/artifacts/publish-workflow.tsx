@@ -7,12 +7,7 @@ import { Artifact, PublishWorkflowContent } from "@/lib/chat";
 import { Upload, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-interface PublishWorkflowArtifactProps {
-  artifact: Artifact;
-  onPublish?: (updatedWorkflowJson: unknown) => void;
-}
-
-export function PublishWorkflowArtifact({ artifact, onPublish }: PublishWorkflowArtifactProps) {
+export function PublishWorkflowArtifact({ artifact }: { artifact: Artifact }) {
   const content = artifact.content as PublishWorkflowContent;
   const [isPublishing, setIsPublishing] = useState(false);
   const [isPublished, setIsPublished] = useState(content.published === true);
@@ -48,9 +43,6 @@ export function PublishWorkflowArtifact({ artifact, onPublish }: PublishWorkflow
       if (result.success) {
         setIsPublished(true);
         toast.success("Workflow published successfully");
-        if (result.data?.updatedWorkflowJson) {
-          onPublish?.(result.data.updatedWorkflowJson);
-        }
       } else {
         throw new Error(result.error || "Failed to publish workflow");
       }

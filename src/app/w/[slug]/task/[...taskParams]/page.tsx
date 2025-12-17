@@ -1210,7 +1210,6 @@ export default function TaskChatPage() {
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
-                    onWorkflowPublish={handleWorkflowPublish}
                   />
                 )}
               </div>
@@ -1240,8 +1239,7 @@ export default function TaskChatPage() {
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
-                      onWorkflowPublish={handleWorkflowPublish}
-                    />
+                      />
                   </div>
                 </ResizablePanel>
                 <ResizableHandle withHandle />
@@ -1282,7 +1280,6 @@ export default function TaskChatPage() {
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
-                onWorkflowPublish={handleWorkflowPublish}
               />
             </div>
           )}

@@ -12,7 +12,6 @@ interface ChatMessageProps {
   message: ChatMessageType;
   replyMessage?: ChatMessageType;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
-  onWorkflowPublish?: (updatedWorkflowJson: unknown) => void;
 }
 
 // Custom comparison function for React.memo
@@ -34,7 +33,6 @@ export const ChatMessage = memo(function ChatMessage({
   message,
   replyMessage,
   onArtifactAction,
-  onWorkflowPublish,
 }: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -128,7 +126,7 @@ export const ChatMessage = memo(function ChatMessage({
           <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
             <div className="max-w-md w-full">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                <PublishWorkflowArtifact artifact={artifact} onPublish={onWorkflowPublish} />
+                <PublishWorkflowArtifact artifact={artifact} />
               </motion.div>
             </div>
           </div>
