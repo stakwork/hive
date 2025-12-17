@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Create artifacts array for the message
-          const artifactsToCreate = [
+          const artifactsToCreate: { type: ArtifactType; content: object }[] = [
             {
               type: ArtifactType.PUBLISH_WORKFLOW,
               content: {
