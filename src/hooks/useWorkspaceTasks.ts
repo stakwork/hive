@@ -100,7 +100,13 @@ export function useWorkspaceTasks(
   includeNotifications: boolean = false,
   pageLimit: number = 5,
   showArchived: boolean = false,
-  search?: string
+  search?: string,
+  filters?: {
+    sourceType?: string;
+    status?: string;
+    priority?: string;
+    hasPod?: boolean;
+  }
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -123,7 +129,11 @@ export function useWorkspaceTasks(
     try {
       const archivedParam = showArchived ? '&includeArchived=true' : '';
       const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}`;
+      const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
+      const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
+      const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
+      const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -151,7 +161,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -176,7 +186,11 @@ export function useWorkspaceTasks(
       for (let page = 1; page <= storedPage; page++) {
         const archivedParam = showArchived ? '&includeArchived=true' : '';
         const searchParam = search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}`;
+        const sourceTypeParam = filters?.sourceType ? `&sourceType=${encodeURIComponent(filters.sourceType)}` : '';
+        const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
+        const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
+        const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
+        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {
