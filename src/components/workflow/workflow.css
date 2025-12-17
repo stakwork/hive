@@ -42,6 +42,7 @@
 
 .workflow-step-main {
   height: 100%;
+  width: 100%;
   display: grid;
   grid-template-columns: 1fr;
   align-items: center;
@@ -49,6 +50,7 @@
   padding: 20px 16px 20px 16px;
   color: var(--workflow-gray-dark);
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 /* Workflow Container */
@@ -59,19 +61,28 @@
 
 /* Start/End Node Text */
 p.workflow-start-text {
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 500;
   font-size: 20px;
   line-height: 16px;
   letter-spacing: 0.02em;
   margin: 0;
+  text-align: center;
+  width: 100%;
 }
 
 /* Step Image */
 .workflow-step-img {
   width: 100%;
   height: 100%;
+}
+
+.step-img {
+  max-width: 125px;
+  max-height: 125px;
+  width: auto;
+  height: auto;
 }
 
 #custom-icon {
@@ -96,7 +107,7 @@ p.workflow-start-text {
 }
 
 .workflow-ifconText {
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 700;
   font-size: 14px;
@@ -124,6 +135,8 @@ p.workflow-start-text {
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
   background-color: var(--workflow-white);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .workflow-anchors.workflow-top {
@@ -168,7 +181,7 @@ p.workflow-start-text {
   justify-self: left;
   align-self: center;
   width: fit-content;
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 900;
   font-size: 11px;
@@ -207,18 +220,19 @@ p.workflow-start-text {
   border-bottom: 1px solid var(--workflow-gray-lighter);
   background-color: white;
   color: var(--workflow-gray-dark);
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 700;
   font-size: 14px;
   line-height: 16px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .workflow-sub > .workflow-step-name {
   justify-self: left;
   width: fit-content;
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 700;
   font-size: 14px;
@@ -236,7 +250,7 @@ p.workflow-start-text {
 
 .workflow-sub > .workflow-name-container > .workflow-step-name {
   width: 100%;
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 700;
   font-size: 14px;
@@ -355,7 +369,7 @@ p.workflow-start-text {
 /* Loop Styles */
 .workflow-loop > .workflow-loop-total {
   justify-self: start;
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 400;
   font-size: 16px;
@@ -373,7 +387,7 @@ p.workflow-start-text {
 
 .workflow-loop > .workflow-percent {
   justify-self: end;
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 500;
   font-size: 22px;
@@ -386,7 +400,7 @@ p.workflow-start-text {
 }
 
 .workflow-loop > .workflow-percent > .workflow-percent-num {
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 700;
   font-size: 36px;
@@ -458,6 +472,7 @@ p.workflow-start-text {
   grid-template-columns: 1fr;
   grid-template-rows: 72px 64px 288px 72px;
   height: 492px;
+  width: 100%;
 }
 
 .workflow-automated-template {
@@ -465,6 +480,7 @@ p.workflow-start-text {
   grid-template-columns: 1fr;
   grid-template-rows: 72px 64px 288px;
   height: 420px;
+  width: 100%;
 }
 
 /* In Progress Background Overlays */
@@ -472,7 +488,7 @@ p.workflow-start-text {
 .workflow-human-in_progress:before,
 .workflow-loop-in_progress:before,
 .workflow-api-in_progress:before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
@@ -492,7 +508,7 @@ p.workflow-start-text {
 }
 
 .workflow-standard-template-in_progress:before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
@@ -515,7 +531,7 @@ p.workflow-start-text {
 }
 
 .workflow-bool-text {
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 500;
   font-size: 20px;
@@ -589,7 +605,7 @@ video.workflow-step-icon {
   align-self: center;
   justify-self: start;
   padding-left: 3px;
-  font-family: var(--font-roboto), 'Roboto', sans-serif;
+  font-family: var(--font-roboto), "Roboto", sans-serif;
   font-style: normal;
   font-weight: 500;
   font-size: 16px;

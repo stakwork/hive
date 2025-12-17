@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceBySlug } from "@/services/workspace";
+import { isDevelopmentMode } from "@/lib/runtime";
 
 export const runtime = "nodejs";
 
@@ -51,15 +52,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: "Swarm not configured" }, { status: 400 });
     }
 
+    const devMode = isDevelopmentMode();
     const swarmUrlObj = new URL(swarm.swarmUrl);
     const protocol = swarmUrlObj.hostname.includes("localhost") ? "http" : "https";
     let graphUrl = `${protocol}://${swarmUrlObj.hostname}:3355`;
     let apiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
 
     if (
-      workspace.id === process.env.STAKWORK_WORKSPACE_ID &&
-      process.env.STAKWORK_GRAPH_URL &&
-      process.env.STAKWORK_GRAPH_API_KEY
+      devMode ||
+      (workspace.id === process.env.STAKWORK_WORKSPACE_ID &&
+        process.env.STAKWORK_GRAPH_URL &&
+        process.env.STAKWORK_GRAPH_API_KEY)
     ) {
       graphUrl = process.env.STAKWORK_GRAPH_URL ?? graphUrl;
       apiKey = process.env.STAKWORK_GRAPH_API_KEY ?? apiKey;
