@@ -55,10 +55,9 @@ export function DashboardChat() {
     const channel = pusher.subscribe(channelName);
 
     const handleFollowUpQuestions = (payload: { questions: string[]; timestamp: number }) => {
-      // Only update if not currently loading (streaming has completed)
-      if (!isLoading) {
-        setFollowUpQuestions(payload.questions);
-      }
+      // Always store questions - display logic will wait for loading to complete
+      console.log("follow up questions:", payload.questions);
+      setFollowUpQuestions(payload.questions);
     };
 
     channel.bind(PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, handleFollowUpQuestions);
@@ -67,7 +66,7 @@ export function DashboardChat() {
       channel.unbind(PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, handleFollowUpQuestions);
       pusher.unsubscribe(channelName);
     };
-  }, [slug, isLoading]);
+  }, [slug]);
 
   // Get the most recent image from the messages array
   const currentImageData = messages
