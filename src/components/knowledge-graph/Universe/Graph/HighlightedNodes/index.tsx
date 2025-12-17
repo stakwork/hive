@@ -1,4 +1,3 @@
-import { useTestNodesFetch } from '@/hooks/useTestNodesFetch'
 import type { HighlightChunk } from '@/stores/useGraphStore'
 import { useGraphStore } from '@/stores/useStores'
 import { memo } from 'react'
@@ -9,12 +8,6 @@ export const HighlightedNodesLayer = memo(() => {
   const highlightChunks = useGraphStore((s) => s.highlightChunks)
   const { selectedLayer } = useGraphStore((s) => s.testLayerVisibility)
 
-  // Fetch test nodes when a test layer is selected
-  useTestNodesFetch({
-    unitTests: selectedLayer === 'unitTests',
-    integrationTests: selectedLayer === 'integrationTests',
-    e2eTests: selectedLayer === 'e2eTests'
-  })
 
   // Map selectedLayer to the correct nodeType format
   const getNodeType = () => {
@@ -34,7 +27,7 @@ export const HighlightedNodesLayer = memo(() => {
 
   return (
     <group name="highlighted-nodes-layer">
-      {nodeType && <TestConnectionsLayer enabled={true} nodeType={nodeType} color="#10b981" />}
+      {nodeType && <TestConnectionsLayer key={nodeType} enabled={true} nodeType={nodeType} color="#10b981" />}
       {highlightChunks.map((chunk: HighlightChunk) => {
         // Example camera configurations for different chunk types:
 
