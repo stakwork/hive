@@ -121,8 +121,22 @@ export async function sanitizeAndCompleteToolCalls(
   }
 
   // Third pass: rebuild messages array with completed tool calls
+  // We need to insert new tool results right after their corresponding tool-call messages
   const sanitized: ModelMessage[] = [];
-  let newResultsInserted = false;
+
+  // Build a map of toolCallId -> new tool result message for quick lookup
+  const newResultsByCallId = new Map<string, ModelMessage>();
+  for (const resultMsg of newToolResults) {
+    if (Array.isArray(resultMsg.content)) {
+      for (const item of resultMsg.content) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = item as any;
+        if (result.type === "tool-result" && result.toolCallId) {
+          newResultsByCallId.set(result.toolCallId, resultMsg);
+        }
+      }
+    }
+  }
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -149,12 +163,23 @@ export async function sanitizeAndCompleteToolCalls(
         if (filteredContent.length > 0) {
           sanitized.push({ ...msg, content: filteredContent });
 
-          // Check if the next message is a tool result
+          // Check if any of the tool calls in this message have new results we need to insert
+          const toolCallsInMessage = filteredContent
+            .filter((item) => (item as any).type === "tool-call")
+            .map((item) => (item as any).toolCallId);
+
+          // Check if the next message is already a tool result for these calls
           const nextMsg = messages[i + 1];
-          if (nextMsg?.role !== "tool" && newToolResults.length > 0 && !newResultsInserted) {
-            // Insert new tool results right after this assistant message
-            sanitized.push(...newToolResults);
-            newResultsInserted = true;
+          const nextIsToolResult = nextMsg?.role === "tool";
+
+          // If there's no tool result message immediately after, insert any new results
+          if (!nextIsToolResult) {
+            for (const toolCallId of toolCallsInMessage) {
+              const newResult = newResultsByCallId.get(toolCallId);
+              if (newResult && !sanitized.includes(newResult)) {
+                sanitized.push(newResult);
+              }
+            }
           }
         }
       } else {
@@ -164,21 +189,10 @@ export async function sanitizeAndCompleteToolCalls(
     } else if (msg.role === "tool") {
       // Keep existing tool results
       sanitized.push(msg);
-
-      // If we have new tool results and haven't inserted them yet, add them after existing tool results
-      if (newToolResults.length > 0 && !newResultsInserted) {
-        sanitized.push(...newToolResults);
-        newResultsInserted = true;
-      }
     } else {
       // Other message types (user, system), keep as-is
       sanitized.push(msg);
     }
-  }
-
-  // If we still have new tool results that weren't inserted, add them at the end
-  if (newToolResults.length > 0 && !newResultsInserted) {
-    sanitized.push(...newToolResults);
   }
 
   return sanitized;
