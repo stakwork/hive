@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
 import { isDevelopmentMode } from "@/lib/runtime";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 
 export const runtime = "nodejs";
 
@@ -51,8 +53,7 @@ export async function POST(request: NextRequest) {
     // Call Stakwork API to publish the workflow
     const publishUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}/publish`;
 
-    console.log("publishUrl", publishUrl);
-    console.log("config.STAKWORK_API_KEY", config.STAKWORK_API_KEY);
+    console.log("Publishing workflow to:", publishUrl);
 
     const response = await fetch(publishUrl, {
       method: "POST",
@@ -121,6 +122,90 @@ export async function POST(request: NextRequest) {
       } catch (updateError) {
         console.error("Error updating artifact:", updateError);
         // Don't fail the request if artifact update fails
+      }
+    }
+
+    // Fetch updated workflow and create new artifact message
+    if (artifactId) {
+      try {
+        // Get the artifact with its message and task
+        const artifactWithMessage = await db.artifact.findUnique({
+          where: { id: artifactId },
+          include: {
+            message: {
+              include: {
+                task: true,
+              },
+            },
+          },
+        });
+
+        if (artifactWithMessage?.message?.task?.id) {
+          const taskId = artifactWithMessage.message.task.id;
+
+          // Fetch the updated workflow from Stakwork
+          const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}.json`;
+          const workflowResponse = await fetch(workflowUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+          });
+
+          if (workflowResponse.ok) {
+            const workflowResult = await workflowResponse.json();
+            const updatedWorkflowJson = workflowResult.data?.workflow_json || workflowResult.workflow_json;
+
+            if (updatedWorkflowJson) {
+              // Get workflowName from the PUBLISH_WORKFLOW artifact content
+              const publishContent = (artifactWithMessage.content || {}) as {
+                workflowName?: string;
+                workflowRefId?: string;
+              };
+
+              // Create a new message with the updated WORKFLOW artifact
+              const newMessage = await db.chatMessage.create({
+                data: {
+                  taskId,
+                  message: "",
+                  role: ChatRole.ASSISTANT,
+                  status: ChatStatus.SENT,
+                  contextTags: JSON.stringify([]),
+                  artifacts: {
+                    create: [{
+                      type: ArtifactType.WORKFLOW,
+                      content: {
+                        workflowJson: updatedWorkflowJson as string,
+                        workflowId: workflowId,
+                        workflowName: publishContent.workflowName || `Workflow ${workflowId}`,
+                        workflowRefId: workflowRefId || publishContent.workflowRefId || "",
+                      },
+                    }],
+                  },
+                },
+                include: {
+                  artifacts: true,
+                },
+              });
+
+              // Trigger Pusher to notify the frontend
+              const channelName = getTaskChannelName(taskId);
+              await pusherServer.trigger(
+                channelName,
+                PUSHER_EVENTS.NEW_MESSAGE,
+                newMessage.id,
+              );
+
+              console.log(`Published workflow ${workflowId} and created new artifact message for task ${taskId}`);
+            }
+          } else {
+            console.error("Failed to fetch updated workflow from Stakwork:", await workflowResponse.text());
+          }
+        }
+      } catch (updateError) {
+        console.error("Error creating updated workflow artifact:", updateError);
+        // Don't fail the request if this fails
       }
     }
 
