@@ -43,12 +43,31 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     );
   }
 
-  // Always use the FIRST workflow artifact (from task creation) to ensure consistency
-  const selectedArtifact = artifacts[0];
-  const workflowContent = selectedArtifact.content as WorkflowContent;
-  const projectId = workflowContent?.projectId;
-  const workflowJson = workflowContent?.workflowJson;
-  const workflowId = workflowContent?.workflowId;
+  // Merge data from all workflow artifacts, always using the LATEST values
+  // This supports multiple executions and publishes - always shows the most recent:
+  // - workflowJson: Latest published workflow (for Editor tab)
+  // - projectId: Latest execution project (for Stakwork tab)
+  const mergedContent = useMemo(() => {
+    let workflowJson: string | undefined;
+    let projectId: string | undefined;
+    let workflowId: number | undefined;
+    let workflowName: string | undefined;
+    let workflowRefId: string | undefined;
+
+    // Iterate oldest to newest - later values override earlier ones
+    for (const artifact of artifacts) {
+      const content = artifact.content as WorkflowContent;
+      if (content?.workflowJson) workflowJson = content.workflowJson;
+      if (content?.projectId) projectId = content.projectId;
+      if (content?.workflowId) workflowId = content.workflowId;
+      if (content?.workflowName) workflowName = content.workflowName;
+      if (content?.workflowRefId) workflowRefId = content.workflowRefId;
+    }
+
+    return { workflowJson, projectId, workflowId, workflowName, workflowRefId };
+  }, [artifacts]);
+
+  const { workflowJson, projectId, workflowId } = mergedContent;
 
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
