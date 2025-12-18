@@ -122,6 +122,7 @@ export function useCoverageNodes() {
       if (hasInitializedIntegrationGlob.current && integrationGlob) qp.set("integrationGlob", integrationGlob);
       if (hasInitializedE2eGlob.current && e2eGlob) qp.set("e2eGlob", e2eGlob);
       if (search) qp.set("search", search);
+      if (ignored && ignored !== "all") qp.set("ignored", ignored);
       const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
       const json: CoverageNodesResponse = await res.json();
       if (!res.ok || !json.success) {
@@ -208,6 +209,7 @@ export function useCoverageNodes() {
         if (hasInitializedIntegrationGlob.current && integrationGlob) qp.set("integrationGlob", integrationGlob);
         if (hasInitializedE2eGlob.current && e2eGlob) qp.set("e2eGlob", e2eGlob);
         if (search) qp.set("search", search);
+        if (ignored && ignored !== "all") qp.set("ignored", ignored);
         const res = await fetch(`/api/tests/nodes?${qp.toString()}`);
         const json: CoverageNodesResponse = await res.json();
         if (!res.ok || !json.success) {
@@ -218,16 +220,10 @@ export function useCoverageNodes() {
     });
   };
 
-  const rawItems = query.data?.data?.items || [];
-  const filteredItems = rawItems.filter((item) => {
-    if (ignored === "all") return true;
-    if (ignored === "ignored") return item.is_muted === true;
-    if (ignored === "not_ignored") return !item.is_muted;
-    return true;
-  });
+  const items = query.data?.data?.items || [];
 
   return {
-    items: filteredItems,
+    items,
     loading: query.isLoading,
     filterLoading: query.isFetching && !query.isLoading,
     error: query.error ? (query.error as Error).message : null,
