@@ -9,7 +9,7 @@ import { EditableTitle } from "@/components/ui/editable-title";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
-import { PrioritySelector } from "@/components/ui/priority-selector";
+import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
@@ -398,7 +398,7 @@ export default function FeatureDetailPage() {
             {/* Status, Priority, Assignee & Actions */}
             <div className="flex flex-wrap items-center gap-4">
               <StatusPopover statusType="feature" currentStatus={feature.status} onUpdate={handleUpdateStatus} />
-              <PrioritySelector value={feature.priority} onChange={handleUpdatePriority} />
+              <FeaturePriorityPopover currentPriority={feature.priority} onUpdate={handleUpdatePriority} showLowPriority={true} />
               <AssigneeCombobox
                 workspaceSlug={workspaceSlug}
                 currentAssignee={feature.assignee}
