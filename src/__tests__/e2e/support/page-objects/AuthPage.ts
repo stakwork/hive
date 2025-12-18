@@ -71,4 +71,45 @@ export class AuthPage {
     await this.verifyAuthenticated();
     expect(this.getCurrentWorkspaceSlug()).toBe(expectedSlug);
   }
+
+  /**
+   * Open user menu dropdown
+   * Uses keyboard interaction to reliably open dropdown in CI environment
+   */
+  async openUserMenu(): Promise<void> {
+    const userMenuTrigger = this.page.locator(selectors.userMenu.trigger);
+    await expect(userMenuTrigger).toBeVisible({ timeout: 10000 });
+    
+    // Focus the trigger button
+    await userMenuTrigger.focus();
+    
+    // Press Enter to open the dropdown (bypasses overlay issues)
+    await this.page.keyboard.press('Enter');
+    
+    // Wait for dropdown menu to open by checking for the logout button
+    const logoutButton = this.page.locator(selectors.userMenu.logoutButton);
+    await expect(logoutButton).toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Logout user via user menu
+   */
+  async logout(): Promise<void> {
+    await this.openUserMenu();
+    
+    const logoutButton = this.page.locator(selectors.userMenu.logoutButton);
+    await logoutButton.click();
+  }
+
+  /**
+   * Verify user is logged out (redirected to login page)
+   */
+  async verifyLoggedOut(): Promise<void> {
+    // Wait for redirect to auth/signin or home page
+    await this.page.waitForURL(/\/(auth\/signin)?$/, { timeout: 10000 });
+    
+    // Verify mock sign-in button is visible
+    const signInButton = this.page.locator(selectors.auth.mockSignInButton);
+    await expect(signInButton).toBeVisible({ timeout: 10000 });
+  }
 }
