@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Restrict workflow editor to stakwork workspace only
-    if (task.workspace.slug !== "stakwork" && !isDevelopmentMode) {
+    if (task.workspace.slug !== "stakwork" && !isDevelopmentMode()) {
       return NextResponse.json({ error: "Workflow editor is not available for this workspace" }, { status: 403 });
     }
 

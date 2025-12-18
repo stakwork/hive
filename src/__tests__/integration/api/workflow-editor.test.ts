@@ -37,6 +37,18 @@ vi.mock("@/config/env", () => ({
 // Mock global fetch for Stakwork API calls
 global.fetch = vi.fn();
 
+// Mock Pusher for real-time notifications
+vi.mock("@/lib/pusher", () => ({
+  pusherServer: {
+    trigger: vi.fn().mockResolvedValue({}),
+  },
+  getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
+  PUSHER_EVENTS: {
+    NEW_MESSAGE: "new-message",
+    WORKFLOW_STATUS_UPDATE: "workflow-status-update",
+  },
+}));
+
 // Import mocked functions
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { config } from "@/config/env";
@@ -599,15 +611,20 @@ describe("POST /api/workflow-editor Integration Tests", () => {
       expect(data.message.role).toBe(ChatRole.USER);
       expect(data.message.status).toBe(ChatStatus.SENT);
 
-      // Verify ChatMessage in database
+      // Verify ChatMessages in database (1 USER + 1 ASSISTANT with WORKFLOW artifact)
       const messages = await db.chatMessage.findMany({
         where: { taskId: task.id },
+        orderBy: { createdAt: "asc" },
       });
 
-      expect(messages).toHaveLength(1);
+      expect(messages).toHaveLength(2);
+      // First message is the user message
       expect(messages[0].message).toBe(testMessage);
       expect(messages[0].role).toBe(ChatRole.USER);
       expect(messages[0].status).toBe(ChatStatus.SENT);
+      // Second message is the assistant message with WORKFLOW artifact
+      expect(messages[1].role).toBe(ChatRole.ASSISTANT);
+      expect(messages[1].message).toBe("");
     });
 
     test("updates task workflow status to IN_PROGRESS on success", async () => {
@@ -840,11 +857,11 @@ describe("POST /api/workflow-editor Integration Tests", () => {
         })
       );
 
-      // Verify database state
+      // Verify database state (1 USER + 1 ASSISTANT with WORKFLOW artifact)
       const messages = await db.chatMessage.findMany({
         where: { taskId: task.id },
       });
-      expect(messages).toHaveLength(1);
+      expect(messages).toHaveLength(2);
 
       const updatedTask = await db.task.findUnique({ where: { id: task.id } });
       expect(updatedTask).toMatchObject({
