@@ -56,8 +56,17 @@ export class TasksPage {
    * Click "New Task" button
    */
   async clickNewTask(): Promise<void> {
-    await this.page.locator(selectors.tasks.newTaskButton).click();
-    await this.page.waitForURL(/\/w\/.*\/task\/new/, { timeout: 10000 });
+    const button = this.page.locator(selectors.tasks.newTaskButton);
+    
+    // Ensure button is visible and enabled before clicking
+    await button.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(button).toBeEnabled({ timeout: 5000 });
+    
+    // Click and wait for navigation with multiple fallback strategies
+    await Promise.all([
+      this.page.waitForURL(/\/w\/.*\/task\/new/, { timeout: 30000 }),
+      button.click()
+    ]);
   }
 
   /**

@@ -278,9 +278,11 @@ export function Sidebar({ user }: SidebarProps) {
   // Use global notification count from WorkspaceContext (not affected by pagination)
   const tasksWaitingForInputCount = waitingForInputCount;
 
-  // Fetch pool status for capacity count
+  // Fetch pool status for capacity count with real-time polling (every 10 seconds)
   const isPoolActive = workspace?.poolState === "COMPLETE";
-  const { poolStatus } = usePoolStatus(workspaceSlug || "", isPoolActive);
+  const { poolStatus } = usePoolStatus(workspaceSlug || "", isPoolActive, { 
+    pollingInterval: 10000 // Poll every 10 seconds
+  });
 
   // Calculate pool capacity count (in use / total)
   const poolCapacityCount = useMemo(() => {
