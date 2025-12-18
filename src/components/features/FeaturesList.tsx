@@ -15,7 +15,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { FeatureWithDetails, FeatureListResponse, FeatureStatus, FeaturePriority } from "@/types/roadmap";
 import { FEATURE_KANBAN_COLUMNS } from "@/types/roadmap";
 import { StatusPopover } from "@/components/ui/status-popover";
-import { PrioritySelector } from "@/components/ui/priority-selector";
 import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { AssigneeCombobox } from "./AssigneeCombobox";
 import { FeatureCard } from "./FeatureCard";
@@ -791,9 +790,10 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                     currentStatus={newFeatureStatus}
                     onUpdate={async (status) => setNewFeatureStatus(status)}
                   />
-                  <PrioritySelector
-                    value={newFeaturePriority}
-                    onChange={(priority) => setNewFeaturePriority(priority)}
+                  <FeaturePriorityPopover
+                    currentPriority={newFeaturePriority}
+                    onUpdate={async (priority) => setNewFeaturePriority(priority)}
+                    showLowPriority={true}
                   />
                   <AssigneeCombobox
                     workspaceSlug={workspaceSlug}
