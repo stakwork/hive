@@ -20,6 +20,7 @@ type ParsedParams = {
   offset: number;
   sort: string;
   coverage: "all" | "tested" | "untested";
+  ignored: "all" | "ignored" | "not_ignored";
   bodyLength: boolean;
   lineCount: boolean;
   search: string;
@@ -41,10 +42,12 @@ function parseAndValidateParams(searchParams: URLSearchParams): ParsedParams | {
   const sort = (searchParams.get("sort") || "test_count").toLowerCase();
   let coverage = (searchParams.get("coverage") || "all").toLowerCase();
   if (!["all", "tested", "untested"].includes(coverage)) coverage = "all";
+  let ignored = (searchParams.get("ignored") || "all").toLowerCase();
+  if (!["all", "ignored", "not_ignored"].includes(ignored)) ignored = "all";
   const bodyLength = searchParams.get("body_length") === "true";
   const lineCount = searchParams.get("line_count") === "true";
   const search = searchParams.get("search") || "";
-  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested", bodyLength, lineCount, search };
+  return { nodeType, limit, offset, sort, coverage: coverage as "all" | "tested" | "untested", ignored: ignored as "all" | "ignored" | "not_ignored", bodyLength, lineCount, search };
 }
 
 function buildQueryString(params: ParsedParams): string {
@@ -60,6 +63,8 @@ function buildQueryString(params: ParsedParams): string {
     q.set("sort", String(params.sort));
   }
   if (params.coverage && params.coverage !== "all") q.set("coverage", params.coverage);
+  if (params.ignored === "ignored") q.set("is_muted", "true");
+  if (params.ignored === "not_ignored") q.set("is_muted", "false");
   if (params.search) q.set("search", params.search);
   q.set("concise", "true");
   return q.toString();
