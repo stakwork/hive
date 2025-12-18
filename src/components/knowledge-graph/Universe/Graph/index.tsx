@@ -475,7 +475,7 @@ export const Graph = () => {
       </group>
       {!isOnboarding && <HighlightedNodesLayer />}
       {!isOnboarding && <CalloutsLayer />}
-      <MockNodesLayer />
+      {!isOnboarding && graphStyle === 'split' && activeFilterTab === 'all' && <MockNodesLayer />}
       {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
