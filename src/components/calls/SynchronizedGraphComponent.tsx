@@ -7,6 +7,7 @@ import { useGraphStore as useGraphStoreStandalone, FilterTab } from "@/stores/us
 import { useDataStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 
 // --- TYPE DEFINITIONS ---
 
@@ -105,13 +106,13 @@ const SynchronizedGraphComponentInner = ({
   onTimeMarkerClick
 }: SynchronizedGraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
-  const [nodesLoading, setNodesLoading] = useState(false);
   const [markers, setMarkers] = useState<NodeWithTimestamp[]>([]);
   const [activeEdge, setActiveEdge] = useState<LinkWithTimestamp | null>(null);
 
   const requestRef = useRef<number | null>(null);
   const previousTimeRef = useRef<number | null>(null);
   const nodesAndEdgesRef = useRef<{ nodes: Node[], edges: Link[] } | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setSchemas = useSchemaStore((s) => s.setSchemas);
@@ -121,6 +122,8 @@ const SynchronizedGraphComponentInner = ({
   // Graph filter state
   const activeFilterTab = useGraphStoreStandalone((s) => s.activeFilterTab);
   const setActiveFilterTab = useGraphStoreStandalone((s) => s.setActiveFilterTab);
+  const isFilterLoading = useGraphStoreStandalone((s) => s.isFilterLoading);
+  const setIsFilterLoading = useGraphStoreStandalone((s) => s.setIsFilterLoading);
 
   // Calculate markers from data
   const calculateMarkers = useCallback((data: { nodes: Node[], edges: Link[] }): NodeWithTimestamp[] => {
@@ -251,7 +254,7 @@ const SynchronizedGraphComponentInner = ({
   useEffect(() => {
     const fetchNodes = async () => {
       resetData();
-      setNodesLoading(true);
+      setIsFilterLoading(true);
       try {
         const requestUrl = propEndpoint
           ? `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=${encodeURIComponent(propEndpoint)}`
@@ -293,7 +296,7 @@ const SynchronizedGraphComponentInner = ({
       } catch (err) {
         console.error("Failed to load nodes:", err);
       } finally {
-        setNodesLoading(false);
+        setIsFilterLoading(false);
       }
     };
 
@@ -304,8 +307,17 @@ const SynchronizedGraphComponentInner = ({
   const fetchFilteredData = useCallback(async (tab: FilterTab) => {
     if (!workspaceId) return;
 
+    // Cancel previous request if it exists
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     resetData();
-    setNodesLoading(true);
+    setIsFilterLoading(true);
+
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       let requestUrl: string;
@@ -333,7 +345,7 @@ const SynchronizedGraphComponentInner = ({
         case 'tasks':
           // Fetch latest 10 tasks from tasks API
           requestUrl = `/api/tasks?workspaceId=${workspaceId}&limit=10`;
-          const tasksResponse = await fetch(requestUrl);
+          const tasksResponse = await fetch(requestUrl, { signal: abortController.signal });
           const tasksData = await tasksResponse.json();
 
           if (tasksData.success && Array.isArray(tasksData.data)) {
@@ -360,14 +372,14 @@ const SynchronizedGraphComponentInner = ({
               edges: [],
             });
           }
-          setNodesLoading(false);
+          setIsFilterLoading(false);
           return;
 
         default:
           requestUrl = `/api/swarm/jarvis/nodes?id=${workspaceId}`;
       }
 
-      const response = await fetch(requestUrl);
+      const response = await fetch(requestUrl, { signal: abortController.signal });
       const data: ApiResponse = await response.json();
 
       if (!data.success) throw new Error("Failed to fetch filtered data");
@@ -386,10 +398,19 @@ const SynchronizedGraphComponentInner = ({
           edges: data.data.edges || [],
         });
       }
-    } catch (err) {
-      console.error("Failed to load filtered data:", err);
+    } catch (error) {
+      // If the request was aborted, don't show error or set loading to false
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Request was cancelled');
+        return;
+      }
+      console.error("Failed to load filtered data:", error);
     } finally {
-      setNodesLoading(false);
+      // Only set loading to false if this request wasn't aborted
+      if (abortControllerRef.current === abortController) {
+        setIsFilterLoading(false);
+        abortControllerRef.current = null;
+      }
     }
   }, [workspaceId, resetData, addNewNode, propEndpoint]);
 
@@ -456,11 +477,15 @@ const SynchronizedGraphComponentInner = ({
       )} */}
 
       <div className="border rounded overflow-hidden bg-card flex-1">
-        {nodesLoading ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-lg text-gray-300">Loading synchronized graph...</div>
+        {isFilterLoading ? (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
+            <div className="flex flex-col items-center gap-2">
+              <Spinner className="w-6 h-6" />
+              <div className="text-sm text-muted-foreground">Loading filtered data...</div>
+            </div>
           </div>
-        ) : !dataInitial?.nodes || dataInitial.nodes.length === 0 ? (
+        ) : null}
+        {!dataInitial?.nodes || dataInitial.nodes.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">
               No synchronized data found

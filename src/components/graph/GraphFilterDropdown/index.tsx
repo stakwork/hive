@@ -7,12 +7,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { FilterTab } from "@/stores/useGraphStore";
 import { BrainCog, CheckSquare, Code2, Layers, MessageSquare } from "lucide-react";
 
 interface GraphFilterDropdownProps {
   value: FilterTab;
   onValueChange: (value: FilterTab) => void;
+  disabled?: boolean;
 }
 
 const filterLabels: Record<FilterTab, string> = {
@@ -31,10 +33,10 @@ const filterIcons: Record<FilterTab, React.ReactNode> = {
   concepts: <BrainCog className="w-4 h-4" />,
 };
 
-export function GraphFilterDropdown({ value, onValueChange }: GraphFilterDropdownProps) {
+export function GraphFilterDropdown({ value, onValueChange, disabled }: GraphFilterDropdownProps) {
   return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger className="w-[160px] h-10 !bg-card/95 backdrop-blur-sm border-border hover:!bg-accent/95 transition-colors shadow-xs">
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SelectTrigger className={cn("w-[160px] h-10 !bg-card/95 backdrop-blur-sm border-border hover:!bg-accent/95 transition-colors shadow-xs", disabled && "opacity-50 cursor-not-allowed")}>
         <SelectValue placeholder="Filter graph" />
       </SelectTrigger>
       <SelectContent className="!bg-card/95 backdrop-blur-sm border-border shadow-md">

@@ -37,6 +37,7 @@ function DashboardInner() {
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
+  const isFilterLoading = useGraphStore((s) => s.isFilterLoading);
   const isOnboarding = useDataStore((s) => s.isOnboarding);
 
   useGraphPolling({
@@ -79,6 +80,7 @@ function DashboardInner() {
             <GraphFilterDropdown
               value={activeFilterTab}
               onValueChange={handleFilterChange}
+              disabled={isFilterLoading}
             />
           )}
           <TestFilterDropdown />

@@ -53,6 +53,7 @@ const defaultData: Omit<
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
   | 'setTestLayerVisibility'
+  | 'setIsFilterLoading'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -91,6 +92,7 @@ const defaultData: Omit<
   testLayerVisibility: {
     selectedLayer: null,
   },
+  isFilterLoading: false,
 }
 
 export const createGraphStore = (
@@ -272,5 +274,6 @@ export const createGraphStore = (
       setTestLayerVisibility: (layer) => set({
         testLayerVisibility: { selectedLayer: layer }
       }),
+      setIsFilterLoading: (loading) => set({ isFilterLoading: loading }),
     }
   });

@@ -129,6 +129,8 @@ export type GraphStore = {
   clearWebhookHighlights: () => void
   setActiveFilterTab: (tab: FilterTab) => void
   setTestLayerVisibility: (layer: TestLayerType) => void
+  isFilterLoading: boolean
+  setIsFilterLoading: (loading: boolean) => void
 }
 
 const defaultData: Omit<
@@ -176,6 +178,7 @@ const defaultData: Omit<
   | 'clearWebhookHighlights'
   | 'setActiveFilterTab'
   | 'setTestLayerVisibility'
+  | 'setIsFilterLoading'
 > = {
   data: null,
   selectionGraphData: { nodes: [], links: [] },
@@ -214,6 +217,7 @@ const defaultData: Omit<
   testLayerVisibility: {
     selectedLayer: null,
   },
+  isFilterLoading: false,
 }
 
 export const useGraphStore = create<GraphStore>()((set, get) => {
@@ -391,6 +395,7 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
     setTestLayerVisibility: (layer) => set({
       testLayerVisibility: { selectedLayer: layer }
     }),
+    setIsFilterLoading: (loading) => set({ isFilterLoading: loading }),
   }
 })
 

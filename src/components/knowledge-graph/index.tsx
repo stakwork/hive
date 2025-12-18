@@ -7,6 +7,7 @@ import { useDataStore, useGraphStore } from "@/stores/useStores";
 import { Link, Node } from "@Universe/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Universe } from "./Universe";
+import { Spinner } from "@/components/ui/spinner";
 interface ApiResponse {
   success: boolean;
   data?: {
@@ -71,7 +72,6 @@ const GraphComponentInner = ({
   width = "w-full",
 }: Props) => {
   const { id: workspaceId, slug, workspace } = useWorkspace();
-  const [nodesLoading, setNodesLoading] = useState(false);
   const currentRequestRef = useRef<AbortController | null>(null);
   const isInitialMountRef = useRef(true);
   const repositoryNodes = useDataStore((s) => s.repositoryNodes);
@@ -82,6 +82,8 @@ const GraphComponentInner = ({
   const resetData = useDataStore((s) => s.resetData);
   const dataInitial = useDataStore((s) => s.dataInitial);
   const activeFilterTab = useGraphStore((s) => s.activeFilterTab);
+  const isFilterLoading = useGraphStore((s) => s.isFilterLoading);
+  const setIsFilterLoading = useGraphStore((s) => s.setIsFilterLoading);
   const setNodeTypeOrder = useDataStore((s) => s.setNodeTypeOrder);
 
 
@@ -119,7 +121,7 @@ const GraphComponentInner = ({
       resetData();
     }
 
-    setNodesLoading(true);
+    setIsFilterLoading(true);
 
     // Create new abort controller for this request
     const abortController = new AbortController();
@@ -184,7 +186,7 @@ const GraphComponentInner = ({
               edges: [],
             });
           }
-          setNodesLoading(false);
+          setIsFilterLoading(false);
           return;
 
         default:
@@ -224,7 +226,7 @@ const GraphComponentInner = ({
     } finally {
       // Only set loading to false if this request wasn't aborted
       if (currentRequestRef.current === abortController) {
-        setNodesLoading(false);
+        setIsFilterLoading(false);
         currentRequestRef.current = null;
       }
     }
@@ -256,18 +258,20 @@ const GraphComponentInner = ({
   return (
     <div data-testid="graph-component" className={`dark ${height} ${width} border rounded-lg relative bg-card flex flex-col ${className || ''}`}>
 
-      <div className="border rounded overflow-hidden bg-card flex-1">
-        {nodesLoading && !isOnboarding ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-lg text-gray-300">Loading...</div>
+      <div className="border rounded overflow-hidden bg-card flex-1 relative">
+        {isFilterLoading && !isOnboarding ? (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
+            <div className="flex flex-col items-center gap-2">
+              <Spinner className="w-6 h-6" />
+              <div className="text-sm text-muted-foreground">Loading filtered data...</div>
+            </div>
           </div>
-        ) : ((!dataInitial?.nodes || dataInitial.nodes.length === 0) && !repositoryNodes.length) ? (
+        ) : null}
+        {(!dataInitial?.nodes || dataInitial.nodes.length === 0) && !repositoryNodes.length && !isOnboarding ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">No data found</div>
           </div>
-        ) : (
-          null
-        )}
+        ) : null}
         <Universe enableRotation={enableRotation} />
       </div>
 

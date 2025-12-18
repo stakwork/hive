@@ -107,4 +107,6 @@ export type GraphStore = {
   clearWebhookHighlights(): void
   setActiveFilterTab(tab: FilterTab): void
   setTestLayerVisibility(layer: TestLayerType): void
+  isFilterLoading: boolean
+  setIsFilterLoading(loading: boolean): void
 }
