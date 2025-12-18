@@ -17,7 +17,7 @@ const requiredEnvVars = {
 // Validate environment variables at runtime (skip in mock mode)
 export function validateEnvVars(): void {
   if (USE_MOCKS) return;
-  
+
   for (const [key, value] of Object.entries(requiredEnvVars)) {
     if (!value) {
       throw new Error(`Missing required environment variable: ${key}`);
@@ -35,12 +35,11 @@ export const optionalEnvVars = {
     ? `${MOCK_BASE}/api/mock/github/oauth/access_token`
     : "https://github.com/login/oauth/access_token",
   // Gemini API base URL (routes to mock endpoint when USE_MOCKS=true)
-  GEMINI_API_BASE_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/gemini`
-    : "https://generativelanguage.googleapis.com",
+  GEMINI_API_BASE_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/gemini` : "https://generativelanguage.googleapis.com",
   STAKWORK_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/stakwork`
     : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
+  STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
   STAKWORK_WORKFLOW_ID: process.env.STAKWORK_WORKFLOW_ID,
   STAKWORK_JANITOR_WORKFLOW_ID: process.env.STAKWORK_JANITOR_WORKFLOW_ID,
   STAKWORK_USER_JOURNEY_WORKFLOW_ID: process.env.STAKWORK_USER_JOURNEY_WORKFLOW_ID,
@@ -50,9 +49,7 @@ export const optionalEnvVars = {
   POOL_MANAGER_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/pool-manager`
     : process.env.POOL_MANAGER_BASE_URL || "https://workspaces.sphinx.chat/api",
-  SWARM_SUPER_ADMIN_URL: USE_MOCKS
-    ? `${MOCK_BASE}/api/mock/swarm-super-admin`
-    : process.env.SWARM_SUPER_ADMIN_URL,
+  SWARM_SUPER_ADMIN_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/swarm-super-admin` : process.env.SWARM_SUPER_ADMIN_URL,
   LIVEKIT_CALL_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/livekit/`
     : process.env.LIVEKIT_CALL_BASE_URL || "https://call.livekit.io/",
@@ -75,16 +72,13 @@ export function getGeminiApiKey(): string {
   if (USE_MOCKS) {
     return "mock-gemini-key-12345";
   }
-  
+
   const apiKey = process.env.GEMINI_API_KEY;
-  
+
   if (!apiKey) {
-    throw new Error(
-      'GEMINI_API_KEY environment variable is not set. ' +
-      'Please add it to your .env file.'
-    );
+    throw new Error("GEMINI_API_KEY environment variable is not set. " + "Please add it to your .env file.");
   }
-  
+
   return apiKey;
 }
 

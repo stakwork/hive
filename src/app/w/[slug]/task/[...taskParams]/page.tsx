@@ -523,9 +523,10 @@ export default function TaskChatPage() {
     if (!message.trim() && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
-    // Handle workflow_editor mode with selected step
-    if (taskMode === "workflow_editor" && selectedStep && currentWorkflowContext && currentTaskId) {
-      const messageText = message.trim() || "Modify this step";
+    // Handle workflow_editor mode - always use workflow editor endpoint
+    if (taskMode === "workflow_editor" && currentWorkflowContext && currentTaskId) {
+      const messageText = message.trim() || (selectedStep ? "Modify this step" : "");
+      if (!messageText) return; // Need a message if no step selected
 
       // Add user message to UI
       const newMessage: ChatMessage = createChatMessage({
@@ -549,11 +550,14 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
-            stepName: selectedStep.name,
-            stepUniqueId: selectedStep.unique_id,
-            stepDisplayName: selectedStep.display_name || selectedStep.name,
-            stepType: getStepType(selectedStep),
-            stepData: selectedStep,
+            // Only include step data if a step is selected
+            ...(selectedStep && {
+              stepName: selectedStep.name,
+              stepUniqueId: selectedStep.unique_id,
+              stepDisplayName: selectedStep.display_name || selectedStep.name,
+              stepType: getStepType(selectedStep),
+              stepData: selectedStep,
+            }),
           }),
         });
 
@@ -1239,7 +1243,7 @@ export default function TaskChatPage() {
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
-                      />
+                    />
                   </div>
                 </ResizablePanel>
                 <ResizableHandle withHandle />

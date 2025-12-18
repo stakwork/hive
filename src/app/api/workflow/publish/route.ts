@@ -78,25 +78,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error?.message || "Failed to publish workflow" }, { status: 400 });
     }
 
-    // Fetch the updated workflow from Stakwork
-    let updatedWorkflowJson: unknown = null;
-    try {
-      const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}.json`;
-      const workflowResponse = await fetch(workflowUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Token token=${config.STAKWORK_API_KEY}`,
-        },
-      });
-
-      if (workflowResponse.ok) {
-        const workflowData = await workflowResponse.json();
-        updatedWorkflowJson = workflowData;
-      }
-    } catch (fetchError) {
-      console.error("Error fetching updated workflow:", fetchError);
-      // Continue even if fetch fails
-    }
+    const workflowVersionId = result.data?.workflow_version_id;
 
     // Update the artifact to mark it as published
     if (artifactId) {
@@ -140,11 +122,15 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        if (artifactWithMessage?.message?.task?.id) {
-          const taskId = artifactWithMessage.message.task.id;
+        if (artifactWithMessage?.message?.task?.id && workflowVersionId) {
+          const task = artifactWithMessage.message.task;
+          const taskId = task.id;
+          const projectId = task.stakworkProjectId;
 
-          // Fetch the updated workflow from Stakwork
-          const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}.json`;
+          // Fetch the updated workflow definition from Stakwork
+          const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${workflowId}/`;
+          console.log("Fetching updated workflow from:", workflowUrl);
+
           const workflowResponse = await fetch(workflowUrl, {
             method: "GET",
             headers: {
@@ -155,7 +141,24 @@ export async function POST(request: NextRequest) {
 
           if (workflowResponse.ok) {
             const workflowResult = await workflowResponse.json();
-            const updatedWorkflowJson = workflowResult.data?.workflow_json || workflowResult.workflow_json;
+            console.log("Fetched workflow response keys:", Object.keys(workflowResult));
+            console.log(
+              "Fetched workflow data keys:",
+              workflowResult.data ? Object.keys(workflowResult.data) : "no data",
+            );
+            console.log(
+              "Fetched workflow.workflow keys:",
+              workflowResult.data?.workflow ? Object.keys(workflowResult.data.workflow) : "no workflow",
+            );
+
+            // The workflow_json should be in data.workflow.workflow_json or data.spec
+            const updatedWorkflowJson =
+              workflowResult.data?.workflow?.workflow_json ||
+              workflowResult.data?.spec ||
+              workflowResult.data?.workflow_json ||
+              workflowResult.workflow_json;
+
+            console.log("Updated workflow JSON found:", !!updatedWorkflowJson, typeof updatedWorkflowJson);
 
             if (updatedWorkflowJson) {
               // Get workflowName from the PUBLISH_WORKFLOW artifact content
@@ -165,6 +168,7 @@ export async function POST(request: NextRequest) {
               };
 
               // Create a new message with the updated WORKFLOW artifact
+              // Include both workflowJson (for Editor tab) and projectId (for Stakwork tab)
               const newMessage = await db.chatMessage.create({
                 data: {
                   taskId,
@@ -173,15 +177,19 @@ export async function POST(request: NextRequest) {
                   status: ChatStatus.SENT,
                   contextTags: JSON.stringify([]),
                   artifacts: {
-                    create: [{
-                      type: ArtifactType.WORKFLOW,
-                      content: {
-                        workflowJson: updatedWorkflowJson as string,
-                        workflowId: workflowId,
-                        workflowName: publishContent.workflowName || `Workflow ${workflowId}`,
-                        workflowRefId: workflowRefId || publishContent.workflowRefId || "",
+                    create: [
+                      {
+                        type: ArtifactType.WORKFLOW,
+                        content: {
+                          workflowJson: updatedWorkflowJson as string,
+                          workflowId: workflowId,
+                          workflowName: publishContent.workflowName || `Workflow ${workflowId}`,
+                          workflowRefId: workflowRefId || publishContent.workflowRefId || "",
+                          // Include projectId for Stakwork tab to show the project execution
+                          ...(projectId && { projectId: projectId.toString() }),
+                        },
                       },
-                    }],
+                    ],
                   },
                 },
                 include: {
@@ -191,11 +199,7 @@ export async function POST(request: NextRequest) {
 
               // Trigger Pusher to notify the frontend
               const channelName = getTaskChannelName(taskId);
-              await pusherServer.trigger(
-                channelName,
-                PUSHER_EVENTS.NEW_MESSAGE,
-                newMessage.id,
-              );
+              await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, newMessage.id);
 
               console.log(`Published workflow ${workflowId} and created new artifact message for task ${taskId}`);
             }
@@ -216,8 +220,7 @@ export async function POST(request: NextRequest) {
           workflowId,
           workflowRefId,
           published: true,
-          workflowVersionId: result.data?.workflow_version_id,
-          updatedWorkflowJson,
+          workflowVersionId,
           message: "Workflow published successfully",
         },
       },

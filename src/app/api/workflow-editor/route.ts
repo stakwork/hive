@@ -3,10 +3,12 @@ import { getServerSession } from "next-auth/next";
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { config } from "@/config/env";
-import { ChatRole, ChatStatus } from "@/lib/chat";
+import { ChatRole, ChatStatus, ArtifactType } from "@/lib/chat";
 import { WorkflowStatus } from "@prisma/client";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
+import { isDevelopmentMode } from "@/lib/runtime";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export const runtime = "nodejs";
 
@@ -64,10 +66,7 @@ export async function POST(request: NextRequest) {
 
     // Check if workflow editor workflow ID is configured
     if (!config.STAKWORK_WORKFLOW_EDITOR_WORKFLOW_ID) {
-      return NextResponse.json(
-        { error: "Workflow editor is not configured" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Workflow editor is not configured" }, { status: 500 });
     }
 
     // Find the task and get its workspace with swarm details
@@ -117,11 +116,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Restrict workflow editor to stakwork workspace only
-    if (task.workspace.slug !== "stakwork") {
-      return NextResponse.json(
-        { error: "Workflow editor is not available for this workspace" },
-        { status: 403 }
-      );
+    if (task.workspace.slug !== "stakwork" && !isDevelopmentMode) {
+      return NextResponse.json({ error: "Workflow editor is not available for this workspace" }, { status: 403 });
     }
 
     // Create the chat message
@@ -212,10 +208,7 @@ export async function POST(request: NextRequest) {
         where: { id: taskId },
         data: { workflowStatus: WorkflowStatus.FAILED },
       });
-      return NextResponse.json(
-        { error: `Stakwork call failed: ${response.statusText}` },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: `Stakwork call failed: ${response.statusText}` }, { status: 500 });
     }
 
     const result = await response.json();
@@ -238,6 +231,44 @@ export async function POST(request: NextRequest) {
         where: { id: taskId },
         data: updateData,
       });
+
+      // Create a new WORKFLOW artifact with the projectId so the panel can poll it
+      if (result.data?.project_id) {
+        try {
+          const newMessage = await db.chatMessage.create({
+            data: {
+              taskId,
+              message: "",
+              role: ChatRole.ASSISTANT,
+              status: ChatStatus.SENT,
+              contextTags: JSON.stringify([]),
+              artifacts: {
+                create: [
+                  {
+                    type: ArtifactType.WORKFLOW,
+                    content: {
+                      projectId: result.data.project_id.toString(),
+                      workflowId: workflowId,
+                      workflowName: workflowName || `Workflow ${workflowId}`,
+                      workflowRefId: workflowRefId || "",
+                    },
+                  },
+                ],
+              },
+            },
+            include: {
+              artifacts: true,
+            },
+          });
+
+          // Trigger Pusher to notify the frontend
+          const channelName = getTaskChannelName(taskId);
+          await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, newMessage.id);
+        } catch (artifactError) {
+          console.error("Error creating workflow artifact:", artifactError);
+          // Don't fail the request if artifact creation fails
+        }
+      }
     } else {
       await db.task.update({
         where: { id: taskId },
@@ -251,13 +282,10 @@ export async function POST(request: NextRequest) {
         message: chatMessage,
         workflow: result.data,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error in workflow editor:", error);
-    return NextResponse.json(
-      { error: "Failed to process workflow editor request" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to process workflow editor request" }, { status: 500 });
   }
 }
