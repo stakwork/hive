@@ -13,6 +13,7 @@ import { CalloutsLayer } from './Callouts'
 import { EdgesGPU } from './Connections/EdgeCpu'
 import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
+import { MockNodesLayer } from './HighlightedNodes/MockNodesLayer'
 import { HtmlNodesLayer } from './HtmlNodesLayer'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
@@ -474,6 +475,7 @@ export const Graph = () => {
       </group>
       {!isOnboarding && <HighlightedNodesLayer />}
       {!isOnboarding && <CalloutsLayer />}
+      <MockNodesLayer />
       {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
