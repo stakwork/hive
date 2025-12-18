@@ -47,7 +47,7 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
     try {
       setIsLoadingNodes(true)
 
-      const depth = 1
+      const depth = 0
       const limit = 5000
       const topNodeCount = 5000
       const nodeTypes = ['Mock']
