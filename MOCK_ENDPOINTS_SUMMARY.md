@@ -136,3 +136,30 @@ See `/docs/JARVIS_MOCK_ENDPOINTS.md` for complete documentation.
 - All `aieo` library calls route to mock endpoints
 
 **Documentation:** `docs/ANTHROPIC_MOCK_ENDPOINTS.md`
+
+## Pusher Real-time Messaging Mock
+
+**Status**: ✅ Mocked
+
+**Service**: Real-time messaging for chat updates, workflow status changes, and live notifications  
+**Documentation**: [PUSHER_MOCK_ENDPOINTS.md](docs/PUSHER_MOCK_ENDPOINTS.md)  
+**Debug Endpoints**: 
+- `GET /api/mock/pusher/status` - Inspect subscriptions, connections, event history
+- `POST /api/mock/pusher/status` - Reset mock state
+
+**Features**:
+- In-memory pub/sub simulation
+- Full subscription lifecycle (subscribe/unsubscribe/trigger)
+- Connection state tracking
+- Event history for debugging
+- Drop-in replacement (zero code changes)
+
+**State Manager**: `mockPusherState` in `src/lib/mock/pusher-state.ts`
+
+**Mock Behavior**:
+- Synchronous event delivery to all subscribers
+- Channel and event name validation
+- Callback error handling
+- Test isolation via reset()
+
+**Usage**: Set `USE_MOCKS=true` - Pusher library automatically uses mock implementations

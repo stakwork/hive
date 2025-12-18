@@ -51,6 +51,18 @@ vi.mock("@/config/env", () => ({
     USE_MOCKS: true,
     MOCK_BASE: "http://localhost:3000",
   },
+  getPusherConfig: vi.fn(() => ({
+    appId: "mock-app-id",
+    key: "mock-pusher-key",
+    secret: "mock-pusher-secret",
+    cluster: "mock-cluster",
+    useTLS: true,
+  })),
+  getPusherPublicConfig: vi.fn(() => ({
+    key: "mock-pusher-public-key",
+    cluster: "mock-cluster",
+  })),
+  isPusherConfigured: vi.fn(() => true),
 }));
 
 export { mockEnv, mockConfig };

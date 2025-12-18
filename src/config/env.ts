@@ -89,6 +89,84 @@ export function isGeminiConfigured(): boolean {
   return !!process.env.GEMINI_API_KEY;
 }
 
+/**
+ * Pusher Configuration
+ * Returns mock credentials when USE_MOCKS=true, else reads from environment
+ */
+export interface PusherConfig {
+  appId: string;
+  key: string;
+  secret: string;
+  cluster: string;
+  useTLS: boolean;
+}
+
+export interface PusherPublicConfig {
+  key: string;
+  cluster: string;
+}
+
+/**
+ * Get server-side Pusher configuration
+ * Returns mock credentials when USE_MOCKS=true
+ */
+export function getPusherConfig(): PusherConfig {
+  if (USE_MOCKS) {
+    return {
+      appId: "mock-app-id",
+      key: "mock-pusher-key",
+      secret: "mock-pusher-secret",
+      cluster: "mock-cluster",
+      useTLS: true,
+    };
+  }
+
+  return {
+    appId: process.env.PUSHER_APP_ID || "",
+    key: process.env.PUSHER_KEY || "",
+    secret: process.env.PUSHER_SECRET || "",
+    cluster: process.env.PUSHER_CLUSTER || "",
+    useTLS: true,
+  };
+}
+
+/**
+ * Get client-side Pusher configuration
+ * Returns mock credentials when USE_MOCKS=true
+ */
+export function getPusherPublicConfig(): PusherPublicConfig {
+  if (USE_MOCKS) {
+    return {
+      key: "mock-pusher-public-key",
+      cluster: "mock-cluster",
+    };
+  }
+
+  return {
+    key: process.env.NEXT_PUBLIC_PUSHER_KEY || "",
+    cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "",
+  };
+}
+
+/**
+ * Check if Pusher is configured
+ * Always returns true in mock mode
+ */
+export function isPusherConfigured(): boolean {
+  if (USE_MOCKS) {
+    return true;
+  }
+
+  return !!(
+    process.env.PUSHER_APP_ID &&
+    process.env.PUSHER_KEY &&
+    process.env.PUSHER_SECRET &&
+    process.env.PUSHER_CLUSTER &&
+    process.env.NEXT_PUBLIC_PUSHER_KEY &&
+    process.env.NEXT_PUBLIC_PUSHER_CLUSTER
+  );
+}
+
 // Combined environment configuration
 export const config = {
   ...requiredEnvVars,

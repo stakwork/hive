@@ -42,7 +42,20 @@ vi.mock("@/config/env", () => ({
     STAKWORK_BASE_URL: "https://api.stakwork.com/api/v1",
     POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
     API_TIMEOUT: 10000,
+    USE_MOCKS: true,
   },
+  getPusherConfig: vi.fn(() => ({
+    appId: "mock-app-id",
+    key: "mock-pusher-key",
+    secret: "mock-pusher-secret",
+    cluster: "mock-cluster",
+    useTLS: true,
+  })),
+  getPusherPublicConfig: vi.fn(() => ({
+    key: "mock-pusher-public-key",
+    cluster: "mock-cluster",
+  })),
+  isPusherConfigured: vi.fn(() => true),
 }));
 
 const mockStakworkService = stakworkService as vi.MockedFunction<typeof stakworkService>;

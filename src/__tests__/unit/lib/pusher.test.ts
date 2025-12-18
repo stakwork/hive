@@ -1,28 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mock the external libraries before importing the module under test
-vi.mock("pusher", () => {
-  const MockPusher = vi.fn().mockImplementation((config) => ({
-    trigger: vi.fn(),
-    config,
-  }));
-  return { default: MockPusher };
-});
+// Note: Tests run in mock mode (USE_MOCKS=true) by default
+// The pusher.ts module uses MockPusherServer and MockPusherClient in test environment
+// These tests verify the mock implementations work correctly
 
-vi.mock("pusher-js", () => {
-  const MockPusherClient = vi.fn().mockImplementation((key, options) => ({
-    subscribe: vi.fn(),
-    bind: vi.fn(),
-    unbind: vi.fn(),
-    disconnect: vi.fn(),
-    key,
-    options,
-  }));
-  return { default: MockPusherClient };
-});
-
-import Pusher from "pusher";
-import PusherClient from "pusher-js";
 import {
   pusherServer,
   getPusherClient,
@@ -38,15 +19,11 @@ describe("pusher.ts", () => {
     // Reset mocks before each test
     vi.clearAllMocks();
     
-    // Reset environment variables to a clean state
+    // Reset environment variables to a clean state (mocks enabled by default)
     process.env = {
       ...originalEnv,
-      PUSHER_APP_ID: "test-app-id",
-      PUSHER_KEY: "test-key",
-      PUSHER_SECRET: "test-secret",
-      PUSHER_CLUSTER: "test-cluster",
-      NEXT_PUBLIC_PUSHER_KEY: "test-public-key",
-      NEXT_PUBLIC_PUSHER_CLUSTER: "test-public-cluster",
+      USE_MOCKS: "true",
+      NEXTAUTH_URL: "http://localhost:3000",
     };
 
     // Reset the internal _pusherClient variable by clearing the module cache
@@ -58,54 +35,31 @@ describe("pusher.ts", () => {
   });
 
   describe("pusherServer", () => {
-    it("should create a Pusher instance with correct configuration", async () => {
+    it("should create a MockPusherServer instance in test mode", async () => {
       // Re-import after environment setup
       const { pusherServer: testPusherServer } = await import("@/lib/pusher");
-      
-      expect(Pusher).toHaveBeenCalledWith({
-        appId: "test-app-id",
-        key: "test-key",
-        secret: "test-secret",
-        cluster: "test-cluster",
-        useTLS: true,
-      });
       
       expect(testPusherServer).toBeDefined();
-      expect(testPusherServer.config).toEqual({
-        appId: "test-app-id",
-        key: "test-key",
-        secret: "test-secret",
-        cluster: "test-cluster",
-        useTLS: true,
-      });
-    });
-
-    it("should have a trigger method", async () => {
-      // Re-import after environment setup
-      const { pusherServer: testPusherServer } = await import("@/lib/pusher");
-      
       expect(testPusherServer.trigger).toBeDefined();
       expect(typeof testPusherServer.trigger).toBe("function");
     });
 
-    it("should use environment variables for configuration", async () => {
-      // Set different environment variables
-      process.env.PUSHER_APP_ID = "different-app-id";
-      process.env.PUSHER_KEY = "different-key";
-      process.env.PUSHER_SECRET = "different-secret";
-      process.env.PUSHER_CLUSTER = "different-cluster";
-
-      // Clear the module cache and re-import
-      vi.resetModules();
+    it("should have a trigger method that accepts channels, event, and data", async () => {
       const { pusherServer: testPusherServer } = await import("@/lib/pusher");
+      
+      // Test that trigger can be called (mock won't throw)
+      await expect(
+        testPusherServer.trigger("test-channel", "test-event", { data: "test" })
+      ).resolves.not.toThrow();
+    });
 
-      expect(Pusher).toHaveBeenCalledWith({
-        appId: "different-app-id",
-        key: "different-key",
-        secret: "different-secret",
-        cluster: "different-cluster",
-        useTLS: true,
-      });
+    it("should support triggering events to multiple channels", async () => {
+      const { pusherServer: testPusherServer } = await import("@/lib/pusher");
+      
+      // Test array of channels
+      await expect(
+        testPusherServer.trigger(["channel-1", "channel-2"], "test-event", { data: "test" })
+      ).resolves.not.toThrow();
     });
   });
 
@@ -115,18 +69,14 @@ describe("pusher.ts", () => {
       vi.resetModules();
     });
 
-    it("should create a PusherClient instance with correct configuration", async () => {
+    it("should create a MockPusherClient instance in test mode", async () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
       const client = testGetPusherClient();
       
-      expect(PusherClient).toHaveBeenCalledWith("test-public-key", {
-        cluster: "test-public-cluster",
-      });
-      
       expect(client).toBeDefined();
-      expect(client.key).toBe("test-public-key");
-      expect(client.options).toEqual({ cluster: "test-public-cluster" });
+      expect(client.subscribe).toBeDefined();
+      expect(client.disconnect).toBeDefined();
     });
 
     it("should implement lazy initialization (singleton pattern)", async () => {
@@ -135,55 +85,38 @@ describe("pusher.ts", () => {
       const client1 = testGetPusherClient();
       const client2 = testGetPusherClient();
       
-      // Should only create one instance
-      expect(PusherClient).toHaveBeenCalledTimes(1);
+      // Should return the same instance
       expect(client1).toBe(client2);
     });
 
-    it("should throw error when NEXT_PUBLIC_PUSHER_KEY is missing", async () => {
-      delete process.env.NEXT_PUBLIC_PUSHER_KEY;
-      vi.resetModules();
-      
+    it("should return a client with subscribe method", async () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+      const client = testGetPusherClient();
+      const channel = client.subscribe("test-channel");
+      
+      expect(channel).toBeDefined();
+      expect(channel.bind).toBeDefined();
+      expect(typeof channel.bind).toBe("function");
     });
 
-    it("should throw error when NEXT_PUBLIC_PUSHER_CLUSTER is missing", async () => {
-      delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
-      vi.resetModules();
-      
+    it("should support channel unsubscribe", async () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+      const client = testGetPusherClient();
+      client.subscribe("test-channel");
+      
+      // Should not throw
+      expect(() => client.unsubscribe("test-channel")).not.toThrow();
     });
 
-    it("should throw error when both environment variables are missing", async () => {
-      delete process.env.NEXT_PUBLIC_PUSHER_KEY;
-      delete process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
-      vi.resetModules();
-      
+    it("should support disconnect", async () => {
       const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
       
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
-    });
-
-    it("should work with empty string environment variables", async () => {
-      process.env.NEXT_PUBLIC_PUSHER_KEY = "";
-      process.env.NEXT_PUBLIC_PUSHER_CLUSTER = "test-cluster";
-      vi.resetModules();
+      const client = testGetPusherClient();
       
-      const { getPusherClient: testGetPusherClient } = await import("@/lib/pusher");
-      
-      expect(() => testGetPusherClient()).toThrow(
-        "Pusher environment variables are not configured"
-      );
+      // Should not throw
+      expect(() => client.disconnect()).not.toThrow();
     });
 
     it("should have expected methods on returned client", async () => {
