@@ -105,16 +105,39 @@ export async function createTicket(
   validateEnum(data.status, TaskStatus, "status");
   validateEnum(data.priority, Priority, "priority");
 
+  // Resolve phaseId: use provided value or default to first phase
+  let resolvedPhaseId = data.phaseId || null;
+
   if (data.phaseId) {
+    // Validate provided phaseId belongs to this feature
     const phase = await db.phase.findFirst({
       where: {
         id: data.phaseId,
         featureId: featureId,
+        deleted: false,
       },
     });
 
     if (!phase) {
       throw new Error("Phase not found or does not belong to this feature");
+    }
+  } else {
+    // Default to the first phase for this feature
+    const defaultPhase = await db.phase.findFirst({
+      where: {
+        featureId: featureId,
+        deleted: false,
+      },
+      orderBy: {
+        order: "asc",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (defaultPhase) {
+      resolvedPhaseId = defaultPhase.id;
     }
   }
 
@@ -141,7 +164,7 @@ export async function createTicket(
 
   const nextOrder = await calculateNextOrder(db.task, {
     featureId,
-    phaseId: data.phaseId || null,
+    phaseId: resolvedPhaseId,
   });
 
   // Determine if assignee is a system assignee
@@ -160,7 +183,7 @@ export async function createTicket(
       description: data.description?.trim() || null,
       workspaceId: feature.workspaceId,
       featureId,
-      phaseId: data.phaseId || null,
+      phaseId: resolvedPhaseId,
       status: data.status || TaskStatus.TODO,
       priority: data.priority || Priority.MEDIUM,
       order: nextOrder,
