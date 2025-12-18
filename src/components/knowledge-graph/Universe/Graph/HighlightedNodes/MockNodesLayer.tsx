@@ -1,4 +1,6 @@
 import { useWorkspace } from '@/hooks/useWorkspace'
+import { useDataStore } from '@/stores/useStores'
+import { Billboard, Text } from '@react-three/drei'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import * as THREE from 'three'
 
@@ -6,11 +8,12 @@ const NODE_SIZE = 45
 const NODE_SCALE = 0.8
 const NODE_OPACITY = 0.9
 const MOCK_COLOR = 'lime' // Purple for mock nodes
-const DEFAULT_CIRCLE_RADIUS = 2200
+const DEFAULT_CIRCLE_RADIUS = 3000
 
 type MockNode = {
   ref_id: string
   name: string
+  description?: string
   x: number
   y: number
   z: number
@@ -22,10 +25,19 @@ type MockNodesLayerProps = {
 
 export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRCLE_RADIUS }) => {
   const { id: workspaceId } = useWorkspace()
+  const nodeTypes = useDataStore((s) => s.nodeTypes)
 
   const [mockNodes, setMockNodes] = useState<MockNode[]>([])
   const [isLoadingNodes, setIsLoadingNodes] = useState(false)
   const [hasFetchedMocks, setHasFetchedMocks] = useState(false)
+
+  // Calculate Y position for Mock nodes (put them at the top) - updates when nodeTypes change
+  const mockYPosition = useMemo(() => {
+    const totalTypes = nodeTypes.length + 1
+    const layerSpacing = 500
+    const startOffset = ((totalTypes - 1) / 2) * layerSpacing
+    return startOffset // Top position (first layer)
+  }, [nodeTypes])
 
   const fetchMockData = useCallback(async () => {
     if (!workspaceId || hasFetchedMocks) {
@@ -70,14 +82,15 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
 
       console.log(`[MockNodesLayer] Fetched ${fetchedNodes.length} Mock nodes`)
 
-      // Position nodes in a horizontal circle around origin
+      // Position nodes in a horizontal circle around origin (Y position will be updated during render)
       const nodesWithPositions = fetchedNodes.map((node: any, index: number) => {
         const angle = (index / fetchedNodes.length) * 2 * Math.PI
         return {
           ref_id: node.ref_id,
           name: node.name || `Mock ${index + 1}`,
+          description: node.properties?.description || '',
           x: Math.cos(angle) * radius,
-          y: 0,
+          y: 0, // Will be updated during render
           z: Math.sin(angle) * radius,
         }
       })
@@ -120,13 +133,25 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
   return (
     <group name="mock-nodes-layer">
       {mockNodes.map((node) => (
-        <mesh
-          key={`mock-${node.ref_id}`}
-          geometry={nodeGeometry || undefined}
-          material={mockMaterial || undefined}
-          position={new THREE.Vector3(node.x, node.y, node.z)}
-          scale={NODE_SCALE}
-        />
+        <Billboard key={`mock-group-${node.ref_id}`} position={new THREE.Vector3(node.x, mockYPosition, node.z)}>
+          <mesh
+            geometry={nodeGeometry || undefined}
+            material={mockMaterial || undefined}
+            scale={NODE_SCALE}
+          />
+          {node.description && (
+            <Text
+              position={[0, NODE_SIZE + 20, 0]}
+              fontSize={12}
+              color="white"
+              anchorX="center"
+              anchorY="bottom"
+              maxWidth={200}
+            >
+              {node.description}
+            </Text>
+          )}
+        </Billboard>
       ))}
     </group>
   )
