@@ -9,8 +9,34 @@ on:
       - master
 
 jobs:
-  playwright:
+  # Test discovery job to dynamically find all test directories
+  discover-tests:
     runs-on: ubuntu-latest
+    outputs:
+      test_groups: ${{ steps.find-tests.outputs.test_groups }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Find test directories
+        id: find-tests
+        run: |
+          # Find all directories containing .spec.ts files
+          TEST_DIRS=$(find src/__tests__/e2e/specs -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | jq -R -s -c 'split("\n")[:-1]')
+          echo "test_groups=$TEST_DIRS" >> $GITHUB_OUTPUT
+          echo "Discovered test groups: $TEST_DIRS"
+
+  # Run tests in parallel across multiple runners
+  # Each matrix job runs on its own VM with its own server and database
+  playwright:
+    needs: discover-tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      max-parallel: 7  # Run all 7 test groups concurrently
+      matrix:
+        test_group: ${{ fromJson(needs.discover-tests.outputs.test_groups) }}
 
     services:
       postgres:
@@ -18,7 +44,7 @@ jobs:
         env:
           POSTGRES_USER: hive_user
           POSTGRES_PASSWORD: hive_password
-          POSTGRES_DB: hive_db
+          POSTGRES_DB: hive_db_test
         ports:
           - 5432:5432
         options: >-
@@ -35,32 +61,34 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
       - name: Generate Prisma client
         env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db_test
         run: npx prisma generate
 
       - name: Run Prisma migrations
         env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
-        run: npx prisma migrate dev --name init
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db_test
+        run: npx prisma migrate deploy
 
       - name: Start application in development mode
         env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db_test
           NEXTAUTH_URL: http://localhost:3000
-          NEXTAUTH_SECRET: fake_secret
-          JWT_SECRET: fake_secret
+          NEXTAUTH_SECRET: fake_secret_for_testing
+          JWT_SECRET: fake_secret_jwt_token_secret_key_for_testing_12345
           GITHUB_CLIENT_ID: fake_secret
           GITHUB_CLIENT_SECRET: fake_secret
-          TOKEN_ENCRYPTION_KEY: fake_secret
+          TOKEN_ENCRYPTION_KEY: fake_secret_encryption_key_123456
+          TOKEN_ENCRYPTION_KEY_ID: k1
           STAKWORK_API_KEY: fake_secret
           STAKWORK_BASE_URL: https://jobs.stakwork.com/api/v1
           STAKWORK_CUSTOMERS_EMAIL: fake_secret
@@ -74,24 +102,51 @@ jobs:
           GITHUB_APP_SLUG: hivechatai
           POD_URL: http://localhost:3000
           NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION: "true"
-        run: npm run dev &
+        run: |
+          npm run dev > /tmp/dev-server-${{ matrix.test_group }}.log 2>&1 &
+          echo $! > /tmp/dev-server.pid
+          echo "Started server for ${{ matrix.test_group }} with PID $(cat /tmp/dev-server.pid)"
 
       - name: Wait for application to be ready
-        run: npx wait-on http://localhost:3000 --timeout 120000
+        run: |
+          echo "Waiting for server to be ready..."
+          npx wait-on http://localhost:3000 --timeout 120000 || {
+            echo "Server failed to start. Logs:"
+            cat /tmp/dev-server-${{ matrix.test_group }}.log
+            exit 1
+          }
+          echo "Server is ready for ${{ matrix.test_group }}!"
 
-      - name: Run Playwright tests
+      - name: Run Playwright tests for ${{ matrix.test_group }}
         env:
-          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
+          DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db_test
           NEXTAUTH_URL: http://localhost:3000
-          NEXTAUTH_SECRET: fake_secret
-          JWT_SECRET: fake_secret
+          NEXTAUTH_SECRET: fake_secret_for_testing
+          JWT_SECRET: fake_secret_jwt_token_secret_key_for_testing_12345
           POD_URL: http://localhost:3000
-        run: npx playwright test
+          CI: "true"
+        run: npx playwright test src/__tests__/e2e/specs/${{ matrix.test_group }} --reporter=list,html
 
-      - name: Upload Playwright Report
+      - name: Stop development server
+        if: always()
+        run: |
+          if [ -f /tmp/dev-server.pid ]; then
+            echo "Stopping server..."
+            kill $(cat /tmp/dev-server.pid) || true
+          fi
+
+      - name: Upload Playwright Report for ${{ matrix.test_group }}
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.test_group }}
           path: playwright-report/
           retention-days: 30
+
+      - name: Upload server logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: server-logs-${{ matrix.test_group }}
+          path: /tmp/dev-server-${{ matrix.test_group }}.log
+          retention-days: 7
