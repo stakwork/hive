@@ -908,6 +908,7 @@ enum StakworkRunType {
   TASK_GENERATION
   USER_STORIES
   REQUIREMENTS
+  POD_REPAIR
 }
 
 enum StakworkRunDecision {
