@@ -153,6 +153,12 @@ export async function ensureMockWorkspaceForUser(
         branch: "main",
         status: RepositoryStatus.SYNCED,
         workspaceId: workspace.id,
+        // Test setup flags for mock workspaces
+        testingFrameworkSetup: true,
+        playwrightSetup: true,
+        unitGlob: "src/**/*.{test,spec}.{ts,tsx}",
+        integrationGlob: "src/__tests__/integration/**/*.test.ts",
+        e2eGlob: "src/__tests__/e2e/specs/**/*.spec.ts",
       },
     });
 

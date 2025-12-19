@@ -11,6 +11,8 @@ import {
   PhaseStatus,
   Priority,
   RecommendationStatus,
+  StakworkRunDecision,
+  StakworkRunType,
   TaskSourceType,
   TaskStatus,
   WorkflowStatus,
@@ -50,13 +52,24 @@ export async function seedMockData(
   const features = await seedFeatures(userId, workspaceId);
 
   // Create tasks of various types (with team member assignments and pod links)
-  const tasksWithPods = await seedTasks(userId, workspaceId, features, teamMemberIds);
+  const { tasksWithPods, allTasks } = await seedTasks(userId, workspaceId, features, teamMemberIds);
 
   // Pre-seed pool state for capacity page
   preseedPoolState(tasksWithPods);
 
   // Create janitor config, runs, and recommendations
   await seedJanitorData(userId, workspaceId);
+
+  // Seed StakworkRuns for AI generation history
+  await seedStakworkRuns(workspaceId, features);
+
+  // Seed Screenshots for USER_JOURNEY tasks
+  const userJourneyTasks = allTasks.filter(
+    (t) => t.sourceType === TaskSourceType.USER_JOURNEY
+  );
+  if (userJourneyTasks.length > 0) {
+    await seedScreenshots(workspaceId, userJourneyTasks);
+  }
 
   console.log("[MockSeed] Mock data seeding complete");
 }
@@ -276,7 +289,7 @@ async function seedTasks(
   workspaceId: string,
   features: Array<{ id: string; title: string; phaseId: string }>,
   teamMemberIds: string[]
-): Promise<TaskWithPod[]> {
+): Promise<{ tasksWithPods: TaskWithPod[]; allTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> }> {
   const mockPodUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
   const taskTemplates = [
@@ -409,7 +422,7 @@ async function seedTasks(
     },
   ];
 
-  const createdTasks: Array<{ id: string; title: string; status: TaskStatus }> = [];
+  const createdTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> = [];
   const tasksWithPods: TaskWithPod[] = [];
   let podIndex = 0;
 
@@ -459,7 +472,7 @@ async function seedTasks(
         podId,
         agentUrl,
       },
-      select: { id: true, title: true, status: true },
+      select: { id: true, title: true, status: true, sourceType: true },
     });
 
     createdTasks.push(task);
@@ -473,7 +486,7 @@ async function seedTasks(
   await seedChatMessagesWithArtifacts(createdTasks.slice(0, 5));
 
   console.log(`[MockSeed] Created ${createdTasks.length} tasks, ${tasksWithPods.length} with pods`);
-  return tasksWithPods;
+  return { tasksWithPods, allTasks: createdTasks };
 }
 
 /**
@@ -621,6 +634,89 @@ async function seedChatMessagesWithArtifacts(
       },
     });
 
+    // Add GRAPH artifact (for first 2 tasks)
+    if (tasks.indexOf(task) < 2) {
+      const graphMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "I've also updated the dependency graph to show the new relationships:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: graphMsg.id,
+          type: ArtifactType.GRAPH,
+          content: {
+            nodes: [
+              { id: "Dashboard", label: "Dashboard Component" },
+              { id: "useData", label: "useData Hook" },
+              { id: "DataDisplay", label: "DataDisplay Component" },
+            ],
+            edges: [
+              { from: "Dashboard", to: "useData" },
+              { from: "Dashboard", to: "DataDisplay" },
+            ],
+          },
+        },
+      });
+    }
+
+    // Add WORKFLOW artifact (for task index 1 and 3)
+    if (tasks.indexOf(task) === 1 || tasks.indexOf(task) === 3) {
+      const workflowMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "Here's the CI/CD workflow status for this task:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: workflowMsg.id,
+          type: ArtifactType.WORKFLOW,
+          content: {
+            workflowName: "CI Pipeline",
+            status: "success",
+            jobs: [
+              { name: "Build", status: "success", duration: "2m 15s" },
+              { name: "Test", status: "success", duration: "5m 30s" },
+              { name: "Deploy", status: "success", duration: "3m 45s" },
+            ],
+          },
+        },
+      });
+    }
+
+    // Add PULL_REQUEST artifact (for done tasks)
+    if (task.status === TaskStatus.DONE) {
+      const prMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "The pull request has been successfully merged:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: prMsg.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            number: Math.floor(Math.random() * 1000) + 1,
+            title: `feat: ${task.title}`,
+            state: "merged",
+            url: `https://github.com/stakwork/hive/pull/${Math.floor(Math.random() * 1000) + 1}`,
+            additions: 125,
+            deletions: 45,
+            changedFiles: 8,
+          },
+        },
+      });
+    }
+
     // If task is done, add completion message
     if (task.status === TaskStatus.DONE) {
       await db.chatMessage.create({
@@ -642,23 +738,18 @@ async function seedChatMessagesWithArtifacts(
 function preseedPoolState(tasksWithPods: TaskWithPod[]): void {
   if (tasksWithPods.length === 0) return;
 
-  try {
-    const pool = mockPoolState.getOrCreatePool("mock-pool");
+  const pool = mockPoolState.getOrCreatePool("mock-pool");
 
-    for (const task of tasksWithPods) {
-      const pod = pool.pods.find((p) => p.id === task.podId);
-      if (pod) {
-        pod.usage_status = "in_use";
-        pod.userInfo = `Working on: ${task.title}`;
-        pod.claimedAt = new Date();
-      }
+  for (const task of tasksWithPods) {
+    const pod = pool.pods.find((p) => p.id === task.podId);
+    if (pod) {
+      pod.usage_status = "in_use";
+      pod.userInfo = `Working on: ${task.title}`;
+      pod.claimedAt = new Date();
     }
-
-    console.log(`[MockSeed] Pre-seeded ${tasksWithPods.length} pods with task info`);
-  } catch (error) {
-    // Pool state is optional, don't fail if it's not available
-    console.log("[MockSeed] Could not pre-seed pool state (this is fine in some environments)");
   }
+
+  console.log(`[MockSeed] Pre-seeded ${tasksWithPods.length} pods with task info`);
 }
 
 async function seedJanitorData(
@@ -730,4 +821,253 @@ async function seedJanitorData(
       },
     });
   }
+
+  // Add SECURITY_REVIEW and GENERAL_REFACTORING recommendations
+  const securityRun = await db.janitorRun.create({
+    data: {
+      janitorConfigId: janitorConfig.id,
+      janitorType: JanitorType.SECURITY_REVIEW,
+      status: JanitorStatus.COMPLETED,
+      triggeredBy: JanitorTrigger.SCHEDULED,
+      startedAt: new Date(Date.now() - 7200000), // 2 hours ago
+      completedAt: new Date(Date.now() - 7000000), // 1h 56m ago
+      metadata: { filesScanned: 156, issuesFound: 3 },
+    },
+  });
+
+  await db.janitorRecommendation.create({
+    data: {
+      janitorRunId: securityRun.id,
+      workspaceId,
+      title: "Update dependencies with security vulnerabilities",
+      description:
+        "Found 3 packages with known security vulnerabilities. Update to latest secure versions.",
+      priority: Priority.CRITICAL,
+      impact: "Prevents potential security exploits and data breaches",
+      status: RecommendationStatus.PENDING,
+    },
+  });
+
+  const refactoringRun = await db.janitorRun.create({
+    data: {
+      janitorConfigId: janitorConfig.id,
+      janitorType: JanitorType.GENERAL_REFACTORING,
+      status: JanitorStatus.COMPLETED,
+      triggeredBy: JanitorTrigger.MANUAL,
+      startedAt: new Date(Date.now() - 10800000), // 3 hours ago
+      completedAt: new Date(Date.now() - 10200000), // 2h 50m ago
+      metadata: { filesAnalyzed: 89, refactoringOpportunities: 12 },
+    },
+  });
+
+  await db.janitorRecommendation.create({
+    data: {
+      janitorRunId: refactoringRun.id,
+      workspaceId,
+      title: "Extract duplicate code into shared utilities",
+      description:
+        "Found 12 instances of duplicate code that could be extracted into reusable utility functions.",
+      priority: Priority.MEDIUM,
+      impact: "Improves code maintainability and reduces technical debt",
+      status: RecommendationStatus.PENDING,
+    },
+  });
+}
+
+/**
+ * Seeds StakworkRuns for AI generation history
+ * Creates 2-3 runs per feature with realistic types and statuses
+ */
+async function seedStakworkRuns(
+  workspaceId: string,
+  features: Array<{ id: string; title: string }>
+): Promise<void> {
+  const mockWebhookUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+
+  for (const feature of features) {
+    // Architecture run (completed)
+    await db.stakworkRun.create({
+      data: {
+        workspaceId,
+        featureId: feature.id,
+        type: StakworkRunType.ARCHITECTURE,
+        webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+        projectId: Math.floor(Math.random() * 10000),
+        status: WorkflowStatus.COMPLETED,
+        result: JSON.stringify({
+          architecture: "Microservices with event-driven communication",
+          components: ["API Gateway", "Auth Service", "Data Service"],
+          technologies: ["Node.js", "PostgreSQL", "Redis", "Docker"],
+        }),
+        dataType: "json",
+        decision: StakworkRunDecision.ACCEPTED,
+        createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
+        updatedAt: new Date(Date.now() - 86400000 * 2),
+      },
+    });
+
+    // Requirements run (completed)
+    await db.stakworkRun.create({
+      data: {
+        workspaceId,
+        featureId: feature.id,
+        type: StakworkRunType.REQUIREMENTS,
+        webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+        projectId: Math.floor(Math.random() * 10000),
+        status: WorkflowStatus.COMPLETED,
+        result: `Functional Requirements:
+- User authentication with OAuth 2.0
+- Session management with secure cookies
+- Role-based access control (RBAC)
+- Multi-factor authentication support
+
+Non-Functional Requirements:
+- Response time < 200ms for authentication
+- 99.9% uptime
+- GDPR compliance for user data`,
+        dataType: "string",
+        decision: StakworkRunDecision.ACCEPTED,
+        createdAt: new Date(Date.now() - 86400000 * 1.5), // 1.5 days ago
+        updatedAt: new Date(Date.now() - 86400000 * 1.5),
+      },
+    });
+
+    // User stories run (in progress for some, completed for others)
+    const userStoriesStatus =
+      feature.title === "Dashboard Analytics"
+        ? WorkflowStatus.IN_PROGRESS
+        : WorkflowStatus.COMPLETED;
+
+    await db.stakworkRun.create({
+      data: {
+        workspaceId,
+        featureId: feature.id,
+        type: StakworkRunType.USER_STORIES,
+        webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+        projectId: Math.floor(Math.random() * 10000),
+        status: userStoriesStatus,
+        result:
+          userStoriesStatus === WorkflowStatus.COMPLETED
+            ? JSON.stringify([
+                {
+                  title: "As a user, I want to log in quickly",
+                  acceptance: "Login completes in under 2 seconds",
+                },
+                {
+                  title: "As an admin, I want to manage user roles",
+                  acceptance: "Can assign/revoke roles from admin panel",
+                },
+              ])
+            : null,
+        dataType: "json",
+        decision:
+          userStoriesStatus === WorkflowStatus.COMPLETED
+            ? StakworkRunDecision.ACCEPTED
+            : null,
+        createdAt: new Date(Date.now() - 86400000), // 1 day ago
+        updatedAt: new Date(Date.now() - 86400000),
+      },
+    });
+
+    // Task generation run (only for completed features)
+    if (feature.title === "User Authentication") {
+      await db.stakworkRun.create({
+        data: {
+          workspaceId,
+          featureId: feature.id,
+          type: StakworkRunType.TASK_GENERATION,
+          webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+          projectId: Math.floor(Math.random() * 10000),
+          status: WorkflowStatus.COMPLETED,
+          result: JSON.stringify({
+            tasks: [
+              {
+                title: "Implement OAuth provider integration",
+                description: "Set up GitHub OAuth provider",
+                priority: "HIGH",
+              },
+              {
+                title: "Create user session management",
+                description: "Implement JWT-based sessions",
+                priority: "HIGH",
+              },
+              {
+                title: "Add password reset flow",
+                description: "Email-based password reset",
+                priority: "MEDIUM",
+              },
+            ],
+          }),
+          dataType: "json",
+          decision: StakworkRunDecision.ACCEPTED,
+          createdAt: new Date(Date.now() - 86400000 * 0.5), // 12 hours ago
+          updatedAt: new Date(Date.now() - 86400000 * 0.5),
+        },
+      });
+    }
+  }
+
+  console.log(`[MockSeed] Created StakworkRuns for ${features.length} features`);
+}
+
+/**
+ * Seeds Screenshots for USER_JOURNEY tasks
+ * Creates 2-3 screenshots per task with realistic metadata
+ */
+async function seedScreenshots(
+  workspaceId: string,
+  userJourneyTasks: Array<{ id: string; title: string }>
+): Promise<void> {
+  for (const task of userJourneyTasks) {
+    // Screenshot 1: Initial page load
+    await db.screenshot.create({
+      data: {
+        workspaceId,
+        taskId: task.id,
+        s3Key: `screenshots/${workspaceId}/mock-${task.id}-step1.jpg`,
+        actionIndex: 0,
+        pageUrl: "http://localhost:3000/login",
+        timestamp: BigInt(Date.now() - 60000), // 1 minute ago
+        hash: `hash-${task.id}-1`,
+        width: 1920,
+        height: 1080,
+      },
+    });
+
+    // Screenshot 2: Form interaction
+    await db.screenshot.create({
+      data: {
+        workspaceId,
+        taskId: task.id,
+        s3Key: `screenshots/${workspaceId}/mock-${task.id}-step2.jpg`,
+        actionIndex: 1,
+        pageUrl: "http://localhost:3000/login",
+        timestamp: BigInt(Date.now() - 45000), // 45 seconds ago
+        hash: `hash-${task.id}-2`,
+        width: 1920,
+        height: 1080,
+      },
+    });
+
+    // Screenshot 3: Success state (only for completed tasks)
+    if (task.title.includes("Login")) {
+      await db.screenshot.create({
+        data: {
+          workspaceId,
+          taskId: task.id,
+          s3Key: `screenshots/${workspaceId}/mock-${task.id}-step3.jpg`,
+          actionIndex: 2,
+          pageUrl: "http://localhost:3000/dashboard",
+          timestamp: BigInt(Date.now() - 30000), // 30 seconds ago
+          hash: `hash-${task.id}-3`,
+          width: 1920,
+          height: 1080,
+        },
+      });
+    }
+  }
+
+  console.log(
+    `[MockSeed] Created screenshots for ${userJourneyTasks.length} USER_JOURNEY tasks`
+  );
 }
