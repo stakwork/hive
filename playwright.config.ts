@@ -8,6 +8,14 @@ export default defineConfig({
     headless: true,
     browserName: "chromium",
     trace: "on-first-retry",
+    // Bypass Next.js dev overlay that intercepts pointer events
+    bypassCSP: true,
   },
   testDir: "src/__tests__/e2e",
+  webServer: {
+    command: "npm run dev",
+    url: "http://localhost:3000",
+    reuseExistingServer: true,
+    timeout: 120000,
+  },
 });
