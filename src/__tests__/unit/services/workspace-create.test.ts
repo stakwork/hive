@@ -508,5 +508,311 @@ describe("createWorkspace", () => {
         }),
       });
     });
+
+    it("should accept slug with only numbers", async () => {
+      const numericSlug = "123456";
+
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        slug: numericSlug,
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          slug: numericSlug,
+        }),
+      });
+    });
+
+    it("should accept slug with mixed alphanumeric and hyphens", async () => {
+      const complexSlug = "project-2024-alpha";
+
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        slug: complexSlug,
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          slug: complexSlug,
+        }),
+      });
+    });
+
+    it("should accept slug at minimum length boundary (2 characters)", async () => {
+      const minLengthSlug = "ab";
+
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        slug: minLengthSlug,
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          slug: minLengthSlug,
+        }),
+      });
+    });
+
+    it("should accept slug at maximum length boundary (50 characters)", async () => {
+      const maxLengthSlug = "a".repeat(50);
+
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        slug: maxLengthSlug,
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          slug: maxLengthSlug,
+        }),
+      });
+    });
+
+    it("should handle empty string description", async () => {
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        description: "",
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          description: "",
+        }),
+      });
+    });
+
+    it("should handle very long workspace names", async () => {
+      const longName = "A Very Long Workspace Name ".repeat(20);
+
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        name: longName,
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          name: longName,
+        }),
+      });
+    });
+  });
+
+  describe("Validation execution order", () => {
+    it("should validate slug format before checking workspace limit", async () => {
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          slug: "Invalid_Slug!",
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
+
+      // Workspace count should not have been called
+      expect(db.workspace.count).not.toHaveBeenCalled();
+    });
+
+    it("should check workspace limit before checking slug uniqueness", async () => {
+      vi.mocked(db.workspace.count).mockResolvedValue(
+        WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER
+      );
+
+      await expect(workspaceService.createWorkspace(validWorkspaceData)).rejects.toThrow(
+        WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
+      );
+
+      expect(db.workspace.count).toHaveBeenCalled();
+      expect(db.workspace.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("should check slug uniqueness before attempting creation", async () => {
+      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+        id: "existing-id",
+      } as any);
+
+      await expect(workspaceService.createWorkspace(validWorkspaceData)).rejects.toThrow(
+        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS
+      );
+
+      expect(db.workspace.findUnique).toHaveBeenCalled();
+      expect(db.workspace.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Additional slug validation edge cases", () => {
+    it("should reject slug with special characters", async () => {
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          slug: "test@workspace",
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
+    });
+
+    it("should reject slug with spaces", async () => {
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          slug: "test workspace",
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
+    });
+
+    it("should reject slug with dots", async () => {
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          slug: "test.workspace",
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
+    });
+
+    it("should reject slug with mixed case", async () => {
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          slug: "testWorkspace",
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
+    });
+
+    it("should reject undefined slug", async () => {
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          slug: undefined as any,
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
+    });
+
+    it("should reject slug with emoji", async () => {
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          slug: "test🚀workspace",
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.SLUG_INVALID_FORMAT);
+    });
+
+    it("should accept slug with multiple hyphens (non-consecutive)", async () => {
+      const slug = "my-test-workspace-2024";
+
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        slug,
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          slug,
+        }),
+      });
+    });
+  });
+
+  describe("Owner association", () => {
+    it("should create workspace for different user IDs", async () => {
+      const differentUserId = "different-user-456";
+      
+      await workspaceService.createWorkspace({
+        ...validWorkspaceData,
+        ownerId: differentUserId,
+      });
+
+      expect(db.workspace.count).toHaveBeenCalledWith({
+        where: { ownerId: differentUserId, deleted: false },
+      });
+
+      expect(db.workspace.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          ownerId: differentUserId,
+        }),
+      });
+    });
+
+    it("should enforce workspace limit per user independently", async () => {
+      const user1 = "user-1";
+      const user2 = "user-2";
+
+      // User 1 at limit
+      vi.mocked(db.workspace.count).mockResolvedValueOnce(
+        WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER
+      );
+
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          ownerId: user1,
+        })
+      ).rejects.toThrow(WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED);
+
+      // User 2 can still create
+      vi.mocked(db.workspace.count).mockResolvedValueOnce(0);
+      vi.mocked(db.workspace.findUnique).mockResolvedValueOnce(null);
+
+      await expect(
+        workspaceService.createWorkspace({
+          ...validWorkspaceData,
+          ownerId: user2,
+        })
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe("Response format consistency", () => {
+    it("should always return dates as ISO strings", async () => {
+      const differentDate = new Date("2024-06-15T14:30:00Z");
+      const workspace = {
+        ...mockCreatedWorkspace,
+        createdAt: differentDate,
+        updatedAt: differentDate,
+      };
+
+      vi.mocked(db.workspace.create).mockResolvedValue(workspace);
+
+      const result = await workspaceService.createWorkspace(validWorkspaceData);
+
+      expect(result.createdAt).toBe("2024-06-15T14:30:00.000Z");
+      expect(result.updatedAt).toBe("2024-06-15T14:30:00.000Z");
+    });
+
+    it("should return null for optional fields when not provided", async () => {
+      const workspaceWithNulls = {
+        ...mockCreatedWorkspace,
+        description: null,
+        repositoryDraft: null,
+      };
+
+      vi.mocked(db.workspace.create).mockResolvedValue(workspaceWithNulls);
+
+      const result = await workspaceService.createWorkspace({
+        name: "Test Workspace",
+        slug: "test-ws",
+        ownerId: mockUserId,
+      });
+
+      expect(result.description).toBeNull();
+      expect(result.repositoryDraft).toBeNull();
+    });
+
+    it("should preserve all workspace fields in response", async () => {
+      const result = await workspaceService.createWorkspace(validWorkspaceData);
+
+      // Verify all expected fields are present
+      expect(result).toHaveProperty("id");
+      expect(result).toHaveProperty("name");
+      expect(result).toHaveProperty("slug");
+      expect(result).toHaveProperty("description");
+      expect(result).toHaveProperty("ownerId");
+      expect(result).toHaveProperty("repositoryDraft");
+      expect(result).toHaveProperty("nodeTypeOrder");
+      expect(result).toHaveProperty("deleted");
+      expect(result).toHaveProperty("deletedAt");
+      expect(result).toHaveProperty("originalSlug");
+      expect(result).toHaveProperty("stakworkApiKey");
+      expect(result).toHaveProperty("logoKey");
+      expect(result).toHaveProperty("logoUrl");
+      expect(result).toHaveProperty("createdAt");
+      expect(result).toHaveProperty("updatedAt");
+    });
   });
 });
