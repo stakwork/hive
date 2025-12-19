@@ -1,11 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { GripVertical, Trash2, ExternalLink, Play } from "lucide-react";
-import { DndContext } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { DependenciesCombobox } from "@/components/features/DependenciesCombobox";
+import { ActionMenu } from "@/components/ui/action-menu";
+import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import { PriorityPopover } from "@/components/ui/priority-popover";
+import { StatusPopover } from "@/components/ui/status-popover";
 import {
   Table,
   TableBody,
@@ -14,16 +14,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
-import { ActionMenu } from "@/components/ui/action-menu";
-import { StatusPopover } from "@/components/ui/status-popover";
-import { PriorityPopover } from "@/components/ui/priority-popover";
-import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
-import { DependenciesCombobox } from "@/components/features/DependenciesCombobox";
-import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
+import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import type { TicketListItem } from "@/types/roadmap";
-import type { TaskStatus, Priority } from "@prisma/client";
+import { DndContext } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { Priority, TaskStatus } from "@prisma/client";
+import { ExternalLink, GripVertical, Play, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 interface RoadmapTasksTableProps {
   phaseId: string;
@@ -76,9 +76,8 @@ function SortableTableRow({
     <TableRow
       ref={setNodeRef}
       style={style}
-      className={`cursor-pointer hover:bg-muted/50 group ${
-        isDragging ? "opacity-50 z-50" : ""
-      }`}
+      className={`cursor-pointer hover:bg-muted/50 group ${isDragging ? "opacity-50 z-50" : ""
+        }`}
     >
       <TableCell className="w-[40px]">
         <div
@@ -134,38 +133,38 @@ function SortableTableRow({
           actions={[
             ...(task.status === "TODO"
               ? [
-                  {
-                    label: "Start Task",
-                    icon: Play,
-                    variant: "default" as const,
-                    onClick: onStartTask,
-                  },
-                ]
+                {
+                  label: "Start Task",
+                  icon: Play,
+                  variant: "default" as const,
+                  onClick: onStartTask,
+                },
+              ]
               : []),
             ...(task.assignee?.id === "system:bounty-hunter" && task.bountyCode
               ? [
-                  {
-                    label: "View Bounty",
-                    icon: ExternalLink,
-                    variant: "default" as const,
-                    onClick: () => {
-                      const sphinxUrl = process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL || "https://bounties.sphinx.chat";
-                      window.open(`${sphinxUrl}/bounty/${task.bountyCode}`, "_blank");
-                    },
+                {
+                  label: "View Bounty",
+                  icon: ExternalLink,
+                  variant: "default" as const,
+                  onClick: () => {
+                    const sphinxUrl = process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL || "https://bounties.sphinx.chat";
+                    window.open(`${sphinxUrl}/bounty/${task.bountyCode}`, "_blank");
                   },
-                ]
+                },
+              ]
               : [
-                  {
-                    label: "Delete",
-                    icon: Trash2,
-                    variant: "destructive" as const,
-                    confirmation: {
-                      title: "Delete Task",
-                      description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
-                      onConfirm: onDelete,
-                    },
+                {
+                  label: "Delete",
+                  icon: Trash2,
+                  variant: "destructive" as const,
+                  confirmation: {
+                    title: "Delete Task",
+                    description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
+                    onConfirm: onDelete,
                   },
-                ]),
+                },
+              ]),
           ]}
         />
       </TableCell>
@@ -209,8 +208,11 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
         throw new Error("Failed to start task");
       }
 
-      // Navigate to task page
-      router.push(`/w/${workspaceSlug}/task/${task.id}`);
+      // Navigate to task page with return path
+      // Extract current URL path to use as return path
+      const currentPath = window.location.pathname + window.location.search;
+      console.log('currentPath', currentPath);
+      router.push(`/w/${workspaceSlug}/task/${task.id}?from=${encodeURIComponent(currentPath)}`);
     } catch (error) {
       console.error("Failed to start task:", error);
       setStartingTaskId(null);

@@ -71,4 +71,47 @@ export class AuthPage {
     await this.verifyAuthenticated();
     expect(this.getCurrentWorkspaceSlug()).toBe(expectedSlug);
   }
+
+  /**
+   * Open user menu
+   */
+  async openUserMenu() {
+    const userMenuTrigger = this.page.locator(selectors.userMenu.trigger);
+    await expect(userMenuTrigger).toBeVisible({ timeout: 10000 });
+    
+    // Remove Next.js dev overlay that blocks interactions in tests
+    await this.page.evaluate(() => {
+      const overlay = document.querySelector('nextjs-portal');
+      if (overlay) {
+        overlay.remove();
+      }
+    });
+    
+    // Wait a brief moment for DOM updates after overlay removal
+    await this.page.waitForTimeout(100);
+    
+    // Click the trigger button with force to bypass the overlay intercepting pointer events
+    await userMenuTrigger.click({ force: true, timeout: 10000 });
+    
+    // Wait for the menu to be visible by checking for data-state="open"
+    await expect(userMenuTrigger).toHaveAttribute('data-state', 'open', { timeout: 5000 });
+    
+    // Wait for the logout button to be visible as confirmation menu is open
+    const logoutButton = this.page.locator(selectors.userMenu.logoutButton);
+    await expect(logoutButton).toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Logout user
+   */
+  async logout() {
+    await this.openUserMenu();
+    
+    // Click the logout button using data-testid
+    const logoutButton = this.page.locator(selectors.userMenu.logoutButton);
+    await logoutButton.click();
+    
+    // Wait for redirect to signin page after logout (NextAuth redirects to /auth/signin)
+    await this.page.waitForURL('http://localhost:3000/auth/signin', { timeout: 10000 });
+  }
 }

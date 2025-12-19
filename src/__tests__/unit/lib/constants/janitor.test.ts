@@ -127,6 +127,8 @@ describe("constants/janitor", () => {
         integrationTestsEnabled: false,
         e2eTestsEnabled: false,
         securityReviewEnabled: false,
+        mockGenerationEnabled: false,
+        generalRefactoringEnabled: false,
       };
 
       expect(isJanitorEnabled(config, JanitorType.UNIT_TESTS)).toBe(true);
@@ -138,6 +140,8 @@ describe("constants/janitor", () => {
         integrationTestsEnabled: true,
         e2eTestsEnabled: false,
         securityReviewEnabled: false,
+        mockGenerationEnabled: false,
+        generalRefactoringEnabled: false,
       };
 
       expect(isJanitorEnabled(config, JanitorType.UNIT_TESTS)).toBe(false);
@@ -149,6 +153,8 @@ describe("constants/janitor", () => {
         integrationTestsEnabled: true,
         e2eTestsEnabled: false,
         securityReviewEnabled: false,
+        mockGenerationEnabled: false,
+        generalRefactoringEnabled: false,
       };
 
       expect(isJanitorEnabled(config, JanitorType.UNIT_TESTS)).toBe(true);
@@ -165,6 +171,8 @@ describe("constants/janitor", () => {
         integrationTestsEnabled: false,
         e2eTestsEnabled: true,
         securityReviewEnabled: false,
+        mockGenerationEnabled: false,
+        generalRefactoringEnabled: false,
       };
 
       const enabled = getEnabledJanitorTypes(config);
@@ -181,6 +189,8 @@ describe("constants/janitor", () => {
         integrationTestsEnabled: false,
         e2eTestsEnabled: false,
         securityReviewEnabled: false,
+        mockGenerationEnabled: false,
+        generalRefactoringEnabled: false,
       };
 
       const enabled = getEnabledJanitorTypes(config);
@@ -193,14 +203,18 @@ describe("constants/janitor", () => {
         integrationTestsEnabled: true,
         e2eTestsEnabled: true,
         securityReviewEnabled: true,
+        mockGenerationEnabled: true,
+        generalRefactoringEnabled: true,
       };
 
       const enabled = getEnabledJanitorTypes(config);
-      expect(enabled).toHaveLength(4);
+      expect(enabled).toHaveLength(6);
       expect(enabled).toContain(JanitorType.UNIT_TESTS);
       expect(enabled).toContain(JanitorType.INTEGRATION_TESTS);
       expect(enabled).toContain(JanitorType.E2E_TESTS);
       expect(enabled).toContain(JanitorType.SECURITY_REVIEW);
+      expect(enabled).toContain(JanitorType.MOCK_GENERATION);
+      expect(enabled).toContain(JanitorType.GENERAL_REFACTORING);
     });
   });
 
@@ -233,12 +247,13 @@ describe("constants/janitor", () => {
     it("should return items for all janitor types except E2E_TESTS", () => {
       const items = getAllJanitorItems();
 
-      expect(items).toHaveLength(4);
+      expect(items).toHaveLength(5);
       expect(items.some((item) => item.id === JanitorType.UNIT_TESTS)).toBe(true);
       expect(items.some((item) => item.id === JanitorType.INTEGRATION_TESTS)).toBe(true);
       expect(items.some((item) => item.id === JanitorType.E2E_TESTS)).toBe(false);
       expect(items.some((item) => item.id === JanitorType.SECURITY_REVIEW)).toBe(true);
       expect(items.some((item) => item.id === JanitorType.MOCK_GENERATION)).toBe(true);
+      expect(items.some((item) => item.id === JanitorType.GENERAL_REFACTORING)).toBe(true);
     });
 
     it("should return items with all required properties", () => {
@@ -258,12 +273,13 @@ describe("constants/janitor", () => {
     it("should create OR conditions for all janitor types", () => {
       const conditions = createEnabledJanitorWhereConditions();
 
-      expect(conditions).toHaveLength(5);
+      expect(conditions).toHaveLength(6);
       expect(conditions).toContainEqual({ unitTestsEnabled: true });
       expect(conditions).toContainEqual({ integrationTestsEnabled: true });
       expect(conditions).toContainEqual({ e2eTestsEnabled: true });
       expect(conditions).toContainEqual({ securityReviewEnabled: true });
       expect(conditions).toContainEqual({ mockGenerationEnabled: true });
+      expect(conditions).toContainEqual({ generalRefactoringEnabled: true });
     });
   });
 

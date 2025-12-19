@@ -807,9 +807,9 @@ export async function processJanitorWebhook(webhookData: StakworkWebhookPayload)
     }
 
     // Auto-create task from first recommendation if flag is set
-    // Only for sequential janitor types (UNIT_TESTS, INTEGRATION_TESTS, MOCK_GENERATION)
+    // Only for sequential janitor types (UNIT_TESTS, INTEGRATION_TESTS, MOCK_GENERATION, GENERAL_REFACTORING)
     let autoCreatedTaskId: string | undefined;
-    const sequentialJanitorTypes: JanitorType[] = ["UNIT_TESTS", "INTEGRATION_TESTS", "MOCK_GENERATION"];
+    const sequentialJanitorTypes: JanitorType[] = ["UNIT_TESTS", "INTEGRATION_TESTS", "MOCK_GENERATION", "GENERAL_REFACTORING"];
 
     if (
       autoCreateTasks &&

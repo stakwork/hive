@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   timeout: 60000,
-  // Configurable workers: 
+  // Configurable workers:
   // - Local: 1 worker (serial execution for database isolation)
   // - CI: 2 workers per test group (each matrix job has isolated DB, can run tests in parallel)
   workers: parseInt(process.env.PLAYWRIGHT_WORKERS || (process.env.CI ? "2" : "1")),
@@ -19,10 +19,16 @@ export default defineConfig({
     // Increase timeout for slower CI environments
     actionTimeout: 10000,
     navigationTimeout: 30000,
+    // Bypass Next.js dev overlay that intercepts pointer events
+    bypassCSP: true,
   },
   testDir: "src/__tests__/e2e",
   // Reporter configuration for better CI output
-  reporter: process.env.CI 
-    ? [['list'], ['html', { open: 'never' }]]
-    : [['list']],
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  webServer: {
+    command: "npm run dev",
+    url: "http://localhost:3000",
+    reuseExistingServer: true,
+    timeout: 120000,
+  },
 });
