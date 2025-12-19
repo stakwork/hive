@@ -976,6 +976,378 @@ describe("Janitor Service", () => {
         acceptJanitorRecommendation("rec-1", "user-1", { repositoryId: "non-existent" })
       ).rejects.toThrow(JANITOR_ERRORS.REPOSITORY_NOT_FOUND);
     });
+
+    test("should accept recommendation with TASK_COORDINATOR sourceType", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "INTEGRATION_TESTS",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockRecommendationUpdate(mockedDb, mockRecommendation);
+      mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
+        task: { id: "task-1" },
+        stakworkResult: {},
+        chatMessage: {},
+      } as any);
+
+      await acceptJanitorRecommendation("rec-1", "user-1", {}, "TASK_COORDINATOR");
+
+      expect(createTaskWithStakworkWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceType: "TASK_COORDINATOR",
+        })
+      );
+    });
+
+    test("should accept recommendation with autoMergePr option", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "UNIT_TESTS",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockRecommendationUpdate(mockedDb, mockRecommendation);
+      mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
+        task: { id: "task-1" },
+        stakworkResult: {},
+        chatMessage: {},
+      } as any);
+
+      await acceptJanitorRecommendation("rec-1", "user-1", { autoMergePr: true });
+
+      expect(createTaskWithStakworkWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          autoMergePr: true,
+        })
+      );
+    });
+
+    test("should handle recommendation with null janitorRun (external workflow)", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ 
+          status: "PENDING",
+          janitorRunId: null,
+        }),
+        janitorRun: null,
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+        },
+        workspaceId: "ws-1",
+      };
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      vi.mocked(mockedDb.janitorRecommendation.findUnique)
+        .mockResolvedValueOnce(mockRecommendation)
+        .mockResolvedValueOnce(mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockRecommendationUpdate(mockedDb, mockRecommendation);
+      mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
+        task: { id: "task-1" },
+        stakworkResult: {},
+        chatMessage: {},
+      } as any);
+
+      const result = await acceptJanitorRecommendation("rec-1", "user-1");
+
+      expect(createTaskWithStakworkWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          janitorType: undefined, // No janitorType when janitorRun is null
+        })
+      );
+      expect(result.task.id).toBe("task-1");
+    });
+
+    test("should preserve existing metadata when updating recommendation", async () => {
+      const existingMetadata = {
+        source: "external_workflow",
+        customField: "custom-value",
+      };
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ 
+          status: "PENDING",
+          metadata: existingMetadata,
+        }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "UNIT_TESTS",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockWorkspaceMemberExists(mockedDb, true);
+      janitorMockSetup.mockRepositoryExists(mockedDb, true);
+      janitorMockSetup.mockRecommendationUpdate(mockedDb, mockRecommendation);
+      mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
+        task: { id: "task-1" },
+        stakworkResult: {},
+        chatMessage: {},
+      } as any);
+
+      await acceptJanitorRecommendation("rec-1", "user-1", {
+        assigneeId: "assignee-1",
+        repositoryId: "repo-1",
+      });
+
+      expect(db.janitorRecommendation.update).toHaveBeenCalledWith({
+        where: { id: "rec-1" },
+        data: {
+          status: "ACCEPTED",
+          acceptedAt: expect.any(Date),
+          acceptedById: "user-1",
+          metadata: {
+            ...existingMetadata,
+            assigneeId: "assignee-1",
+            repositoryId: "repo-1",
+          },
+        },
+      });
+    });
+
+    test("should throw error when recommendation is already dismissed", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ status: "DISMISSED" }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "UNIT_TESTS",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+
+      await expect(acceptJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
+        JANITOR_ERRORS.RECOMMENDATION_ALREADY_PROCESSED
+      );
+    });
+
+    test("should throw error when user has no workspace access", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "UNIT_TESTS",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+      const mockValidation = {
+        hasAccess: false,
+        canRead: false,
+        canWrite: false,
+        canAdmin: false,
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+
+      await expect(acceptJanitorRecommendation("rec-1", "user-1")).rejects.toThrow(
+        JANITOR_ERRORS.INSUFFICIENT_PERMISSIONS
+      );
+    });
+
+    test("should pass correct priority from recommendation to task", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ 
+          status: "PENDING",
+          priority: "CRITICAL",
+        }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "SECURITY_REVIEW",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockRecommendationUpdate(mockedDb, mockRecommendation);
+      mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
+        task: { id: "task-1" },
+        stakworkResult: {},
+        chatMessage: {},
+      } as any);
+
+      await acceptJanitorRecommendation("rec-1", "user-1");
+
+      expect(createTaskWithStakworkWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          priority: "CRITICAL",
+        })
+      );
+    });
+
+    test("should use live mode for task workflow", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "MOCK_GENERATION",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockRecommendationUpdate(mockedDb, mockRecommendation);
+      mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
+        task: { id: "task-1" },
+        stakworkResult: {},
+        chatMessage: {},
+      } as any);
+
+      await acceptJanitorRecommendation("rec-1", "user-1");
+
+      expect(createTaskWithStakworkWorkflow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "live",
+        })
+      );
+    });
+
+    test("should return workflow result from task creation", async () => {
+      const mockRecommendation = {
+        ...janitorMocks.createMockRecommendation({ status: "PENDING" }),
+        janitorRun: {
+          id: "run-1",
+          janitorType: "UNIT_TESTS",
+          status: "COMPLETED",
+          janitorConfig: {
+            id: "config-1",
+            workspace: {
+              id: "ws-1",
+              slug: "test-workspace",
+            },
+          },
+        },
+      };
+      const mockValidation = {
+        hasAccess: true,
+        canRead: true,
+        canWrite: true,
+        canAdmin: false,
+        workspace: { id: "ws-1", name: "Test", slug: "test-workspace", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
+      };
+      const mockWorkflowResult = {
+        project_id: 54321,
+        workflow_id: 999,
+      };
+
+      janitorMockSetup.mockRecommendationExists(mockedDb, mockRecommendation);
+      mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
+      janitorMockSetup.mockRecommendationUpdate(mockedDb, mockRecommendation);
+      mockedCreateTaskWithStakworkWorkflow.mockResolvedValue({
+        task: { id: "task-1" },
+        stakworkResult: mockWorkflowResult,
+        chatMessage: { id: "msg-1" },
+      } as any);
+
+      const result = await acceptJanitorRecommendation("rec-1", "user-1");
+
+      expect(result.workflow).toEqual(mockWorkflowResult);
+    });
   });
 
   describe("dismissJanitorRecommendation", () => {
