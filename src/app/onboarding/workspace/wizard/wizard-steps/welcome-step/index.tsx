@@ -228,7 +228,7 @@ export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
             {isCreatingWorkspace ? "Setting up your workspace..." : "Welcome to Hive"}
           </CardTitle>
           <CardDescription className="text-lg">
-            {isCreatingWorkspace ? creationStatus : "Paste your GitHub repository to get started"}
+            {isCreatingWorkspace ? "Please wait while we set things up" : "Paste your GitHub repository to get started"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
