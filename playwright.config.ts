@@ -2,10 +2,10 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   timeout: 60000,
-  // Enable parallel execution with database locking to prevent race conditions
-  // Limit workers due to database reset serialization requirement
-  workers: process.env.CI ? 2 : 4, // 2 workers in CI, 4 locally (conservative)
-  fullyParallel: true, // Run tests in parallel with synchronized database resets
+  // Multiple workers for parallel file execution
+  // Tests within same file run serially to avoid database conflicts
+  workers: process.env.CI ? 2 : 4, // 2 workers in CI, 4 locally
+  fullyParallel: false, // Files run in parallel, tests within files run serially
   
   // Fail fast in CI to save resources
   forbidOnly: !!process.env.CI,
