@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Save, Monitor, Server, ServerOff } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { AgentChatMessage } from "./AgentChatMessage";
-import { ChatInput } from "./ChatInput";
-import { LogEntry } from "@/hooks/useProjectLogWebSocket";
-import { Button } from "@/components/ui/button";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { LogEntry } from "@/hooks/useProjectLogWebSocket";
+import type { Artifact, ChatMessage, WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
-import type { WorkflowStatus, Artifact, ChatMessage } from "@/lib/chat";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, Monitor, Save, Server, ServerOff } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { AgentChatMessage } from "./AgentChatMessage";
+import { ChatInput } from "./ChatInput";
 
 interface AgentChatAreaProps {
   messages: ChatMessage[];
@@ -64,7 +64,7 @@ export function AgentChatArea({
   const isMobile = useIsMobile();
 
   // Check if any message has a PULL_REQUEST artifact
-  const hasPrArtifact = messages.some((msg) => 
+  const hasPrArtifact = messages.some((msg) =>
     msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST")
   );
 
@@ -100,18 +100,19 @@ export function AgentChatArea({
   }, [messages, shouldAutoScroll]);
 
   const handleBackToTasks = () => {
-    const referrer = document.referrer;
-    const currentOrigin = window.location.origin;
-    
-    // Check if referrer exists and is from same app (same origin)
-    if (referrer && referrer.startsWith(currentOrigin)) {
-      router.back();
+    // Check for 'from' URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromParam = urlParams.get('from');
+
+    console.log('fromParam', fromParam);
+
+    if (fromParam) {
+      // Navigate to the specific route provided in 'from' parameter
+      router.push(fromParam);
     } else {
-      // Fallback to tasks list if no history or external referrer
+      // Fallback to tasks list
       if (workspaceSlug) {
         router.push(`/w/${workspaceSlug}/tasks`);
-      } else {
-        router.back();
       }
     }
   };
