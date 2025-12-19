@@ -49,7 +49,7 @@ export async function seedMockData(
   const teamMemberIds = await seedTeamMembers(workspaceId);
 
   // Create features with phases and user stories
-  const features = await seedFeatures(userId, workspaceId);
+  const features = await seedFeatures(userId, workspaceId, teamMemberIds);
 
   // Create tasks of various types (with team member assignments and pod links)
   const { tasksWithPods, allTasks } = await seedTasks(userId, workspaceId, features, teamMemberIds);
@@ -117,7 +117,8 @@ async function seedTeamMembers(workspaceId: string): Promise<string[]> {
 
 async function seedFeatures(
   userId: string,
-  workspaceId: string
+  workspaceId: string,
+  userIds: string[]
 ): Promise<Array<{ id: string; title: string; phaseId: string }>> {
   const featureData = [
     {
@@ -130,6 +131,7 @@ async function seedFeatures(
       architecture:
         "NextAuth.js with JWT sessions, Prisma adapter for user storage",
       personas: ["Developer", "Admin", "End User"],
+      assigneeId: userIds[0],
     },
     {
       title: "Dashboard Analytics",
@@ -140,6 +142,7 @@ async function seedFeatures(
         "Show task completion rates, team velocity, code coverage trends",
       architecture: "React Query for data fetching, Recharts for visualization",
       personas: ["PM", "Team Lead", "Developer"],
+      assigneeId: userIds[1],
     },
     {
       title: "API Rate Limiting",
@@ -149,6 +152,7 @@ async function seedFeatures(
       requirements:
         "Configurable limits per endpoint, graceful degradation, monitoring",
       personas: ["Developer", "DevOps"],
+      assigneeId: userIds[2],
     },
     {
       title: "Advanced Search Filters",
