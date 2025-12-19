@@ -137,26 +137,123 @@ export async function POST(request: NextRequest) {
   try {
     // Verify API key header
     const apiKey = request.headers.get("x-api-key");
-    if (!apiKey || !apiKey.startsWith("mock-anthropic-key")) {
+    if (!apiKey) {
       return NextResponse.json(
         {
           error: {
             type: "authentication_error",
-            message: "Invalid API key",
+            message: "Missing required API key header",
           },
         },
         { status: 401 }
       );
     }
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      return NextResponse.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            message: "Invalid JSON in request body",
+          },
+        },
+        { status: 400 }
+      );
+    }
     const {
-      model = "claude-3-5-sonnet-20241022",
-      messages = [],
+      model,
+      messages,
       system = "",
       stream = false,
       tools = [],
+      max_tokens,
     } = body;
+
+    // Validate required fields
+    if (!model) {
+      return NextResponse.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            message: "Missing required field: model",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            message: "Missing required field: messages (must be an array)",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    if (messages.length === 0) {
+      return NextResponse.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            message: "messages array cannot be empty",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    if (max_tokens === undefined || max_tokens === null) {
+      return NextResponse.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            message: "Missing required field: max_tokens",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate message roles
+    const validRoles = ["user", "assistant", "system"];
+    for (const message of messages) {
+      if (!message.role || !validRoles.includes(message.role)) {
+        return NextResponse.json(
+          {
+            error: {
+              type: "invalid_request_error",
+              message: `Invalid message role: ${message.role}. Must be one of: ${validRoles.join(", ")}`,
+            },
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate model
+    const validModels = [
+      "claude-3-5-sonnet-20241022",
+      "claude-3-opus-20240229",
+      "claude-3-haiku-20240307",
+    ];
+    if (!validModels.includes(model)) {
+      return NextResponse.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            message: `Unsupported model: ${model}. Supported models: ${validModels.join(", ")}`,
+          },
+        },
+        { status: 400 }
+      );
+    }
 
     // Extract prompt from messages
     const userMessage = messages.find(

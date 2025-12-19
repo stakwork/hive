@@ -195,7 +195,7 @@ export class MockAnthropicStateManager {
    * Generate unique request ID
    */
   generateRequestId(): string {
-    return `mock-req-${this.requestCounter++}`;
+    return `msg_${Date.now()}_${this.requestCounter++}`;
   }
 
   /**
