@@ -237,33 +237,51 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   console.log("PUT request received");
 
   try {
-    const session = await getServerSession(authOptions);
     const { slug } = await params;
 
-    if (!session?.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Authentication required",
-          error: "UNAUTHORIZED",
-        },
-        { status: 401 },
-      );
+    // Check for API token auth (for external services like Stakwork repair agent)
+    const apiKey = request.headers.get("x-api-key");
+    const isApiKeyAuth = apiKey && apiKey === process.env.API_TOKEN;
+
+    let workspace: { id: string } | null = null;
+    let userId: string | null = null;
+
+    if (isApiKeyAuth) {
+      // API key auth - get workspace by slug directly (no user session needed)
+      workspace = await db.workspace.findFirst({
+        where: { slug, deleted: false },
+        select: { id: true },
+      });
+    } else {
+      // Session auth path
+      const session = await getServerSession(authOptions);
+
+      if (!session?.user) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Authentication required",
+            error: "UNAUTHORIZED",
+          },
+          { status: 401 },
+        );
+      }
+
+      userId = (session.user as { id?: string })?.id || null;
+      if (!userId) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Invalid user session",
+            error: "INVALID_SESSION",
+          },
+          { status: 401 },
+        );
+      }
+
+      workspace = await getWorkspaceBySlug(slug, userId);
     }
 
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid user session",
-          error: "INVALID_SESSION",
-        },
-        { status: 401 },
-      );
-    }
-
-    const workspace = await getWorkspaceBySlug(slug, userId);
     if (!workspace) {
       return NextResponse.json(
         {
@@ -381,32 +399,35 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       decryptedPoolApiKey = swarmPoolApiKey;
     }
 
-    try {
-      const callbackUrl = getGithubWebhookCallbackUrl(request, workspace.id);
-      const webhookService = new WebhookService(getServiceConfig("github"));
+    // Only setup GitHub webhook when using session auth (not API key auth)
+    if (!isApiKeyAuth && userId) {
+      try {
+        const callbackUrl = getGithubWebhookCallbackUrl(request, workspace.id);
+        const webhookService = new WebhookService(getServiceConfig("github"));
 
-      const primaryRepo = await getPrimaryRepository(workspace.id);
+        const primaryRepo = await getPrimaryRepository(workspace.id);
 
-      if (primaryRepo) {
-        const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
-          userId,
-          workspaceId: workspace.id,
-          repositoryUrl: primaryRepo.repositoryUrl,
-          callbackUrl,
-          repositoryName: primaryRepo.name,
-        });
-
-        console.log("=====> GitHub defaultBranch:", defaultBranch, "Current branch:", primaryRepo.branch);
-        if (defaultBranch && defaultBranch !== primaryRepo.branch) {
-          console.log("=====> Updating primary repository branch to:", defaultBranch);
-          await db.repository.update({
-            where: { id: primaryRepo.id },
-            data: { branch: defaultBranch },
+        if (primaryRepo) {
+          const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
+            userId,
+            workspaceId: workspace.id,
+            repositoryUrl: primaryRepo.repositoryUrl,
+            callbackUrl,
+            repositoryName: primaryRepo.name,
           });
+
+          console.log("=====> GitHub defaultBranch:", defaultBranch, "Current branch:", primaryRepo.branch);
+          if (defaultBranch && defaultBranch !== primaryRepo.branch) {
+            console.log("=====> Updating primary repository branch to:", defaultBranch);
+            await db.repository.update({
+              where: { id: primaryRepo.id },
+              data: { branch: defaultBranch },
+            });
+          }
         }
+      } catch (err) {
+        console.error("Failed to setup repository with webhook:", err);
       }
-    } catch (err) {
-      console.error("Failed to setup repository with webhook:", err);
     }
 
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
@@ -420,11 +441,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           // TODO: This is a solution to preserve data structure.
           const files = getDevContainerFilesFromBase64(settings.containerFiles);
 
-          const github_pat = await getGithubUsernameAndPAT(userId, slug);
-          
+          // Only get GitHub PAT when using session auth
+          const github_pat = userId ? await getGithubUsernameAndPAT(userId, slug) : null;
+
           // Get the primary repository to access the branch
           const primaryRepo = await getPrimaryRepository(workspace.id);
-          
+
           await poolManager.updatePoolData(
             swarm.id,
             decryptedPoolApiKey,
