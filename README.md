@@ -12,6 +12,31 @@ Hive Platform is an AI-first PM toolkit that hardens your codebase and lifts tes
 - **Testing**: Vitest with Testing Library, Playwright for E2E
 - **Forms**: React Hook Form + Zod validation
 
+## Mock Services
+
+The application supports comprehensive mocking of external services for local development without requiring real API credentials. Set `USE_MOCKS=true` in your `.env.local` file to enable all mocks:
+
+```bash
+USE_MOCKS=true
+```
+
+### Supported Mock Services
+
+- **Pusher** - Real-time messaging with in-memory event bus (no credentials required)
+- **GitHub OAuth** - Token revocation and validation
+- **AWS S3** - In-memory file storage with presigned URLs
+- **Anthropic Claude** - Streaming/non-streaming AI responses
+- **LiveKit** - Video call link generation
+- **Google Gemini** - Image generation simulation
+
+When `USE_MOCKS=true`, service credentials become optional and all service calls automatically route to mock endpoints that simulate real service behavior.
+
+For detailed documentation on specific mock services, see:
+- [Pusher Mock](docs/PUSHER_MOCK_ENDPOINTS.md)
+- [S3 Mock](docs/S3_MOCK_ENDPOINTS.md)
+- [Anthropic Mock](docs/ANTHROPIC_MOCK_ENDPOINTS.md)
+- [Mock Endpoints Summary](MOCK_ENDPOINTS_SUMMARY.md)
+
 ## Getting Started
 
 ### Prerequisites
