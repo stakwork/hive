@@ -541,11 +541,12 @@ model JanitorConfig {
   workspaceId String @unique @map("workspace_id")
 
   // Individual janitor toggles
-  unitTestsEnabled        Boolean @default(false) @map("unit_tests_enabled")
-  integrationTestsEnabled Boolean @default(false) @map("integration_tests_enabled")
-  e2eTestsEnabled         Boolean @default(false) @map("e2e_tests_enabled")
-  securityReviewEnabled   Boolean @default(false) @map("security_review_enabled")
-  mockGenerationEnabled   Boolean @default(false) @map("mock_generation_enabled")
+  unitTestsEnabled           Boolean @default(false) @map("unit_tests_enabled")
+  integrationTestsEnabled    Boolean @default(false) @map("integration_tests_enabled")
+  e2eTestsEnabled            Boolean @default(false) @map("e2e_tests_enabled")
+  securityReviewEnabled      Boolean @default(false) @map("security_review_enabled")
+  mockGenerationEnabled      Boolean @default(false) @map("mock_generation_enabled")
+  generalRefactoringEnabled  Boolean @default(false) @map("general_refactoring_enabled")
 
   // Task Coordinator automation
   taskCoordinatorEnabled     Boolean @default(false) @map("task_coordinator_enabled")
@@ -717,6 +718,7 @@ enum JanitorType {
   E2E_TESTS
   SECURITY_REVIEW
   MOCK_GENERATION
+  GENERAL_REFACTORING
 }
 
 enum JanitorStatus {

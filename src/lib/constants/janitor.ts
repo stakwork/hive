@@ -1,5 +1,5 @@
 import { JanitorType, Priority } from "@prisma/client";
-import { FlaskConical, Zap, Monitor, Shield, Boxes, LucideIcon } from "lucide-react";
+import { FlaskConical, Zap, Monitor, Shield, Boxes, Wrench, LucideIcon } from "lucide-react";
 
 /**
  * Janitor system error messages
@@ -27,6 +27,7 @@ export interface JanitorConfigFields {
   e2eTestsEnabled: boolean;
   securityReviewEnabled: boolean;
   mockGenerationEnabled: boolean;
+  generalRefactoringEnabled: boolean;
 }
 
 /**
@@ -67,6 +68,12 @@ export const JANITOR_CONFIG: Record<JanitorType, {
     description: "Generate mock data and fixtures for testing.",
     icon: Boxes,
     enabledField: "mockGenerationEnabled",
+  },
+  GENERAL_REFACTORING: {
+    name: "Refactoring",
+    description: "Identify refactoring opportunities.",
+    icon: Wrench,
+    enabledField: "generalRefactoringEnabled",
   },
 } as const;
 

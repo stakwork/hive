@@ -169,7 +169,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({
       success: true,
-      message: "Stakgraph settings retrieved successfully",
+      message: "Pool settings retrieved successfully",
       data: {
         name: swarm.name || "",
         description: "",
@@ -488,7 +488,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({
       success: true,
-      message: "Stakgraph settings saved successfully",
+      message: "Pool settings saved successfully",
       data: {
         id: typedSwarm.id,
         name: typedSwarm.name || settings.name,

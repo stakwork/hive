@@ -14,7 +14,7 @@ import { useEffect } from "react";
 // Get all janitor items and separate them by category
 const allJanitors = getAllJanitorItems();
 const testingJanitors: JanitorItem[] = [
-  ...allJanitors.filter((j) => j.id !== "SECURITY_REVIEW"),
+  ...allJanitors.filter((j) => j.id !== "SECURITY_REVIEW" && j.id !== "GENERAL_REFACTORING"),
   {
     id: "pr-reviews",
     name: "PR Reviews",
@@ -24,12 +24,13 @@ const testingJanitors: JanitorItem[] = [
   },
 ];
 const securityReviewJanitor = allJanitors.find((j) => j.id === "SECURITY_REVIEW");
+const refactoringJanitor = allJanitors.find((j) => j.id === "GENERAL_REFACTORING");
 
-// Maintainability janitors - coming soon
+// Maintainability janitors - refactoring is active, others coming soon
 const maintainabilityJanitors: JanitorItem[] = [
-  { id: "refactoring", name: "Refactoring", icon: Wrench, description: "Identify refactoring opportunities." },
-  { id: "semantic", name: "Semantic Renaming", icon: Type, description: "Suggest better variable names." },
-  { id: "documentation", name: "Documentation", icon: BookOpen, description: "Generate missing documentation." },
+  ...(refactoringJanitor ? [refactoringJanitor] : []),
+  { id: "semantic", name: "Semantic Renaming", icon: Type, description: "Suggest better variable names.", comingSoon: true },
+  { id: "documentation", name: "Documentation", icon: BookOpen, description: "Generate missing documentation.", comingSoon: true },
 ];
 
 // Security janitors
@@ -110,7 +111,6 @@ export default function DefenseJanitorsPage() {
           description="Code quality and maintainability improvements"
           icon={<Wrench className="h-5 w-5 text-orange-500" />}
           janitors={maintainabilityJanitors}
-          comingSoon={true}
         />
 
         <JanitorSection
