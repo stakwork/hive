@@ -20,6 +20,7 @@ export interface CreateTestSwarmOptions {
   instanceType?: string;
   swarmApiKey?: string;
   containerFilesSetUp?: boolean;
+  containerFiles?: any; // JSON array of container config files
   poolName?: string;
   poolApiKey?: string;
   poolState?: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE";
@@ -55,6 +56,7 @@ export async function createTestSwarm(
     agentRequestId: null,
     agentStatus: null,
     containerFilesSetUp: options.containerFilesSetUp ?? baseValues?.containerFilesSetUp ?? true,
+    containerFiles: options.containerFiles ?? null,
     poolName: options.poolName ?? null,
     poolState: options.poolState ?? baseValues?.poolState ?? "NOT_STARTED",
   };
