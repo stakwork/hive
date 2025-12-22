@@ -202,14 +202,14 @@ async function triggerPodRepair(
     },
   });
 
-  // Get workflow ID (use generic workflow)
-  const workflowId = config.STAKWORK_WORKFLOW_ID;
+  // Get pod repair workflow ID
+  const workflowId = config.STAKWORK_POD_REPAIR_WORKFLOW_ID;
   if (!workflowId) {
     await db.stakworkRun.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });
-    throw new Error("STAKWORK_WORKFLOW_ID not configured");
+    throw new Error("STAKWORK_POD_REPAIR_WORKFLOW_ID not configured");
   }
 
   try {
