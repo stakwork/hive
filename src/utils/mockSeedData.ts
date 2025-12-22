@@ -13,11 +13,61 @@ import {
   RecommendationStatus,
   StakworkRunDecision,
   StakworkRunType,
+  SystemAssigneeType,
   TaskSourceType,
   TaskStatus,
   WorkflowStatus,
   WorkspaceRole,
 } from "@prisma/client";
+
+/**
+ * Helper: Returns a date N days in the past
+ */
+const getDaysAgo = (days: number): Date => {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+};
+
+/**
+ * Helper: Generates random context tags for chat messages (30% usage target)
+ */
+const generateContextTags = (): string[] => {
+  const allTags = [
+    "backend",
+    "frontend",
+    "database",
+    "security",
+    "performance",
+    "testing",
+    "api",
+    "authentication",
+    "deployment",
+    "refactoring",
+  ];
+  const tagCount = Math.floor(Math.random() * 3) + 1; // 1-3 tags
+  const shuffled = allTags.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, tagCount);
+};
+
+/**
+ * Helper: Maps task sourceType to systemAssigneeType
+ */
+const getSystemAssigneeType = (
+  sourceType: TaskSourceType
+): SystemAssigneeType | null => {
+  switch (sourceType) {
+    case TaskSourceType.TASK_COORDINATOR:
+      return SystemAssigneeType.TASK_COORDINATOR;
+    default:
+      return null;
+  }
+};
+
+/**
+ * Helper: Returns a random team member ID from the array
+ */
+const getRandomTeamMemberId = (teamMemberIds: string[]): string => {
+  return teamMemberIds[Math.floor(Math.random() * teamMemberIds.length)];
+};
 
 /**
  * Seeds mock data for development/testing.
@@ -82,10 +132,10 @@ export async function seedMockData(
  */
 async function seedTeamMembers(workspaceId: string): Promise<string[]> {
   const fakeMembers = [
-    { name: "Alice Chen", email: "alice.chen@example.com", role: WorkspaceRole.ADMIN },
-    { name: "Bob Martinez", email: "bob.martinez@example.com", role: WorkspaceRole.PM },
-    { name: "Carol Johnson", email: "carol.johnson@example.com", role: WorkspaceRole.DEVELOPER },
-    { name: "David Kim", email: "david.kim@example.com", role: WorkspaceRole.DEVELOPER },
+    { name: "Alice Chen", email: "alice.chen@example.com", role: WorkspaceRole.ADMIN, lastAccessDaysAgo: 2 },
+    { name: "Bob Martinez", email: "bob.martinez@example.com", role: WorkspaceRole.PM, lastAccessDaysAgo: 5 },
+    { name: "Carol Johnson", email: "carol.johnson@example.com", role: WorkspaceRole.DEVELOPER, lastAccessDaysAgo: 1 },
+    { name: "David Kim", email: "david.kim@example.com", role: WorkspaceRole.DEVELOPER, lastAccessDaysAgo: 7 },
   ];
 
   const userIds: string[] = [];
@@ -101,12 +151,13 @@ async function seedTeamMembers(workspaceId: string): Promise<string[]> {
     });
     userIds.push(user.id);
 
-    // Add as workspace member
+    // Add as workspace member with varied lastAccessedAt
     await db.workspaceMember.create({
       data: {
         workspaceId,
         userId: user.id,
         role: member.role,
+        lastAccessedAt: getDaysAgo(member.lastAccessDaysAgo),
       },
     });
   }
@@ -178,13 +229,20 @@ async function seedFeatures(
 
   const features: Array<{ id: string; title: string; phaseId: string }> = [];
 
-  for (const data of featureData) {
+  for (let i = 0; i < featureData.length; i++) {
+    const data = featureData[i];
+    const daysAgo = 2 + i * 3; // Distribute: 2, 5, 8, 11, 14 days ago
+    const randomCreator = getRandomTeamMemberId(userIds);
+    const randomUpdater = getRandomTeamMemberId(userIds);
+
     const feature = await db.feature.create({
       data: {
         ...data,
         workspaceId,
-        createdById: userId,
-        updatedById: userId,
+        createdById: randomCreator,
+        updatedById: randomUpdater,
+        createdAt: getDaysAgo(daysAgo),
+        updatedAt: getDaysAgo(daysAgo - 1),
       },
       select: { id: true, title: true },
     });
@@ -483,6 +541,60 @@ async function seedTasks(
       mode: "test",
       withPod: true,
     },
+
+    // AGENT MODE
+    {
+      title: "AI-assisted code review agent",
+      description:
+        "Deploy autonomous agent to review pull requests and suggest improvements.",
+      status: TaskStatus.IN_PROGRESS,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+      mode: "agent",
+      withPod: true,
+    },
+    {
+      title: "Automated refactoring agent",
+      description:
+        "Agent that detects code smells and automatically proposes refactoring PRs.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.MEDIUM,
+      mode: "agent",
+    },
+
+    // ADDITIONAL TEST MODE
+    {
+      title: "E2E test runner automation",
+      description:
+        "Automated Playwright test execution across all environments.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.MEDIUM,
+      mode: "test",
+    },
+
+    // ADDITIONAL ARCHIVED
+    {
+      title: "Migration to old framework version",
+      description:
+        "Archived: Decision reversed to stay on current framework version after performance analysis.",
+      status: TaskStatus.CANCELLED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.LOW,
+      archived: true,
+    },
+
+    // TASK_COORDINATOR (for systemAssigneeType testing)
+    {
+      title: "Coordinate feature deployment workflow",
+      description:
+        "System-coordinated task to orchestrate multi-service deployment.",
+      status: TaskStatus.IN_PROGRESS,
+      sourceType: TaskSourceType.TASK_COORDINATOR,
+      priority: Priority.HIGH,
+      withPod: true,
+    },
   ];
 
   const createdTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> = [];
@@ -498,11 +610,14 @@ async function seedTasks(
         ? features[featureIndex]
         : null;
 
-    // Assign to team member if specified
+    // Assign to team member if specified, or use random
     const assigneeId =
       template.assignToTeamMember !== undefined && teamMemberIds[template.assignToTeamMember]
         ? teamMemberIds[template.assignToTeamMember]
         : null;
+
+    // Determine systemAssigneeType based on sourceType
+    const systemAssigneeType = getSystemAssigneeType(template.sourceType);
 
     // Assign pod for IN_PROGRESS tasks with withPod flag
     let podId: string | null = null;
@@ -513,13 +628,25 @@ async function seedTasks(
       podIndex++;
     }
 
+    // Date distribution: spread task creation over 1-30 days
+    const taskDaysAgo = 1 + (i % 30);
+    const taskCreatedAt = getDaysAgo(taskDaysAgo);
+    const taskUpdatedAt = getDaysAgo(Math.max(0, taskDaysAgo - 1));
+
+    // Archived timestamp for archived tasks
+    const archivedAt = template.archived ? getDaysAgo(taskDaysAgo - 2) : null;
+
+    // Varied audit trail
+    const createdById = getRandomTeamMemberId(teamMemberIds);
+    const updatedById = getRandomTeamMemberId(teamMemberIds);
+
     const task = await db.task.create({
       data: {
         title: template.title,
         description: template.description,
         workspaceId,
-        createdById: userId,
-        updatedById: userId,
+        createdById,
+        updatedById,
         assigneeId,
         status: template.status,
         workflowStatus: template.withPod
@@ -527,16 +654,20 @@ async function seedTasks(
           : template.workflowStatus || WorkflowStatus.PENDING,
         priority: template.priority || Priority.MEDIUM,
         sourceType: template.sourceType,
+        systemAssigneeType,
         featureId: linkedFeature?.id || null,
-        phaseId: linkedFeature?.phaseId || null, // Link to feature's first phase for Tasks tab
+        phaseId: linkedFeature?.phaseId || null,
         janitorType: template.janitorType || null,
         testFilePath: template.testFilePath || null,
         testFileUrl: template.testFileUrl || null,
         archived: template.archived || false,
+        archivedAt,
         bountyCode: template.bountyCode || null,
         mode: template.mode || undefined,
         podId,
         agentUrl,
+        createdAt: taskCreatedAt,
+        updatedAt: taskUpdatedAt,
       },
       select: { id: true, title: true, status: true, sourceType: true },
     });
@@ -545,6 +676,23 @@ async function seedTasks(
 
     if (podId) {
       tasksWithPods.push({ podId, title: task.title });
+    }
+  }
+
+  // Add task dependencies: link some tasks to create realistic dependency chains
+  if (createdTasks.length >= 3) {
+    // Task 1 depends on Task 0 (first task blocks second)
+    await db.task.update({
+      where: { id: createdTasks[1].id },
+      data: { dependsOnTaskIds: [createdTasks[0].id] },
+    });
+
+    // Task 4 depends on Tasks 2 and 3 (multiple dependencies)
+    if (createdTasks.length >= 5) {
+      await db.task.update({
+        where: { id: createdTasks[4].id },
+        data: { dependsOnTaskIds: [createdTasks[2].id, createdTasks[3].id] },
+      });
     }
   }
 
@@ -962,6 +1110,105 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
       });
     }
 
+    // Add STREAM artifact (for task index 0 and 4)
+    if (tasks.indexOf(task) === 0 || tasks.indexOf(task) === 4) {
+      const streamMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "I'm streaming real-time updates from the build process:",
+          role: "ASSISTANT",
+          contextTags: generateContextTags(), // Add context tags
+          workflowUrl: "https://example.com/workflows/build-123", // Add workflow URL
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: streamMsg.id,
+          type: ArtifactType.STREAM,
+          content: {
+            streamUrl: "wss://example.com/stream/build-123",
+            status: "active",
+            messages: [
+              { timestamp: Date.now() - 5000, text: "Starting build..." },
+              { timestamp: Date.now() - 3000, text: "Installing dependencies..." },
+              { timestamp: Date.now() - 1000, text: "Running tests..." },
+            ],
+          },
+        },
+      });
+    }
+
+    // Add PUBLISH_WORKFLOW artifact (for task index 1 and 2)
+    if (tasks.indexOf(task) === 1 || tasks.indexOf(task) === 2) {
+      const publishMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "The deployment workflow has been triggered and is publishing to production:",
+          role: "ASSISTANT",
+          contextTags: generateContextTags(), // Add context tags
+          workflowUrl: "https://example.com/workflows/deploy-456", // Add workflow URL
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: publishMsg.id,
+          type: ArtifactType.PUBLISH_WORKFLOW,
+          content: {
+            workflowId: "deploy-456",
+            status: "publishing",
+            stages: [
+              { name: "Build", status: "completed", duration: "2m 15s" },
+              { name: "Test", status: "completed", duration: "5m 30s" },
+              { name: "Publish", status: "in_progress", duration: "1m 45s" },
+              { name: "Verify", status: "pending", duration: null },
+            ],
+            publishedUrl: "https://production.example.com",
+          },
+        },
+      });
+    }
+
+    // Add context tags to 30% of all messages (random selection)
+    const allMessages = await db.chatMessage.findMany({
+      where: { taskId: task.id },
+      select: { id: true },
+    });
+
+    for (const msg of allMessages) {
+      if (Math.random() < 0.3) {
+        // 30% chance
+        await db.chatMessage.update({
+          where: { id: msg.id },
+          data: { contextTags: generateContextTags() },
+        });
+      }
+    }
+
+    // Create reply chains: User asks follow-up, Assistant responds (2 chains per task)
+    if (allMessages.length >= 2) {
+      const parentMsg = allMessages[0];
+      const replyMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "Can you explain that in more detail?",
+          role: "USER",
+          replyId: parentMsg.id, // Thread reply to first message
+        },
+      });
+
+      await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "Of course! Let me break it down step by step...",
+          role: "ASSISTANT",
+          replyId: replyMsg.id, // Thread reply to follow-up
+          contextTags: generateContextTags(),
+        },
+      });
+    }
+
     // If task is done, add completion message
     if (task.status === TaskStatus.DONE) {
       await db.chatMessage.create({
@@ -1028,7 +1275,7 @@ async function seedJanitorData(
     },
   });
 
-  // Create recommendations
+  // Create recommendations with enhanced metadata
   const recommendations = [
     {
       title: "Add unit tests for UserService",
@@ -1036,6 +1283,13 @@ async function seedJanitorData(
         "The UserService class has 0% test coverage. Critical business logic should be tested.",
       priority: Priority.HIGH,
       impact: "Improves reliability of user operations and prevents regressions",
+      metadata: {
+        filePath: "src/services/user.service.ts",
+        lineNumber: 45,
+        codeSnippet: "export class UserService {\n  async createUser(data: UserData) {\n    // No tests for this method\n  }\n}",
+        janitorType: JanitorType.UNIT_TESTS,
+        coverage: 0,
+      },
     },
     {
       title: "Mock external API calls in tests",
@@ -1043,6 +1297,13 @@ async function seedJanitorData(
         "Tests are making real HTTP calls to external services, causing flakiness.",
       priority: Priority.CRITICAL,
       impact: "Reduces test flakiness and execution time by 60%",
+      metadata: {
+        filePath: "src/__tests__/integration/api.test.ts",
+        lineNumber: 128,
+        codeSnippet: "// Real HTTP call - should be mocked\nconst response = await fetch('https://api.external.com/data');",
+        janitorType: JanitorType.INTEGRATION_TESTS,
+        externalCalls: 12,
+      },
     },
     {
       title: "Add integration tests for webhooks",
@@ -1050,9 +1311,17 @@ async function seedJanitorData(
         "GitHub webhook handlers lack integration tests. Edge cases are untested.",
       priority: Priority.MEDIUM,
       impact: "Ensures webhook reliability and catches payload format changes",
+      metadata: {
+        filePath: "src/app/api/github/webhook/route.ts",
+        lineNumber: 67,
+        codeSnippet: "export async function POST(request: Request) {\n  // Webhook handler - needs integration tests\n}",
+        janitorType: JanitorType.INTEGRATION_TESTS,
+        untested: true,
+      },
     },
   ];
 
+  // Use varied team members for audit trail
   for (const rec of recommendations) {
     await db.janitorRecommendation.create({
       data: {
@@ -1063,6 +1332,7 @@ async function seedJanitorData(
         priority: rec.priority,
         impact: rec.impact,
         status: RecommendationStatus.PENDING,
+        metadata: rec.metadata,
       },
     });
   }
@@ -1138,8 +1408,19 @@ async function seedJanitorData(
       janitorType: JanitorType.SECURITY_REVIEW,
       status: JanitorStatus.RUNNING,
       triggeredBy: JanitorTrigger.MANUAL,
-      startedAt: new Date(Date.now() - 1800000), // 30 min ago
+      startedAt: getDaysAgo(0.02), // 30 min ago
       metadata: { progress: 65, filesScanned: 98, currentFile: "src/services/auth.ts" },
+    },
+  });
+
+  // Add PENDING JanitorRun
+  await db.janitorRun.create({
+    data: {
+      janitorConfigId: janitorConfig.id,
+      janitorType: JanitorType.INTEGRATION_TESTS,
+      status: JanitorStatus.PENDING,
+      triggeredBy: JanitorTrigger.SCHEDULED,
+      metadata: { scheduledFor: new Date(Date.now() + 3600000).toISOString() }, // 1 hour from now
     },
   });
 
@@ -1278,10 +1559,75 @@ Non-Functional Requirements:
           userStoriesStatus === WorkflowStatus.COMPLETED
             ? StakworkRunDecision.ACCEPTED
             : null,
-        createdAt: new Date(Date.now() - 86400000), // 1 day ago
-        updatedAt: new Date(Date.now() - 86400000),
+        createdAt: getDaysAgo(1),
+        updatedAt: getDaysAgo(1),
       },
     });
+
+    // Add PENDING status run for some features
+    if (feature.title === "API Rate Limiting") {
+      await db.stakworkRun.create({
+        data: {
+          workspaceId,
+          featureId: feature.id,
+          type: StakworkRunType.REQUIREMENTS,
+          webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+          projectId: Math.floor(Math.random() * 10000),
+          status: WorkflowStatus.PENDING,
+          dataType: "string",
+          createdAt: getDaysAgo(0.5), // 12 hours ago
+          updatedAt: getDaysAgo(0.5),
+        },
+      });
+    }
+
+    // Add REJECTED decision run for some features
+    if (feature.title === "Advanced Search Filters") {
+      await db.stakworkRun.create({
+        data: {
+          workspaceId,
+          featureId: feature.id,
+          type: StakworkRunType.ARCHITECTURE,
+          webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+          projectId: Math.floor(Math.random() * 10000),
+          status: WorkflowStatus.COMPLETED,
+          result: JSON.stringify({
+            architecture: "Monolithic search service with tight coupling",
+            components: ["Search API", "Index Manager"],
+            technologies: ["Custom search engine"],
+          }),
+          dataType: "json",
+          decision: StakworkRunDecision.REJECTED,
+          createdAt: getDaysAgo(3),
+          updatedAt: getDaysAgo(3),
+        },
+      });
+    }
+
+    // Add FEEDBACK decision run for some features
+    if (feature.title === "Legacy Report Generator") {
+      await db.stakworkRun.create({
+        data: {
+          workspaceId,
+          featureId: feature.id,
+          type: StakworkRunType.USER_STORIES,
+          webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+          projectId: Math.floor(Math.random() * 10000),
+          status: WorkflowStatus.COMPLETED,
+          result: JSON.stringify([
+            {
+              title: "As a PM, I want to export reports as PDF",
+              acceptance: "Generate PDF with all metrics",
+              feedback: "Stakeholders prefer dashboard views over PDFs",
+            },
+          ]),
+          dataType: "json",
+          decision: StakworkRunDecision.FEEDBACK,
+          createdAt: getDaysAgo(4),
+          updatedAt: getDaysAgo(4),
+        },
+      });
+    }
 
     // Task generation run (only for completed features)
     if (feature.title === "User Authentication") {
