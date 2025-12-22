@@ -39,8 +39,24 @@ export class ContextLearnPage {
       await learnLink.waitFor({ state: 'visible', timeout: 5000 });
     }
 
-    await learnLink.click();
-    await this.page.waitForURL(/\/w\/.*\/learn/, { timeout: 10000 });
+    // Ensure page is fully loaded and network is idle before navigation
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {
+      // If networkidle times out, fall back to domcontentloaded
+      return this.page.waitForLoadState('domcontentloaded');
+    });
+    
+    // Wait for the link to be attached and stable
+    await learnLink.waitFor({ state: 'attached', timeout: 5000 });
+    
+    // Small delay to ensure link is fully interactive (reduces race conditions)
+    await this.page.waitForTimeout(100);
+    
+    // Wait for navigation to complete after clicking (using Promise.all for coordination)
+    await Promise.all([
+      this.page.waitForURL(/\/w\/.*\/learn/, { timeout: 30000 }),
+      learnLink.click()
+    ]);
+    
     await this.waitForLoad();
   }
 
