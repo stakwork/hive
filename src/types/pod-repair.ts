@@ -8,20 +8,20 @@ export const IGNORED_PROCESSES = ["goose", "staklink-proxy"] as const;
 
 // jlist endpoint response types
 export interface JlistProcess {
-  pid: number;
+  pid: number | null;
   name: string;
   status: string;
-  pm_uptime?: number;
+  pm_uptime?: number | null;
   port?: string;
   cwd?: string;
 }
 
 export const JlistResponseSchema = z.array(
   z.object({
-    pid: z.number(),
+    pid: z.number().nullable(),
     name: z.string(),
     status: z.string(),
-    pm_uptime: z.number().optional(),
+    pm_uptime: z.number().nullable().optional(),
     port: z.string().optional(),
     cwd: z.string().optional(),
   })
