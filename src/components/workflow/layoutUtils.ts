@@ -68,7 +68,7 @@ export const smartLayout = async (nodes: Node[], edges: Edge[]): Promise<Node[]>
   }
 };
 
-async function applyBasicLayout(nodes: Node[], edges: Edge[]): Promise<Node[]> {
+export async function applyBasicLayout(nodes: Node[], edges: Edge[]): Promise<Node[]> {
   // Identify special nodes
   const diamondNodes = nodes.filter(node =>
     node.data?.stepType === 'IfCondition' ||
