@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 // Process statuses that indicate failure and should trigger repair
-export const FAILED_STATUSES = ["stopped", "error", "offline"] as const;
+export const FAILED_STATUSES = ["error", "offline"] as const;
 
 // Processes to ignore when checking for failures
-export const IGNORED_PROCESSES = ["goose"] as const;
+export const IGNORED_PROCESSES = ["goose", "staklink-proxy"] as const;
 
 // jlist endpoint response types
 export interface JlistProcess {
