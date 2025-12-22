@@ -1,7 +1,15 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Circle } from "lucide-react";
+import { Circle, MoreVertical, Copy, ExternalLink } from "lucide-react";
 import { VMData } from "@/types/pool-manager";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
 interface VMGridProps {
   vms: VMData[];
@@ -21,6 +29,8 @@ function getStatusIndicator(state: string, usage_status: string) {
 }
 
 function VMCard({ vm }: { vm: VMData }) {
+  const [copySuccess, setCopySuccess] = useState(false);
+
   const cpuPercent = vm.resource_usage.available
     ? (parseFloat(vm.resource_usage.usage.cpu) / parseFloat(vm.resource_usage.requests.cpu)) * 100
     : 0;
@@ -29,6 +39,25 @@ function VMCard({ vm }: { vm: VMData }) {
     : 0;
 
   const isHighUsage = cpuPercent > 70 || memoryPercent > 70;
+
+  const handleCopyPassword = async () => {
+    if (!vm.password) return;
+
+    try {
+      await navigator.clipboard.writeText(vm.password);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy password:", err);
+    }
+  };
+
+  const handleOpenIDE = () => {
+    if (!vm.url) return;
+    window.open(vm.url, "_blank", "noopener,noreferrer");
+  };
+
+  const isActive = vm.state !== "pending";
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -39,9 +68,30 @@ function VMCard({ vm }: { vm: VMData }) {
             {getStatusIndicator(vm.state, vm.usage_status)}
             <span className="font-mono text-sm font-medium truncate">{vm.subdomain}</span>
           </div>
-          {vm.state === "pending" && (
-            <Badge variant="outline" className="text-xs">Pending</Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {vm.state === "pending" && (
+              <Badge variant="outline" className="text-xs">Pending</Badge>
+            )}
+            {isActive && vm.password && vm.url && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-6 w-6">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleCopyPassword}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    {copySuccess ? "Copied!" : "Copy password"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleOpenIDE}>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open IDE
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
 
         {/* User or Pending Message */}
