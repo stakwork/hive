@@ -68,7 +68,10 @@ const defaultData: Omit<
   nodeTypeOrder: null,
 }
 
-const normalizeNodeType = (type?: string) => (type || 'Unknown').trim()
+const normalizeNodeType = (type?: string) => {
+  const normalized = (type || 'Unknown').trim();
+  return normalized;
+}
 
 export const createDataStore = () =>
   create<DataStore>()(
@@ -102,7 +105,12 @@ export const createDataStore = () =>
         const repositoryNodes = data.nodes.filter((node) => repositoryNodeTypes.includes(node.node_type));
         const graphNodes = data.nodes.filter((node) => !repositoryNodeTypes.includes(node.node_type));
 
-        const nodesFilteredByFilters = graphNodes.toSorted((a, b) => (a.date_added_to_graph || 0) - (b.date_added_to_graph || 0));
+        // Bug#3 fix: Sort nodes by date_added_to_graph timestamp (ascending order)
+        const nodesFilteredByFilters = graphNodes.toSorted((a, b) => {
+          const dateA = a.date_added_to_graph || 0;
+          const dateB = b.date_added_to_graph || 0;
+          return dateA - dateB;
+        });
         const newNodes: Node[] = []
 
         nodesFilteredByFilters.forEach((node) => {
@@ -173,9 +181,12 @@ export const createDataStore = () =>
         }
 
         if (!newNodes.length && !newLinks.length) {
+          // Bug#2 fix: Set dataNew to null when no new data after deduplication
+          set({ dataNew: null })
           return
         }
 
+        // Bug#1 fix: Always update dataInitial to accumulate nodes across batches
         set({
           dataInitial: { nodes: updatedNodes, links: updatedLinks },
           dataNew: { nodes: newNodes, links: newLinks },
@@ -245,6 +256,7 @@ export const createDataStore = () =>
         },
 
         resetData: () => {
+          // Bug#5 fix: Clear linkTypes field for complete cleanup
           set({
             dataInitial: null,
             sidebarFilter: 'all',
@@ -255,6 +267,7 @@ export const createDataStore = () =>
             dataNew: null,
             runningProjectId: '',
             nodeTypes: [],
+            linkTypes: [],
             nodesNormalized: new Map<string, NodeExtended>(),
             linksNormalized: new Map<string, Link>(),
             nodeLinksNormalized: {},

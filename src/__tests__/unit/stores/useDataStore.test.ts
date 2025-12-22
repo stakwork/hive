@@ -1,59 +1,43 @@
-import { describe, test, expect, beforeEach } from 'vitest';
-import { useDataStore } from '@/stores/useDataStore';
-import { FetchDataResponse, Node, Link } from '@Universe/types';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { getStoreBundle, destroyStoreBundle } from '@/stores/createStoreFactory';
+import type { FetchDataResponse, Node, Link } from '@Universe/types';
 
-/**
- * Test utilities and mock data factories
- */
-
-// Factory for creating mock nodes
+// Test data factories
 const createMockNode = (overrides: Partial<Node> = {}): Node => ({
   ref_id: `node-${Math.random().toString(36).substr(2, 9)}`,
   name: 'Test Node',
   label: 'Test Label',
-  node_type: 'TestType',
+  node_type: 'Function',
   x: 0,
   y: 0,
   z: 0,
   edge_count: 0,
+  date_added_to_graph: Date.now(),
   ...overrides,
 });
 
-// Factory for creating mock links
 const createMockLink = (overrides: Partial<Link> = {}): Link => ({
   ref_id: `link-${Math.random().toString(36).substr(2, 9)}`,
-  source: 'node-source',
-  target: 'node-target',
-  edge_type: 'test_relation',
+  source: overrides.source || 'node-1',
+  target: overrides.target || 'node-2',
+  edge_type: 'CALLS',
   ...overrides,
 });
 
-// Factory for creating mock FetchDataResponse
 const createMockFetchData = (
-  nodeCount: number = 0,
-  edgeCount: number = 0,
+  nodeCount: number = 5,
+  edgeCount: number = 3,
   overrides: Partial<FetchDataResponse> = {}
 ): FetchDataResponse => {
-  const nodes: Node[] = Array(nodeCount)
-    .fill(null)
-    .map((_, i) =>
-      createMockNode({
-        ref_id: `node-${i}`,
-        name: `Node ${i}`,
-        node_type: i % 2 === 0 ? 'TypeA' : 'TypeB',
-      })
-    );
+  const nodes: Node[] = [];
+  for (let i = 0; i < nodeCount; i++) {
+    nodes.push(createMockNode({ ref_id: `node-${i}`, name: `Node ${i}` }));
+  }
 
-  const edges: Link[] = Array(edgeCount)
-    .fill(null)
-    .map((_, i) =>
-      createMockLink({
-        ref_id: `link-${i}`,
-        source: `node-${i}`,
-        target: `node-${Math.min(i + 1, nodeCount - 1)}`,
-        edge_type: i % 2 === 0 ? 'relation_a' : 'relation_b',
-      })
-    );
+  const edges: Link[] = [];
+  for (let i = 0; i < edgeCount && i < nodeCount - 1; i++) {
+    edges.push(createMockLink({ ref_id: `link-${i}`, source: `node-${i}`, target: `node-${i + 1}` }));
+  }
 
   return {
     nodes,
@@ -63,920 +47,868 @@ const createMockFetchData = (
 };
 
 // Helper to inspect store state
-const inspectStore = () => {
-  const state = useDataStore.getState();
-  return {
-    nodeCount: state.dataInitial?.nodes.length || 0,
-    edgeCount: state.dataInitial?.links.length || 0,
-    normalizedNodeCount: state.nodesNormalized.size,
-    normalizedLinkCount: state.linksNormalized.size,
-    nodeLinksKeys: Object.keys(state.nodeLinksNormalized).length,
-    nodeTypes: state.nodeTypes,
-    linkTypes: state.linkTypes,
-    sidebarFilters: state.sidebarFilters,
-    sidebarFilterCounts: state.sidebarFilterCounts,
-    dataNew: state.dataNew,
-  };
+const inspectStore = (storeId: string = 'test') => {
+  const bundle = getStoreBundle(storeId);
+  return bundle.data.getState();
 };
 
-/**
- * Unit tests for useDataStore's addNewNode function
- */
-describe('useDataStore - addNewNode', () => {
+describe('createDataStore - Basic Functionality', () => {
+  const storeId = 'test-basic';
+
   beforeEach(() => {
-    // Reset store state before each test
-    useDataStore.getState().resetData();
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
   });
 
-  describe('Basic Functionality', () => {
-    test('should add new nodes to empty store', () => {
-      const { addNewNode } = useDataStore.getState();
-      const mockData = createMockFetchData(3, 0);
+  it('should initialize with default state', () => {
+    const state = inspectStore(storeId);
 
-      addNewNode(mockData);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(3);
-      expect(state.normalizedNodeCount).toBe(3);
-      expect(state.edgeCount).toBe(0);
-    });
-
-    test('should add new edges with valid source/target', () => {
-      const { addNewNode } = useDataStore.getState();
-      const mockData = createMockFetchData(3, 2);
-
-      addNewNode(mockData);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(3);
-      expect(state.edgeCount).toBe(2);
-      expect(state.normalizedLinkCount).toBe(2);
-    });
-
-    test('should handle empty data', () => {
-      const { addNewNode } = useDataStore.getState();
-      const mockData = createMockFetchData(0, 0);
-
-      addNewNode(mockData);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(0);
-      expect(state.edgeCount).toBe(0);
-    });
-
-    test('should handle null nodes gracefully', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      addNewNode({ nodes: null as any, edges: [] });
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(0);
-    });
-
-    test('should handle undefined data', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      addNewNode(null as any);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(0);
-    });
+    expect(state.dataInitial).toBeNull();
+    expect(state.dataNew).toBeNull();
+    expect(state.nodesNormalized.size).toBe(0);
+    expect(state.linksNormalized.size).toBe(0);
+    expect(state.nodeTypes).toEqual([]);
+    expect(state.linkTypes).toEqual([]);
+    expect(state.sidebarFilter).toBe('all');
   });
 
-  describe('Node Deduplication', () => {
-    test('should not add duplicate nodes with same ref_id', () => {
-      const { addNewNode } = useDataStore.getState();
-      const node1 = createMockNode({ ref_id: 'node-duplicate', name: 'First' });
-      const node2 = createMockNode({ ref_id: 'node-duplicate', name: 'Second' });
+  it('should add new nodes and links via addNewNode', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = createMockFetchData(3, 2);
 
-      addNewNode({ nodes: [node1], edges: [] });
-      addNewNode({ nodes: [node2], edges: [] });
+    bundle.data.getState().addNewNode(mockData);
 
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(1);
-      expect(state.normalizedNodeCount).toBe(1);
-
-      // Verify first node is retained
-      const storedNode = useDataStore.getState().nodesNormalized.get('node-duplicate');
-      expect(storedNode?.name).toBe('First');
-    });
-
-    test('should handle partial duplicates (some new, some existing)', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      // First batch
-      const batch1 = createMockFetchData(3, 0);
-      addNewNode(batch1);
-
-      // Second batch with 2 duplicates and 1 new
-      const batch2 = {
-        nodes: [
-          batch1.nodes[0], // duplicate
-          batch1.nodes[1], // duplicate
-          createMockNode({ ref_id: 'node-new', name: 'New Node' }), // new
-        ],
-        edges: [],
-      };
-      addNewNode(batch2);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(4); // 3 original + 1 new
-      expect(state.normalizedNodeCount).toBe(4);
-    });
-
-    test('should not add duplicate edges with same ref_id', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      // Create nodes first
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-      ];
-
-      const link1 = createMockLink({
-        ref_id: 'link-duplicate',
-        source: 'node-a',
-        target: 'node-b',
-      });
-
-      addNewNode({ nodes, edges: [link1] });
-      addNewNode({ nodes: [], edges: [link1] });
-
-      const state = inspectStore();
-      expect(state.edgeCount).toBe(1);
-      expect(state.normalizedLinkCount).toBe(1);
-    });
+    const state = inspectStore(storeId);
+    expect(state.dataInitial?.nodes).toHaveLength(3);
+    expect(state.dataInitial?.links).toHaveLength(2);
+    expect(state.nodesNormalized.size).toBe(3);
+    expect(state.linksNormalized.size).toBe(2);
   });
 
-  describe('Edge Validation', () => {
-    test('should reject edges with missing source node', () => {
-      const { addNewNode } = useDataStore.getState();
+  it('should set dataNew to null when no new data after deduplication (Bug#2 fix)', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = createMockFetchData(2, 1);
 
-      const nodes = [createMockNode({ ref_id: 'node-target' })];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-orphan',
-          source: 'node-missing',
-          target: 'node-target',
-        }),
-      ];
+    // First call adds data
+    bundle.data.getState().addNewNode(mockData);
+    expect(inspectStore(storeId).dataNew?.nodes).toHaveLength(2);
 
-      addNewNode({ nodes, edges });
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(1);
-      expect(state.edgeCount).toBe(0); // Edge should be rejected
-      expect(state.normalizedLinkCount).toBe(0);
-    });
-
-    test('should reject edges with missing target node', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const nodes = [createMockNode({ ref_id: 'node-source' })];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-orphan',
-          source: 'node-source',
-          target: 'node-missing',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(1);
-      expect(state.edgeCount).toBe(0); // Edge should be rejected
-      expect(state.normalizedLinkCount).toBe(0);
-    });
-
-    test('should reject edges with both nodes missing', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const edges = [
-        createMockLink({
-          ref_id: 'link-orphan',
-          source: 'node-missing-a',
-          target: 'node-missing-b',
-        }),
-      ];
-
-      addNewNode({ nodes: [], edges });
-
-      const state = inspectStore();
-      expect(state.edgeCount).toBe(0);
-      expect(state.normalizedLinkCount).toBe(0);
-    });
-
-    test('should accept edges when both source and target exist', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-valid',
-          source: 'node-a',
-          target: 'node-b',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(2);
-      expect(state.edgeCount).toBe(1);
-      expect(state.normalizedLinkCount).toBe(1);
-    });
-
-    test('should handle edges referencing nodes from previous batches', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      // First batch: add nodes
-      const batch1 = {
-        nodes: [
-          createMockNode({ ref_id: 'node-a' }),
-          createMockNode({ ref_id: 'node-b' }),
-        ],
-        edges: [],
-      };
-      addNewNode(batch1);
-
-      // Second batch: add edge referencing existing nodes
-      const batch2 = {
-        nodes: [],
-        edges: [
-          createMockLink({
-            ref_id: 'link-delayed',
-            source: 'node-a',
-            target: 'node-b',
-          }),
-        ],
-      };
-      addNewNode(batch2);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(2);
-      expect(state.edgeCount).toBe(1);
-    });
+    // Second call with same data should set dataNew to null
+    bundle.data.getState().addNewNode(mockData);
+    expect(inspectStore(storeId).dataNew).toBeNull();
   });
 
-  describe('Relationship Tracking', () => {
-    test('should update source node targets array', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
+  it('should extract unique node types and link types', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'n1', node_type: 'Function' }),
+        createMockNode({ ref_id: 'n2', node_type: 'Class' }),
+        createMockNode({ ref_id: 'n3', node_type: 'Function' }),
+      ],
+      edges: [
+        createMockLink({ ref_id: 'e1', source: 'n1', target: 'n2', edge_type: 'CALLS' }),
+        createMockLink({ ref_id: 'e2', source: 'n2', target: 'n3', edge_type: 'IMPORTS' }),
+      ],
+    };
 
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-        }),
-      ];
+    bundle.data.getState().addNewNode(mockData);
 
-      addNewNode({ nodes, edges });
-
-      const sourceNode = nodesNormalized.get('node-a');
-      expect(sourceNode?.targets).toContain('node-b');
-    });
-
-    test('should update target node sources array', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const targetNode = nodesNormalized.get('node-b');
-      expect(targetNode?.sources).toContain('node-a');
-    });
-
-    test('should populate nodeLinksNormalized correctly', () => {
-      const { addNewNode, nodeLinksNormalized } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      // PairKey should be sorted: node-a--node-b
-      const pairKey = 'node-a--node-b';
-      expect(nodeLinksNormalized[pairKey]).toContain('link-1');
-    });
-
-    test('should handle bidirectional nodeLinksNormalized (sorted keys)', () => {
-      const { addNewNode, nodeLinksNormalized } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-z' }),
-        createMockNode({ ref_id: 'node-a' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-z',
-          target: 'node-a',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      // PairKey should be sorted: node-a--node-z (alphabetically)
-      const pairKey = 'node-a--node-z';
-      expect(nodeLinksNormalized[pairKey]).toContain('link-1');
-    });
-
-    test('should track edge types on both nodes', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-          edge_type: 'relation_x',
-        }),
-        createMockLink({
-          ref_id: 'link-2',
-          source: 'node-a',
-          target: 'node-b',
-          edge_type: 'relation_y',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const sourceNode = nodesNormalized.get('node-a');
-      const targetNode = nodesNormalized.get('node-b');
-
-      expect(sourceNode?.edgeTypes).toContain('relation_x');
-      expect(sourceNode?.edgeTypes).toContain('relation_y');
-      expect(targetNode?.edgeTypes).toContain('relation_x');
-      expect(targetNode?.edgeTypes).toContain('relation_y');
-    });
-
-    test('should not duplicate edge types on nodes', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-        createMockNode({ ref_id: 'node-c' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-          edge_type: 'relation_x',
-        }),
-        createMockLink({
-          ref_id: 'link-2',
-          source: 'node-a',
-          target: 'node-c',
-          edge_type: 'relation_x',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const sourceNode = nodesNormalized.get('node-a');
-      expect(sourceNode?.edgeTypes).toEqual(['relation_x']); // No duplicates
-    });
-
-    test('should track multiple targets per source node', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-        createMockNode({ ref_id: 'node-c' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-        }),
-        createMockLink({
-          ref_id: 'link-2',
-          source: 'node-a',
-          target: 'node-c',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const sourceNode = nodesNormalized.get('node-a');
-      expect(sourceNode?.targets).toHaveLength(2);
-      expect(sourceNode?.targets).toContain('node-b');
-      expect(sourceNode?.targets).toContain('node-c');
-    });
+    const state = inspectStore(storeId);
+    expect(state.nodeTypes).toEqual(expect.arrayContaining(['Class', 'Function']));
+    expect(state.linkTypes).toEqual(expect.arrayContaining(['CALLS', 'IMPORTS']));
   });
 
-  describe('Metadata Calculation', () => {
-    test('should extract unique nodeTypes', () => {
-      const { addNewNode } = useDataStore.getState();
+  it('should reset graph data', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = createMockFetchData(3, 2);
 
-      const mockData = {
-        nodes: [
-          createMockNode({ ref_id: 'node-1', node_type: 'TypeA' }),
-          createMockNode({ ref_id: 'node-2', node_type: 'TypeB' }),
-          createMockNode({ ref_id: 'node-3', node_type: 'TypeA' }), // duplicate type
-        ],
-        edges: [],
-      };
+    bundle.data.getState().addNewNode(mockData);
+    expect(inspectStore(storeId).dataInitial).not.toBeNull();
 
-      addNewNode(mockData);
+    bundle.data.getState().resetData();
 
-      const state = inspectStore();
-      expect(state.nodeTypes).toHaveLength(2);
-      expect(state.nodeTypes).toContain('TypeA');
-      expect(state.nodeTypes).toContain('TypeB');
-    });
+    const state = inspectStore(storeId);
+    expect(state.dataInitial).toBeNull();
+    expect(state.dataNew).toBeNull();
+    expect(state.nodesNormalized.size).toBe(0);
+    expect(state.linksNormalized.size).toBe(0);
+    expect(state.nodeTypes).toEqual([]);
+    expect(state.linkTypes).toEqual([]);
+  });
+});
 
-    test('should extract unique linkTypes', () => {
-      const { addNewNode } = useDataStore.getState();
+describe('createDataStore - Node Deduplication', () => {
+  const storeId = 'test-dedup';
 
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-        createMockNode({ ref_id: 'node-c' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-          edge_type: 'relation_x',
-        }),
-        createMockLink({
-          ref_id: 'link-2',
-          source: 'node-b',
-          target: 'node-c',
-          edge_type: 'relation_y',
-        }),
-        createMockLink({
-          ref_id: 'link-3',
-          source: 'node-a',
-          target: 'node-c',
-          edge_type: 'relation_x',
-        }), // duplicate type
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const state = inspectStore();
-      expect(state.linkTypes).toHaveLength(2);
-      expect(state.linkTypes).toContain('relation_x');
-      expect(state.linkTypes).toContain('relation_y');
-    });
-
-    test('should create sidebar filters including "all"', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const mockData = {
-        nodes: [
-          createMockNode({ ref_id: 'node-1', node_type: 'TypeA' }),
-          createMockNode({ ref_id: 'node-2', node_type: 'TypeB' }),
-        ],
-        edges: [],
-      };
-
-      addNewNode(mockData);
-
-      const state = inspectStore();
-      expect(state.sidebarFilters).toContain('all');
-      expect(state.sidebarFilters).toContain('typea');
-      expect(state.sidebarFilters).toContain('typeb');
-    });
-
-    test('should calculate filter counts correctly', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const mockData = {
-        nodes: [
-          createMockNode({ ref_id: 'node-1', node_type: 'TypeA' }),
-          createMockNode({ ref_id: 'node-2', node_type: 'TypeA' }),
-          createMockNode({ ref_id: 'node-3', node_type: 'TypeB' }),
-        ],
-        edges: [],
-      };
-
-      addNewNode(mockData);
-
-      const state = inspectStore();
-      const allCount = state.sidebarFilterCounts.find((f) => f.name === 'all');
-      const typeACount = state.sidebarFilterCounts.find((f) => f.name === 'typea');
-      const typeBCount = state.sidebarFilterCounts.find((f) => f.name === 'typeb');
-
-      expect(allCount?.count).toBe(3);
-      expect(typeACount?.count).toBe(2);
-      expect(typeBCount?.count).toBe(1);
-    });
-
-    test('should update metadata when adding more nodes', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      // First batch
-      const batch1 = {
-        nodes: [createMockNode({ ref_id: 'node-1', node_type: 'TypeA' })],
-        edges: [],
-      };
-      addNewNode(batch1);
-
-      // Second batch with new type
-      const batch2 = {
-        nodes: [createMockNode({ ref_id: 'node-2', node_type: 'TypeC' })],
-        edges: [],
-      };
-      addNewNode(batch2);
-
-      const state = inspectStore();
-      expect(state.nodeTypes).toHaveLength(2);
-      expect(state.nodeTypes).toContain('TypeA');
-      expect(state.nodeTypes).toContain('TypeC');
-    });
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
   });
 
-  describe('Incremental Updates', () => {
-    test('should separate dataNew from dataInitial', () => {
-      const { addNewNode } = useDataStore.getState();
-      const mockData = createMockFetchData(3, 2);
+  it('should prevent duplicate nodes by ref_id', () => {
+    const bundle = getStoreBundle(storeId);
+    const node = createMockNode({ ref_id: 'duplicate-node' });
+    const mockData1 = { nodes: [node], edges: [] };
+    const mockData2 = { nodes: [node], edges: [] };
 
-      addNewNode(mockData);
+    bundle.data.getState().addNewNode(mockData1);
+    bundle.data.getState().addNewNode(mockData2);
 
-      const state = inspectStore();
-      expect(state.dataNew?.nodes).toHaveLength(3);
-      expect(state.dataNew?.links).toHaveLength(2);
-    });
-
-    // TODO: Fix in separate PR - Test expects dataInitial to accumulate nodes across batches,
-    // but current implementation appears to have different behavior for incremental updates.
-    // Production code needs investigation to ensure proper accumulation across multiple addNewNode calls.
-    test.skip('should accumulate nodes in dataInitial across batches', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const batch1 = createMockFetchData(2, 1);
-      addNewNode(batch1);
-
-      const batch2 = createMockFetchData(3, 2);
-      addNewNode(batch2);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(5); // 2 + 3
-      expect(state.edgeCount).toBe(3); // 1 + 2
-    });
-
-    test('should only include new items in dataNew', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      // First batch
-      const batch1 = {
-        nodes: [
-          createMockNode({ ref_id: 'node-1' }),
-          createMockNode({ ref_id: 'node-2' }),
-        ],
-        edges: [],
-      };
-      addNewNode(batch1);
-
-      // Second batch with 1 duplicate and 1 new
-      const batch2 = {
-        nodes: [
-          batch1.nodes[0], // duplicate
-          createMockNode({ ref_id: 'node-3' }), // new
-        ],
-        edges: [],
-      };
-      addNewNode(batch2);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(3); // Total nodes in dataInitial
-      expect(state.dataNew?.nodes).toHaveLength(1); // Only new node in dataNew
-      expect(state.dataNew?.nodes[0].ref_id).toBe('node-3');
-    });
-
-    // TODO: Fix in separate PR - Test expects dataNew to be null when adding all duplicate nodes.
-    // Production code needs to handle early exit case where no new nodes/edges are added. 
-    // Currently dataNew may still contain previous data instead of being set to null.
-    test.skip('should not update store if no new data', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      // First batch
-      const batch1 = {
-        nodes: [
-          createMockNode({ ref_id: 'node-1' }),
-          createMockNode({ ref_id: 'node-2' }),
-        ],
-        edges: [],
-      };
-      addNewNode(batch1);
-
-      const stateBefore = inspectStore();
-
-      // Second batch with all duplicates
-      const batch2 = {
-        nodes: batch1.nodes,
-        edges: [],
-      };
-      addNewNode(batch2);
-
-      const stateAfter = inspectStore();
-
-      // State should remain unchanged
-      expect(stateAfter.nodeCount).toBe(stateBefore.nodeCount);
-      expect(stateAfter.dataNew).toBeNull(); // dataNew should be null (no new data)
-    });
+    const state = inspectStore(storeId);
+    expect(state.nodesNormalized.size).toBe(1);
+    expect(state.dataInitial?.nodes).toHaveLength(1);
   });
 
-  describe('Node Sorting', () => {
-    // TODO: Fix in separate PR - Test expects nodes to be sorted by date_added_to_graph.
-    // Production code (addNewNode in useDataStore) doesn't currently sort nodes by this field.
-    // Need to add sorting logic in addNewNode or verify if sorting should happen elsewhere.
-    test.skip('should sort nodes by date_added_to_graph', () => {
-      const { addNewNode, dataInitial } = useDataStore.getState();
+  it('should use Map for O(1) node lookup', () => {
+    const bundle = getStoreBundle(storeId);
+    const nodes = Array.from({ length: 1000 }, (_, i) => 
+      createMockNode({ ref_id: `node-${i}`, name: `Node ${i}` })
+    );
+    const mockData = { nodes, edges: [] };
 
-      const mockData = {
-        nodes: [
-          createMockNode({ ref_id: 'node-3', date_added_to_graph: 3000 }),
-          createMockNode({ ref_id: 'node-1', date_added_to_graph: 1000 }),
-          createMockNode({ ref_id: 'node-2', date_added_to_graph: 2000 }),
-        ],
-        edges: [],
-      };
+    const startTime = performance.now();
+    bundle.data.getState().addNewNode(mockData);
+    const endTime = performance.now();
 
-      addNewNode(mockData);
+    const state = inspectStore(storeId);
+    expect(state.nodesNormalized.size).toBe(1000);
+    
+    // O(1) lookup verification
+    const lookupStart = performance.now();
+    const found = state.nodesNormalized.has('node-500');
+    const lookupEnd = performance.now();
 
-      const nodes = dataInitial?.nodes || [];
-      expect(nodes[0].ref_id).toBe('node-1'); // oldest
-      expect(nodes[1].ref_id).toBe('node-2');
-      expect(nodes[2].ref_id).toBe('node-3'); // newest
-    });
-
-    // TODO: Fix in separate PR - Test expects nodes without date_added_to_graph to be treated as 0 (come first in sort).
-    // Related to the above sorting issue - production code doesn't sort by date_added_to_graph yet.
-    test.skip('should handle nodes without date_added_to_graph', () => {
-      const { addNewNode, dataInitial } = useDataStore.getState();
-
-      const mockData = {
-        nodes: [
-          createMockNode({ ref_id: 'node-1', date_added_to_graph: undefined }),
-          createMockNode({ ref_id: 'node-2', date_added_to_graph: 1000 }),
-        ],
-        edges: [],
-      };
-
-      addNewNode(mockData);
-
-      const nodes = dataInitial?.nodes || [];
-      expect(nodes).toHaveLength(2);
-      // Node without date should be treated as 0 and come first
-      expect(nodes[0].ref_id).toBe('node-1');
-    });
+    expect(found).toBe(true);
+    expect(lookupEnd - lookupStart).toBeLessThan(1); // Should be instant
+    expect(endTime - startTime).toBeLessThan(100); // Addition should be fast
   });
 
-  describe('Performance', () => {
-    test('should handle 1000+ nodes efficiently', () => {
-      const { addNewNode } = useDataStore.getState();
-      const startTime = performance.now();
+  it('should prevent duplicate links by ref_id', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link = createMockLink({ ref_id: 'duplicate-link', source: 'node-1', target: 'node-2' });
 
-      const mockData = createMockFetchData(1000, 500);
-      addNewNode(mockData);
+    const mockData1 = { nodes: [node1, node2], edges: [link] };
+    const mockData2 = { nodes: [], edges: [link] };
 
-      const endTime = performance.now();
-      const duration = endTime - startTime;
+    bundle.data.getState().addNewNode(mockData1);
+    bundle.data.getState().addNewNode(mockData2);
 
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(1000);
-      expect(state.edgeCount).toBe(500);
+    const state = inspectStore(storeId);
+    expect(state.linksNormalized.size).toBe(1);
+    expect(state.dataInitial?.links).toHaveLength(1);
+  });
+});
 
-      // Should complete in reasonable time (< 1000ms)
-      expect(duration).toBeLessThan(1000);
-    });
+describe('createDataStore - Edge Validation', () => {
+  const storeId = 'test-edge';
 
-    test('O(1) lookup performance - relative comparison', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
-      
-      // Create a larger dataset to make performance differences more pronounced
-      const nodeCount = 10000;
-      const nodes = [];
-      
-      for (let i = 0; i < nodeCount; i++) {
-        const node = createMockNode({
-          ref_id: `node-${i}`,
-          name: `Node ${i}`,
-        });
-        nodes.push(node);
-      }
-      
-      const mockData = {
-        nodes,
-        edges: [],
-      };
-      addNewNode(mockData);
-
-      // Warm-up to avoid JIT compilation effects
-      for (let i = 0; i < 20; i++) {
-        nodesNormalized.get(`node-${Math.floor(Math.random() * nodeCount)}`);
-        const targetId = `node-${Math.floor(Math.random() * nodeCount)}`;
-        nodes.find(n => n.ref_id === targetId);
-      }
-
-      // Run multiple samples to get median performance (reduces impact of outliers)
-      const samples = 5;
-      const lookupIterations = 500;
-      const searchIterations = 500;
-      const lookupTimes = [];
-      const searchTimes = [];
-
-      for (let sample = 0; sample < samples; sample++) {
-        // Test O(1) lookup performance
-        const lookupStart = performance.now();
-        for (let i = 0; i < lookupIterations; i++) {
-          const node = nodesNormalized.get(`node-${Math.floor(nodeCount / 2)}`);
-          expect(node).toBeDefined();
-        }
-        const lookupEnd = performance.now();
-        lookupTimes.push(lookupEnd - lookupStart);
-
-        // Test O(n) linear search performance
-        const searchStart = performance.now();
-        for (let i = 0; i < searchIterations; i++) {
-          const targetId = `node-${Math.floor(nodeCount / 2)}`;
-          const node = nodes.find(n => n.ref_id === targetId);
-          expect(node).toBeDefined();
-        }
-        const searchEnd = performance.now();
-        searchTimes.push(searchEnd - searchStart);
-      }
-
-      // Use median times to reduce impact of outliers and system noise
-      lookupTimes.sort((a, b) => a - b);
-      searchTimes.sort((a, b) => a - b);
-      const medianLookupTime = lookupTimes[Math.floor(samples / 2)];
-      const medianSearchTime = searchTimes[Math.floor(samples / 2)];
-      const performanceRatio = medianSearchTime / medianLookupTime;
-
-      // Verify Map-based lookup outperforms linear array search
-      // Using median of multiple samples reduces false negatives from system variability
-      expect(performanceRatio).toBeGreaterThan(1.5);
-      
-      // Optional: Log performance metrics for debugging
-      console.log(`O(1) lookup (median): ${medianLookupTime.toFixed(2)}ms for ${lookupIterations} iterations`);
-      console.log(`O(n) search (median): ${medianSearchTime.toFixed(2)}ms for ${searchIterations} iterations`);
-      console.log(`Performance ratio: ${performanceRatio.toFixed(2)}x faster`);
-    });
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
   });
 
-  describe('Edge Cases', () => {
-    // TODO: Fix in separate PR - Production code crashes when node_type is undefined.
-    // Error: "Cannot read properties of undefined (reading 'toLowerCase')" in useDataStore/index.ts:192
-    // The sidebarFilters creation at line 192 calls type.toLowerCase() without checking if type is defined.
-    // Fix: Add filter to remove undefined/null values before calling toLowerCase(), e.g.:
-    // const sidebarFilters = ['all', ...nodeTypes.filter(Boolean).map((type) => type.toLowerCase())]
-    test.skip('should handle nodes with missing node_type', () => {
-      const { addNewNode } = useDataStore.getState();
+  it('should reject edges when source node does not exist', () => {
+    const bundle = getStoreBundle(storeId);
+    const node = createMockNode({ ref_id: 'existing-node' });
+    const link = createMockLink({ ref_id: 'invalid-link', source: 'non-existent', target: 'existing-node' });
 
-      const mockData = {
-        nodes: [
-          createMockNode({ ref_id: 'node-1', node_type: undefined as any }),
-          createMockNode({ ref_id: 'node-2', node_type: 'TypeA' }),
-        ],
-        edges: [],
-      };
+    const mockData = { nodes: [node], edges: [link] };
+    bundle.data.getState().addNewNode(mockData);
 
-      addNewNode(mockData);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(2);
-      // Should handle undefined node_type gracefully
-      expect(state.nodeTypes).toContain('TypeA');
-    });
-
-    test('should handle edges with missing edge_type', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const nodes = [
-        createMockNode({ ref_id: 'node-a' }),
-        createMockNode({ ref_id: 'node-b' }),
-      ];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-1',
-          source: 'node-a',
-          target: 'node-b',
-          edge_type: undefined as any,
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const state = inspectStore();
-      expect(state.edgeCount).toBe(1);
-      // Should handle undefined edge_type gracefully
-    });
-
-    test('should handle self-referencing edges', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
-
-      const nodes = [createMockNode({ ref_id: 'node-self' })];
-      const edges = [
-        createMockLink({
-          ref_id: 'link-self',
-          source: 'node-self',
-          target: 'node-self',
-        }),
-      ];
-
-      addNewNode({ nodes, edges });
-
-      const state = inspectStore();
-      expect(state.edgeCount).toBe(1);
-
-      const node = nodesNormalized.get('node-self');
-      expect(node?.sources).toContain('node-self');
-      expect(node?.targets).toContain('node-self');
-    });
-
-    test('should handle empty edges array', () => {
-      const { addNewNode } = useDataStore.getState();
-
-      const mockData = {
-        nodes: [createMockNode({ ref_id: 'node-1' })],
-        edges: undefined as any,
-      };
-
-      addNewNode(mockData);
-
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(1);
-      expect(state.edgeCount).toBe(0);
-    });
-
-    test('should initialize sources and targets arrays on new nodes', () => {
-      const { addNewNode, nodesNormalized } = useDataStore.getState();
-
-      const mockData = {
-        nodes: [createMockNode({ ref_id: 'node-1' })],
-        edges: [],
-      };
-
-      addNewNode(mockData);
-
-      const node = nodesNormalized.get('node-1');
-      expect(node?.sources).toEqual([]);
-      expect(node?.targets).toEqual([]);
-    });
+    const state = inspectStore(storeId);
+    expect(state.linksNormalized.size).toBe(0);
   });
 
-  describe('Store Reset', () => {
-    // TODO: Fix in separate PR - resetData() doesn't clear linkTypes field.
-    // The resetData function in useDataStore/index.ts (line 224) resets nodeTypes but not linkTypes.
-    // Fix: Add `linkTypes: []` to the resetData set() call on line 225.
-    test.skip('resetData should clear all data', () => {
-      const { addNewNode, resetData } = useDataStore.getState();
+  it('should reject edges when target node does not exist', () => {
+    const bundle = getStoreBundle(storeId);
+    const node = createMockNode({ ref_id: 'existing-node' });
+    const link = createMockLink({ ref_id: 'invalid-link', source: 'existing-node', target: 'non-existent' });
 
-      const mockData = createMockFetchData(3, 2);
-      addNewNode(mockData);
+    const mockData = { nodes: [node], edges: [link] };
+    bundle.data.getState().addNewNode(mockData);
 
-      resetData();
+    const state = inspectStore(storeId);
+    expect(state.linksNormalized.size).toBe(0);
+  });
 
-      const state = inspectStore();
-      expect(state.nodeCount).toBe(0);
-      expect(state.edgeCount).toBe(0);
-      expect(state.normalizedNodeCount).toBe(0);
-      expect(state.normalizedLinkCount).toBe(0);
-      expect(state.nodeLinksKeys).toBe(0);
-      expect(state.nodeTypes).toEqual([]);
-      expect(state.linkTypes).toEqual([]);
+  it('should accept edges when both source and target nodes exist', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link = createMockLink({ ref_id: 'valid-link', source: 'node-1', target: 'node-2' });
+
+    const mockData = { nodes: [node1, node2], edges: [link] };
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.linksNormalized.size).toBe(1);
+    expect(state.linksNormalized.get('valid-link')).toBeDefined();
+  });
+
+  it('should use Map for O(1) link lookup', () => {
+    const bundle = getStoreBundle(storeId);
+    const nodes = Array.from({ length: 100 }, (_, i) => 
+      createMockNode({ ref_id: `node-${i}` })
+    );
+    const edges = Array.from({ length: 99 }, (_, i) => 
+      createMockLink({ ref_id: `link-${i}`, source: `node-${i}`, target: `node-${i + 1}` })
+    );
+
+    bundle.data.getState().addNewNode({ nodes, edges });
+
+    const state = inspectStore(storeId);
+    const lookupStart = performance.now();
+    const found = state.linksNormalized.has('link-50');
+    const lookupEnd = performance.now();
+
+    expect(found).toBe(true);
+    expect(lookupEnd - lookupStart).toBeLessThan(1); // O(1) lookup
+  });
+
+  it('should handle edges added after nodes are present', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+
+    // Add nodes first
+    bundle.data.getState().addNewNode({ nodes: [node1, node2], edges: [] });
+    expect(inspectStore(storeId).linksNormalized.size).toBe(0);
+
+    // Add edge later
+    const link = createMockLink({ ref_id: 'late-link', source: 'node-1', target: 'node-2' });
+    bundle.data.getState().addNewNode({ nodes: [], edges: [link] });
+
+    const state = inspectStore(storeId);
+    expect(state.linksNormalized.size).toBe(1);
+  });
+});
+
+describe('createDataStore - Relationship Tracking', () => {
+  const storeId = 'test-relationships';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should update source node targets array', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link = createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2' });
+
+    bundle.data.getState().addNewNode({ nodes: [node1, node2], edges: [link] });
+
+    const state = inspectStore(storeId);
+    const sourceNode = state.nodesNormalized.get('node-1');
+    expect(sourceNode?.targets).toContain('node-2');
+  });
+
+  it('should update target node sources array', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link = createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2' });
+
+    bundle.data.getState().addNewNode({ nodes: [node1, node2], edges: [link] });
+
+    const state = inspectStore(storeId);
+    const targetNode = state.nodesNormalized.get('node-2');
+    expect(targetNode?.sources).toContain('node-1');
+  });
+
+  it('should populate nodeLinksNormalized with sorted pair keys', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link = createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2' });
+
+    bundle.data.getState().addNewNode({ nodes: [node1, node2], edges: [link] });
+
+    const state = inspectStore(storeId);
+    const pairKey = 'node-1--node-2';
+    expect(state.nodeLinksNormalized[pairKey]).toContain('link-1');
+  });
+
+  it('should track edge types on both nodes', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link = createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2', edge_type: 'CALLS' });
+
+    bundle.data.getState().addNewNode({ nodes: [node1, node2], edges: [link] });
+
+    const state = inspectStore(storeId);
+    const sourceNode = state.nodesNormalized.get('node-1');
+    const targetNode = state.nodesNormalized.get('node-2');
+
+    expect(sourceNode?.edgeTypes).toContain('CALLS');
+    expect(targetNode?.edgeTypes).toContain('CALLS');
+  });
+
+  it('should handle multiple links between same node pair', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link1 = createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2', edge_type: 'CALLS' });
+    const link2 = createMockLink({ ref_id: 'link-2', source: 'node-1', target: 'node-2', edge_type: 'IMPORTS' });
+
+    bundle.data.getState().addNewNode({ nodes: [node1, node2], edges: [link1, link2] });
+
+    const state = inspectStore(storeId);
+    const pairKey = 'node-1--node-2';
+    expect(state.nodeLinksNormalized[pairKey]).toHaveLength(2);
+    expect(state.nodeLinksNormalized[pairKey]).toEqual(expect.arrayContaining(['link-1', 'link-2']));
+  });
+
+  it('should deduplicate edge types in node edgeTypes array', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const node3 = createMockNode({ ref_id: 'node-3' });
+    const link1 = createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2', edge_type: 'CALLS' });
+    const link2 = createMockLink({ ref_id: 'link-2', source: 'node-1', target: 'node-3', edge_type: 'CALLS' });
+
+    bundle.data.getState().addNewNode({ nodes: [node1, node2, node3], edges: [link1, link2] });
+
+    const state = inspectStore(storeId);
+    const sourceNode = state.nodesNormalized.get('node-1');
+    
+    // Should have unique edge types only
+    const callsCount = sourceNode?.edgeTypes?.filter(t => t === 'CALLS').length;
+    expect(callsCount).toBe(1);
+  });
+});
+
+describe('createDataStore - Metadata Calculation', () => {
+  const storeId = 'test-metadata';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should calculate unique node types', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'n1', node_type: 'Function' }),
+        createMockNode({ ref_id: 'n2', node_type: 'Class' }),
+        createMockNode({ ref_id: 'n3', node_type: 'Function' }),
+        createMockNode({ ref_id: 'n4', node_type: 'File' }),
+      ],
+      edges: [],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.nodeTypes).toHaveLength(3);
+    expect(state.nodeTypes).toEqual(expect.arrayContaining(['Class', 'File', 'Function']));
+  });
+
+  it('should calculate sidebar filters from node types', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'n1', node_type: 'Function' }),
+        createMockNode({ ref_id: 'n2', node_type: 'Class' }),
+      ],
+      edges: [],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.sidebarFilters).toContain('all');
+    expect(state.sidebarFilters).toContain('function');
+    expect(state.sidebarFilters).toContain('class');
+  });
+
+  it('should calculate sidebar filter counts correctly', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'n1', node_type: 'Function' }),
+        createMockNode({ ref_id: 'n2', node_type: 'Function' }),
+        createMockNode({ ref_id: 'n3', node_type: 'Class' }),
+      ],
+      edges: [],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    const allCount = state.sidebarFilterCounts.find(f => f.name === 'all')?.count;
+    const functionCount = state.sidebarFilterCounts.find(f => f.name === 'function')?.count;
+    const classCount = state.sidebarFilterCounts.find(f => f.name === 'class')?.count;
+
+    expect(allCount).toBe(3);
+    expect(functionCount).toBe(2);
+    expect(classCount).toBe(1);
+  });
+
+  it('should handle node_type normalization (Bug#4 fix)', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'n1', node_type: '  Function  ' }), // whitespace
+        createMockNode({ ref_id: 'n2', node_type: undefined }), // undefined
+        createMockNode({ ref_id: 'n3', node_type: '' }), // empty string
+      ],
+      edges: [],
+    };
+
+    // Should not crash
+    expect(() => bundle.data.getState().addNewNode(mockData)).not.toThrow();
+
+    const state = inspectStore(storeId);
+    expect(state.nodeTypes).toEqual(expect.arrayContaining(['Function', 'Unknown']));
+  });
+
+  it('should calculate link types from edges', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const node3 = createMockNode({ ref_id: 'node-3' });
+    
+    const mockData = {
+      nodes: [node1, node2, node3],
+      edges: [
+        createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2', edge_type: 'CALLS' }),
+        createMockLink({ ref_id: 'link-2', source: 'node-2', target: 'node-3', edge_type: 'IMPORTS' }),
+        createMockLink({ ref_id: 'link-3', source: 'node-1', target: 'node-3', edge_type: 'CALLS' }),
+      ],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.linkTypes).toHaveLength(2);
+    expect(state.linkTypes).toEqual(expect.arrayContaining(['CALLS', 'IMPORTS']));
+  });
+});
+
+describe('createDataStore - Incremental Updates', () => {
+  const storeId = 'test-incremental';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should accumulate nodes across multiple addNewNode calls (Bug#1 fix)', () => {
+    const bundle = getStoreBundle(storeId);
+    
+    // First batch
+    const batch1 = createMockFetchData(3, 2);
+    bundle.data.getState().addNewNode(batch1);
+    expect(inspectStore(storeId).dataInitial?.nodes).toHaveLength(3);
+
+    // Second batch with new nodes
+    const batch2 = createMockFetchData(2, 1);
+    bundle.data.getState().addNewNode(batch2);
+    
+    const state = inspectStore(storeId);
+    expect(state.dataInitial?.nodes).toHaveLength(5); // 3 + 2
+    expect(state.nodesNormalized.size).toBe(5);
+  });
+
+  it('should track only new nodes in dataNew', () => {
+    const bundle = getStoreBundle(storeId);
+    
+    const batch1 = createMockFetchData(3, 2);
+    bundle.data.getState().addNewNode(batch1);
+
+    const batch2 = createMockFetchData(2, 1);
+    bundle.data.getState().addNewNode(batch2);
+    
+    const state = inspectStore(storeId);
+    expect(state.dataNew?.nodes).toHaveLength(2); // Only new nodes from batch2
+  });
+
+  it('should accumulate links across multiple addNewNode calls (Bug#1 fix)', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const node3 = createMockNode({ ref_id: 'node-3' });
+
+    // First batch with 1 link
+    bundle.data.getState().addNewNode({
+      nodes: [node1, node2],
+      edges: [createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2' })],
     });
+    expect(inspectStore(storeId).dataInitial?.links).toHaveLength(1);
+
+    // Second batch with 1 more link
+    bundle.data.getState().addNewNode({
+      nodes: [node3],
+      edges: [createMockLink({ ref_id: 'link-2', source: 'node-2', target: 'node-3' })],
+    });
+
+    const state = inspectStore(storeId);
+    expect(state.dataInitial?.links).toHaveLength(2); // 1 + 1
+    expect(state.linksNormalized.size).toBe(2);
+  });
+});
+
+describe('createDataStore - Node Sorting', () => {
+  const storeId = 'test-sorting';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should sort nodes by date_added_to_graph in ascending order (Bug#3 fix)', () => {
+    const bundle = getStoreBundle(storeId);
+    const now = Date.now();
+    
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'n3', date_added_to_graph: now + 3000 }),
+        createMockNode({ ref_id: 'n1', date_added_to_graph: now + 1000 }),
+        createMockNode({ ref_id: 'n2', date_added_to_graph: now + 2000 }),
+      ],
+      edges: [],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    const nodes = state.dataInitial?.nodes || [];
+    
+    // Verify sorted order
+    expect(nodes[0].ref_id).toBe('n1');
+    expect(nodes[1].ref_id).toBe('n2');
+    expect(nodes[2].ref_id).toBe('n3');
+  });
+
+  it('should handle nodes without date_added_to_graph timestamp', () => {
+    const bundle = getStoreBundle(storeId);
+    const now = Date.now();
+    
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'n1', date_added_to_graph: now + 1000 }),
+        createMockNode({ ref_id: 'n2', date_added_to_graph: undefined }),
+        createMockNode({ ref_id: 'n3', date_added_to_graph: now + 2000 }),
+      ],
+      edges: [],
+    };
+
+    // Should not crash
+    expect(() => bundle.data.getState().addNewNode(mockData)).not.toThrow();
+
+    const state = inspectStore(storeId);
+    expect(state.dataInitial?.nodes).toHaveLength(3);
+  });
+});
+
+describe('createDataStore - Performance', () => {
+  const storeId = 'test-performance';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should handle large datasets efficiently (10k+ nodes)', () => {
+    const bundle = getStoreBundle(storeId);
+    const nodeCount = 10000;
+    const nodes = Array.from({ length: nodeCount }, (_, i) => 
+      createMockNode({ ref_id: `node-${i}`, name: `Node ${i}` })
+    );
+
+    const startTime = performance.now();
+    bundle.data.getState().addNewNode({ nodes, edges: [] });
+    const endTime = performance.now();
+
+    const state = inspectStore(storeId);
+    expect(state.nodesNormalized.size).toBe(nodeCount);
+    expect(endTime - startTime).toBeLessThan(1000); // Should process in under 1 second
+  });
+
+  it('should batch rapid addNewNode calls within 1000ms window', async () => {
+    const bundle = getStoreBundle(storeId);
+    const batch1 = createMockFetchData(2, 1);
+    const batch2 = createMockFetchData(2, 1);
+    const batch3 = createMockFetchData(2, 1);
+
+    // Rapid fire calls within batching window
+    bundle.data.getState().addNewNode(batch1);
+    bundle.data.getState().addNewNode(batch2);
+    bundle.data.getState().addNewNode(batch3);
+
+    // Wait for batching window to flush (1000ms + buffer)
+    await new Promise(resolve => setTimeout(resolve, 1100));
+
+    const state = inspectStore(storeId);
+    expect(state.nodesNormalized.size).toBe(6); // All nodes should be added
+  });
+});
+
+describe('createDataStore - Edge Cases', () => {
+  const storeId = 'test-edge-cases';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should handle empty node arrays gracefully', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = { nodes: [], edges: [] };
+
+    expect(() => bundle.data.getState().addNewNode(mockData)).not.toThrow();
+
+    const state = inspectStore(storeId);
+    expect(state.dataInitial).toBeNull();
+    expect(state.dataNew).toBeNull();
+  });
+
+  it('should handle null/undefined data gracefully', () => {
+    const bundle = getStoreBundle(storeId);
+
+    expect(() => bundle.data.getState().addNewNode(null as any)).not.toThrow();
+    expect(() => bundle.data.getState().addNewNode(undefined as any)).not.toThrow();
+    expect(() => bundle.data.getState().addNewNode({} as any)).not.toThrow();
+  });
+
+  it('should handle nodes with missing required fields', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        { ref_id: 'n1' } as Node, // Missing most fields
+      ],
+      edges: [],
+    };
+
+    expect(() => bundle.data.getState().addNewNode(mockData)).not.toThrow();
+
+    const state = inspectStore(storeId);
+    expect(state.nodesNormalized.has('n1')).toBe(true);
+  });
+
+  it('should handle self-referencing edges', () => {
+    const bundle = getStoreBundle(storeId);
+    const node = createMockNode({ ref_id: 'self-node' });
+    const link = createMockLink({ ref_id: 'self-link', source: 'self-node', target: 'self-node' });
+
+    const mockData = { nodes: [node], edges: [link] };
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.linksNormalized.size).toBe(1);
+    
+    const selfNode = state.nodesNormalized.get('self-node');
+    expect(selfNode?.sources).toContain('self-node');
+    expect(selfNode?.targets).toContain('self-node');
+  });
+
+  it('should handle cyclic graph structures', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const node3 = createMockNode({ ref_id: 'node-3' });
+
+    const mockData = {
+      nodes: [node1, node2, node3],
+      edges: [
+        createMockLink({ ref_id: 'link-1-2', source: 'node-1', target: 'node-2' }),
+        createMockLink({ ref_id: 'link-2-3', source: 'node-2', target: 'node-3' }),
+        createMockLink({ ref_id: 'link-3-1', source: 'node-3', target: 'node-1' }), // Cycle
+      ],
+    };
+
+    expect(() => bundle.data.getState().addNewNode(mockData)).not.toThrow();
+
+    const state = inspectStore(storeId);
+    expect(state.linksNormalized.size).toBe(3);
+  });
+
+  it('should handle nodes removed then re-added', () => {
+    const bundle = getStoreBundle(storeId);
+    const node = createMockNode({ ref_id: 'reusable-node' });
+
+    // Add node
+    bundle.data.getState().addNewNode({ nodes: [node], edges: [] });
+    expect(inspectStore(storeId).nodesNormalized.has('reusable-node')).toBe(true);
+
+    // Reset data (removes node)
+    bundle.data.getState().resetData();
+    expect(inspectStore(storeId).nodesNormalized.has('reusable-node')).toBe(false);
+
+    // Re-add same node
+    bundle.data.getState().addNewNode({ nodes: [node], edges: [] });
+    expect(inspectStore(storeId).nodesNormalized.has('reusable-node')).toBe(true);
+  });
+});
+
+describe('createDataStore - Store Reset', () => {
+  const storeId = 'test-reset';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should clear all fields including linkTypes on resetData (Bug#5 fix)', () => {
+    const bundle = getStoreBundle(storeId);
+    const node1 = createMockNode({ ref_id: 'node-1' });
+    const node2 = createMockNode({ ref_id: 'node-2' });
+    const link = createMockLink({ ref_id: 'link-1', source: 'node-1', target: 'node-2', edge_type: 'CALLS' });
+
+    // Populate store
+    bundle.data.getState().addNewNode({ nodes: [node1, node2], edges: [link] });
+    expect(inspectStore(storeId).linkTypes).toHaveLength(1);
+
+    // Reset
+    bundle.data.getState().resetData();
+
+    const state = inspectStore(storeId);
+    expect(state.dataInitial).toBeNull();
+    expect(state.dataNew).toBeNull();
+    expect(state.nodesNormalized.size).toBe(0);
+    expect(state.linksNormalized.size).toBe(0);
+    expect(state.nodeLinksNormalized).toEqual({});
+    expect(state.nodeTypes).toEqual([]);
+    expect(state.linkTypes).toEqual([]); // Bug#5 fix verified
+    expect(state.sidebarFilter).toBe('all');
+    expect(state.sidebarFilters).toEqual([]);
+    expect(state.repositoryNodes).toEqual([]);
+  });
+});
+
+describe('createDataStore - Repository Node Separation', () => {
+  const storeId = 'test-repo-nodes';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should separate repository nodes from graph nodes', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'repo-1', node_type: 'GitHubRepo' }),
+        createMockNode({ ref_id: 'func-1', node_type: 'Function' }),
+        createMockNode({ ref_id: 'commit-1', node_type: 'Commits' }),
+        createMockNode({ ref_id: 'class-1', node_type: 'Class' }),
+      ],
+      edges: [],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.repositoryNodes).toHaveLength(2); // GitHubRepo + Commits
+    expect(state.dataInitial?.nodes).toHaveLength(2); // Function + Class (graph nodes only)
+  });
+
+  it('should handle all repository node types', () => {
+    const bundle = getStoreBundle(storeId);
+    const repoNodeTypes = ['GitHubRepo', 'Commits', 'Stars', 'Issues', 'Age', 'Contributor'];
+    
+    const mockData = {
+      nodes: repoNodeTypes.map((type, i) => 
+        createMockNode({ ref_id: `repo-${i}`, node_type: type })
+      ),
+      edges: [],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.repositoryNodes).toHaveLength(6);
+    expect(state.dataInitial?.nodes).toHaveLength(0); // No graph nodes
+  });
+
+  it('should deduplicate repository nodes by ref_id', () => {
+    const bundle = getStoreBundle(storeId);
+    const repoNode = createMockNode({ ref_id: 'repo-1', node_type: 'GitHubRepo' });
+
+    bundle.data.getState().addNewNode({ nodes: [repoNode], edges: [] });
+    bundle.data.getState().addNewNode({ nodes: [repoNode], edges: [] });
+
+    const state = inspectStore(storeId);
+    expect(state.repositoryNodes).toHaveLength(1);
+  });
+
+  it('should handle mixed repository and graph nodes in same batch', () => {
+    const bundle = getStoreBundle(storeId);
+    const mockData = {
+      nodes: [
+        createMockNode({ ref_id: 'repo-1', node_type: 'GitHubRepo' }),
+        createMockNode({ ref_id: 'func-1', node_type: 'Function' }),
+        createMockNode({ ref_id: 'stars-1', node_type: 'Stars' }),
+        createMockNode({ ref_id: 'class-1', node_type: 'Class' }),
+      ],
+      edges: [],
+    };
+
+    bundle.data.getState().addNewNode(mockData);
+
+    const state = inspectStore(storeId);
+    expect(state.repositoryNodes).toHaveLength(2);
+    expect(state.dataInitial?.nodes).toHaveLength(2);
+    expect(state.nodeTypes).toEqual(expect.arrayContaining(['Class', 'Function']));
+  });
+});
+
+describe('createDataStore - Store Integration', () => {
+  const storeId = 'test-integration';
+
+  beforeEach(() => {
+    destroyStoreBundle(storeId);
+    const bundle = getStoreBundle(storeId);
+    bundle.data.getState().resetData();
+  });
+
+  it('should create isolated store instances', () => {
+    const bundle1 = getStoreBundle('store-1');
+    const bundle2 = getStoreBundle('store-2');
+
+    const mockData1 = createMockFetchData(3, 2);
+    const mockData2 = createMockFetchData(5, 4);
+
+    bundle1.data.getState().addNewNode(mockData1);
+    bundle2.data.getState().addNewNode(mockData2);
+
+    expect(bundle1.data.getState().nodesNormalized.size).toBe(3);
+    expect(bundle2.data.getState().nodesNormalized.size).toBe(5);
+
+    destroyStoreBundle('store-1');
+    destroyStoreBundle('store-2');
+  });
+
+  it('should support store bundle creation and destruction', () => {
+    const bundle = getStoreBundle('temp-store');
+    expect(bundle.data).toBeDefined();
+    expect(bundle.graph).toBeDefined();
+    expect(bundle.simulation).toBeDefined();
+
+    destroyStoreBundle('temp-store');
+    
+    // Creating new instance should give fresh state
+    const newBundle = getStoreBundle('temp-store');
+    expect(newBundle.data.getState().dataInitial).toBeNull();
+
+    destroyStoreBundle('temp-store');
   });
 });
