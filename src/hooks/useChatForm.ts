@@ -9,11 +9,11 @@ export function useChatForm(messages: ChatMessage[]) {
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
-      if (message.artifacts) {
+      if (message.artifacts?.length) {
         for (const artifact of message.artifacts) {
           if (artifact.type === "FORM" && artifact.content) {
             const formContent = artifact.content as FormContent;
-            const hasChatOptions = formContent.options.some(
+            const hasChatOptions = formContent.options?.some(
               (option) => option.actionType === "chat",
             );
             if (hasChatOptions) {
