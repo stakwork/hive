@@ -1,5 +1,12 @@
 "use client";
 
+import React, {
+  createContext,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import type {
   WorkspaceRole,
   WorkspaceWithAccess,
@@ -7,13 +14,6 @@ import type {
 } from "@/types/workspace";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  createContext,
-  ReactNode,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
 
 // Context shape as specified in the requirements
 interface WorkspaceContextType {
@@ -152,12 +152,11 @@ export function WorkspaceProvider({
     });
   }, []);
 
-  // Switch to a different workspace - SIMPLIFIED to only handle navigation
+  // Switch to a different workspace - always redirect to dashboard root
   const switchWorkspace = useCallback(
     (targetWorkspace: WorkspaceWithRole) => {
-      // Update URL to reflect the new workspace
-      const currentPath = pathname.replace(/^\/w\/[^\/]+/, "") || "";
-      const newPath = `/w/${targetWorkspace.slug}${currentPath}`;
+      // Always redirect to workspace dashboard root to prevent cross-workspace data contamination
+      const newPath = `/w/${targetWorkspace.slug}`;
 
       router.push(newPath);
 
@@ -166,7 +165,7 @@ export function WorkspaceProvider({
         method: "POST",
       }).catch(console.error);
     },
-    [router, pathname],
+    [router],
   );
 
   // Initialize context when authentication status changes
