@@ -182,7 +182,8 @@ async function getRepairHistory(workspaceId: string) {
 async function triggerPodRepair(
   workspaceId: string,
   workspaceSlug: string,
-  podId: string
+  podId: string,
+  podPassword: string
 ): Promise<{ runId: string; projectId: number | null }> {
   const baseUrl = getBaseUrl();
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=POD_REPAIR&workspace_id=${workspaceId}`;
@@ -222,6 +223,7 @@ async function triggerPodRepair(
               workspaceId,
               workspaceSlug,
               podId,
+              podPassword,
               webhookUrl,
               attemptNumber: history.length + 1,
               history,
@@ -362,7 +364,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           `[PodRepairCron] Triggering repair for ${workspace.slug}/${pod.subdomain}`
         );
 
-        await triggerPodRepair(workspace.id, workspace.slug, pod.subdomain);
+        await triggerPodRepair(workspace.id, workspace.slug, pod.subdomain, pod.password || "");
         result.repairsTriggered++;
       } catch (error) {
         const errorMessage =

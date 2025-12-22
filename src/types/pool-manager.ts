@@ -160,6 +160,7 @@ export interface VMData {
   primaryRepo?: string;
   repositories?: string[];
   branches?: string[];
+  password?: string;
 }
 
 export interface PoolWorkspacesResponse {
