@@ -49,7 +49,7 @@ export async function seedMockData(
   const teamMemberIds = await seedTeamMembers(workspaceId);
 
   // Create features with phases and user stories
-  const features = await seedFeatures(userId, workspaceId);
+  const features = await seedFeatures(userId, workspaceId, teamMemberIds);
 
   // Create tasks of various types (with team member assignments and pod links)
   const { tasksWithPods, allTasks } = await seedTasks(userId, workspaceId, features, teamMemberIds);
@@ -70,6 +70,9 @@ export async function seedMockData(
   if (userJourneyTasks.length > 0) {
     await seedScreenshots(workspaceId, userJourneyTasks);
   }
+
+  // Seed Attachments linked to chat messages
+  await seedAttachments(workspaceId, allTasks);
 
   console.log("[MockSeed] Mock data seeding complete");
 }
@@ -114,7 +117,8 @@ async function seedTeamMembers(workspaceId: string): Promise<string[]> {
 
 async function seedFeatures(
   userId: string,
-  workspaceId: string
+  workspaceId: string,
+  userIds: string[]
 ): Promise<Array<{ id: string; title: string; phaseId: string }>> {
   const featureData = [
     {
@@ -127,6 +131,7 @@ async function seedFeatures(
       architecture:
         "NextAuth.js with JWT sessions, Prisma adapter for user storage",
       personas: ["Developer", "Admin", "End User"],
+      assigneeId: userIds[0],
     },
     {
       title: "Dashboard Analytics",
@@ -137,6 +142,7 @@ async function seedFeatures(
         "Show task completion rates, team velocity, code coverage trends",
       architecture: "React Query for data fetching, Recharts for visualization",
       personas: ["PM", "Team Lead", "Developer"],
+      assigneeId: userIds[1],
     },
     {
       title: "API Rate Limiting",
@@ -146,6 +152,27 @@ async function seedFeatures(
       requirements:
         "Configurable limits per endpoint, graceful degradation, monitoring",
       personas: ["Developer", "DevOps"],
+      assigneeId: userIds[2],
+    },
+    {
+      title: "Advanced Search Filters",
+      brief: "Enhanced search with filters and saved queries",
+      status: FeatureStatus.BACKLOG,
+      priority: FeaturePriority.LOW,
+      requirements:
+        "Full-text search, filter by date/status/assignee, save custom queries for quick access",
+      architecture: "ElasticSearch integration with React Query for frontend",
+      personas: ["Developer", "PM", "Admin"],
+    },
+    {
+      title: "Legacy Report Generator",
+      brief: "Deprecated PDF report generation system",
+      status: FeatureStatus.CANCELLED,
+      priority: FeaturePriority.LOW,
+      requirements:
+        "Originally planned for PDF/Excel export of metrics. Cancelled due to low demand and maintenance overhead.",
+      architecture: "N/A - Cancelled before implementation",
+      personas: ["PM", "Stakeholder"],
     },
   ];
 
@@ -420,6 +447,42 @@ async function seedTasks(
       sourceType: TaskSourceType.USER,
       priority: Priority.LOW,
     },
+
+    // ARCHIVED
+    {
+      title: "Deprecated Feature Cleanup",
+      description:
+        "Remove deprecated feature code that was replaced by the new implementation.",
+      status: TaskStatus.DONE,
+      workflowStatus: WorkflowStatus.COMPLETED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.LOW,
+      archived: true,
+    },
+
+    // BOUNTY CODE
+    {
+      title: "Fix critical security vulnerability in auth module",
+      description:
+        "Address the security issue reported by external security researcher. Bounty reward available.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.CRITICAL,
+      bountyCode: "BNT-12345",
+      assignToTeamMember: 3, // David (DEVELOPER)
+    },
+
+    // TEST MODE
+    {
+      title: "Setup automated test infrastructure",
+      description:
+        "Configure CI/CD pipeline for running automated tests on every commit.",
+      status: TaskStatus.IN_PROGRESS,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+      mode: "test",
+      withPod: true,
+    },
   ];
 
   const createdTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> = [];
@@ -469,6 +532,9 @@ async function seedTasks(
         janitorType: template.janitorType || null,
         testFilePath: template.testFilePath || null,
         testFileUrl: template.testFileUrl || null,
+        archived: template.archived || false,
+        bountyCode: template.bountyCode || null,
+        mode: template.mode || undefined,
         podId,
         agentUrl,
       },
@@ -717,6 +783,185 @@ async function seedChatMessagesWithArtifacts(
       });
     }
 
+    // Add FORM artifact (for task index 0 and 2)
+    if (tasks.indexOf(task) === 0 || tasks.indexOf(task) === 2) {
+      const formMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "I've created a form for collecting user feedback:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: formMsg.id,
+          type: ArtifactType.FORM,
+          content: {
+            formId: "feedback-form-v1",
+            title: "User Feedback Survey",
+            fields: [
+              { name: "email", type: "email", required: true, label: "Email Address" },
+              { name: "rating", type: "select", required: true, label: "Overall Rating", options: ["1", "2", "3", "4", "5"] },
+              { name: "comments", type: "textarea", required: false, label: "Additional Comments" },
+            ],
+            schema: {
+              type: "object",
+              properties: {
+                email: { type: "string", format: "email" },
+                rating: { type: "string", enum: ["1", "2", "3", "4", "5"] },
+                comments: { type: "string" },
+              },
+              required: ["email", "rating"],
+            },
+          },
+        },
+      });
+    }
+
+    // Add CODE artifact (for task index 1 and 4)
+    if (tasks.indexOf(task) === 1 || tasks.indexOf(task) === 4) {
+      const codeMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "Here's the code snippet I've been working on:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: codeMsg.id,
+          type: ArtifactType.CODE,
+          content: {
+            language: "typescript",
+            filename: "useAuth.ts",
+            snippet: `import { useSession } from 'next-auth/react';
+
+export function useAuth() {
+  const { data: session, status } = useSession();
+  
+  return {
+    user: session?.user,
+    isAuthenticated: status === 'authenticated',
+    isLoading: status === 'loading',
+  };
+}`,
+          },
+        },
+      });
+    }
+
+    // Add MEDIA artifact (for task index 0 and 3)
+    if (tasks.indexOf(task) === 0 || tasks.indexOf(task) === 3) {
+      const mediaMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "Here's a preview of the UI changes:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: mediaMsg.id,
+          type: ArtifactType.MEDIA,
+          content: {
+            url: "https://placehold.co/800x600/png",
+            type: "image",
+            metadata: {
+              width: 800,
+              height: 600,
+              format: "png",
+              title: `UI Preview: ${task.title}`,
+            },
+          },
+        },
+      });
+    }
+
+    // Add BUG_REPORT artifact (for task index 2)
+    if (tasks.indexOf(task) === 2) {
+      const bugMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "I've identified and documented the bug with a full stack trace:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: bugMsg.id,
+          type: ArtifactType.BUG_REPORT,
+          content: {
+            title: "Null Pointer Exception in User Service",
+            severity: "HIGH",
+            reproduction: "1. Navigate to /users\n2. Click on user profile\n3. Error occurs when fetching preferences",
+            stackTrace: `Error: Cannot read property 'preferences' of null
+    at UserService.getPreferences (user.service.ts:45)
+    at UserController.getProfile (user.controller.ts:23)
+    at processTicksAndRejections (internal/process/task_queues.js:95)`,
+            environment: {
+              browser: "Chrome 120.0",
+              os: "macOS 14.2",
+              nodeVersion: "v20.10.0",
+            },
+          },
+        },
+      });
+    }
+
+    // Add LONGFORM artifact (for task index 1 and 3)
+    if (tasks.indexOf(task) === 1 || tasks.indexOf(task) === 3) {
+      const longformMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "I've prepared detailed documentation for this feature:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: longformMsg.id,
+          type: ArtifactType.LONGFORM,
+          content: {
+            title: `Technical Documentation: ${task.title}`,
+            format: "markdown",
+            body: `# ${task.title}
+
+## Overview
+This document provides comprehensive technical details about the implementation.
+
+## Architecture
+The feature follows a microservices architecture with the following components:
+- API Gateway for routing
+- Authentication Service for security
+- Data Service for persistence
+
+## Implementation Details
+### Backend
+The backend is implemented using Node.js with Express framework. Key endpoints include:
+- \`/api/users\` - User management
+- \`/api/auth\` - Authentication
+- \`/api/data\` - Data access
+
+### Frontend
+The frontend uses React with TypeScript for type safety. Components are organized by feature.
+
+## Testing Strategy
+- Unit tests: Jest with React Testing Library
+- Integration tests: Supertest for API testing
+- E2E tests: Playwright for user flows
+
+## Deployment
+Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
+          },
+        },
+      });
+    }
+
     // If task is done, add completion message
     if (task.status === TaskStatus.DONE) {
       await db.chatMessage.create({
@@ -872,6 +1117,75 @@ async function seedJanitorData(
       status: RecommendationStatus.PENDING,
     },
   });
+
+  // Add FAILED JanitorRun
+  const failedRun = await db.janitorRun.create({
+    data: {
+      janitorConfigId: janitorConfig.id,
+      janitorType: JanitorType.INTEGRATION_TESTS,
+      status: JanitorStatus.FAILED,
+      triggeredBy: JanitorTrigger.SCHEDULED,
+      startedAt: new Date(Date.now() - 5400000), // 1.5 hours ago
+      completedAt: new Date(Date.now() - 5100000), // 1h 25m ago
+      metadata: { error: "Database connection timeout", filesAnalyzed: 15 },
+    },
+  });
+
+  // Add RUNNING JanitorRun
+  await db.janitorRun.create({
+    data: {
+      janitorConfigId: janitorConfig.id,
+      janitorType: JanitorType.SECURITY_REVIEW,
+      status: JanitorStatus.RUNNING,
+      triggeredBy: JanitorTrigger.MANUAL,
+      startedAt: new Date(Date.now() - 1800000), // 30 min ago
+      metadata: { progress: 65, filesScanned: 98, currentFile: "src/services/auth.ts" },
+    },
+  });
+
+  // Add DISMISSED JanitorRecommendation
+  await db.janitorRecommendation.create({
+    data: {
+      janitorRunId: failedRun.id,
+      workspaceId,
+      title: "Add type annotations to legacy JavaScript files",
+      description:
+        "Found 45 JavaScript files without TypeScript type annotations. Consider migrating to TypeScript.",
+      priority: Priority.LOW,
+      impact: "Improves type safety and developer experience",
+      status: RecommendationStatus.DISMISSED,
+    },
+  });
+
+  // Add ACCEPTED JanitorRecommendation with linked task
+  const acceptedRecommendation = await db.janitorRecommendation.create({
+    data: {
+      janitorRunId: janitorRun.id,
+      workspaceId,
+      title: "Implement error boundary components",
+      description:
+        "Add React Error Boundaries to catch and handle component errors gracefully. This will improve user experience when errors occur.",
+      priority: Priority.HIGH,
+      impact: "Prevents entire app crashes and provides better error handling UX",
+      status: RecommendationStatus.ACCEPTED,
+    },
+  });
+
+  // Create linked task for accepted recommendation
+  await db.task.create({
+    data: {
+      title: acceptedRecommendation.title,
+      description: acceptedRecommendation.description,
+      workspaceId,
+      createdById: userId,
+      updatedById: userId,
+      status: TaskStatus.TODO,
+      workflowStatus: WorkflowStatus.PENDING,
+      priority: acceptedRecommendation.priority,
+      sourceType: TaskSourceType.JANITOR,
+      janitorType: JanitorType.GENERAL_REFACTORING,
+    },
+  });
 }
 
 /**
@@ -1005,6 +1319,50 @@ Non-Functional Requirements:
         },
       });
     }
+
+    // Pod repair run (for first feature)
+    if (features.indexOf(feature) === 0) {
+      await db.stakworkRun.create({
+        data: {
+          workspaceId,
+          featureId: feature.id,
+          type: StakworkRunType.POD_REPAIR,
+          webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+          projectId: Math.floor(Math.random() * 10000),
+          status: WorkflowStatus.COMPLETED,
+          result: JSON.stringify({
+            podId: "pod-123-repair",
+            diagnostics: {
+              cpuUsage: "85%",
+              memoryUsage: "92%",
+              diskUsage: "78%",
+              networkLatency: "45ms",
+              healthCheckStatus: "degraded",
+            },
+            repairActions: [
+              "Restarted pod due to memory leak",
+              "Cleared application cache (2.3 GB freed)",
+              "Updated environment configuration",
+              "Restarted nginx service",
+              "Validated database connections",
+            ],
+            successMetrics: {
+              uptime: "99.9%",
+              averageLatency: "45ms",
+              throughput: "5000 req/s",
+              errorRate: "0.01%",
+              recoveryTime: "120s",
+            },
+            timestamp: new Date().toISOString(),
+            resolution: "Pod successfully repaired and returned to healthy state",
+          }),
+          dataType: "json",
+          decision: StakworkRunDecision.ACCEPTED,
+          createdAt: new Date(Date.now() - 86400000 * 0.25), // 6 hours ago
+          updatedAt: new Date(Date.now() - 86400000 * 0.25),
+        },
+      });
+    }
   }
 
   console.log(`[MockSeed] Created StakworkRuns for ${features.length} features`);
@@ -1070,4 +1428,92 @@ async function seedScreenshots(
   console.log(
     `[MockSeed] Created screenshots for ${userJourneyTasks.length} USER_JOURNEY tasks`
   );
+}
+
+/**
+ * Seeds Attachments linked to chat messages
+ * Creates 3-5 attachments (screenshot, log, config) with realistic metadata
+ */
+async function seedAttachments(
+  workspaceId: string,
+  tasks: Array<{ id: string; title: string }>
+): Promise<void> {
+  // Get chat messages to link attachments to
+  const messagesWithTasks = await db.chatMessage.findMany({
+    where: {
+      taskId: { in: tasks.slice(0, 5).map(t => t.id) },
+      role: "ASSISTANT",
+    },
+    select: { id: true, taskId: true },
+    take: 5,
+  });
+
+  if (messagesWithTasks.length === 0) {
+    console.log("[MockSeed] No chat messages found for attachments");
+    return;
+  }
+
+  const attachmentTemplates = [
+    {
+      filename: "screenshot.png",
+      mimeType: "image/png",
+      size: 245000,
+    },
+    {
+      filename: "error.log",
+      mimeType: "text/plain",
+      size: 8500,
+    },
+    {
+      filename: "config.json",
+      mimeType: "application/json",
+      size: 3200,
+    },
+    {
+      filename: "debug-trace.txt",
+      mimeType: "text/plain",
+      size: 12400,
+    },
+    {
+      filename: "api-response.json",
+      mimeType: "application/json",
+      size: 5600,
+    },
+  ];
+
+  let attachmentCount = 0;
+
+  for (let i = 0; i < Math.min(messagesWithTasks.length, 5); i++) {
+    const message = messagesWithTasks[i];
+    const template = attachmentTemplates[i];
+
+    // Check if attachment already exists for idempotency
+    const exists = await db.attachment.findFirst({
+      where: {
+        AND: [
+          { messageId: message.id },
+          { filename: template.filename },
+        ],
+      },
+    });
+
+    if (exists) {
+      continue;
+    }
+
+    // Create attachment
+    await db.attachment.create({
+      data: {
+        messageId: message.id,
+        filename: template.filename,
+        mimeType: template.mimeType,
+        size: template.size,
+        path: `attachments/${workspaceId}/${message.taskId}/${template.filename}`,
+      },
+    });
+
+    attachmentCount++;
+  }
+
+  console.log(`[MockSeed] Created ${attachmentCount} attachments`);
 }

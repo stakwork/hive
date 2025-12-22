@@ -141,6 +141,8 @@ export async function ensureMockWorkspaceForUser(
         slug: slugCandidate,
         ownerId: userId,
         sourceControlOrgId: sourceControlOrg.id,
+        logoUrl: `https://api.dicebear.com/7.x/identicons/svg?seed=${encodeURIComponent(slugCandidate)}`,
+        logoKey: null,
       },
       select: { id: true, slug: true },
     });
