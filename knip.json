@@ -1,0 +1,38 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/app/**/*.{ts,tsx}",
+    "src/middleware.ts",
+    "scripts/**/*.{ts,js}",
+    "next.config.ts",
+    "tailwind.config.js",
+    "playwright.config.ts",
+    "vitest.config.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "scripts/**/*.{ts,js}"
+  ],
+  "ignore": [
+    "src/**/*.test.{ts,tsx}",
+    "src/**/__tests__/**",
+    "**/*.spec.{ts,tsx}",
+    ".next/**",
+    ".next-dev/**",
+    "node_modules/**",
+    "test-results/**"
+  ],
+  "ignoreDependencies": [
+    "@types/*",
+    "typescript",
+    "sharp"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "includeEntryExports": false,
+  "next": {
+    "entry": [
+      "src/app/**/*.{ts,tsx}",
+      "src/middleware.ts"
+    ]
+  }
+}
