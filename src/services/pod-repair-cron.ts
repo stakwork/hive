@@ -28,7 +28,6 @@ export async function getEligibleWorkspaces() {
       swarm: {
         containerFiles: { not: Prisma.DbNull },
         containerFilesSetUp: true,
-        poolName: { not: null },
         poolApiKey: { not: null },
       },
     },
@@ -38,7 +37,6 @@ export async function getEligibleWorkspaces() {
       swarm: {
         select: {
           id: true,
-          poolName: true,
           poolApiKey: true,
         },
       },
@@ -287,7 +285,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
     for (const workspace of workspaces) {
       result.workspacesProcessed++;
 
-      if (!workspace.swarm?.poolName || !workspace.swarm?.poolApiKey) {
+      if (!workspace.swarm?.poolApiKey) {
         continue;
       }
 
