@@ -155,6 +155,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           primaryRepo: vm.primaryRepo,
           repositories: vm.repositories,
           branches: vm.branches,
+          password: vm.password,
         })),
       };
     } catch (error) {
