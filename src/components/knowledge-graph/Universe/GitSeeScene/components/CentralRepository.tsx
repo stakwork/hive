@@ -1,7 +1,5 @@
 import type { RepositoryData } from '@/types/github';
-import { Billboard, Text } from '@react-three/drei';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
+import { Billboard, Html, Text } from '@react-three/drei';
 
 interface CentralRepositoryProps {
   repositoryData: RepositoryData | null;
@@ -22,34 +20,6 @@ export const CentralRepository = ({
   isVisible,
   isLoading = false,
 }: CentralRepositoryProps) => {
-  const repoRef = useRef<THREE.Group>(null);
-
-  const createDefaultTexture = () => {
-    if (typeof document === 'undefined') {
-      const data = new Uint8Array([255, 255, 255, 255]);
-      const tex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
-      tex.needsUpdate = true;
-      return tex;
-    }
-
-    const loader = new THREE.TextureLoader();
-    const tex = loader.load('/gitimage.png', (t) => {
-      t.anisotropy = 8;
-      t.flipY = false;
-      t.wrapS = THREE.ClampToEdgeWrapping;
-      t.wrapT = THREE.ClampToEdgeWrapping;
-      t.needsUpdate = true;
-    });
-    return tex;
-  };
-
-  const defaultTexture = useMemo(() => createDefaultTexture(), []);
-  const [texture, setTexture] = useState<THREE.Texture>(defaultTexture);
-
-  // Set default texture (GitHub doesn't provide custom repo icons in their API)
-  useEffect(() => {
-    setTexture(defaultTexture);
-  }, [defaultTexture]);
 
   // Central node appear animation
   const appearDuration = 1.0;
@@ -69,25 +39,36 @@ export const CentralRepository = ({
 
   return (
     <>
-      {/* CENTRAL NODE - GitHub Repository Icon */}
-      <Billboard ref={repoRef}>
-        <mesh
-          position={[0, 0, 0]}
-          scale={[scale * 0.8, scale * 0.8, scale * 0.8]}
-          rotation={[Math.PI, 0, 0]}
-        >
-          <circleGeometry args={[githubRepoNodeSize - 2, 48]} />
-          <meshBasicMaterial
-            map={texture}
-            color="#fff"
-            opacity={0.98}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      </Billboard>
+      {/* CENTRAL NODE - GitHub Repository Icon as HTML */}
+
 
       {/* CENTER LABEL */}
       <Billboard>
+        <Html
+          position={[24, 0, 0]}
+          transform
+          sprite
+          distanceFactor={1000}
+          style={{ pointerEvents: 'none' }}
+        >
+          <img
+            src="/gitimage.png"
+            alt="Repository"
+            style={{
+              width: `${(githubRepoNodeSize - 2) * 2 * scale * 0.8}px`,
+              height: `${(githubRepoNodeSize - 2) * 2 * scale * 0.8}px`,
+              borderRadius: '50%',
+              border: '1px solid #fff',
+              boxShadow: '0 0 10px rgba(0,0,0,0.3)',
+              transform: 'translate(-50%, -50%)',
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              objectFit: 'cover',
+              display: 'block',
+              backgroundColor: 'white',
+            }}
+          />
+        </Html>
         <Text
           position={[0, -24, 0]}
           fontSize={20.5}
