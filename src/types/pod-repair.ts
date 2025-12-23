@@ -1,27 +1,30 @@
 import { z } from "zod";
 
 // Process statuses that indicate failure and should trigger repair
-export const FAILED_STATUSES = ["stopped", "error", "offline"] as const;
+export const FAILED_STATUSES = ["error", "errored", "offline"] as const;
 
 // Processes to ignore when checking for failures
 export const IGNORED_PROCESSES = ["goose"] as const;
 
+// Staklink proxy process name (prioritized for repair)
+export const STAKLINK_PROXY_PROCESS = "staklink-proxy" as const;
+
 // jlist endpoint response types
 export interface JlistProcess {
-  pid: number;
+  pid: number | null;
   name: string;
   status: string;
-  pm_uptime?: number;
+  pm_uptime?: number | null;
   port?: string;
   cwd?: string;
 }
 
 export const JlistResponseSchema = z.array(
   z.object({
-    pid: z.number(),
+    pid: z.number().nullable(),
     name: z.string(),
     status: z.string(),
-    pm_uptime: z.number().optional(),
+    pm_uptime: z.number().nullable().optional(),
     port: z.string().optional(),
     cwd: z.string().optional(),
   })

@@ -12,7 +12,9 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
+import { syncPM2AndServices, extractRepoName } from "@/utils/stakgraphSync";
 import { SwarmStatus } from "@prisma/client";
+import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
@@ -23,9 +25,9 @@ export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
-// Validation schema for stakgraph settings
+// Validation schema for stakgraph settings - all fields optional for partial updates
 const stakgraphSettingsSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name: z.string().min(1, "Name is required").optional(),
   repositories: z
     .array(
       z.object({
@@ -35,15 +37,15 @@ const stakgraphSettingsSchema = z.object({
         name: z.string().min(1, "Repository name is required"),
       }),
     )
-    .min(1, "At least one repository is required"),
-  swarmUrl: z.string().url("Invalid swarm URL"),
-  swarmSecretAlias: z.string().min(1, "Swarm API key is required"),
+    .optional(),
+  swarmUrl: z.string().url("Invalid swarm URL").optional(),
+  swarmSecretAlias: z.string().min(1, "Swarm API key is required").optional(),
   swarmApiKey: z.string().optional(),
-  poolName: z.string().min(1, "Pool name is required"),
+  poolName: z.string().min(1, "Pool name is required").optional(),
   poolCpu: z.string().optional(),
   poolMemory: z.string().optional(),
   description: z.string().optional(),
-  containerFiles: z.record(z.string(), z.string()).optional().default({}),
+  containerFiles: z.record(z.string(), z.string()).optional(),
   environmentVariables: z
     .array(
       z.object({
@@ -51,8 +53,7 @@ const stakgraphSettingsSchema = z.object({
         value: z.string(),
       }),
     )
-    .optional()
-    .default([]),
+    .optional(),
   services: z
     .array(
       z.object({
@@ -82,8 +83,7 @@ const stakgraphSettingsSchema = z.object({
         cwd: z.string().optional(),
       }),
     )
-    .optional()
-    .default([]),
+    .optional(),
 });
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
@@ -240,14 +240,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { slug } = await params;
 
     // Check for API token auth (for external services like Stakwork repair agent)
-    const apiKey = request.headers.get("x-api-key");
-    const isApiKeyAuth = apiKey && apiKey === process.env.API_TOKEN;
+    const apiToken = request.headers.get("x-api-token");
+    const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
 
     let workspace: { id: string } | null = null;
     let userId: string | null = null;
 
-    if (isApiKeyAuth) {
-      // API key auth - get workspace by slug directly (no user session needed)
+    if (isApiTokenAuth) {
+      // API token auth - get workspace by slug directly (no user session needed)
       workspace = await db.workspace.findFirst({
         where: { slug, deleted: false },
         select: { id: true },
@@ -310,61 +310,97 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const settings = validationResult.data;
 
-    const existingRepos = await db.repository.findMany({
+    // Only process repositories if provided
+    if (settings.repositories && settings.repositories.length > 0) {
+      const existingRepos = await db.repository.findMany({
+        where: { workspaceId: workspace.id },
+      });
+
+      const incomingRepos = settings.repositories;
+      const existingRepoIds = existingRepos.map((r) => r.id);
+      const incomingRepoIds = incomingRepos.filter((r) => r.id).map((r) => r.id!);
+
+      const reposToCreate = incomingRepos.filter((r) => !r.id);
+      if (reposToCreate.length > 0) {
+        await db.repository.createMany({
+          data: reposToCreate.map((repo) => ({
+            workspaceId: workspace.id,
+            repositoryUrl: repo.repositoryUrl,
+            branch: repo.branch,
+            name: repo.name,
+          })),
+        });
+      }
+
+      const reposToUpdate = incomingRepos.filter((r) => r.id);
+      for (const repo of reposToUpdate) {
+        await db.repository.update({
+          where: { id: repo.id },
+          data: {
+            repositoryUrl: repo.repositoryUrl,
+            branch: repo.branch,
+            name: repo.name,
+          },
+        });
+      }
+
+      const repoIdsToDelete = existingRepoIds.filter((id) => !incomingRepoIds.includes(id));
+      if (repoIdsToDelete.length > 0) {
+        await db.repository.deleteMany({
+          where: {
+            id: { in: repoIdsToDelete },
+            workspaceId: workspace.id,
+          },
+        });
+      }
+    }
+
+    // Fetch existing swarm for merge (partial update support)
+    const existingSwarm = await db.swarm.findUnique({
       where: { workspaceId: workspace.id },
+      select: {
+        name: true,
+        swarmUrl: true,
+        swarmSecretAlias: true,
+        poolName: true,
+        poolCpu: true,
+        poolMemory: true,
+        services: true,
+        containerFiles: true,
+        environmentVariables: true,
+      },
     });
 
-    const incomingRepos = settings.repositories;
-    const existingRepoIds = existingRepos.map((r) => r.id);
-    const incomingRepoIds = incomingRepos.filter((r) => r.id).map((r) => r.id!);
+    // Get repo name for pm2 generation
+    const primaryRepo = await getPrimaryRepository(workspace.id);
+    const repoName = extractRepoName(
+      primaryRepo?.repositoryUrl || settings.repositories?.[0]?.repositoryUrl
+    );
 
-    const reposToCreate = incomingRepos.filter((r) => !r.id);
-    if (reposToCreate.length > 0) {
-      await db.repository.createMany({
-        data: reposToCreate.map((repo) => ({
-          workspaceId: workspace.id,
-          repositoryUrl: repo.repositoryUrl,
-          branch: repo.branch,
-          name: repo.name,
-        })),
-      });
-    }
+    // Perform bidirectional sync for services/containerFiles
+    const syncResult = syncPM2AndServices(
+      (existingSwarm?.services as unknown as SwarmServiceConfig[]) || [],
+      (existingSwarm?.containerFiles as unknown as Record<string, string>) || {},
+      settings.services as SwarmServiceConfig[] | undefined,
+      settings.containerFiles,
+      repoName
+    );
 
-    const reposToUpdate = incomingRepos.filter((r) => r.id);
-    for (const repo of reposToUpdate) {
-      await db.repository.update({
-        where: { id: repo.id },
-        data: {
-          repositoryUrl: repo.repositoryUrl,
-          branch: repo.branch,
-          name: repo.name,
-        },
-      });
-    }
-
-    const repoIdsToDelete = existingRepoIds.filter((id) => !incomingRepoIds.includes(id));
-    if (repoIdsToDelete.length > 0) {
-      await db.repository.deleteMany({
-        where: {
-          id: { in: repoIdsToDelete },
-          workspaceId: workspace.id,
-        },
-      });
-    }
-
+    // Merge all fields - use incoming if provided, else preserve existing
+    // Convert null to undefined for database fields
     await saveOrUpdateSwarm({
       workspaceId: workspace.id,
-      name: settings.name,
-      swarmUrl: settings.swarmUrl,
-      status: SwarmStatus.ACTIVE, // auto active
-      swarmSecretAlias: settings.swarmSecretAlias,
+      name: settings.name ?? existingSwarm?.name ?? undefined,
+      swarmUrl: settings.swarmUrl ?? existingSwarm?.swarmUrl ?? undefined,
+      status: SwarmStatus.ACTIVE,
+      swarmSecretAlias: settings.swarmSecretAlias ?? existingSwarm?.swarmSecretAlias ?? undefined,
       swarmApiKey: settings.swarmApiKey,
-      poolName: settings.poolName,
-      poolCpu: settings.poolCpu,
-      poolMemory: settings.poolMemory,
-      services: settings.services,
+      poolName: settings.poolName ?? existingSwarm?.poolName ?? undefined,
+      poolCpu: settings.poolCpu ?? existingSwarm?.poolCpu ?? undefined,
+      poolMemory: settings.poolMemory ?? existingSwarm?.poolMemory ?? undefined,
+      services: syncResult.services,
       environmentVariables: settings.environmentVariables,
-      containerFiles: settings.containerFiles,
+      containerFiles: syncResult.containerFiles,
     });
 
     const swarm = (await db.swarm.findUnique({
@@ -399,14 +435,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       decryptedPoolApiKey = swarmPoolApiKey;
     }
 
-    // Only setup GitHub webhook when using session auth (not API key auth)
-    if (!isApiKeyAuth && userId) {
+    // Only setup GitHub webhook when using session auth (not API token auth)
+    if (!isApiTokenAuth && userId) {
       try {
         const callbackUrl = getGithubWebhookCallbackUrl(request, workspace.id);
         const webhookService = new WebhookService(getServiceConfig("github"));
 
-        const primaryRepo = await getPrimaryRepository(workspace.id);
-
+        // Reuse primaryRepo from above if available
         if (primaryRepo) {
           const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
             userId,
@@ -430,22 +465,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Use merged values for pool name check (convert null to undefined)
+    const mergedPoolName = settings.poolName ?? existingSwarm?.poolName ?? undefined;
+    const mergedPoolCpu = settings.poolCpu ?? existingSwarm?.poolCpu ?? undefined;
+    const mergedPoolMemory = settings.poolMemory ?? existingSwarm?.poolMemory ?? undefined;
+
     // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
-    if (settings.poolName && decryptedPoolApiKey && Array.isArray(settings.environmentVariables)) {
+    if (mergedPoolName && decryptedPoolApiKey && Array.isArray(settings.environmentVariables)) {
       try {
         const poolManager = new PoolManagerService(config as unknown as ServiceConfig);
 
         if (swarm) {
           const currentEnvVars = await poolManager.getPoolEnvVars(swarm.id, decryptedPoolApiKey);
 
-          // TODO: This is a solution to preserve data structure.
-          const files = getDevContainerFilesFromBase64(settings.containerFiles);
+          // Use synced containerFiles for Pool Manager update
+          const files = getDevContainerFilesFromBase64(syncResult.containerFiles);
 
           // Only get GitHub PAT when using session auth
           const github_pat = userId ? await getGithubUsernameAndPAT(userId, slug) : null;
-
-          // Get the primary repository to access the branch
-          const primaryRepo = await getPrimaryRepository(workspace.id);
 
           await poolManager.updatePoolData(
             swarm.id,
@@ -460,8 +497,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               masked?: boolean;
             }>,
             files,
-            settings.poolCpu,
-            settings.poolMemory,
+            mergedPoolCpu,
+            mergedPoolMemory,
             github_pat?.token || "",
             github_pat?.username || "",
             primaryRepo?.branch || "",
@@ -491,13 +528,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       message: "Pool settings saved successfully",
       data: {
         id: typedSwarm.id,
-        name: typedSwarm.name || settings.name,
+        name: typedSwarm.name || "",
         description: settings.description || "",
         repositories: updatedRepositories,
         swarmUrl: typedSwarm.swarmUrl,
         poolName: typedSwarm.poolName,
         swarmSecretAlias: typedSwarm.swarmSecretAlias || "",
         services: typeof typedSwarm.services === "string" ? JSON.parse(typedSwarm.services) : typedSwarm.services || [],
+        containerFiles: typedSwarm.containerFiles || {},
         status: typedSwarm.status,
         updatedAt: typedSwarm.updatedAt,
       },

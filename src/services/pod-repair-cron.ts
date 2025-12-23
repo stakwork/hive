@@ -8,6 +8,7 @@ import {
   PodRepairCronResult,
   FAILED_STATUSES,
   IGNORED_PROCESSES,
+  STAKLINK_PROXY_PROCESS,
 } from "@/types/pod-repair";
 import { config } from "@/config/env";
 
@@ -28,7 +29,6 @@ export async function getEligibleWorkspaces() {
       swarm: {
         containerFiles: { not: Prisma.DbNull },
         containerFilesSetUp: true,
-        poolName: { not: null },
         poolApiKey: { not: null },
       },
     },
@@ -38,7 +38,6 @@ export async function getEligibleWorkspaces() {
       swarm: {
         select: {
           id: true,
-          poolName: true,
           poolApiKey: true,
         },
       },
@@ -97,6 +96,23 @@ export function hasFailedProcesses(jlist: JlistProcess[]): boolean {
       ) &&
       FAILED_STATUSES.includes(proc.status as (typeof FAILED_STATUSES)[number])
   );
+}
+
+/**
+ * Get list of failed process names (not in ignore list)
+ */
+export function getFailedProcesses(jlist: JlistProcess[]): string[] {
+  return jlist
+    .filter(
+      (proc) =>
+        !IGNORED_PROCESSES.includes(
+          proc.name.toLowerCase() as (typeof IGNORED_PROCESSES)[number]
+        ) &&
+        FAILED_STATUSES.includes(
+          proc.status as (typeof FAILED_STATUSES)[number]
+        )
+    )
+    .map((proc) => proc.name.toLowerCase());
 }
 
 /**
@@ -184,7 +200,9 @@ async function getRepairHistory(workspaceId: string) {
 async function triggerPodRepair(
   workspaceId: string,
   workspaceSlug: string,
-  podId: string
+  podId: string,
+  podPassword: string,
+  failedServices: string[]
 ): Promise<{ runId: string; projectId: number | null }> {
   const baseUrl = getBaseUrl();
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=POD_REPAIR&workspace_id=${workspaceId}`;
@@ -202,14 +220,14 @@ async function triggerPodRepair(
     },
   });
 
-  // Get workflow ID (use generic workflow)
-  const workflowId = config.STAKWORK_WORKFLOW_ID;
+  // Get pod repair workflow ID
+  const workflowId = config.STAKWORK_POD_REPAIR_WORKFLOW_ID;
   if (!workflowId) {
     await db.stakworkRun.update({
       where: { id: run.id },
       data: { status: WorkflowStatus.FAILED },
     });
-    throw new Error("STAKWORK_WORKFLOW_ID not configured");
+    throw new Error("STAKWORK_POD_REPAIR_WORKFLOW_ID not configured");
   }
 
   try {
@@ -224,9 +242,11 @@ async function triggerPodRepair(
               workspaceId,
               workspaceSlug,
               podId,
+              podPassword,
               webhookUrl,
               attemptNumber: history.length + 1,
               history,
+              failedServices,
             },
           },
         },
@@ -287,7 +307,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
     for (const workspace of workspaces) {
       result.workspacesProcessed++;
 
-      if (!workspace.swarm?.poolName || !workspace.swarm?.poolApiKey) {
+      if (!workspace.swarm?.poolApiKey) {
         continue;
       }
 
@@ -351,8 +371,16 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           continue;
         }
 
-        // Check for failed processes
-        if (!hasFailedProcesses(jlist)) {
+        // Check if staklink-proxy exists in jlist
+        const staklinkExists = jlist.some(
+          (proc) => proc.name.toLowerCase() === STAKLINK_PROXY_PROCESS
+        );
+
+        // Get failed processes
+        const failedProcesses = getFailedProcesses(jlist);
+
+        // If no failed processes AND staklink-proxy exists, skip
+        if (failedProcesses.length === 0 && staklinkExists) {
           console.log(
             `[PodRepairCron] No failed processes for ${workspace.slug}`
           );
@@ -360,11 +388,24 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           continue;
         }
 
+        // Prioritize staklink-proxy: if it's failed OR missing, only repair that first
+        const staklinkFailed = failedProcesses.includes(STAKLINK_PROXY_PROCESS);
+        const staklinkNeedsRepair = staklinkFailed || !staklinkExists;
+        const servicesToRepair = staklinkNeedsRepair
+          ? [STAKLINK_PROXY_PROCESS]
+          : failedProcesses;
+
         console.log(
-          `[PodRepairCron] Triggering repair for ${workspace.slug}/${pod.subdomain}`
+          `[PodRepairCron] Triggering repair for ${workspace.slug}/${pod.subdomain} - services: ${servicesToRepair.join(", ")}`
         );
 
-        await triggerPodRepair(workspace.id, workspace.slug, pod.subdomain);
+        await triggerPodRepair(
+          workspace.id,
+          workspace.slug,
+          pod.subdomain,
+          pod.password || "",
+          servicesToRepair
+        );
         result.repairsTriggered++;
       } catch (error) {
         const errorMessage =
