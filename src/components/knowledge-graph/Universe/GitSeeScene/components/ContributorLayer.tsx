@@ -2,7 +2,7 @@ import { Billboard, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import type { JarvisResponse } from '@/types/jarvis';
+import type { RepositoryData } from '@/types/github';
 
 interface ContributorData {
   name: string;
@@ -13,7 +13,7 @@ interface ContributorData {
 }
 
 interface ContributorLayerProps {
-  repoData: JarvisResponse | null;
+  repositoryData: RepositoryData | null;
   contributorDistance: number;
   contributorNodeSize: number;
   floatingAmplitude: number;
@@ -97,7 +97,7 @@ function getAvatarTexture(color: number, avatarUrl?: string, label?: string) {
 }
 
 export const ContributorLayer = ({
-  repoData,
+  repositoryData,
   contributorDistance,
   contributorNodeSize,
   floatingAmplitude,
@@ -108,18 +108,15 @@ export const ContributorLayer = ({
   const contributorRefs = useRef<(THREE.Mesh | null)[]>([]);
   const tempVec = useRef(new THREE.Vector3()).current;
 
-  // Process contributor data
+  // Process contributor data from GitHub API
   const contributorData = useMemo((): ContributorData[] => {
-    if (!repoData?.nodes) return [];
+    if (!repositoryData?.contributors) return [];
 
-    const nodes = repoData.nodes
-      .filter((n) => n.node_type === 'Contributor')
-      .slice(0, 12);
-
+    const contributors = repositoryData.contributors.slice(0, 12);
     const radius = contributorDistance;
-    const count = nodes.length || 1;
+    const count = contributors.length || 1;
 
-    return nodes.map((n, i) => {
+    return contributors.map((contributor, i) => {
       const angle = (i / count) * Math.PI * 2;
       const target = new THREE.Vector3(
         Math.cos(angle) * radius,
@@ -128,14 +125,14 @@ export const ContributorLayer = ({
       );
 
       return {
-        name: (n.properties?.name as string) || `Contributor ${i}`,
-        avatar_url: n.properties?.avatar_url as string,
+        name: contributor.login || `Contributor ${i}`,
+        avatar_url: contributor.avatar_url,
         color: 0x6366f1,
         target,
-        texture: getAvatarTexture(0x6366f1, n.properties?.avatar_url as string, (n.properties?.name as string) || ''),
+        texture: getAvatarTexture(0x6366f1, contributor.avatar_url, contributor.login),
       };
     });
-  }, [repoData, contributorDistance]);
+  }, [repositoryData, contributorDistance]);
 
   // Create line geometry for connections to center
   const contributorLines = useMemo(

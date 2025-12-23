@@ -1,10 +1,10 @@
-import type { JarvisResponse } from '@/types/jarvis';
+import type { RepositoryData } from '@/types/github';
 import { Billboard, Text } from '@react-three/drei';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 interface CentralRepositoryProps {
-  repoData: JarvisResponse | null;
+  repositoryData: RepositoryData | null;
   repoLabel: string;
   githubRepoNodeSize: number;
   centralNodeScale: number;
@@ -14,7 +14,7 @@ interface CentralRepositoryProps {
 }
 
 export const CentralRepository = ({
-  repoData,
+  repositoryData,
   repoLabel,
   githubRepoNodeSize,
   centralNodeScale,
@@ -23,9 +23,6 @@ export const CentralRepository = ({
   isLoading = false,
 }: CentralRepositoryProps) => {
   const repoRef = useRef<THREE.Group>(null);
-
-  // Get first GitHub repo data for texture
-  const firstRepo = repoData?.nodes?.find(n => n.node_type === 'GitHubRepo');
 
   const createDefaultTexture = () => {
     if (typeof document === 'undefined') {
@@ -49,38 +46,10 @@ export const CentralRepository = ({
   const defaultTexture = useMemo(() => createDefaultTexture(), []);
   const [texture, setTexture] = useState<THREE.Texture>(defaultTexture);
 
-  // Attempt to load custom icon; keep default until load success
+  // Set default texture (GitHub doesn't provide custom repo icons in their API)
   useEffect(() => {
-    const iconUrl = firstRepo?.properties?.icon as string | undefined;
-    if (!iconUrl || typeof document === 'undefined') {
-      setTexture(defaultTexture);
-      return;
-    }
-
-    let cancelled = false;
-    const loader = new THREE.TextureLoader();
-
-    loader.load(
-      iconUrl,
-      (tex) => {
-        if (cancelled) return;
-        tex.anisotropy = 8;
-        tex.flipY = false;
-        tex.wrapS = THREE.ClampToEdgeWrapping;
-        tex.wrapT = THREE.ClampToEdgeWrapping;
-        tex.needsUpdate = true;
-        setTexture(tex);
-      },
-      undefined,
-      (error) => {
-        console.warn('Failed to load repository icon, keeping default:', error);
-      }
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [firstRepo?.properties?.icon, defaultTexture]);
+    setTexture(defaultTexture);
+  }, [defaultTexture]);
 
   // Central node appear animation
   const appearDuration = 1.0;
@@ -89,7 +58,7 @@ export const CentralRepository = ({
   let scale = centralNodeScale * ease;
 
   // Add subtle pulsing animation when loading
-  if (isLoading && !repoData) {
+  if (isLoading && !repositoryData) {
     const pulseSpeed = 2.0;
     const pulseAmplitude = 0.1;
     const pulse = Math.sin(elapsed * pulseSpeed) * pulseAmplitude + 1;

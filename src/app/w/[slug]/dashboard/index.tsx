@@ -55,7 +55,7 @@ function DashboardInner() {
   };
 
   const hasNodes = (dataInitial?.nodes && dataInitial.nodes.length > 0) || (repositoryNodes.length > 0);
-  const isCentered = !hasNodes;
+  const isCentered = !hasNodes && !isOnboarding;
 
   return (
     <div className="flex flex-col flex-1 h-full relative">

@@ -261,7 +261,7 @@ const GraphComponentInner = ({
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">Loading...</div>
           </div>
-        ) : ((!dataInitial?.nodes || dataInitial.nodes.length === 0) && !repositoryNodes.length) ? (
+        ) : ((!dataInitial?.nodes || dataInitial.nodes.length === 0) && !isOnboarding) ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-lg text-gray-300">No data found</div>
           </div>

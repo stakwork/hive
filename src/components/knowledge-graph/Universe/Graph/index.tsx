@@ -167,7 +167,7 @@ export const Graph = () => {
             grPoints.children[0].children[index].position.lerp(target, 0.01)
           }
 
-          const applied = gr.children[index]?.position || target
+          const applied = gr?.children?.[index]?.position || target
           nodePositionsNormalized.set(simulationNode.ref_id, { x: applied.x, y: applied.y, z: applied.z || 0 })
         }
       }

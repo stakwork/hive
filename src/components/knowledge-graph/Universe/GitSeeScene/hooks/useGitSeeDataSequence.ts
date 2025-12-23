@@ -60,22 +60,8 @@ const fetchWithRetry = async (url: string, maxRetries: number = MAX_RETRIES): Pr
   throw lastError || new Error('All retry attempts failed');
 };
 
-// Validate repo data - require both GitHubRepo and Contributors
-const validateRepoData = (data: JarvisResponse): boolean => {
-  if (!data.nodes?.length) return false;
 
-  const repoNodes = data.nodes.filter((n: JarvisNode) =>
-    ['GitHubRepo', 'Contributor', 'Stars'].includes(n.node_type)
-  );
-
-  const hasGitHubRepo = repoNodes.some((n: JarvisNode) => n.node_type === 'GitHubRepo');
-  const hasContributors = repoNodes.some((n: JarvisNode) => n.node_type === 'Contributor');
-
-  console.log(`📊 Repo validation: GitHubRepo=${hasGitHubRepo}, Contributors=${hasContributors}`);
-  return hasGitHubRepo || hasContributors;
-};
-
-export const useGitSeeDataSequence = (workspaceId: string | undefined): UseGitSeeDataSequenceReturn => {
+export const useGitSeeDataSequence = (workspaceId: string | undefined, githubDataReady: boolean = false): UseGitSeeDataSequenceReturn => {
   const addNewNode = useDataStore((s) => s.addNewNode);
   const setIsOnboarding = useDataStore((s) => s.setIsOnboarding);
 
@@ -118,7 +104,7 @@ export const useGitSeeDataSequence = (workspaceId: string | undefined): UseGitSe
         attempt += 1;
         try {
           const latestData = await fetchWithRetry(
-            `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=graph/search/latest?limit=5000&top_node_count=5000&sort_by=date_added_to_graph`,
+            `/api/swarm/jarvis/nodes?id=${workspaceId}&endpoint=graph/search/latest?limit=5020&top_node_count=5000&sort_by=date_added_to_graph`,
             1 // retry handled by loop
           );
 
@@ -171,80 +157,57 @@ export const useGitSeeDataSequence = (workspaceId: string | undefined): UseGitSe
     try {
       console.log(`🔄 Starting GitSee data sequence for workspace: ${workspaceId}`);
 
-      // Step 1: Fetch repository data
+      // Step 1: Skip repository data (now fetched from GitHub API directly)
       setPhase('loading');
-      console.log('📊 Phase: loading → fetching repo data');
+      console.log('📊 Phase: loading → skipping Jarvis repo data (using GitHub API)');
+      setPhase('repo-ready');
+      console.log('✅ Skipped Jarvis repo data, proceeding to directories');
 
+      // Step 2: Fetch directory data
       try {
-        const repoResult = await fetchWithRetry(
-          `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['GitHubRepo', 'Contributor', 'Stars'])}&endpoint=graph/search?limit=100&top_node_count=100&sort_by=date_added_to_graph`
+        const directoryResult = await fetchWithRetry(
+          `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['Directory'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
         );
 
-        if (validateRepoData(repoResult)) {
-          const repoNodes = repoResult.nodes?.filter((n: JarvisNode) =>
-            ['GitHubRepo', 'Contributor', 'Stars'].includes(n.node_type)
-          ) || [];
+        const directoryNodes = directoryResult.nodes?.filter((n: JarvisNode) => n.node_type === 'Directory') || [];
 
-          if (repoNodes.length > 0) {
-            const filteredRepoData = { ...repoResult, nodes: repoNodes };
-            setRepoData(filteredRepoData);
-            setPhase('repo-ready');
-            console.log(`✅ Added ${repoNodes.length} repo nodes to store`);
-          }
+        if (directoryNodes.length > 0) {
+          const filteredDirectoryData = { ...directoryResult, nodes: directoryNodes };
+          setDirectoryData(filteredDirectoryData);
+          addNewNode({
+            nodes: directoryNodes as Node[],
+            edges: (directoryResult.edges || []) as Link<string>[],
+          });
+          setPhase((prev) => (prev === 'complete' ? prev : 'directories-ready'));
+          console.log(`✅ Added ${directoryNodes.length} directory nodes to store`);
         }
-      } catch (repoError) {
-        console.warn('⚠️ Repo data fetch failed, continuing sequence:', repoError);
+      } catch (dirError) {
+        console.warn('⚠️ Directory data fetch failed, continuing sequence:', dirError);
         setRetryCount(prev => prev + MAX_RETRIES);
       }
 
-
-      // Step 2: Fetch directory data
-      // try {
-      //   const directoryResult = await fetchWithRetry(
-      //     `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['Directory'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
-      //   );
-
-      //   const directoryNodes = directoryResult.nodes?.filter((n: JarvisNode) => n.node_type === 'Directory') || [];
-
-      //   if (directoryNodes.length > 0) {
-      //     const filteredDirectoryData = { ...directoryResult, nodes: directoryNodes };
-      //     setDirectoryData(filteredDirectoryData);
-      //     addNewNode({
-      //       nodes: directoryNodes as Node[],
-      //       edges: (directoryResult.edges || []) as Link<string>[],
-      //     });
-      //     setPhase((prev) => (prev === 'complete' ? prev : 'directories-ready'));
-      //     console.log(`✅ Added ${directoryNodes.length} directory nodes to store`);
-      //   }
-      // } catch (dirError) {
-      //   console.warn('⚠️ Directory data fetch failed, continuing sequence:', dirError);
-      //   setRetryCount(prev => prev + MAX_RETRIES);
-      // }
-
-
       // Step 3: Fetch file data
-      // try {
-      //   const fileResult = await fetchWithRetry(
-      //     `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['File'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
-      //   );
+      try {
+        const fileResult = await fetchWithRetry(
+          `/api/swarm/jarvis/nodes?id=${workspaceId}&node_type=${JSON.stringify(['File'])}&endpoint=graph/search?limit=200&sort_by=date_added_to_graph&depth=1`
+        );
 
-      //   const fileNodes = fileResult.nodes?.filter((n: JarvisNode) => n.node_type === 'File') || [];
+        const fileNodes = fileResult.nodes?.filter((n: JarvisNode) => n.node_type === 'File') || [];
 
-      //   if (fileNodes.length > 0) {
-      //     const filteredFileData = { ...fileResult, nodes: fileNodes };
-      //     setFileData(filteredFileData);
-      //     addNewNode({
-      //       nodes: fileNodes as Node[],
-      //       edges: (fileResult.edges || []) as Link<string>[],
-      //     });
-      //     console.log(`✅ Added ${fileNodes.length} file nodes to store`);
-      //     setPhase((prev) => (prev === 'complete' ? prev : 'files-ready'));
-      //   }
-      // } catch (fileError) {
-      //   console.warn('⚠️ File data fetch failed, continuing sequence:', fileError);
-      //   setRetryCount(prev => prev + MAX_RETRIES);
-      // }
-
+        if (fileNodes.length > 0) {
+          const filteredFileData = { ...fileResult, nodes: fileNodes };
+          setFileData(filteredFileData);
+          addNewNode({
+            nodes: fileNodes as Node[],
+            edges: (fileResult.edges || []) as Link<string>[],
+          });
+          console.log(`✅ Added ${fileNodes.length} file nodes to store`);
+          setPhase((prev) => (prev === 'complete' ? prev : 'files-ready'));
+        }
+      } catch (fileError) {
+        console.warn('⚠️ File data fetch failed, continuing sequence:', fileError);
+        setRetryCount(prev => prev + MAX_RETRIES);
+      }
 
     } catch (error) {
       console.error('💥 Sequence failed:', error);
@@ -255,15 +218,18 @@ export const useGitSeeDataSequence = (workspaceId: string | undefined): UseGitSe
     }
   }, [addNewNode]);
 
-  // Start sequence when workspace changes
+  // Start sequence when workspace changes AND GitHub data is ready
   useEffect(() => {
-    if (workspaceId) {
+    if (workspaceId && githubDataReady) {
+      console.log('🚀 GitHub data ready, starting Jarvis sequence');
       runSequence(workspaceId);
+    } else if (workspaceId && !githubDataReady) {
+      console.log('⏳ Waiting for GitHub data before starting Jarvis sequence');
     }
-  }, [workspaceId, runSequence]);
+  }, [workspaceId, githubDataReady, runSequence]);
 
   useEffect(() => {
-    if (workspaceId && phase === 'repo-ready') {
+    if (workspaceId && ['repo-ready', 'directories-ready', 'files-ready'].includes(phase)) {
       startLatestFetch(workspaceId);
     }
   }, [workspaceId, phase, startLatestFetch]);

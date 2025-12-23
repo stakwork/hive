@@ -52,16 +52,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
 
     setIsOnboarding(true);
 
-
-    fetch("/api/gitsee/trigger", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        repositoryUrl: repositoryUrl,
-        workspaceId: workspaceId,
-      }),
-    });
-
     // Secondary guard: prevent duplicate calls within same lifecycle
     if (ingestionStarted.current) {
       console.log("startIngestion skipped (already started)");
@@ -71,8 +61,6 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     ingestionStarted.current = true;
 
     try {
-      console.log("Starting code ingestion for workspace:", workspaceId);
-
       const ingestRes = await fetch("/api/swarm/stakgraph/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
