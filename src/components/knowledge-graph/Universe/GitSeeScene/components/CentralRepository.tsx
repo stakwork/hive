@@ -1,5 +1,6 @@
 import type { RepositoryData } from '@/types/github';
 import { Billboard, Html, Text } from '@react-three/drei';
+import Image from 'next/image';
 
 interface CentralRepositoryProps {
   repositoryData: RepositoryData | null;
@@ -51,18 +52,24 @@ export const CentralRepository = ({
           distanceFactor={1000}
           style={{ pointerEvents: 'none' }}
         >
-          <div
+          <Image
+            src="/gitimage.png"
+            alt="Repository"
+            width={(githubRepoNodeSize - 2) * 2 * scale * 0.8}
+            height={(githubRepoNodeSize - 2) * 2 * scale * 0.8}
             style={{
-              width: `${(githubRepoNodeSize - 2) * 2 * scale * 0.8}px`,
-              height: `${(githubRepoNodeSize - 2) * 2 * scale * 0.8}px`,
               borderRadius: '50%',
-              background: 'url(/gitimage.png) center/cover white',
-              border: '2px solid #fff',
+              border: '1px solid #fff',
               boxShadow: '0 0 10px rgba(0,0,0,0.3)',
               transform: 'translate(-50%, -50%)',
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
+              objectFit: 'cover',
+              display: 'block',
+              backgroundColor: 'white',
             }}
+            priority
+            unoptimized={false}
           />
         </Html>
         <Text
