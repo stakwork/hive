@@ -6,7 +6,7 @@ import {
   getWorkspaceChannelName,
   PUSHER_EVENTS,
 } from "@/lib/pusher";
-import type { Channel } from "pusher-js";
+import type { ChannelLike } from "@/lib/mock/pusher-wrapper";
 
 export interface WorkflowStatusUpdate {
   taskId: string;
@@ -68,7 +68,7 @@ export function usePusherConnection({
   const [error, setError] = useState<string | null>(null);
 
   // Use refs to avoid circular dependencies
-  const channelRef = useRef<Channel | null>(null);
+  const channelRef = useRef<ChannelLike | null>(null);
   const onMessageRef = useRef(onMessage);
   const onWorkflowStatusUpdateRef = useRef(onWorkflowStatusUpdate);
   const onRecommendationsUpdatedRef = useRef(onRecommendationsUpdated);
@@ -92,8 +92,8 @@ export function usePusherConnection({
         console.log("Unsubscribing from Pusher channel:", channelName);
       }
 
-      // Unbind all events
-      channelRef.current.unbind_all();
+      // Unbind all events (use unbind without parameters)
+      channelRef.current.unbind();
 
       // Unsubscribe from the channel
       getPusherClient().unsubscribe(channelName);
@@ -146,8 +146,9 @@ export function usePusherConnection({
         // Task-specific events
         if (type === 'task') {
           // Message events (payload is messageId)
-          channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (payload: string) => {
+          channel.bind(PUSHER_EVENTS.NEW_MESSAGE, async (data: unknown) => {
             try {
+              const payload = data as string;
               if (typeof payload === "string") {
                 const res = await fetch(`/api/chat/messages/${payload}`);
                 if (res.ok) {
@@ -169,7 +170,8 @@ export function usePusherConnection({
           // Workflow status update events
           channel.bind(
             PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
-            (update: WorkflowStatusUpdate) => {
+            (data: unknown) => {
+              const update = data as WorkflowStatusUpdate;
               if (LOGS) {
                 console.log("Received workflow status update:", {
                   taskId: update.taskId,
@@ -186,7 +188,8 @@ export function usePusherConnection({
           // Task title update events
           channel.bind(
             PUSHER_EVENTS.TASK_TITLE_UPDATE,
-            (update: TaskTitleUpdateEvent) => {
+            (data: unknown) => {
+              const update = data as TaskTitleUpdateEvent;
               if (LOGS) {
                 console.log("Received task title update:", {
                   taskId: update.taskId,
@@ -206,7 +209,8 @@ export function usePusherConnection({
         if (type === 'workspace') {
           channel.bind(
             PUSHER_EVENTS.RECOMMENDATIONS_UPDATED,
-            (update: RecommendationsUpdatedEvent) => {
+            (data: unknown) => {
+              const update = data as RecommendationsUpdatedEvent;
               if (LOGS) {
                 console.log("Received recommendations update:", {
                   workspaceSlug: update.workspaceSlug,
@@ -224,7 +228,8 @@ export function usePusherConnection({
           // Workspace task title update events
           channel.bind(
             PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
-            (update: TaskTitleUpdateEvent) => {
+            (data: unknown) => {
+              const update = data as TaskTitleUpdateEvent;
               if (LOGS) {
                 console.log("Received workspace task title update:", {
                   taskId: update.taskId,

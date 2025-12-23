@@ -54,7 +54,8 @@ export function DashboardChat() {
     const pusher = getPusherClient();
     const channel = pusher.subscribe(channelName);
 
-    const handleFollowUpQuestions = (payload: { questions: string[]; timestamp: number }) => {
+    const handleFollowUpQuestions = (data: unknown) => {
+      const payload = data as { questions: string[]; timestamp: number };
       // Always store questions - display logic will wait for loading to complete
       console.log("follow up questions:", payload.questions);
       setFollowUpQuestions(payload.questions);

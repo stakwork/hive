@@ -100,7 +100,8 @@ export const useWebhookHighlights = () => {
       const channelName = getWorkspaceChannelName(workspace.slug)
       const channel = pusher.subscribe(channelName)
 
-      const handleHighlightEvent = async (data: HighlightEvent) => {
+      const handleHighlightEvent = async (payload: unknown) => {
+        const data = payload as HighlightEvent;
         console.log('Received highlight event:', data)
 
         if (data.workspaceId !== workspace.slug) return

@@ -85,22 +85,24 @@ export function useStakworkGeneration({
     const channelName = `workspace-${workspace.slug}`;
     const channel = pusher.subscribe(channelName);
 
-    const handleRunUpdate = (data: {
-      runId: string;
-      type: StakworkRunType;
-      status: WorkflowStatus;
-      featureId: string;
-    }) => {
+    const handleRunUpdate = (payload: unknown) => {
+      const data = payload as {
+        runId: string;
+        type: StakworkRunType;
+        status: WorkflowStatus;
+        featureId: string;
+      };
       if (data.featureId === featureId && data.type === type) {
         queryLatestRunRef.current?.();
       }
     };
 
-    const handleRunDecision = (data: {
-      runId: string;
-      decision: StakworkRunDecision;
-      featureId: string;
-    }) => {
+    const handleRunDecision = (payload: unknown) => {
+      const data = payload as {
+        runId: string;
+        decision: StakworkRunDecision;
+        featureId: string;
+      };
       if (data.featureId === featureId) {
         queryLatestRunRef.current?.();
       }
