@@ -39,7 +39,7 @@ export function PoolLaunchBanner({
           <CardTitle className="flex items-center gap-2">
             <div className="relative flex items-center justify-center">
               <Server className="h-5 w-5 text-foreground" />
-              <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
+              <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse" />
             </div>
             Setting up...
           </CardTitle>
