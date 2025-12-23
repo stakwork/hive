@@ -105,7 +105,7 @@ export const ContributorLayer = ({
   isVisible,
   startTime,
 }: ContributorLayerProps) => {
-  const contributorRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const contributorRefs = useRef<(THREE.Group | null)[]>([]);
   const tempVec = useRef(new THREE.Vector3()).current;
 
   // Process contributor data from GitHub API
@@ -155,8 +155,8 @@ export const ContributorLayer = ({
     if (t <= 0) return; // Haven't started yet
 
     // Contributors move with staggered timing
-    contributorRefs.current.forEach((mesh, i) => {
-      if (!mesh || !contributorData[i]) return;
+    contributorRefs.current.forEach((billboard, i) => {
+      if (!billboard || !contributorData[i]) return;
       const c = contributorData[i];
 
       // Staggered delay for each contributor (0.3 seconds apart)
@@ -169,7 +169,7 @@ export const ContributorLayer = ({
 
       tempVec.copy(c.target);
       tempVec.y += Math.sin(contributorTime * 1.2 + i * 0.6) * floatingAmplitude;
-      mesh.position.lerp(tempVec, lerpSpeed);
+      billboard.position.lerp(tempVec, lerpSpeed);
     });
   });
 
@@ -177,26 +177,27 @@ export const ContributorLayer = ({
 
   return (
     <>
+      {/* Connection lines from center to each contributor */}
       {contributorData.map((c, i) => (
-        <Billboard key={`contrib-${i}`}>
-          <line>
-            <bufferGeometry>
-              <bufferAttribute
-                attach="attributes-position"
-                args={[contributorLines[i], 3]}
-              />
-            </bufferGeometry>
-            <lineBasicMaterial
-              color={c.color}
-              transparent
-              opacity={lineOpacity}
+        <line key={`contrib-line-${i}`}>
+          <bufferGeometry>
+            <bufferAttribute
+              attach="attributes-position"
+              args={[contributorLines[i], 3]}
             />
-          </line>
+          </bufferGeometry>
+          <lineBasicMaterial
+            color={c.color}
+            transparent
+            opacity={lineOpacity}
+          />
+        </line>
+      ))}
 
-          <mesh
-            ref={(m) => (contributorRefs.current[i] = m)}
-            position={[0, 0, 0]}
-          >
+      {/* Contributor avatars and labels */}
+      {contributorData.map((c, i) => (
+        <Billboard key={`contrib-${i}`} ref={(b) => { contributorRefs.current[i] = b; }} position={[c.target.x, c.target.y, c.target.z]}>
+          <mesh position={[0, 0, 0]}>
             <circleGeometry args={[contributorNodeSize, 48]} />
             <meshBasicMaterial
               map={c.texture}
@@ -207,7 +208,7 @@ export const ContributorLayer = ({
           </mesh>
 
           <Text
-            position={[c.target.x, c.target.y - 22.2, c.target.z]}
+            position={[0, -22.2, 0]}
             fontSize={9}
             color="#e5e7eb"
             anchorX="center"

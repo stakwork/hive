@@ -1,7 +1,7 @@
-import { authOptions } from "@/lib/auth/nextauth";
 import { serviceConfigs } from "@/config/services";
+import { authOptions } from "@/lib/auth/nextauth";
 import { getUserAppTokens } from "@/lib/githubApp";
-import { RepositoryData, GitHubContributor, GitHubIssue } from "@/types/github";
+import { GitHubContributor, GitHubIssue, RepositoryData } from "@/types/github";
 import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
@@ -105,6 +105,8 @@ export async function GET(request: Request) {
       contributors,
       recent_issues,
     };
+
+    console.log('[GITHUB] Repository data retrieved successfully', repositoryData);
 
     return NextResponse.json({
       message: "Repository data retrieved successfully",
