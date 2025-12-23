@@ -4,7 +4,10 @@ import { z } from "zod";
 export const FAILED_STATUSES = ["error", "errored", "offline"] as const;
 
 // Processes to ignore when checking for failures
-export const IGNORED_PROCESSES = ["goose", "staklink-proxy"] as const;
+export const IGNORED_PROCESSES = ["goose"] as const;
+
+// Staklink proxy process name (prioritized for repair)
+export const STAKLINK_PROXY_PROCESS = "staklink-proxy" as const;
 
 // jlist endpoint response types
 export interface JlistProcess {
