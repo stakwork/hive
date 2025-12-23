@@ -240,14 +240,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { slug } = await params;
 
     // Check for API token auth (for external services like Stakwork repair agent)
-    const apiKey = request.headers.get("x-api-key");
-    const isApiKeyAuth = apiKey && apiKey === process.env.API_TOKEN;
+    const apiToken = request.headers.get("x-api-token");
+    const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
 
     let workspace: { id: string } | null = null;
     let userId: string | null = null;
 
-    if (isApiKeyAuth) {
-      // API key auth - get workspace by slug directly (no user session needed)
+    if (isApiTokenAuth) {
+      // API token auth - get workspace by slug directly (no user session needed)
       workspace = await db.workspace.findFirst({
         where: { slug, deleted: false },
         select: { id: true },
@@ -435,8 +435,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       decryptedPoolApiKey = swarmPoolApiKey;
     }
 
-    // Only setup GitHub webhook when using session auth (not API key auth)
-    if (!isApiKeyAuth && userId) {
+    // Only setup GitHub webhook when using session auth (not API token auth)
+    if (!isApiTokenAuth && userId) {
       try {
         const callbackUrl = getGithubWebhookCallbackUrl(request, workspace.id);
         const webhookService = new WebhookService(getServiceConfig("github"));
