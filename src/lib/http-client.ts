@@ -133,14 +133,7 @@ export class HttpClient {
     headers?: Record<string, string>,
     service?: string,
   ): Promise<T> {
-    console.log(
-      "--------------------------------post--------------------------------",
-    );
-    console.log(headers);
-    console.log(body);
-    console.log(
-      "--------------------------------post--------------------------------",
-    );
+    console.log("[HttpClient] POST body:", body);
 
     return this.request<T>(
       endpoint,
