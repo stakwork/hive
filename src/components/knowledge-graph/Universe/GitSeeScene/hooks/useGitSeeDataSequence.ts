@@ -84,6 +84,7 @@ export const useGitSeeDataSequence = (workspaceId: string | undefined, githubDat
   const clearOnboarding = useCallback(() => {
     if (onboardingClearedRef.current) return;
     onboardingClearedRef.current = true;
+    console.log('clear onboarding');
     setIsOnboarding(false);
   }, [setIsOnboarding]);
 
