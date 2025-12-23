@@ -27,7 +27,6 @@ services:
     container_name: hive-app-dev
     env_file:
       - .env.local
-      - .env
     ports:
       - "3000:3000"
     volumes:
