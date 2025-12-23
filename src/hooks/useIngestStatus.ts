@@ -62,6 +62,7 @@ export function useIngestStatus() {
               status: "SYNCED",
             })),
           });
+          toast.success("Codebase ingested successfully");
           setIsIngesting(false);
           setStatusMessage("Ingesting your codebase...");
           // Stop polling
