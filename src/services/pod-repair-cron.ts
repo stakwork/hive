@@ -371,9 +371,16 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           continue;
         }
 
+        // Check if staklink-proxy exists in jlist
+        const staklinkExists = jlist.some(
+          (proc) => proc.name.toLowerCase() === STAKLINK_PROXY_PROCESS
+        );
+
         // Get failed processes
         const failedProcesses = getFailedProcesses(jlist);
-        if (failedProcesses.length === 0) {
+
+        // If no failed processes AND staklink-proxy exists, skip
+        if (failedProcesses.length === 0 && staklinkExists) {
           console.log(
             `[PodRepairCron] No failed processes for ${workspace.slug}`
           );
@@ -381,9 +388,10 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           continue;
         }
 
-        // Prioritize staklink-proxy: if it's failed, only repair that first
+        // Prioritize staklink-proxy: if it's failed OR missing, only repair that first
         const staklinkFailed = failedProcesses.includes(STAKLINK_PROXY_PROCESS);
-        const servicesToRepair = staklinkFailed
+        const staklinkNeedsRepair = staklinkFailed || !staklinkExists;
+        const servicesToRepair = staklinkNeedsRepair
           ? [STAKLINK_PROXY_PROCESS]
           : failedProcesses;
 
