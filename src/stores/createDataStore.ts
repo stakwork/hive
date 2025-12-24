@@ -245,6 +245,13 @@ export const createDataStore = () =>
         },
 
         resetData: () => {
+          // Clear batching state to prevent test isolation issues
+          if (addNodeFlushTimeout) {
+            clearTimeout(addNodeFlushTimeout);
+            addNodeFlushTimeout = null;
+          }
+          addNodeBatchQueue = [];
+
           set({
             dataInitial: null,
             sidebarFilter: 'all',
@@ -255,6 +262,7 @@ export const createDataStore = () =>
             dataNew: null,
             runningProjectId: '',
             nodeTypes: [],
+            linkTypes: [],
             nodesNormalized: new Map<string, NodeExtended>(),
             linksNormalized: new Map<string, Link>(),
             nodeLinksNormalized: {},
