@@ -479,10 +479,14 @@ export async function getUserWorkspaces(
 
 /**
  * Validates user access to a workspace and returns permission details
+ * @param slug - Workspace slug
+ * @param userId - User ID
+ * @param allowOwner - If false, owners must meet role requirements via actual membership role (default: true)
  */
 export async function validateWorkspaceAccess(
   slug: string,
   userId: string,
+  allowOwner: boolean = true,
 ): Promise<WorkspaceAccessValidation> {
   const workspace = await getWorkspaceBySlug(slug, userId);
 
@@ -495,11 +499,40 @@ export async function validateWorkspaceAccess(
     };
   }
 
-  const roleLevel = WORKSPACE_PERMISSION_LEVELS[workspace.userRole as WorkspaceRole];
+  let userRole = workspace.userRole;
+
+  // If allowOwner is false and user is the owner, check actual membership role
+  if (!allowOwner && workspace.ownerId === userId) {
+    const membership = await db.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: workspace.id,
+          userId: userId,
+        },
+      },
+      select: {
+        role: true,
+      },
+    });
+
+    // If no membership exists, user has no role-based access
+    if (!membership) {
+      return {
+        hasAccess: false,
+        canRead: false,
+        canWrite: false,
+        canAdmin: false,
+      };
+    }
+
+    userRole = membership.role;
+  }
+
+  const roleLevel = WORKSPACE_PERMISSION_LEVELS[userRole as WorkspaceRole];
 
   return {
     hasAccess: true,
-    userRole: workspace.userRole,
+    userRole: userRole,
     workspace: {
       id: workspace.id,
       name: workspace.name,
@@ -517,10 +550,14 @@ export async function validateWorkspaceAccess(
 
 /**
  * Validates user access to a workspace by ID and returns permission details
+ * @param workspaceId - Workspace ID
+ * @param userId - User ID
+ * @param allowOwner - If false, owners must meet role requirements via actual membership role (default: true)
  */
 export async function validateWorkspaceAccessById(
   workspaceId: string,
   userId: string,
+  allowOwner: boolean = true,
 ): Promise<WorkspaceAccessValidation> {
   const workspace = await getWorkspaceById(workspaceId, userId);
 
@@ -533,11 +570,40 @@ export async function validateWorkspaceAccessById(
     };
   }
 
-  const roleLevel = WORKSPACE_PERMISSION_LEVELS[workspace.userRole as WorkspaceRole];
+  let userRole = workspace.userRole;
+
+  // If allowOwner is false and user is the owner, check actual membership role
+  if (!allowOwner && workspace.ownerId === userId) {
+    const membership = await db.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: workspace.id,
+          userId: userId,
+        },
+      },
+      select: {
+        role: true,
+      },
+    });
+
+    // If no membership exists, user has no role-based access
+    if (!membership) {
+      return {
+        hasAccess: false,
+        canRead: false,
+        canWrite: false,
+        canAdmin: false,
+      };
+    }
+
+    userRole = membership.role;
+  }
+
+  const roleLevel = WORKSPACE_PERMISSION_LEVELS[userRole as WorkspaceRole];
 
   return {
     hasAccess: true,
-    userRole: workspace.userRole,
+    userRole: userRole,
     workspace: {
       id: workspace.id,
       name: workspace.name,
