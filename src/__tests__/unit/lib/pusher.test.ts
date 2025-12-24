@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mock the external libraries before importing the module under test
 vi.mock("pusher", () => {
   const MockPusher = vi.fn().mockImplementation((config) => ({
-    trigger: vi.fn(),
+    trigger: vi.fn().mockResolvedValue(undefined),
     config,
   }));
   return { default: MockPusher };
@@ -24,8 +24,6 @@ vi.mock("pusher-js", () => {
 import Pusher from "pusher";
 import PusherClient from "pusher-js";
 import {
-  pusherServer,
-  getPusherClient,
   getTaskChannelName,
   getWorkspaceChannelName,
   PUSHER_EVENTS,
@@ -38,9 +36,10 @@ describe("pusher.ts", () => {
     // Reset mocks before each test
     vi.clearAllMocks();
     
-    // Reset environment variables to a clean state
+    // Reset environment variables to a clean state (USE_MOCKS=false for real Pusher tests)
     process.env = {
       ...originalEnv,
+      USE_MOCKS: "false",
       PUSHER_APP_ID: "test-app-id",
       PUSHER_KEY: "test-key",
       PUSHER_SECRET: "test-secret",
@@ -350,7 +349,9 @@ describe("pusher.ts", () => {
       expect(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE).toBe("workspace-task-title-update");
     });
 
-    it("should have all exports available", () => {
+    it("should have all exports available", async () => {
+      const { pusherServer, getPusherClient } = await import("@/lib/pusher");
+      
       expect(pusherServer).toBeDefined();
       expect(getPusherClient).toBeDefined();
       expect(getTaskChannelName).toBeDefined();

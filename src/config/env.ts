@@ -36,6 +36,11 @@ export const optionalEnvVars = {
     : "https://github.com/login/oauth/access_token",
   // Gemini API base URL (routes to mock endpoint when USE_MOCKS=true)
   GEMINI_API_BASE_URL: USE_MOCKS ? `${MOCK_BASE}/api/mock/gemini` : "https://generativelanguage.googleapis.com",
+  // Pusher credentials (optional in mock mode)
+  PUSHER_APP_ID: USE_MOCKS ? "mock-app-id" : process.env.PUSHER_APP_ID,
+  PUSHER_KEY: USE_MOCKS ? "mock-pusher-key" : process.env.PUSHER_KEY,
+  PUSHER_SECRET: USE_MOCKS ? "mock-pusher-secret" : process.env.PUSHER_SECRET,
+  PUSHER_CLUSTER: USE_MOCKS ? "mock-cluster" : process.env.PUSHER_CLUSTER,
   STAKWORK_BASE_URL: USE_MOCKS
     ? `${MOCK_BASE}/api/mock/stakwork`
     : process.env.STAKWORK_BASE_URL || "https://api.stakwork.com/api/v1",
