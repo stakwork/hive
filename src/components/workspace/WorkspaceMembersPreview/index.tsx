@@ -30,7 +30,7 @@ function getInitials(user: {
 
 export function WorkspaceMembersPreview({
   workspaceSlug,
-  maxDisplay = 4,
+  maxDisplay = 3,
 }: WorkspaceMembersPreviewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { members, loading } = useWorkspaceMembers(workspaceSlug, {

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Lightbulb, Image as ImageIcon, X } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Send, Lightbulb, Image as ImageIcon, X, Mic, MicOff } from "lucide-react";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
@@ -30,12 +32,21 @@ export function ChatInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } = useSpeechRecognition();
+
+  // Update input with transcript from speech recognition
+  useEffect(() => {
+    if (transcript) {
+      setInput(transcript);
+    }
+  }, [transcript]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || disabled) return;
 
     const message = input.trim();
+    resetTranscript();
     // Don't clear input yet - wait for response to start
     await onSend(message, () => {
       setInput("");
@@ -133,6 +144,15 @@ export function ChatInput({
     }
   };
 
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      resetTranscript();
+      startListening();
+    }
+  };
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -217,6 +237,37 @@ export function ChatInput({
           <Send className="w-4 h-4" />
         </Button>
       </div>
+      
+      {/* Voice input button */}
+      {isSupported && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={toggleVoiceInput}
+                disabled={disabled}
+                className={`h-10 w-10 rounded-full border-2 flex items-center justify-center transition-all ${
+                  isListening
+                    ? "bg-red-500 border-red-500 hover:bg-red-600 animate-pulse"
+                    : "border-border/20 hover:border-primary/50 bg-background/5"
+                } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                title={isListening ? "Stop recording" : "Start voice input"}
+              >
+                {isListening ? (
+                  <MicOff className="w-4 h-4 text-white" />
+                ) : (
+                  <Mic className="w-4 h-4 text-muted-foreground" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isListening ? "Stop recording" : "Start voice input"}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+      
       {showCreateFeature && (
         <Button
           type="button"

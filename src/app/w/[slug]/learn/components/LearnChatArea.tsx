@@ -166,7 +166,7 @@ export function LearnChatArea({
       </div>
 
       {/* Input - Fixed at bottom of viewport */}
-      <div className="absolute bottom-0 left-0 right-0 bg-background border-t shadow-lg">
+      <div className="absolute bottom-0 left-0 right-0 bg-background border-t shadow-lg pr-80">
         <LearnChatInput
           onSend={onSend}
           disabled={isLoading}
