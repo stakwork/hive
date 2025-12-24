@@ -887,10 +887,7 @@ describe('useDataStore - addNewNode', () => {
   });
 
   describe('Store Reset', () => {
-    // TODO: Fix in separate PR - resetData() doesn't clear linkTypes field.
-    // The resetData function in useDataStore/index.ts (line 224) resets nodeTypes but not linkTypes.
-    // Fix: Add `linkTypes: []` to the resetData set() call on line 225.
-    test.skip('resetData should clear all data', () => {
+    test('resetData should clear all data', () => {
       const { addNewNode, resetData } = useDataStore.getState();
 
       const mockData = createMockFetchData(3, 2);
