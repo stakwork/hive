@@ -8,6 +8,27 @@ export function useSidebar() {
   return React.useContext(SidebarMenuContext);
 }
 
+export function SidebarProvider({ children }: { children: React.ReactNode }) {
+  const [isMobile, setIsMobile] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  return (
+    <SidebarMenuContext.Provider value={{ isMobile }}>
+      {children}
+    </SidebarMenuContext.Provider>
+  );
+}
+
 export function SidebarMenu({ children }: { children: React.ReactNode }) {
   return <ul className="list-none p-0 m-0">{children}</ul>;
 }

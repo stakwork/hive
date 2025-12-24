@@ -25,6 +25,7 @@ import { useState, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
@@ -339,14 +340,16 @@ export function Sidebar({ user }: SidebarProps) {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-64 p-0">
-            <SidebarContent
-              navigationItems={navigationItems}
-              pathname={pathname}
-              handleNavigate={handleNavigate}
-              tasksWaitingForInputCount={tasksWaitingForInputCount}
-              poolCapacityCount={poolCapacityCount}
-              user={user}
-            />
+            <SidebarProvider>
+              <SidebarContent
+                navigationItems={navigationItems}
+                pathname={pathname}
+                handleNavigate={handleNavigate}
+                tasksWaitingForInputCount={tasksWaitingForInputCount}
+                poolCapacityCount={poolCapacityCount}
+                user={user}
+              />
+            </SidebarProvider>
           </SheetContent>
         </Sheet>
       )}
@@ -355,14 +358,16 @@ export function Sidebar({ user }: SidebarProps) {
         className={`${isTaskPage ? "hidden" : "hidden md:flex"} ${SIDEBAR_WIDTH} md:flex-col md:fixed md:inset-y-0 md:z-0`}
       >
         <div className="flex flex-col flex-grow bg-sidebar border-sidebar-border border-r">
-          <SidebarContent
-            navigationItems={navigationItems}
-            pathname={pathname}
-            handleNavigate={handleNavigate}
-            tasksWaitingForInputCount={tasksWaitingForInputCount}
-            poolCapacityCount={poolCapacityCount}
-            user={user}
-          />
+          <SidebarProvider>
+            <SidebarContent
+              navigationItems={navigationItems}
+              pathname={pathname}
+              handleNavigate={handleNavigate}
+              tasksWaitingForInputCount={tasksWaitingForInputCount}
+              poolCapacityCount={poolCapacityCount}
+              user={user}
+            />
+          </SidebarProvider>
         </div>
       </div>
     </>
