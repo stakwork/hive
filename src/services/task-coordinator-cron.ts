@@ -24,7 +24,7 @@ export interface TaskCoordinatorExecutionResult {
  * 2. If task has PR artifacts: Check latest PR artifact status === "DONE" (merged)
  *    - Ignores task.status when PR exists (PR merge is source of truth)
  */
-async function areDependenciesSatisfied(
+export async function areDependenciesSatisfied(
   dependsOnTaskIds: string[]
 ): Promise<boolean> {
   if (dependsOnTaskIds.length === 0) {
@@ -85,13 +85,13 @@ async function areDependenciesSatisfied(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       const latestPrArtifact = sortedArtifacts[0];
-      const content = latestPrArtifact.content as { status?: string; url?: string };
+      const content = latestPrArtifact.content as { status?: string; url?: string } | null;
 
-      isDependencySatisfied = content.status === "DONE";
+      isDependencySatisfied = content?.status === "DONE";
 
       if (!isDependencySatisfied) {
         console.log(
-          `[TaskCoordinator] Dependency ${depTask.id} not satisfied - has PR artifact (${content.url || 'unknown'}), latest status: ${content.status || 'unknown'}`
+          `[TaskCoordinator] Dependency ${depTask.id} not satisfied - has PR artifact (${content?.url || 'unknown'}), latest status: ${content?.status || 'unknown'}`
         );
       }
     }
