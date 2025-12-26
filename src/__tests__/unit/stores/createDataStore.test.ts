@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { useDataStore } from '@/stores/useDataStore';
+import { FetchDataResponse } from '@Universe/types';
 import {
   createMockNode,
   createMockLink,
@@ -566,17 +567,29 @@ describe('useDataStore - addNewNode', () => {
       expect(state.dataNew?.links).toHaveLength(2);
     });
 
-    // TODO: Fix in separate PR - Test expects dataInitial to accumulate nodes across batches,
-    // but current implementation appears to have different behavior for incremental updates.
-    // Production code needs investigation to ensure proper accumulation across multiple addNewNode calls.
-    test.skip('should accumulate nodes in dataInitial across batches', () => {
+    test('should accumulate nodes in dataInitial across batches', async () => {
       const { addNewNode } = useDataStore.getState();
 
+      // Create first batch with nodes 0-1
       const batch1 = createMockFetchData(2, 1);
       addNewNode(batch1);
 
-      const batch2 = createMockFetchData(3, 2);
+      // Create second batch with nodes 2-4 (non-overlapping)
+      const batch2: FetchDataResponse = {
+        nodes: [
+          createMockNode({ ref_id: 'node-2', name: 'Node 2', node_type: 'TypeA' }),
+          createMockNode({ ref_id: 'node-3', name: 'Node 3', node_type: 'TypeB' }),
+          createMockNode({ ref_id: 'node-4', name: 'Node 4', node_type: 'TypeA' }),
+        ],
+        edges: [
+          createMockLink({ ref_id: 'link-1', source: 'node-2', target: 'node-3', edge_type: 'relation_a' }),
+          createMockLink({ ref_id: 'link-2', source: 'node-3', target: 'node-4', edge_type: 'relation_b' }),
+        ],
+      };
       addNewNode(batch2);
+
+      // Wait for batching to complete
+      await new Promise(resolve => setTimeout(resolve, 1100));
 
       const state = inspectDataStore();
       expect(state.nodeCount).toBe(5); // 2 + 3
@@ -786,12 +799,7 @@ describe('useDataStore - addNewNode', () => {
   });
 
   describe('Edge Cases', () => {
-    // TODO: Fix in separate PR - Production code crashes when node_type is undefined.
-    // Error: "Cannot read properties of undefined (reading 'toLowerCase')" in useDataStore/index.ts:192
-    // The sidebarFilters creation at line 192 calls type.toLowerCase() without checking if type is defined.
-    // Fix: Add filter to remove undefined/null values before calling toLowerCase(), e.g.:
-    // const sidebarFilters = ['all', ...nodeTypes.filter(Boolean).map((type) => type.toLowerCase())]
-    test.skip('should handle nodes with missing node_type', () => {
+    test('should handle nodes with missing node_type', () => {
       const { addNewNode } = useDataStore.getState();
 
       const mockData = {
