@@ -130,6 +130,7 @@ export default function TaskChatPage() {
     workflowName: string;
     workflowRefId: string;
   } | null>(null);
+  const [workflowEditorWebhook, setWorkflowEditorWebhook] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [showCommitModal, setShowCommitModal] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -412,6 +413,8 @@ export default function TaskChatPage() {
         workflowName: workflowName || `Workflow ${workflowId}`,
         workflowRefId: workflowData.ref_id,
       });
+      // Clear webhook for fresh workflow conversation
+      setWorkflowEditorWebhook(null);
     } catch (error) {
       console.error("Error in handleWorkflowSelect:", error);
       toast.error("Error", { description: "Failed to load workflow. Please try again." });
@@ -539,6 +542,9 @@ export default function TaskChatPage() {
       setIsLoading(true);
 
       try {
+        // Use workflow editor webhook if available, otherwise try chatWebhook from FORM artifacts
+        const webhookToUse = workflowEditorWebhook || chatWebhook;
+
         const response = await fetch("/api/workflow-editor", {
           method: "POST",
           headers: {
@@ -550,6 +556,8 @@ export default function TaskChatPage() {
             workflowId: currentWorkflowContext.workflowId,
             workflowName: currentWorkflowContext.workflowName,
             workflowRefId: currentWorkflowContext.workflowRefId,
+            // Include webhook if available for continuing existing workflow
+            ...(webhookToUse && { webhook: webhookToUse }),
             // Only include step data if a step is selected
             ...(selectedStep && {
               stepName: selectedStep.name,
@@ -568,6 +576,11 @@ export default function TaskChatPage() {
         const result = await response.json();
         if (!result.success) {
           throw new Error(result.error || "Failed to send workflow editor request");
+        }
+
+        // Store webhook from response for subsequent messages
+        if (result.workflow?.webhook) {
+          setWorkflowEditorWebhook(result.workflow.webhook);
         }
 
         // Update message status
