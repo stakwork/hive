@@ -80,7 +80,7 @@ describe('PoolLaunchBanner Component', () => {
       // Check for pulsing indicator with orange background
       const pulsingIndicator = container.querySelector('.animate-pulse');
       expect(pulsingIndicator).toBeInTheDocument();
-      expect(pulsingIndicator?.className).toContain('bg-orange-500');
+      expect(pulsingIndicator?.className).toContain('bg-yellow-500');
     });
 
     it('should not show Launch Pods button when setting up', () => {
