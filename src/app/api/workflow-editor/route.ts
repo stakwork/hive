@@ -25,6 +25,7 @@ interface WorkflowEditorRequest {
   stepDisplayName: string;
   stepType: string;
   stepData: Record<string, unknown>;
+  webhook?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
       stepDisplayName,
       stepType,
       stepData,
+      webhook,
     } = body;
 
     // Validate required fields
@@ -191,7 +193,8 @@ export async function POST(request: NextRequest) {
     };
 
     // Make Stakwork API call
-    const stakworkURL = `${config.STAKWORK_BASE_URL}/projects`;
+    // If webhook is provided, use it to continue existing workflow; otherwise start new project
+    const stakworkURL = webhook || `${config.STAKWORK_BASE_URL}/projects`;
 
     const response = await fetch(stakworkURL, {
       method: "POST",
