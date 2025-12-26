@@ -112,6 +112,14 @@ export const createDataStore = () =>
           }
         })
 
+        // Track new repository nodes
+        const newRepositoryNodes: Node[] = [];
+        repositoryNodes.forEach((repoNode) => {
+          if (!existingRepositoryNodes.find(existing => existing.ref_id === repoNode.ref_id)) {
+            newRepositoryNodes.push(repoNode);
+          }
+        });
+
         const currentNodes = existingData?.nodes || []
         const updatedNodes = [...currentNodes, ...newNodes]
 
@@ -154,7 +162,7 @@ export const createDataStore = () =>
         const rawNodeTypes = [...new Set(updatedNodes.map((node) => normalizeNodeType(node.node_type)))]
         const nodeTypes = sortNodeTypesByConfig(rawNodeTypes, nodeTypeOrder)
         const linkTypes = [...new Set(updatedLinks.map((node) => node.edge_type))]
-        const sidebarFilters = ['all', ...nodeTypes.map((type) => type.toLowerCase())]
+        const sidebarFilters = ['all', ...nodeTypes.filter((type) => type).map((type) => type.toLowerCase())]
 
         const updatedRepositoryNodes = [...existingRepositoryNodes];
         repositoryNodes.forEach((repoNode) => {
@@ -172,7 +180,7 @@ export const createDataStore = () =>
           set({ repositoryNodes: updatedRepositoryNodes })
         }
 
-        if (!newNodes.length && !newLinks.length) {
+        if (!newNodes.length && !newLinks.length && !newRepositoryNodes.length) {
           return
         }
 
