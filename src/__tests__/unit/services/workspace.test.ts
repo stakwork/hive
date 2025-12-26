@@ -1,697 +1,485 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
-import { createWorkspace } from "@/services/workspace";
-import { db } from "@/lib/db";
+import { describe, test, expect, beforeEach, vi, Mock } from "vitest";
+import { WorkspaceRole } from "@prisma/client";
+import { addWorkspaceMember } from "@/services/workspace";
 import {
-  WORKSPACE_ERRORS,
-  WORKSPACE_LIMITS,
-} from "@/lib/constants";
-import type { CreateWorkspaceRequest } from "@/types/workspace";
+  findUserByGitHubUsername,
+  findActiveMember,
+  isWorkspaceOwner,
+  findPreviousMember,
+  createWorkspaceMember,
+  reactivateWorkspaceMember,
+} from "@/lib/helpers/workspace-member-queries";
+import { mapWorkspaceMember } from "@/lib/mappers/workspace-member";
 
-// Mock Prisma client
-vi.mock("@/lib/db", () => ({
-  db: {
-    workspace: {
-      count: vi.fn(),
-      findUnique: vi.fn(),
-      create: vi.fn(),
-    },
-  },
+// Mock all helper functions
+vi.mock("@/lib/helpers/workspace-member-queries", () => ({
+  findUserByGitHubUsername: vi.fn(),
+  findActiveMember: vi.fn(),
+  isWorkspaceOwner: vi.fn(),
+  findPreviousMember: vi.fn(),
+  createWorkspaceMember: vi.fn(),
+  reactivateWorkspaceMember: vi.fn(),
 }));
 
-// Mock validateWorkspaceSlug to control validation behavior
-vi.mock("@/services/workspace", async () => {
-  const actual = await vi.importActual<typeof import("@/services/workspace")>("@/services/workspace");
-  return {
-    ...actual,
-    // Keep original createWorkspace, only mock validateWorkspaceSlug when needed
-  };
-});
+vi.mock("@/lib/mappers/workspace-member", () => ({
+  mapWorkspaceMember: vi.fn(),
+}));
 
-describe("createWorkspace", () => {
-  const mockUserId = "user-123";
-  const mockWorkspaceId = "ws-456";
+describe("addWorkspaceMember", () => {
+  const mockWorkspaceId = "workspace-123";
+  const mockGithubUsername = "testuser";
+  const mockUserId = "user-456";
+  const mockMemberId = "member-789";
 
-  const validRequest: CreateWorkspaceRequest = {
-    name: "Test Workspace",
-    description: "Test description",
-    slug: "test-workspace",
-    ownerId: mockUserId,
-    repositoryUrl: "https://github.com/test/repo",
-  };
+  // Mock data factories
+  const createMockGithubAuth = () => ({
+    userId: mockUserId,
+    githubUsername: mockGithubUsername,
+  });
 
-  const mockWorkspaceDbResponse = {
-    id: mockWorkspaceId,
-    name: validRequest.name,
-    description: validRequest.description,
-    slug: validRequest.slug,
-    ownerId: mockUserId,
-    repositoryDraft: validRequest.repositoryUrl,
-    logoUrl: null,
-    logoKey: null,
-    sourceControlOrgId: null,
-    stakworkApiKey: null,
-    mission: null,
-    originalSlug: null,
-    deleted: false,
-    deletedAt: null,
-    nodeTypeOrder: [
-      { type: "Function", value: 20 },
-      { type: "Feature", value: 20 },
-    ],
-    createdAt: new Date("2024-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2024-01-01T00:00:00.000Z"),
-  };
+  const createMockPrismaMember = (role: WorkspaceRole, id = mockMemberId) => ({
+    id,
+    userId: mockUserId,
+    workspaceId: mockWorkspaceId,
+    role,
+    joinedAt: new Date("2024-01-01"),
+    leftAt: null,
+    user: {
+      id: mockUserId,
+      name: "Test User",
+      email: "test@example.com",
+      image: "https://example.com/avatar.jpg",
+      githubAuth: {
+        githubUsername: mockGithubUsername,
+        name: "Test User",
+        bio: "Test bio",
+        publicRepos: 10,
+        followers: 100,
+      },
+    },
+  });
+
+  const createMockWorkspaceMember = (role: WorkspaceRole) => ({
+    id: mockMemberId,
+    userId: mockUserId,
+    role,
+    joinedAt: "2024-01-01T00:00:00.000Z",
+    user: {
+      id: mockUserId,
+      name: "Test User",
+      email: "test@example.com",
+      image: "https://example.com/avatar.jpg",
+      github: {
+        username: mockGithubUsername,
+        name: "Test User",
+        bio: "Test bio",
+        publicRepos: 10,
+        followers: 100,
+      },
+    },
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("Happy Path - Successful Workspace Creation", () => {
-    test("creates workspace with valid input", async () => {
-      // Mock workspace count check (under limit)
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
+  describe("Happy path - Create new member", () => {
+    test("should successfully add a new member with VIEWER role", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.VIEWER);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.VIEWER);
 
-      // Mock slug uniqueness check (slug available)
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      // Mock workspace creation
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.VIEWER
+      );
 
-      const result = await createWorkspace(validRequest);
-
-      // Verify workspace count was checked with correct filters
-      expect(db.workspace.count).toHaveBeenCalledWith({
-        where: { ownerId: mockUserId, deleted: false },
-      });
-
-      // Verify slug uniqueness was checked
-      expect(db.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: validRequest.slug, deleted: false },
-        select: { id: true },
-      });
-
-      // Verify workspace was created with correct data
-      expect(db.workspace.create).toHaveBeenCalledWith({
-        data: {
-          name: validRequest.name,
-          description: validRequest.description,
-          slug: validRequest.slug,
-          ownerId: mockUserId,
-          repositoryDraft: validRequest.repositoryUrl,
-        },
-      });
-
-      // Verify response structure (includes all DB fields due to spread operator)
-      expect(result).toEqual({
-        id: mockWorkspaceId,
-        name: validRequest.name,
-        description: validRequest.description,
-        slug: validRequest.slug,
-        ownerId: mockUserId,
-        logoUrl: null,
-        logoKey: null,
-        sourceControlOrgId: null,
-        stakworkApiKey: null,
-        mission: null,
-        originalSlug: null,
-        deleted: false,
-        deletedAt: null,
-        repositoryDraft: validRequest.repositoryUrl,
-        nodeTypeOrder: [
-          { type: "Function", value: 20 },
-          { type: "Feature", value: 20 },
-        ],
-        createdAt: "2024-01-01T00:00:00.000Z",
-        updatedAt: "2024-01-01T00:00:00.000Z",
-      });
+      expect(findUserByGitHubUsername).toHaveBeenCalledWith(mockGithubUsername);
+      expect(findActiveMember).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
+      expect(isWorkspaceOwner).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
+      expect(findPreviousMember).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
+      expect(createWorkspaceMember).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        mockUserId,
+        WorkspaceRole.VIEWER
+      );
+      expect(reactivateWorkspaceMember).not.toHaveBeenCalled();
+      expect(mapWorkspaceMember).toHaveBeenCalledWith(mockPrismaMember);
+      expect(result).toEqual(mockMappedMember);
     });
 
-    test("creates workspace without optional description", async () => {
-      const requestWithoutDescription: CreateWorkspaceRequest = {
-        name: "Test Workspace",
-        slug: "test-workspace",
-        ownerId: mockUserId,
-      };
+    test("should successfully add a new member with DEVELOPER role", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.DEVELOPER);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.DEVELOPER);
 
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue({
-        ...mockWorkspaceDbResponse,
-        description: null,
-      });
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      const result = await createWorkspace(requestWithoutDescription);
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.DEVELOPER
+      );
 
-      expect(db.workspace.create).toHaveBeenCalledWith({
-        data: {
-          name: requestWithoutDescription.name,
-          description: undefined,
-          slug: requestWithoutDescription.slug,
-          ownerId: mockUserId,
-          repositoryDraft: undefined,
-        },
-      });
-
-      expect(result.description).toBeNull();
+      expect(createWorkspaceMember).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        mockUserId,
+        WorkspaceRole.DEVELOPER
+      );
+      expect(result).toEqual(mockMappedMember);
+      expect(result.role).toBe(WorkspaceRole.DEVELOPER);
     });
 
-    test("creates workspace without optional repositoryUrl", async () => {
-      const requestWithoutRepo: CreateWorkspaceRequest = {
-        name: "Test Workspace",
-        slug: "test-workspace",
-        ownerId: mockUserId,
-      };
+    test("should successfully add a new member with PM role", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.PM);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.PM);
 
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue({
-        ...mockWorkspaceDbResponse,
-        repositoryDraft: null,
-      });
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      await createWorkspace(requestWithoutRepo);
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.PM
+      );
 
-      expect(db.workspace.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          repositoryDraft: undefined,
-        }),
-      });
+      expect(createWorkspaceMember).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        mockUserId,
+        WorkspaceRole.PM
+      );
+      expect(result).toEqual(mockMappedMember);
+      expect(result.role).toBe(WorkspaceRole.PM);
+    });
+
+    test("should successfully add a new member with ADMIN role", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.ADMIN);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.ADMIN);
+
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
+
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.ADMIN
+      );
+
+      expect(createWorkspaceMember).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        mockUserId,
+        WorkspaceRole.ADMIN
+      );
+      expect(result).toEqual(mockMappedMember);
+      expect(result.role).toBe(WorkspaceRole.ADMIN);
     });
   });
 
-  describe("Slug Validation", () => {
-    test("rejects slug that is too short (less than 2 characters)", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "a",
+  describe("Reactivation path - Soft-deleted member", () => {
+    test("should reactivate a previously removed member", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPreviousMember = {
+        id: "old-member-id",
+        userId: mockUserId,
+        workspaceId: mockWorkspaceId,
+        role: WorkspaceRole.VIEWER,
+        joinedAt: new Date("2023-01-01"),
+        leftAt: new Date("2023-12-31"),
       };
+      const mockReactivatedMember = createMockPrismaMember(WorkspaceRole.DEVELOPER, "old-member-id");
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.DEVELOPER);
 
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(mockPreviousMember);
+      (reactivateWorkspaceMember as Mock).mockResolvedValue(mockReactivatedMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
+
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.DEVELOPER
       );
 
-      // Should not call database operations if validation fails
-      expect(db.workspace.count).not.toHaveBeenCalled();
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      expect(findPreviousMember).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
+      expect(reactivateWorkspaceMember).toHaveBeenCalledWith(
+        mockPreviousMember.id,
+        WorkspaceRole.DEVELOPER
+      );
+      expect(createWorkspaceMember).not.toHaveBeenCalled();
+      expect(mapWorkspaceMember).toHaveBeenCalledWith(mockReactivatedMember);
+      expect(result).toEqual(mockMappedMember);
     });
 
-    test("rejects slug that is too long (more than 50 characters)", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "a".repeat(51),
+    test("should reactivate with different role than previous membership", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPreviousMember = {
+        id: "old-member-id",
+        userId: mockUserId,
+        workspaceId: mockWorkspaceId,
+        role: WorkspaceRole.VIEWER,
+        joinedAt: new Date("2023-01-01"),
+        leftAt: new Date("2023-12-31"),
       };
+      const mockReactivatedMember = createMockPrismaMember(WorkspaceRole.ADMIN, "old-member-id");
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.ADMIN);
 
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(mockPreviousMember);
+      (reactivateWorkspaceMember as Mock).mockResolvedValue(mockReactivatedMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
+
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.ADMIN
       );
 
-      expect(db.workspace.count).not.toHaveBeenCalled();
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
-    });
-
-    test("rejects slug with invalid format (uppercase letters)", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "Test-Workspace",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+      expect(reactivateWorkspaceMember).toHaveBeenCalledWith(
+        mockPreviousMember.id,
+        WorkspaceRole.ADMIN
       );
-    });
-
-    test("rejects slug with invalid format (special characters)", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "test_workspace",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("rejects slug with invalid format (spaces)", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "test workspace",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("rejects slug with invalid format (starting with hyphen)", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "-test-workspace",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("rejects slug with invalid format (ending with hyphen)", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "test-workspace-",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("rejects slug with consecutive hyphens", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "test--workspace",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("rejects reserved slug 'api'", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "api",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_RESERVED
-      );
-    });
-
-    test("rejects reserved slug 'admin'", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "admin",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_RESERVED
-      );
-    });
-
-    test("rejects reserved slug 'dashboard'", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "dashboard",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_RESERVED
-      );
-    });
-
-    test("rejects reserved slug 'settings'", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "settings",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_RESERVED
-      );
-    });
-
-    test("accepts valid slug with lowercase alphanumeric and hyphens", async () => {
-      const validSlugs = [
-        "test-workspace",
-        "test123",
-        "my-awesome-workspace-2024",
-        "ab",
-        "a".repeat(50),
-      ];
-
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
-
-      for (const slug of validSlugs) {
-        const request: CreateWorkspaceRequest = {
-          ...validRequest,
-          slug,
-        };
-
-        await expect(createWorkspace(request)).resolves.toBeDefined();
-      }
+      expect(result.role).toBe(WorkspaceRole.ADMIN);
     });
   });
 
-  describe("Workspace Limit Enforcement", () => {
-    test("rejects workspace creation when user has reached limit", async () => {
-      // Mock user has exactly MAX_WORKSPACES_PER_USER workspaces
-      vi.mocked(db.workspace.count).mockResolvedValue(
-        WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER
-      );
+  describe("Error scenarios", () => {
+    test("should throw error when user not found", async () => {
+      (findUserByGitHubUsername as Mock).mockResolvedValue(null);
 
-      await expect(createWorkspace(validRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
-      );
+      await expect(
+        addWorkspaceMember(mockWorkspaceId, mockGithubUsername, WorkspaceRole.VIEWER)
+      ).rejects.toThrow("User not found. They must sign up to Hive first.");
 
-      // Should not check slug uniqueness or create workspace
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      expect(findUserByGitHubUsername).toHaveBeenCalledWith(mockGithubUsername);
+      expect(findActiveMember).not.toHaveBeenCalled();
+      expect(isWorkspaceOwner).not.toHaveBeenCalled();
+      expect(createWorkspaceMember).not.toHaveBeenCalled();
+      expect(reactivateWorkspaceMember).not.toHaveBeenCalled();
     });
 
-    test("rejects workspace creation when user has exceeded limit", async () => {
-      // Mock user has more than MAX_WORKSPACES_PER_USER workspaces
-      vi.mocked(db.workspace.count).mockResolvedValue(
-        WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER + 5
-      );
+    test("should throw error when user is already an active member", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockActiveMember = {
+        id: mockMemberId,
+        userId: mockUserId,
+        workspaceId: mockWorkspaceId,
+        role: WorkspaceRole.DEVELOPER,
+        joinedAt: new Date("2024-01-01"),
+        leftAt: null,
+      };
 
-      await expect(createWorkspace(validRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.WORKSPACE_LIMIT_EXCEEDED
-      );
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(mockActiveMember);
+
+      await expect(
+        addWorkspaceMember(mockWorkspaceId, mockGithubUsername, WorkspaceRole.VIEWER)
+      ).rejects.toThrow("User is already a member of this workspace");
+
+      expect(findUserByGitHubUsername).toHaveBeenCalledWith(mockGithubUsername);
+      expect(findActiveMember).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
+      expect(isWorkspaceOwner).not.toHaveBeenCalled();
+      expect(createWorkspaceMember).not.toHaveBeenCalled();
+      expect(reactivateWorkspaceMember).not.toHaveBeenCalled();
     });
 
-    test("allows workspace creation when user is one below limit", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(
-        WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER - 1
-      );
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
+    test("should throw error when user is the workspace owner", async () => {
+      const mockGithubAuth = createMockGithubAuth();
 
-      await expect(createWorkspace(validRequest)).resolves.toBeDefined();
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(true);
 
-      expect(db.workspace.create).toHaveBeenCalled();
-    });
+      await expect(
+        addWorkspaceMember(mockWorkspaceId, mockGithubUsername, WorkspaceRole.ADMIN)
+      ).rejects.toThrow("Cannot add workspace owner as a member");
 
-    test("counts only non-deleted workspaces for limit", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
-
-      await createWorkspace(validRequest);
-
-      // Verify deleted filter is applied
-      expect(db.workspace.count).toHaveBeenCalledWith({
-        where: { ownerId: mockUserId, deleted: false },
-      });
+      expect(findUserByGitHubUsername).toHaveBeenCalledWith(mockGithubUsername);
+      expect(findActiveMember).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
+      expect(isWorkspaceOwner).toHaveBeenCalledWith(mockWorkspaceId, mockUserId);
+      expect(createWorkspaceMember).not.toHaveBeenCalled();
+      expect(reactivateWorkspaceMember).not.toHaveBeenCalled();
     });
   });
 
-  describe("Slug Uniqueness Enforcement", () => {
-    test("rejects workspace creation when slug already exists", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
+  describe("Return value validation", () => {
+    test("should return correctly mapped WorkspaceMember DTO", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.DEVELOPER);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.DEVELOPER);
 
-      // Mock existing workspace with same slug
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
-        id: "existing-ws-id",
-      } as any);
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      await expect(createWorkspace(validRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.DEVELOPER
       );
 
-      // Should not attempt to create workspace
-      expect(db.workspace.create).not.toHaveBeenCalled();
-    });
-
-    test("checks slug uniqueness with deleted filter", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
-
-      await createWorkspace(validRequest);
-
-      // Verify slug uniqueness check includes deleted filter
-      expect(db.workspace.findUnique).toHaveBeenCalledWith({
-        where: { slug: validRequest.slug, deleted: false },
-        select: { id: true },
-      });
-    });
-
-    test("allows slug reuse if previous workspace is soft-deleted", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
-
-      // Slug exists but workspace is deleted (returns null due to deleted: false filter)
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
-
-      await expect(createWorkspace(validRequest)).resolves.toBeDefined();
-
-      expect(db.workspace.create).toHaveBeenCalled();
-    });
-  });
-
-  describe("Prisma Error Handling", () => {
-    test("handles P2002 unique constraint violation for slug", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-
-      // Mock P2002 Prisma error (race condition)
-      const prismaError = new Error("Unique constraint violation");
-      Object.assign(prismaError, {
-        code: "P2002",
-        meta: { target: ["slug"] },
-      });
-
-      vi.mocked(db.workspace.create).mockRejectedValue(prismaError);
-
-      await expect(createWorkspace(validRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_ALREADY_EXISTS
-      );
-    });
-
-    test("rethrows non-P2002 Prisma errors", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-
-      const otherError = new Error("Database connection error");
-      vi.mocked(db.workspace.create).mockRejectedValue(otherError);
-
-      await expect(createWorkspace(validRequest)).rejects.toThrow(
-        "Database connection error"
-      );
-    });
-
-    test("rethrows P2002 error for non-slug fields", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-
-      const prismaError = new Error("Unique constraint violation");
-      Object.assign(prismaError, {
-        code: "P2002",
-        meta: { target: ["ownerId"] },
-      });
-
-      vi.mocked(db.workspace.create).mockRejectedValue(prismaError);
-
-      await expect(createWorkspace(validRequest)).rejects.toThrow(
-        "Unique constraint violation"
-      );
-    });
-  });
-
-  describe("Edge Cases", () => {
-    test("handles null slug gracefully", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: null as any,
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("handles undefined slug gracefully", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: undefined as any,
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("handles empty string slug", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_LENGTH
-      );
-    });
-
-    test("handles slug with only hyphens", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "---",
-      };
-
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow(
-        WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      );
-    });
-
-    test("handles very long workspace name", async () => {
-      const longName = "A".repeat(1000);
-      const requestWithLongName: CreateWorkspaceRequest = {
-        ...validRequest,
-        name: longName,
-      };
-
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue({
-        ...mockWorkspaceDbResponse,
-        name: longName,
-      });
-
-      const result = await createWorkspace(requestWithLongName);
-
-      expect(result.name).toBe(longName);
-      expect(db.workspace.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          name: longName,
-        }),
-      });
-    });
-
-    test("handles very long description", async () => {
-      const longDescription = "A".repeat(5000);
-      const requestWithLongDescription: CreateWorkspaceRequest = {
-        ...validRequest,
-        description: longDescription,
-      };
-
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue({
-        ...mockWorkspaceDbResponse,
-        description: longDescription,
-      });
-
-      const result = await createWorkspace(requestWithLongDescription);
-
-      expect(result.description).toBe(longDescription);
-    });
-  });
-
-  describe("Response Format Validation", () => {
-    test("returns response with ISO formatted dates", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
-
-      const result = await createWorkspace(validRequest);
-
-      // Verify dates are ISO strings, not Date objects
-      expect(typeof result.createdAt).toBe("string");
-      expect(typeof result.updatedAt).toBe("string");
-      expect(result.createdAt).toBe("2024-01-01T00:00:00.000Z");
-      expect(result.updatedAt).toBe("2024-01-01T00:00:00.000Z");
-    });
-
-    test("returns response with all required fields", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
-
-      const result = await createWorkspace(validRequest);
-
-      // Verify all required WorkspaceResponse fields are present
       expect(result).toHaveProperty("id");
-      expect(result).toHaveProperty("name");
-      expect(result).toHaveProperty("slug");
-      expect(result).toHaveProperty("ownerId");
-      expect(result).toHaveProperty("createdAt");
-      expect(result).toHaveProperty("updatedAt");
-
-      // Verify optional fields are present (even if null)
-      expect(result).toHaveProperty("description");
-      expect(result).toHaveProperty("logoUrl");
-      expect(result).toHaveProperty("logoKey");
-      expect(result).toHaveProperty("nodeTypeOrder");
+      expect(result).toHaveProperty("userId");
+      expect(result).toHaveProperty("role");
+      expect(result).toHaveProperty("joinedAt");
+      expect(result).toHaveProperty("user");
+      expect(result.user).toHaveProperty("id");
+      expect(result.user).toHaveProperty("name");
+      expect(result.user).toHaveProperty("email");
+      expect(result.user).toHaveProperty("image");
+      expect(result.user).toHaveProperty("github");
     });
 
-    test("preserves nodeTypeOrder in response", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(0);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue(null);
-      vi.mocked(db.workspace.create).mockResolvedValue(mockWorkspaceDbResponse);
+    test("should map member with correct user data including GitHub profile", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.PM);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.PM);
 
-      const result = await createWorkspace(validRequest);
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      expect(result.nodeTypeOrder).toEqual([
-        { type: "Function", value: 20 },
-        { type: "Feature", value: 20 },
-      ]);
+      const result = await addWorkspaceMember(
+        mockWorkspaceId,
+        mockGithubUsername,
+        WorkspaceRole.PM
+      );
+
+      expect(result.user.github).toBeDefined();
+      expect(result.user.github?.username).toBe(mockGithubUsername);
+      expect(result.user.github?.name).toBe("Test User");
+      expect(result.user.github?.bio).toBe("Test bio");
+      expect(result.user.github?.publicRepos).toBe(10);
+      expect(result.user.github?.followers).toBe(100);
     });
   });
 
-  describe("Database Operation Sequence", () => {
-    test("calls database operations in correct order", async () => {
-      const callOrder: string[] = [];
+  describe("Helper function call verification", () => {
+    test("should call all validation helpers in correct order for new member", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.VIEWER);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.VIEWER);
 
-      vi.mocked(db.workspace.count).mockImplementation(async () => {
-        callOrder.push("count");
-        return 5;
-      });
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      vi.mocked(db.workspace.findUnique).mockImplementation(async () => {
-        callOrder.push("findUnique");
-        return null;
-      });
+      await addWorkspaceMember(mockWorkspaceId, mockGithubUsername, WorkspaceRole.VIEWER);
 
-      vi.mocked(db.workspace.create).mockImplementation(async () => {
-        callOrder.push("create");
-        return mockWorkspaceDbResponse;
-      });
-
-      await createWorkspace(validRequest);
-
-      // Verify operations are called in expected order
-      expect(callOrder).toEqual(["count", "findUnique", "create"]);
+      expect(findUserByGitHubUsername).toHaveBeenCalledBefore(findActiveMember as Mock);
+      expect(findActiveMember).toHaveBeenCalledBefore(isWorkspaceOwner as Mock);
+      expect(isWorkspaceOwner).toHaveBeenCalledBefore(findPreviousMember as Mock);
+      expect(findPreviousMember).toHaveBeenCalledBefore(createWorkspaceMember as Mock);
     });
 
-    test("stops execution after validation failure", async () => {
-      const invalidRequest: CreateWorkspaceRequest = {
-        ...validRequest,
-        slug: "invalid slug",
-      };
+    test("should extract userId from githubAuth result", async () => {
+      const mockGithubAuth = { userId: "custom-user-id", githubUsername: mockGithubUsername };
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.DEVELOPER);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.DEVELOPER);
 
-      await expect(createWorkspace(invalidRequest)).rejects.toThrow();
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      // Database operations should not be called
-      expect(db.workspace.count).not.toHaveBeenCalled();
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
-    });
+      await addWorkspaceMember(mockWorkspaceId, mockGithubUsername, WorkspaceRole.DEVELOPER);
 
-    test("stops execution after workspace limit check failure", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(
-        WORKSPACE_LIMITS.MAX_WORKSPACES_PER_USER
+      expect(findActiveMember).toHaveBeenCalledWith(mockWorkspaceId, "custom-user-id");
+      expect(isWorkspaceOwner).toHaveBeenCalledWith(mockWorkspaceId, "custom-user-id");
+      expect(findPreviousMember).toHaveBeenCalledWith(mockWorkspaceId, "custom-user-id");
+      expect(createWorkspaceMember).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        "custom-user-id",
+        WorkspaceRole.DEVELOPER
       );
-
-      await expect(createWorkspace(validRequest)).rejects.toThrow();
-
-      // Should not proceed to uniqueness check or creation
-      expect(db.workspace.findUnique).not.toHaveBeenCalled();
-      expect(db.workspace.create).not.toHaveBeenCalled();
     });
 
-    test("stops execution after slug uniqueness check failure", async () => {
-      vi.mocked(db.workspace.count).mockResolvedValue(5);
-      vi.mocked(db.workspace.findUnique).mockResolvedValue({
-        id: "existing-ws-id",
-      } as any);
+    test("should pass correct parameters to createWorkspaceMember", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPrismaMember = createMockPrismaMember(WorkspaceRole.PM);
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.PM);
 
-      await expect(createWorkspace(validRequest)).rejects.toThrow();
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(null);
+      (createWorkspaceMember as Mock).mockResolvedValue(mockPrismaMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
 
-      // Should not proceed to creation
-      expect(db.workspace.create).not.toHaveBeenCalled();
+      await addWorkspaceMember(mockWorkspaceId, mockGithubUsername, WorkspaceRole.PM);
+
+      expect(createWorkspaceMember).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        mockUserId,
+        WorkspaceRole.PM
+      );
+      expect(createWorkspaceMember).toHaveBeenCalledTimes(1);
+    });
+
+    test("should pass correct parameters to reactivateWorkspaceMember", async () => {
+      const mockGithubAuth = createMockGithubAuth();
+      const mockPreviousMember = {
+        id: "previous-member-id",
+        userId: mockUserId,
+        workspaceId: mockWorkspaceId,
+        role: WorkspaceRole.VIEWER,
+        joinedAt: new Date("2023-01-01"),
+        leftAt: new Date("2023-12-31"),
+      };
+      const mockReactivatedMember = createMockPrismaMember(WorkspaceRole.ADMIN, "previous-member-id");
+      const mockMappedMember = createMockWorkspaceMember(WorkspaceRole.ADMIN);
+
+      (findUserByGitHubUsername as Mock).mockResolvedValue(mockGithubAuth);
+      (findActiveMember as Mock).mockResolvedValue(null);
+      (isWorkspaceOwner as Mock).mockResolvedValue(false);
+      (findPreviousMember as Mock).mockResolvedValue(mockPreviousMember);
+      (reactivateWorkspaceMember as Mock).mockResolvedValue(mockReactivatedMember);
+      (mapWorkspaceMember as Mock).mockReturnValue(mockMappedMember);
+
+      await addWorkspaceMember(mockWorkspaceId, mockGithubUsername, WorkspaceRole.ADMIN);
+
+      expect(reactivateWorkspaceMember).toHaveBeenCalledWith(
+        "previous-member-id",
+        WorkspaceRole.ADMIN
+      );
+      expect(reactivateWorkspaceMember).toHaveBeenCalledTimes(1);
     });
   });
 });
