@@ -32,6 +32,11 @@ const mockConfig = {
   LOG_LEVEL: "INFO",
   USE_MOCKS: false,
   MOCK_BASE: "http://localhost:3000",
+  // Pusher config for tests
+  PUSHER_APP_ID: "test-app-id",
+  PUSHER_KEY: "test-key",
+  PUSHER_SECRET: "test-secret",
+  PUSHER_CLUSTER: "test-cluster",
 };
 
 vi.mock("@/config/env", () => ({
@@ -50,6 +55,11 @@ vi.mock("@/config/env", () => ({
     LOG_LEVEL: mockConfig.LOG_LEVEL,
     USE_MOCKS: true,
     MOCK_BASE: "http://localhost:3000",
+    // Pusher mock values when USE_MOCKS=true
+    PUSHER_APP_ID: "mock-app-id",
+    PUSHER_KEY: "mock-pusher-key",
+    PUSHER_SECRET: "mock-pusher-secret",
+    PUSHER_CLUSTER: "mock-cluster",
   },
 }));
 
