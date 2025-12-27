@@ -269,8 +269,12 @@ export const useDataStore = create<DataStore>()(
       sidebarFilter: 'all',
       sidebarFilters: [],
       sidebarFilterCounts: [],
+      repositoryNodes: [],
       dataNew: null,
       runningProjectId: '',
+      runningProjectMessages: [],
+      seedQuestions: null,
+      splashDataLoading: true,
       isOnboarding: false,
       nodeTypes: [],
       linkTypes: [],
@@ -333,6 +337,7 @@ export const useDataStore = create<DataStore>()(
         })
       }
     },
+    setRepositoryNodes: (repositoryNodes) => set({ repositoryNodes }),
   })),
 )
 
