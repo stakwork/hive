@@ -1384,4 +1384,362 @@ describe('useDataStore - addNewNode', () => {
       expect(state.nodeTypes).toContain('Unknown');
     });
   });
+
+  describe('Secondary State Management Functions', () => {
+    describe('Running Project State', () => {
+      test('setRunningProjectId should set project ID and clear messages', () => {
+        const { setRunningProjectId, setRunningProjectMessages } = useDataStore.getState();
+
+        // Add some messages first
+        setRunningProjectMessages({ id: 'msg-1', content: 'Test', role: 'user' });
+        setRunningProjectId('project-123');
+
+        const state = useDataStore.getState();
+        expect(state.runningProjectId).toBe('project-123');
+        expect(state.runningProjectMessages).toEqual([]);
+      });
+
+      test('setRunningProjectMessages should append messages', () => {
+        const { setRunningProjectId, setRunningProjectMessages } = useDataStore.getState();
+
+        setRunningProjectId('project-123');
+        setRunningProjectMessages({ id: 'msg-1', content: 'First', role: 'user' });
+        setRunningProjectMessages({ id: 'msg-2', content: 'Second', role: 'assistant' });
+
+        const state = useDataStore.getState();
+        expect(state.runningProjectMessages).toHaveLength(2);
+        expect(state.runningProjectMessages[0].content).toBe('First');
+        expect(state.runningProjectMessages[1].content).toBe('Second');
+      });
+
+      test('resetRunningProjectMessages should clear messages', () => {
+        const { setRunningProjectMessages, resetRunningProjectMessages } = useDataStore.getState();
+
+        setRunningProjectMessages({ id: 'msg-1', content: 'Test', role: 'user' });
+        resetRunningProjectMessages();
+
+        const state = useDataStore.getState();
+        expect(state.runningProjectMessages).toEqual([]);
+      });
+
+      test('should handle empty project ID', () => {
+        const { setRunningProjectId } = useDataStore.getState();
+
+        setRunningProjectId('');
+
+        const state = useDataStore.getState();
+        expect(state.runningProjectId).toBe('');
+      });
+    });
+
+    describe('Request Control State', () => {
+      test('setAbortRequests should set abort flag', () => {
+        const { setAbortRequests } = useDataStore.getState();
+
+        setAbortRequests(true);
+
+        const state = useDataStore.getState();
+        expect(state.abortRequest).toBe(true);
+      });
+
+      test('setAbortRequests should clear abort flag', () => {
+        const { setAbortRequests } = useDataStore.getState();
+
+        setAbortRequests(true);
+        setAbortRequests(false);
+
+        const state = useDataStore.getState();
+        expect(state.abortRequest).toBe(false);
+      });
+    });
+
+    describe('Loading State', () => {
+      test('finishLoading should set splashDataLoading to false', () => {
+        const { finishLoading } = useDataStore.getState();
+
+        finishLoading();
+
+        const state = useDataStore.getState();
+        expect(state.splashDataLoading).toBe(false);
+      });
+
+      test('should start with splashDataLoading true by default', () => {
+        useDataStore.getState().resetData();
+
+        const state = useDataStore.getState();
+        expect(state.splashDataLoading).toBe(true);
+      });
+    });
+
+    describe('Onboarding State', () => {
+      test('setIsOnboarding should set onboarding flag', () => {
+        const { setIsOnboarding } = useDataStore.getState();
+
+        setIsOnboarding(true);
+
+        const state = useDataStore.getState();
+        expect(state.isOnboarding).toBe(true);
+      });
+
+      test('setIsOnboarding should clear onboarding flag', () => {
+        const { setIsOnboarding } = useDataStore.getState();
+
+        setIsOnboarding(true);
+        setIsOnboarding(false);
+
+        const state = useDataStore.getState();
+        expect(state.isOnboarding).toBe(false);
+      });
+
+      test('resetData should clear onboarding state', () => {
+        const { setIsOnboarding, resetData } = useDataStore.getState();
+
+        setIsOnboarding(true);
+        resetData();
+
+        const state = useDataStore.getState();
+        expect(state.isOnboarding).toBe(false);
+      });
+    });
+
+    describe('Sources State', () => {
+      test('setSources should update sources', () => {
+        const { setSources } = useDataStore.getState();
+
+        const sources = [
+          { id: 'source-1', name: 'Source 1' },
+          { id: 'source-2', name: 'Source 2' },
+        ];
+
+        setSources(sources as any);
+
+        const state = useDataStore.getState();
+        expect(state.sources).toEqual(sources);
+      });
+
+      test('setQueuedSources should update queued sources', () => {
+        const { setQueuedSources } = useDataStore.getState();
+
+        const queuedSources = [
+          { id: 'queued-1', name: 'Queued 1' },
+        ];
+
+        setQueuedSources(queuedSources as any);
+
+        const state = useDataStore.getState();
+        expect(state.queuedSources).toEqual(queuedSources);
+      });
+
+      test('should handle null sources', () => {
+        const { setSources } = useDataStore.getState();
+
+        setSources(null);
+
+        const state = useDataStore.getState();
+        expect(state.sources).toBeNull();
+      });
+
+      test('setSelectedTimestamp should update timestamp', () => {
+        const { setSelectedTimestamp } = useDataStore.getState();
+
+        const timestamp = Date.now();
+        setSelectedTimestamp(timestamp);
+
+        const state = useDataStore.getState();
+        expect(state.selectedTimestamp).toBe(timestamp);
+      });
+
+      test('setSelectedTimestamp should handle null', () => {
+        const { setSelectedTimestamp } = useDataStore.getState();
+
+        setSelectedTimestamp(null);
+
+        const state = useDataStore.getState();
+        expect(state.selectedTimestamp).toBeNull();
+      });
+    });
+
+    describe('Stats and Topics State', () => {
+      test('setStats should update statistics', () => {
+        const { setStats } = useDataStore.getState();
+
+        const stats = {
+          totalNodes: 100,
+          totalLinks: 50,
+          nodeTypes: ['TypeA', 'TypeB'],
+        };
+
+        setStats(stats as any);
+
+        const state = useDataStore.getState();
+        expect(state.stats).toEqual(stats);
+      });
+
+      test('setTrendingTopics should update trending topics', () => {
+        const { setTrendingTopics } = useDataStore.getState();
+
+        const topics = [
+          { name: 'Topic 1', count: 10 },
+          { name: 'Topic 2', count: 5 },
+        ];
+
+        setTrendingTopics(topics as any);
+
+        const state = useDataStore.getState();
+        expect(state.trendingTopics).toEqual(topics);
+      });
+
+      test('should handle empty trending topics', () => {
+        const { setTrendingTopics } = useDataStore.getState();
+
+        setTrendingTopics([]);
+
+        const state = useDataStore.getState();
+        expect(state.trendingTopics).toEqual([]);
+      });
+    });
+
+    describe('Filter State', () => {
+      test('setCategoryFilter should update category filter', () => {
+        const { setCategoryFilter } = useDataStore.getState();
+
+        setCategoryFilter('technology');
+
+        const state = useDataStore.getState();
+        expect(state.categoryFilter).toBe('technology');
+      });
+
+      test('setCategoryFilter should handle null', () => {
+        const { setCategoryFilter } = useDataStore.getState();
+
+        setCategoryFilter('technology');
+        setCategoryFilter(null);
+
+        const state = useDataStore.getState();
+        expect(state.categoryFilter).toBeNull();
+      });
+
+      test('setSidebarFilter should update sidebar filter', () => {
+        const { setSidebarFilter } = useDataStore.getState();
+
+        setSidebarFilter('function');
+
+        const state = useDataStore.getState();
+        expect(state.sidebarFilter).toBe('function');
+      });
+
+      test('setFilters should merge with existing filters', () => {
+        const { setFilters } = useDataStore.getState();
+
+        setFilters({ limit: 50 });
+        setFilters({ depth: '5' });
+
+        const state = useDataStore.getState();
+        expect(state.filters.limit).toBe(50);
+        expect(state.filters.depth).toBe('5');
+        // Should preserve defaults
+        expect(state.filters.sort_by).toBe('score');
+      });
+
+      test('setFilters should reset skip to 0', () => {
+        const { setFilters } = useDataStore.getState();
+
+        setFilters({ skip: 100 });
+        setFilters({ limit: 50 });
+
+        const state = useDataStore.getState();
+        expect(state.filters.skip).toBe(0);
+      });
+    });
+
+    describe('UI State', () => {
+      test('setHideNodeDetails should toggle node details visibility', () => {
+        const { setHideNodeDetails } = useDataStore.getState();
+
+        setHideNodeDetails(true);
+
+        const state = useDataStore.getState();
+        expect(state.hideNodeDetails).toBe(true);
+      });
+
+      test('setHideNodeDetails should show node details', () => {
+        const { setHideNodeDetails } = useDataStore.getState();
+
+        setHideNodeDetails(true);
+        setHideNodeDetails(false);
+
+        const state = useDataStore.getState();
+        expect(state.hideNodeDetails).toBe(false);
+      });
+
+      test('setSeedQuestions should update seed questions', () => {
+        const { setSeedQuestions } = useDataStore.getState();
+
+        const questions = [
+          { id: 'q1', text: 'Question 1' },
+          { id: 'q2', text: 'Question 2' },
+        ];
+
+        setSeedQuestions(questions as any);
+
+        const state = useDataStore.getState();
+        expect(state.seedQuestions).toEqual(questions);
+      });
+
+      test('setSeedQuestions should handle null', () => {
+        const { setSeedQuestions } = useDataStore.getState();
+
+        setSeedQuestions(null);
+
+        const state = useDataStore.getState();
+        expect(state.seedQuestions).toBeNull();
+      });
+    });
+
+    describe('State Interactions', () => {
+      test('resetData should clear all secondary state', () => {
+        const { 
+          setRunningProjectId,
+          setRunningProjectMessages,
+          setIsOnboarding,
+          setSeedQuestions,
+          resetData,
+        } = useDataStore.getState();
+
+        // Set various state
+        setRunningProjectId('project-123');
+        setRunningProjectMessages({ id: 'msg-1', content: 'Test', role: 'user' });
+        setIsOnboarding(true);
+        setSeedQuestions([{ id: 'q1', text: 'Question' }] as any);
+
+        resetData();
+
+        const state = useDataStore.getState();
+        expect(state.runningProjectId).toBe('');
+        expect(state.runningProjectMessages).toEqual([]);
+        expect(state.isOnboarding).toBe(false);
+        expect(state.seedQuestions).toBeNull();
+      });
+
+      test('multiple state changes should not interfere', () => {
+        const {
+          setSidebarFilter,
+          setCategoryFilter,
+          setHideNodeDetails,
+          setAbortRequests,
+        } = useDataStore.getState();
+
+        setSidebarFilter('function');
+        setCategoryFilter('technology');
+        setHideNodeDetails(true);
+        setAbortRequests(true);
+
+        const state = useDataStore.getState();
+        expect(state.sidebarFilter).toBe('function');
+        expect(state.categoryFilter).toBe('technology');
+        expect(state.hideNodeDetails).toBe(true);
+        expect(state.abortRequest).toBe(true);
+      });
+    });
+  });
 });
