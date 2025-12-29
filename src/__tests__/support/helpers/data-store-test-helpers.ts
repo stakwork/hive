@@ -72,11 +72,14 @@ export const createMockFetchData = (
   edgeCount: number = 0,
   overrides: Partial<FetchDataResponse> = {}
 ): FetchDataResponse => {
+  // Use timestamp + random to ensure unique IDs across all test calls
+  const batchId = `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+  
   const nodes: Node[] = Array(nodeCount)
     .fill(null)
     .map((_, i) =>
       createMockNode({
-        ref_id: `node-${i}`,
+        ref_id: `node-${batchId}-${i}`,
         name: `Node ${i}`,
         node_type: i % 2 === 0 ? 'TypeA' : 'TypeB',
       })
@@ -86,9 +89,9 @@ export const createMockFetchData = (
     .fill(null)
     .map((_, i) =>
       createMockLink({
-        ref_id: `link-${i}`,
-        source: `node-${i}`,
-        target: `node-${Math.min(i + 1, nodeCount - 1)}`,
+        ref_id: `link-${batchId}-${i}`,
+        source: `node-${batchId}-${i}`,
+        target: `node-${batchId}-${Math.min(i + 1, nodeCount - 1)}`,
         edge_type: i % 2 === 0 ? 'relation_a' : 'relation_b',
       })
     );
