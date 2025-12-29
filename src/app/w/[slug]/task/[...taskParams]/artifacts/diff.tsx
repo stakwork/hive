@@ -107,6 +107,8 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
   const isDark = resolvedTheme === "dark";
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [viewType, setViewType] = useState<"split" | "unified">(initialViewType);
+  const [currentVisibleFile, setCurrentVisibleFile] = useState<string | null>(null);
+  const fileRefs = React.useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Load view preference from localStorage on mount
   React.useEffect(() => {
@@ -224,6 +226,44 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
     prevFilesRef.current = currentFiles;
   }, [parsedFiles]);
 
+  // Set up Intersection Observer to track which file is currently visible
+  React.useEffect(() => {
+    const options = {
+      root: null,
+      rootMargin: '-80px 0px -80px 0px',
+      threshold: 0.1,
+    };
+
+    const callback: IntersectionObserverCallback = (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && entry.target instanceof HTMLElement) {
+          const fileName = entry.target.dataset.fileName;
+          if (fileName) {
+            setCurrentVisibleFile(fileName);
+          }
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(callback, options);
+
+    // Observe all file elements
+    fileRefs.current.forEach((element) => {
+      if (element) {
+        observer.observe(element);
+      }
+    });
+
+    // Set initial visible file
+    if (parsedFiles.length > 0 && !currentVisibleFile) {
+      setCurrentVisibleFile(parsedFiles[0].fileName);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [parsedFiles, currentVisibleFile]);
+
   const allExpanded = parsedFiles.length > 0 && expandedFiles.size === parsedFiles.length;
 
   const toggleFile = (fileName: string) => {
@@ -335,12 +375,45 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-4">
+        {/* Sticky header showing currently visible file */}
+        {currentVisibleFile && parsedFiles.length > 1 && (() => {
+          const currentFile = parsedFiles.find(f => f.fileName === currentVisibleFile);
+          if (!currentFile) return null;
+          
+          const { icon: ActionIcon, color: actionColor, label: actionLabel } = getActionInfo(currentFile.action);
+          
+          return (
+            <div className="diff-artifact-sticky-current-file">
+              <div className={`flex items-center gap-2 ${actionColor}`}>
+                <ActionIcon className="w-4 h-4" />
+                <span className="text-xs font-medium uppercase tracking-wider">{actionLabel}</span>
+              </div>
+              <span className="font-mono text-sm font-medium">{currentFile.fileName}</span>
+              <div className="ml-auto flex items-center gap-3 text-xs font-mono">
+                {currentFile.additions > 0 && <span className="text-green-600 dark:text-green-400">+{currentFile.additions}</span>}
+                {currentFile.deletions > 0 && <span className="text-red-600 dark:text-red-400">-{currentFile.deletions}</span>}
+              </div>
+            </div>
+          );
+        })()}
+
         {parsedFiles.map((file, index) => {
           const { icon: ActionIcon, color: actionColor, label: actionLabel } = getActionInfo(file.action);
           const isExpanded = expandedFiles.has(file.fileName);
 
           return (
-            <div key={`${file.fileName}-${index}`} className="diff-artifact-file border border-border rounded-lg overflow-hidden bg-card">
+            <div 
+              key={`${file.fileName}-${index}`} 
+              className="diff-artifact-file border border-border rounded-lg overflow-hidden bg-card"
+              ref={(el) => {
+                if (el) {
+                  fileRefs.current.set(file.fileName, el);
+                } else {
+                  fileRefs.current.delete(file.fileName);
+                }
+              }}
+              data-file-name={file.fileName}
+            >
               {/* File header */}
               <div
                 className="diff-artifact-file-header flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 transition-colors"
