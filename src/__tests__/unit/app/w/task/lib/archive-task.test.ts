@@ -1,36 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { toast } from "sonner";
-
-// Import the function to test
-// Note: In a real scenario, you'd export this function from page.tsx
-// For now, we'll define it here as it's currently a private function
-async function archiveTaskAndRedirect(
-  taskId: string,
-  slug: string,
-  errorTitle: string,
-  errorDescription: string
-) {
-  try {
-    await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        archived: true,
-      }),
-    });
-
-    toast.error(errorTitle, { description: errorDescription });
-
-    window.location.href = `/w/${slug}/tasks`;
-  } catch (archiveError) {
-    console.error("Error archiving task:", archiveError);
-    toast.error("Error", {
-      description: "Failed to claim pod and couldn't archive task. Please contact support.",
-    });
-  }
-}
+import { archiveTaskAndRedirect } from "@/app/w/[slug]/task/[...taskParams]/lib/archive-task";
 
 // Mock sonner toast library
 vi.mock("sonner", () => ({
