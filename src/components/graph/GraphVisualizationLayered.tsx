@@ -48,19 +48,24 @@ const getNodeLayer = (type: string): number => {
 export function GraphVisualizationLayered({
   nodes,
   edges,
-  width = 800,
-  height = 600,
+  width,
+  height,
   colorMap,
   onNodeClick,
   className = "",
 }: GraphVisualizationLayeredProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!svgRef.current || nodes.length === 0) return;
 
+    // Use container dimensions if width/height not provided
+    const effectiveWidth = width || containerRef.current?.clientWidth || 800;
+    const effectiveHeight = height || containerRef.current?.clientHeight || 600;
+
     const svg = d3.select(svgRef.current);
-    svg.attr("viewBox", `0 0 ${width} ${height}`);
+    svg.attr("viewBox", `0 0 ${effectiveWidth} ${effectiveHeight}`);
 
     // Save previous transform to preserve zoom/pan state
     const previousTransform = svg.node() ? d3.zoomTransform(svg.node() as Element) : d3.zoomIdentity;
@@ -88,14 +93,14 @@ export function GraphVisualizationLayered({
     // Group nodes by layer
     const nodesByLayer = d3.group(d3Nodes, d => d.layer ?? 0);
     const layers = Array.from(nodesByLayer.keys()).sort((a, b) => (a ?? 0) - (b ?? 0));
-    const layerHeight = height / (layers.length + 1);
+    const layerHeight = effectiveHeight / (layers.length + 1);
 
     // Set initial positions for nodes based on layer
     d3Nodes.forEach(node => {
       const layer = node.layer ?? 0;
       const nodesInLayer = nodesByLayer.get(layer) || [];
       const indexInLayer = nodesInLayer.indexOf(node);
-      const layerWidth = width / (nodesInLayer.length + 1);
+      const layerWidth = effectiveWidth / (nodesInLayer.length + 1);
 
       node.x = layerWidth * (indexInLayer + 1);
       node.y = layerHeight * (layer + 1);
@@ -113,7 +118,7 @@ export function GraphVisualizationLayered({
         const layer = d.layer ?? 0;
         return layerHeight * (layer + 1);
       }).strength(0.8)) // Strong Y force to keep nodes in their layers
-      .force("x", d3.forceX<D3Node>(width / 2).strength(0.05)); // Weak X force for centering
+      .force("x", d3.forceX<D3Node>(effectiveWidth / 2).strength(0.05)); // Weak X force for centering
 
     // Create drag behavior (keeps nodes locked to layer)
     const dragBehavior = d3.drag<SVGGElement, D3Node>()
@@ -154,10 +159,12 @@ export function GraphVisualizationLayered({
   }, [nodes, edges, width, height, colorMap, onNodeClick]);
 
   return (
-    <svg
-      ref={svgRef}
-      className={`w-full ${className}`}
-      style={{ height: `${height}px` }}
-    />
+    <div ref={containerRef} className={`w-full ${height === undefined ? 'h-full' : ''}`}>
+      <svg
+        ref={svgRef}
+        className="w-full h-full"
+        style={height !== undefined ? { height: `${height}px` } : undefined}
+      />
+    </div>
   );
 }

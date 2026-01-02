@@ -21,17 +21,19 @@ export function GraphArtifact({ content, workspaceSlug }: GraphArtifactProps) {
   const refId = content.ref_id.split(",")[0].trim();
 
   return (
-    <Graph
-      endpoint="/api/subgraph"
-      params={{
-        ref_id: refId,
-        workspace: workspaceSlug || "",
-        ...(content.depth && { depth: content.depth.toString() }),
-      }}
-      height={500}
-      title={content.cluster_title || "Knowledge Graph"}
-      showStats={true}
-      emptyMessage="No graph data available for this reference"
-    />
+    <div className="h-full w-full">
+      <Graph
+        endpoint="/api/subgraph"
+        params={{
+          ref_id: refId,
+          workspace: workspaceSlug || "",
+          ...(content.depth && { depth: content.depth.toString() }),
+        }}
+        title={content.cluster_title || "Knowledge Graph"}
+        showStats={true}
+        emptyMessage="No graph data available for this reference"
+        className="h-full"
+      />
+    </div>
   );
 }
