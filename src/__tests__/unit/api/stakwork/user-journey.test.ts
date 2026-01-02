@@ -1272,6 +1272,105 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
     });
   });
 
+  describe("callStakwork Config Validation", () => {
+    beforeEach(() => {
+      const mockSession = createAuthenticatedSession({
+        id: mockUserId,
+        email: "test@example.com",
+      });
+      getMockedSession().mockResolvedValue(mockSession);
+
+      vi.mocked(getWorkspaceById).mockResolvedValue({
+        id: mockWorkspaceId,
+        name: "Test Workspace",
+        slug: "test-workspace",
+        ownerId: mockUserId,
+      } as any);
+
+      vi.mocked(db.workspace.findUnique).mockResolvedValue({
+        id: mockWorkspaceId,
+        slug: "test-workspace",
+      } as any);
+
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        token: "ghp_test_token",
+        username: "test-user",
+      });
+
+      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+        id: mockSwarmId,
+        swarmUrl: "https://test-swarm.sphinx.chat/api",
+        swarmSecretAlias: "{{SWARM_TEST_API_KEY}}",
+        poolName: "test-pool",
+      } as any);
+
+      vi.mocked(db.repository.findFirst).mockResolvedValue({
+        id: "repo-123",
+        repositoryUrl: "https://github.com/test/repo",
+        branch: "main",
+      } as any);
+
+      vi.mocked(db.task.create).mockResolvedValue({
+        id: mockTaskId,
+        title: "Test",
+        status: "TODO",
+        workflowStatus: "PENDING",
+        testFilePath: null,
+        stakworkProjectId: null,
+      } as any);
+
+      vi.mocked(db.chatMessage.create).mockResolvedValue({
+        id: "message-123",
+      } as any);
+
+      vi.mocked(db.task.update).mockResolvedValue({
+        id: mockTaskId,
+        stakworkProjectId: 67890,
+      } as any);
+    });
+
+    test("should handle missing STAKWORK_API_KEY gracefully", async () => {
+      // Mock fetch to throw error simulating missing API key validation
+      fetchSpy.mockRejectedValueOnce(new Error("STAKWORK_API_KEY is required for Stakwork integration"));
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test without API key",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      // Should return 201 but with null workflow (callStakwork catches the error)
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.workflow).toBeNull();
+    });
+
+    test("should handle missing STAKWORK_USER_JOURNEY_WORKFLOW_ID gracefully", async () => {
+      // Mock fetch to throw error simulating missing workflow ID validation
+      fetchSpy.mockRejectedValueOnce(new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration"));
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test without workflow ID",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.workflow).toBeNull();
+    });
+  });
+
   describe("callStakwork Function - Additional Coverage", () => {
     beforeEach(() => {
       const mockSession = createAuthenticatedSession({
@@ -1740,6 +1839,237 @@ describe("POST /api/stakwork/user-journey - Unit Tests (callStakwork)", () => {
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
       // Should still add port but URL structure might differ
       expect(payload.workflow_params.set_var.attributes.vars.swarmUrl).toBeTruthy();
+    });
+
+    test("should construct webhook URL with custom base URL from getBaseUrl", async () => {
+      vi.mocked(getBaseUrl).mockReturnValue("https://custom-domain.com");
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test custom base URL",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(payload.workflow_params.set_var.attributes.vars.webhookUrl).toBe(
+        "https://custom-domain.com/api/chat/response"
+      );
+      expect(payload.webhook_url).toMatch(
+        /^https:\/\/custom-domain\.com\/api\/stakwork\/webhook\?task_id=/
+      );
+    });
+
+    test("should construct webhook URL with localhost base URL", async () => {
+      vi.mocked(getBaseUrl).mockReturnValue("http://localhost:3000");
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test localhost base URL",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      expect(payload.workflow_params.set_var.attributes.vars.webhookUrl).toBe(
+        "http://localhost:3000/api/chat/response"
+      );
+      expect(payload.webhook_url).toMatch(
+        /^http:\/\/localhost:3000\/api\/stakwork\/webhook\?task_id=/
+      );
+    });
+
+    test("should handle fetch throwing TypeError (network failure)", async () => {
+      fetchSpy.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test TypeError",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.workflow).toBeNull();
+    });
+
+    test("should handle fetch timeout errors", async () => {
+      fetchSpy.mockRejectedValueOnce(new Error("Request timeout"));
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test timeout",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.workflow).toBeNull();
+    });
+
+    test("should handle Stakwork API returning 401 Unauthorized", async () => {
+      fetchSpy.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        json: async () => ({ error: "Invalid API key" }),
+      } as Response);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test 401",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.workflow).toBeNull();
+    });
+
+    test("should handle Stakwork API returning 403 Forbidden", async () => {
+      fetchSpy.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: "Forbidden",
+        json: async () => ({ error: "Insufficient permissions" }),
+      } as Response);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test 403",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.workflow).toBeNull();
+    });
+
+    test("should handle Stakwork API returning 404 Not Found", async () => {
+      fetchSpy.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        json: async () => ({ error: "Workflow not found" }),
+      } as Response);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test 404",
+          workspaceId: mockWorkspaceId,
+        }
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.success).toBe(true);
+      expect(data.workflow).toBeNull();
+    });
+
+    test("should verify all required vars are present in payload", async () => {
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Complete payload test",
+          workspaceId: mockWorkspaceId,
+          testName: "complete-test",
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      // Verify all required vars are present
+      const requiredVars = [
+        "taskId",
+        "message",
+        "webhookUrl",
+        "accessToken",
+        "username",
+        "swarmUrl",
+        "swarmSecretAlias",
+        "poolName",
+        "repo2graph_url",
+        "workspaceId",
+        "testFilePath",
+        "testFileUrl",
+        "baseBranch",
+        "testName",
+      ];
+
+      requiredVars.forEach((varName) => {
+        expect(vars).toHaveProperty(varName);
+      });
+    });
+
+    test("should handle empty string for all nullable string parameters", async () => {
+      vi.mocked(getGithubUsernameAndPAT).mockResolvedValue({
+        token: "",
+        username: "",
+      });
+
+      vi.mocked(db.swarm.findUnique).mockResolvedValue({
+        id: mockSwarmId,
+        swarmUrl: "",
+        swarmSecretAlias: "",
+        poolName: "",
+      } as any);
+
+      const request = createPostRequest(
+        "http://localhost:3000/api/stakwork/user-journey",
+        {
+          message: "Test empty strings",
+          workspaceId: mockWorkspaceId,
+          testName: "",
+        }
+      );
+
+      const response = await POST(request);
+      await expectSuccess(response, 201);
+
+      const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+      const vars = payload.workflow_params.set_var.attributes.vars;
+
+      // Empty strings are converted to null by || null operators in the route
+      expect(vars.accessToken).toBeNull();
+      expect(vars.username).toBeNull();
+      expect(vars.swarmUrl).toBe(""); // swarmUrl uses ternary so empty string remains
+      expect(vars.swarmSecretAlias).toBeNull();
+      expect(vars.testName).toBe("User Journey Test"); // Uses default title fallback
     });
 
     test("should verify payload name format", async () => {
