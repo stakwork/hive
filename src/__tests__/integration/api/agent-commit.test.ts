@@ -597,7 +597,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("Pod Communication Tests", () => {
     test("should successfully commit and push to pod control port", async () => {
-      const { user, workspace, repository, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, repository, task } = await createTestDataWithCommitCapabilities({
+        podId: "test-pod-id",
+      });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock getPodFromPool
@@ -647,7 +649,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Verify push request includes commit
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3010/push?pr=true&commit=true",
+        "http://localhost:3010/push?pr=true&commit=true&label=agent",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -993,7 +995,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
   describe("Integration Tests", () => {
     test("should complete full commit workflow with all validations", async () => {
-      const { user, workspace, repository, githubAuth, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
+      const { user, workspace, repository, githubAuth, task } = await createTestDataWithCommitCapabilities({
+        podId: "test-pod-id",
+      });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock all dependencies
@@ -1052,7 +1056,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Verify push request structure (includes commit)
       const pushCall = mockFetch.mock.calls[0];
-      expect(pushCall[0]).toBe("http://pod-control.test:3010/push?pr=true&commit=true");
+      expect(pushCall[0]).toBe("http://pod-control.test:3010/push?pr=true&commit=true&label=agent");
       const pushBody = JSON.parse(pushCall[1]!.body as string);
       expect(pushBody).toMatchObject({
         repos: [

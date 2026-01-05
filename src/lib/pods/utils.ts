@@ -47,6 +47,7 @@ interface ProcessInfo {
 }
 
 export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace> {
+  console.log(">>> getWorkspaceFromPool poolName", poolName);
   const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspace`;
 
   const response = await fetch(url, {
@@ -64,6 +65,7 @@ export async function getWorkspaceFromPool(poolName: string, poolApiKey: string)
   }
 
   const data = await response.json();
+  console.log(">>> getWorkspaceFromPool workspace data", data);
   return data.workspace as PodWorkspace;
 }
 

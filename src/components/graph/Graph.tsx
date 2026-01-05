@@ -42,7 +42,7 @@ export function Graph({
   params,
   transform,
   width,
-  height = 600,
+  height,
   colorMap,
   onNodeClick,
   title,
@@ -57,9 +57,13 @@ export function Graph({
     transform,
   });
 
+  // Determine if we should use flex layout (when no height specified)
+  const useFlexLayout = height === undefined;
+  const effectiveHeight = height || 600;
+
   if (loading) {
     return (
-      <div className={`border rounded-lg bg-card p-4 ${className}`}>
+      <div className={`border rounded-lg bg-card p-4 ${useFlexLayout ? 'flex flex-col h-full' : ''} ${className}`}>
         <div className="flex items-center justify-center h-64">
           <div className="text-muted-foreground">Loading graph...</div>
         </div>
@@ -69,7 +73,7 @@ export function Graph({
 
   if (error) {
     return (
-      <div className={`border rounded-lg bg-card p-4 ${className}`}>
+      <div className={`border rounded-lg bg-card p-4 ${useFlexLayout ? 'flex flex-col h-full' : ''} ${className}`}>
         <div className="flex items-center justify-center h-64">
           <div className="text-destructive">Error: {error}</div>
         </div>
@@ -79,7 +83,7 @@ export function Graph({
 
   if (nodes.length === 0) {
     return (
-      <div className={`border rounded-lg bg-card p-4 ${className}`}>
+      <div className={`border rounded-lg bg-card p-4 ${useFlexLayout ? 'flex flex-col h-full' : ''} ${className}`}>
         <div className="flex items-center justify-center h-64">
           <div className="text-muted-foreground">{emptyMessage}</div>
         </div>
@@ -90,9 +94,9 @@ export function Graph({
   const VisualizationComponent = layout === "layered" ? GraphVisualizationLayered : GraphVisualization;
 
   return (
-    <div className={`border rounded-lg bg-card p-4 ${className}`}>
+    <div className={`border rounded-lg bg-card p-4 ${useFlexLayout ? 'flex flex-col h-full' : ''} ${className}`}>
       {(title || showStats) && (
-        <div className="mb-3 flex justify-between items-center">
+        <div className="mb-3 flex justify-between items-center flex-shrink-0">
           {title && <h3 className="text-sm font-medium">{title}</h3>}
           {showStats && (
             <div className="text-xs text-muted-foreground">
@@ -102,12 +106,12 @@ export function Graph({
         </div>
       )}
 
-      <div className="border rounded overflow-hidden bg-background">
+      <div className={`border rounded overflow-hidden bg-background ${useFlexLayout ? 'flex-1 min-h-0' : ''}`}>
         <VisualizationComponent
           nodes={nodes}
           edges={edges}
           width={width}
-          height={height}
+          height={useFlexLayout ? undefined : effectiveHeight}
           colorMap={colorMap}
           onNodeClick={onNodeClick}
         />
