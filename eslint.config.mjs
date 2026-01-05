@@ -20,6 +20,19 @@ const eslintConfig = [
       "src/generated/prisma/wasm*.js",
     ],
   },
+  // Enforce no unused imports
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
   // Relax rules for generated files if they are ever included
   {
     files: ["src/generated/**/*.js", "src/generated/**/*.ts"],
