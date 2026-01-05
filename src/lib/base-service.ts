@@ -23,7 +23,7 @@ export abstract class BaseServiceClass implements BaseService {
         Authorization: `Bearer ${config.apiKey}`,
         ...config.headers,
       },
-      timeout: config.timeout || 10000,
+      timeout: config.timeout || 20000,
     });
   }
 

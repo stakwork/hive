@@ -355,7 +355,7 @@ describe("POST /api/stakwork/create-customer - Unit Tests", () => {
       const apiError = TestDataFactory.createApiError({
         message: "Request timeout",
         status: 408,
-        details: { timeout: 10000 },
+        details: { timeout: 20000 },
       });
 
       mockCreateCustomer.mockRejectedValue(apiError);

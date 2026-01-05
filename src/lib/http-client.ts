@@ -52,7 +52,7 @@ export class HttpClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(
       () => controller.abort(),
-      this.config.timeout || 10000,
+      this.config.timeout || 20000,
     );
     config.signal = controller.signal;
 
