@@ -17,7 +17,7 @@ interface GenerationControlsProps {
 }
 
 export function GenerationControls({
-  onQuickGenerate,
+  _onQuickGenerate,
   onDeepThink,
   onRetry,
   status,

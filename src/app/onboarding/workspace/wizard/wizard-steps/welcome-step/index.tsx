@@ -45,7 +45,7 @@ function extractRepoNameFromUrl(url: string): string | null {
   }
 }
 
-export const WelcomeStep = ({ onNext }: WelcomeStepProps) => {
+export const WelcomeStep = ({ _onNext }: WelcomeStepProps) => {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [error, setError] = useState("");
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);

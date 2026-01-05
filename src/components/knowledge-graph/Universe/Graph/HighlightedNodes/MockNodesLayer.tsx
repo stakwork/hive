@@ -28,7 +28,7 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
   const nodeTypes = useDataStore((s) => s.nodeTypes)
 
   const [mockNodes, setMockNodes] = useState<MockNode[]>([])
-  const [isLoadingNodes, setIsLoadingNodes] = useState(false)
+  const [_isLoadingNodes, setIsLoadingNodes] = useState(false)
   const [hasFetchedMocks, setHasFetchedMocks] = useState(false)
 
   // Calculate Y position for Mock nodes (put them at the top) - updates when nodeTypes change

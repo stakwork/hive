@@ -37,7 +37,7 @@ export default function LandingPage() {
         setError(data.message || "Incorrect password");
         setIsLoading(false);
       }
-    } catch (err) {
+    } catch (_err) {
       setError("An error occurred. Please try again.");
       setIsLoading(false);
     }

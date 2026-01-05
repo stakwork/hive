@@ -14,8 +14,8 @@ declare global {
 
 import {
   ReactFlow,
-  MiniMap,
-  Controls,
+  _MiniMap,
+  _Controls,
   ControlButton,
   Background,
   BackgroundVariant,
@@ -55,7 +55,7 @@ interface SearchResult {
   skill: string;
 }
 
-const SearchButton = ({ workflowId }: { workflowId: string }) => {
+const _SearchButton = ({ workflowId }: { workflowId: string }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -230,7 +230,7 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
-  const [nodesSelected, setNodesSelected] = useState<any[]>([]);
+  const [_nodesSelected, setNodesSelected] = useState<any[]>([]);
   const [updateConnections, setUpdateConnections] = useState(false);
   const nodeTypes = useMemo(() => ({ stepNode: StepNode }), []);
   const [customConnections, setCustomConnections] = useState<any[]>([]);
@@ -246,7 +246,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   const [hasPendingUpdates, setHasPendingUpdates] = useState(false);
 
   // Ref for workflow spec field
-  const workflowSpecRef = useRef<HTMLInputElement | null>(null);
+  const _workflowSpecRef = useRef<HTMLInputElement | null>(null);
 
   // Store transitions for step click lookup
   const transitionsRef = useRef<Record<string, WorkflowTransitionType>>({});
@@ -298,7 +298,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     onStepClick,
   } = workflowApp.props;
 
-  let zoomLevel = defaultZoomLevel || 0.65;
+  const zoomLevel = defaultZoomLevel || 0.65;
 
   const [targetPosition, setTargetPosition] = useState({ x: 100, y: 260, zoom: zoomLevel });
   const [workflowVersionId, setWorkflowVersionId] = useState(workflowVersion);
@@ -361,7 +361,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   }, []);
 
   useEffect(() => {
-    const handlePublishWorkflow = (event: any) => {
+    const handlePublishWorkflow = (_event: any) => {
       // Create the request function for the queue
       const requestFn = () => {
         return axios.put(`/admin/workflows/${workflowId}/publish.json?workflow_version_id=${workflowVersionId}`);
@@ -514,8 +514,8 @@ export default function App(workflowApp: WorkflowAppProps) {
       data = workflowData;
     }
 
-    let transitions = data.transitions;
-    let connections = data.connections;
+    const transitions = data.transitions;
+    const connections = data.connections;
 
     updateDiagram({ transitions, connections });
   }, [setNodes, setEdges, workflowData]);
@@ -676,7 +676,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     // Store transitions for step click lookup
     transitionsRef.current = data.transitions || {};
 
-    let updatedNodes = new NodeArray(
+    const updatedNodes = new NodeArray(
       data.transitions,
       data.connections,
       show_only,
@@ -711,7 +711,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     });
 
     let myEdges: any[] = [];
-    let dedupNodes: any = {};
+    const dedupNodes: any = {};
 
     if (data.connections && Array.isArray(data.connections) && data.connections.length > 0) {
       // console.log("saved connections detected", data.connections)
@@ -1077,7 +1077,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     updateJSONSpecConnections(data.workflow_spec.connections);
   };
 
-  const exportSteps = (nodes_to_export: any[], node_type: string) => {
+  const _exportSteps = (nodes_to_export: any[], node_type: string) => {
     console.log("exporting nodes", nodes_to_export);
 
     const nodeIds = nodes_to_export.map((node: any) => node.id);
@@ -1283,7 +1283,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     setNodeMenu(null);
   }, [setMenu, setNodeMenu]);
 
-  const handleImportSuccess = (responseData: any, contextData?: any) => {
+  const handleImportSuccess = (responseData: any, _contextData?: any) => {
     if (responseData.data.workflow_spec) {
       const newVersionId = responseData.data.workflow_version_id;
       if (newVersionId) {

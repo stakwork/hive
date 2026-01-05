@@ -55,7 +55,7 @@ class GeminiMockState {
    * @param prompt - Architecture description (unused in mock)
    * @returns Buffer containing mock PNG image
    */
-  private generateMockDiagram(prompt: string): Buffer {
+  private generateMockDiagram(_prompt: string): Buffer {
     // Simple 1x1 transparent PNG (smallest valid PNG)
     // Base64: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
     const base64PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";

@@ -97,16 +97,16 @@ export const SynchronizedGraphComponent = ({
 
 const SynchronizedGraphComponentInner = ({
   endpoint: propEndpoint,
-  title = "Synchronized Knowledge Graph",
+  _title = "Synchronized Knowledge Graph",
   className,
   height = "h-full",
   width = "w-full",
   currentTime = 0,
-  onTimeMarkerClick
+  _onTimeMarkerClick
 }: SynchronizedGraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
-  const [markers, setMarkers] = useState<NodeWithTimestamp[]>([]);
+  const [_markers, setMarkers] = useState<NodeWithTimestamp[]>([]);
   const [activeEdge, setActiveEdge] = useState<LinkWithTimestamp | null>(null);
 
   const requestRef = useRef<number | null>(null);
@@ -394,7 +394,7 @@ const SynchronizedGraphComponentInner = ({
   }, [workspaceId, resetData, addNewNode, propEndpoint]);
 
   // Handle filter tab changes
-  const handleTabChange = useCallback((tab: FilterTab) => {
+  const _handleTabChange = useCallback((tab: FilterTab) => {
     setActiveFilterTab(tab);
     fetchFilteredData(tab);
   }, [setActiveFilterTab, fetchFilteredData]);

@@ -74,7 +74,7 @@ const GraphComponentInner = ({
   const [nodesLoading, setNodesLoading] = useState(false);
   const currentRequestRef = useRef<AbortController | null>(null);
   const isInitialMountRef = useRef(true);
-  const repositoryNodes = useDataStore((s) => s.repositoryNodes);
+  const _repositoryNodes = useDataStore((s) => s._repositoryNodes);
   const isOnboarding = useDataStore((s) => s.isOnboarding);
 
   const addNewNode = useDataStore((s) => s.addNewNode);

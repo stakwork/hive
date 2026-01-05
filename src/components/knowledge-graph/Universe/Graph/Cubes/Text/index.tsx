@@ -18,10 +18,10 @@ type Props = {
 export const TextNode = memo(
   (props: Props) => {
     const { node, hide, scale } = props
-    const iconRef = useRef<Mesh | null>(null)
+    const _iconRef = useRef<Mesh | null>(null)
     const nodeRef = useRef<Mesh | null>(null)
-    const [texture, setTexture] = useState<Texture | null>(null)
-    const [iconTexture, setIconTexture] = useState<Texture | null>(null)
+    const [_texture, setTexture] = useState<Texture | null>(null)
+    const [_iconTexture, setIconTexture] = useState<Texture | null>(null)
     const backgroundRef = useRef<Group | null>(null)
 
     const { normalizedSchemasByType, getNodeKeysByType } = useSchemaStore((s) => s)

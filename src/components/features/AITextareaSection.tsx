@@ -192,7 +192,7 @@ export function AITextareaSection({
             const text = await response.text();
             errorMessage = text || `Server error: ${response.status} ${response.statusText}`;
           }
-        } catch (parseError) {
+        } catch (_parseError) {
           errorMessage = `Server error: ${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);

@@ -1,9 +1,9 @@
 import BubbleChartIcon from '@/components/Icons/BubbleChartIcon'
-import CommunitiesIcon from '@/components/Icons/CommunitiesIcon'
+import _CommunitiesIcon from '@/components/Icons/_CommunitiesIcon'
 import GrainIcon from '@/components/Icons/GrainIcon'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { GraphStyle, graphStyles, useGraphStore } from '@/stores/useStores'
+import { GraphStyle, _graphStyles, useGraphStore } from '@/stores/useStores'
 import { ReactElement } from 'react'
 
 type VisibleGraphStyle = 'split' | 'sphere' // | 'force'

@@ -12,7 +12,7 @@ import {
   StakworkRunQuery,
   DataType,
 } from "@/types/stakwork";
-import { validateWorkspaceAccess } from "@/services/workspace";
+import { _validateWorkspaceAccess } from "@/services/workspace";
 import { stakworkService } from "@/lib/service-factory";
 import { config } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
@@ -349,7 +349,7 @@ export async function processStakworkRunWebhook(
   const { workspace_id, feature_id, type } = queryParams;
 
   // Find the run by webhookUrl or projectId
-  let run = await db.stakworkRun.findFirst({
+  const run = await db.stakworkRun.findFirst({
     where: {
       OR: [
         { projectId: project_id || undefined },

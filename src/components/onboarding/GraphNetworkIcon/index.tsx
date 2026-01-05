@@ -8,7 +8,7 @@ interface GraphNetworkIconProps {
 }
 
 export function GraphNetworkIcon({ size = 160, animate = true }: GraphNetworkIconProps) {
-  const scale = size / 160;
+  const _scale = size / 160;
 
   return (
     <svg

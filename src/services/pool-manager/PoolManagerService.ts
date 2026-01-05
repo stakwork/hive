@@ -1,5 +1,5 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse, VMData } from "@/types";
+import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse, _VMData } from "@/types";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
 import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";

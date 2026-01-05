@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import type { CreatePhaseRequest, UpdatePhaseRequest, PhaseListItem, PhaseWithTasks } from "@/types/roadmap";
 import { validateFeatureAccess, validatePhaseAccess, calculateNextOrder } from "./utils";
-import { ensureUniqueBountyCode } from "@/lib/bounty-code";
+import { _ensureUniqueBountyCode } from "@/lib/bounty-code";
 
 /**
  * Gets a phase with its tasks and feature context

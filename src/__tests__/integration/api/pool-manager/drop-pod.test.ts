@@ -113,7 +113,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
     });
 
     test("returns 401 when user is missing from session", async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       getMockedSession().mockResolvedValue({ user: null } as any);
 
       const request = createPostRequest(
@@ -132,7 +132,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       getMockedSession().mockResolvedValue({
         user: { email: "test@example.com" },
         expires: new Date().toISOString(),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
       } as any);
 
       const request = createPostRequest(

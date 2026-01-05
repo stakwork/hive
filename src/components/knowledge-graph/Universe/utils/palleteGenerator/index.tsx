@@ -1,4 +1,4 @@
-/* eslint-disable no-bitwise */
+ 
 function shadeColor(color: string, percent: number): string {
   // Remove the hash if it's there.
   let newColor = color[0] === '#' ? color.slice(1) : color

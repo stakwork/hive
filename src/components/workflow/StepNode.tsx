@@ -28,7 +28,7 @@ export default function StepNode({ data: rawData }: NodeProps) {
     isSourceConnectable = false;
   }
 
-  let dragHandleClass = data.project_view ? "workflow-drag-handle__custom_small" : "workflow-drag-handle__custom";
+  const dragHandleClass = data.project_view ? "workflow-drag-handle__custom_small" : "workflow-drag-handle__custom";
 
   return (
     <div className={`nowheel ${data.project_view ? "workflow-flow-project-view" : ""}`}>

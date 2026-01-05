@@ -38,9 +38,7 @@ const getFiles = (
   };
 };
 
-type ServicesModalProps = {
-  /** optional: anything you might want to pass in future */
-};
+type ServicesModalProps = Record<string, never>;
 
 export default function ServicesModal({
   onResolve,

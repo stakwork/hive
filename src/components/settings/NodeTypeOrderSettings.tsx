@@ -118,7 +118,7 @@ export function NodeTypeOrderSettings() {
   const [newNodeTypeName, setNewNodeTypeName] = useState("");
   const [isLoadingSchemas, setIsLoadingSchemas] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [maxVisibleItems, setMaxVisibleItems] = useState(5);
+  const [maxVisibleItems, _setMaxVisibleItems] = useState(5);
 
 
 
@@ -174,7 +174,7 @@ export function NodeTypeOrderSettings() {
     const allNodeTypes = Array.from(new Set([...schemaNodeTypes, ...nodeTypesFromGraph]));
 
     // 3. Create a map for existing configuration
-    const existingConfigMap = new Map(existingConfig.map(item => [item.type, item]));
+    const _existingConfigMap = new Map(existingConfig.map(item => [item.type, item]));
 
     // 4. Sort: existing order first (preserving order), then alphabetically
     const existingTypes = new Set(existingConfig.map(item => item.type));

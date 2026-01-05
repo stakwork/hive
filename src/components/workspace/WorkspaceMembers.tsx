@@ -42,7 +42,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
     userName: string;
   }>({ open: false, userId: "", userName: "" });
   const { slug } = useWorkspace();
-  const { data: session } = useSession();
+  const { data: _session } = useSession();
 
   // Fetch workspace members
   const fetchMembers = async () => {

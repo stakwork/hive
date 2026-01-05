@@ -6,7 +6,7 @@ import { config } from "@/config/env";
  *
  * Simulates: GET https://api.anthropic.com/v1/models
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   if (!config.USE_MOCKS) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

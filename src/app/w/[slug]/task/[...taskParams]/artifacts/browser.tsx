@@ -9,8 +9,8 @@ import {
   Circle,
   Square,
   Target,
-  FlaskConical,
-  Bug,
+  _FlaskConical,
+  _Bug,
   List,
   CheckCircle2,
   ArrowLeft,
@@ -38,7 +38,7 @@ export function BrowserArtifactPanel({
   onUserJourneySave,
   externalTestCode,
   externalTestTitle,
-  isMobile = false,
+  _isMobile = false,
   onClose,
 }: {
   artifacts: Artifact[];
@@ -159,7 +159,7 @@ export function BrowserArtifactPanel({
     debugMode,
     isSubmittingDebug,
     setDebugMode,
-    handleDebugElement,
+    _handleDebugElement,
     handleDebugSelection: handleDebugSelectionHook,
   } = useDebugSelection({ onDebugMessage, iframeRef });
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);

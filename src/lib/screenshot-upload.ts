@@ -48,7 +48,7 @@ export function generateScreenshotS3Key(workspaceId: string, hash: string): stri
  * @param dataUrl Base64 data URL
  * @returns Object with width and height, or null if extraction fails
  */
-export function extractImageDimensions(dataUrl: string): { width: number; height: number } | null {
+export function extractImageDimensions(_dataUrl: string): { width: number; height: number } | null {
   try {
     // For server-side, we'll need to parse the image buffer
     // For now, we'll return null and extract dimensions on the client side

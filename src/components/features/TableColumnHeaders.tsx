@@ -41,7 +41,7 @@ interface SortableColumnHeaderProps {
 
 export function SortableColumnHeader({
   label,
-  field,
+  _field,
   currentSort,
   onSort,
   align = "left",

@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     try {
       const body = await request.json();
       password = body.password
-    } catch (error) {
+    } catch (_error) {
       return NextResponse.json(
         { success: false, message: "Invalid or missing JSON body"},
         { status: 400 }

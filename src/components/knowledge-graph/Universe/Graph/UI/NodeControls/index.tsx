@@ -14,9 +14,9 @@ const reuseableVector3 = new Vector3()
 
 export const NodeControls = memo(() => {
   const ref = useRef<Group | null>(null)
-  const { normalizedSchemasByType, setSelectedActionDetail } = useSchemaStore((s) => s)
+  const { normalizedSchemasByType, _setSelectedActionDetail } = useSchemaStore((s) => s)
   const [popoverOpen, setPopoverOpen] = useState(false)
-  const [nodeActionLoading, setLoadActionLoading] = useState<boolean>(false)
+  const [nodeActionLoading, _setLoadActionLoading] = useState<boolean>(false)
 
   const selectedNode = useSelectedNode()
   const { navigateToNode } = useNodeNavigation()

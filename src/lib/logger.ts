@@ -1,4 +1,4 @@
-import { config } from '@/config/env';
+import { _config } from '@/_config/env';
 
 // Log levels with numeric values for comparison
 export enum LogLevel {

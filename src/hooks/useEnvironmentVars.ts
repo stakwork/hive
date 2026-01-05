@@ -43,7 +43,7 @@ export function useEnvironmentVars(
     setEnvVars((prev) => {
       const existingKeys = new Set(prev.map((v) => v.name).filter(Boolean));
       const newVars: EnvironmentVariable[] = [];
-      let updatedPrev = [...prev];
+      const updatedPrev = [...prev];
 
       Object.entries(vars).forEach(([key, value]) => {
         if (!key) return;

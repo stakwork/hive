@@ -71,8 +71,8 @@ export function DependencyGraph<T extends GraphEntity>({
     });
   }, [entities, getDependencies, direction]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, _setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, _setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {

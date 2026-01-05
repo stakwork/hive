@@ -52,7 +52,7 @@ export function GraphVisualizationLayered({
   height,
   colorMap,
   onNodeClick,
-  className = "",
+  _className = "",
 }: GraphVisualizationLayeredProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);

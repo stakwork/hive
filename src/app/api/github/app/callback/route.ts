@@ -4,7 +4,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { config, optionalEnvVars } from "@/config/env";
 import { serviceConfigs } from "@/config/services";
 import { checkRepositoryAccess } from "@/lib/github-oauth-repository-access";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { _getPrimaryRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 

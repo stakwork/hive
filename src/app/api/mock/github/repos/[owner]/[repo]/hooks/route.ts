@@ -68,7 +68,7 @@ export async function POST(
     const { owner, repo } = await params;
     const body = await request.json();
     
-    const { config, events = ["push"], active = true } = body;
+    const { config, events = ["push"], _active = true } = body;
 
     if (!config || !config.url) {
       return NextResponse.json(

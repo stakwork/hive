@@ -25,7 +25,7 @@ export function SortableUserStory({
   story,
   onDelete,
   onUpdate,
-  saving,
+  _saving,
   saved,
 }: SortableUserStoryProps) {
   const [title, setTitle] = useState(story.title);

@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
     }
 
     const {
-      client_id,
-      client_secret,
+      _client_id,
+      _client_secret,
       code,
       grant_type = "authorization_code",
       refresh_token,

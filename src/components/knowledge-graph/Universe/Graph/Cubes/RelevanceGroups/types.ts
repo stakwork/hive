@@ -6,5 +6,5 @@ export type BadgeProps = {
   count: number
   onClick: () => void
   isActive: boolean
-  // eslint-disable-next-line react/no-unused-prop-types
+   
 }

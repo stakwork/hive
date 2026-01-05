@@ -21,7 +21,7 @@ const Fallback = () => (
 
 const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 
-  const dataInitial = useDataStore((s) => s.dataInitial)
+  const _dataInitial = useDataStore((s) => s._dataInitial)
 
   return (
     <>

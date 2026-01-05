@@ -15,7 +15,7 @@ export async function DELETE(request: NextRequest) {
     let body;
     try {
       body = await request.json();
-    } catch (error) {
+    } catch (_error) {
       // Handle empty body or malformed JSON
       body = {};
     }

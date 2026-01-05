@@ -1,12 +1,12 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { _Card, _CardContent, _CardHeader, _CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { TaskCard } from "./TaskCard";
 import { WorkflowStatus } from "@prisma/client";
-import { Clock, Loader2, CheckCircle, AlertCircle, Pause, XCircle } from "lucide-react";
+import { _Clock, Loader2, CheckCircle, AlertCircle, Pause, _XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface KanbanViewProps {
@@ -54,7 +54,7 @@ const kanbanColumns: KanbanColumn[] = [
   },
 ];
 
-export function KanbanView({ tasks, workspaceSlug, loading }: KanbanViewProps) {
+export function KanbanView({ tasks, workspaceSlug, _loading }: KanbanViewProps) {
   // Group tasks by workflow status - PENDING goes to IN_PROGRESS, FAILED goes to ERROR
   const tasksByStatus = tasks.reduce((acc, task) => {
     let status = task.workflowStatus || WorkflowStatus.IN_PROGRESS;

@@ -17,7 +17,7 @@ export default function NodeContextMenu({
   left,
   right,
   bottom,
-  position,
+  _position,
   nodes,
   deleteCallback,
   exportCallback,

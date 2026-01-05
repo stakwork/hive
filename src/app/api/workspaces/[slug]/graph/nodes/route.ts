@@ -51,7 +51,7 @@ async function processNodesMediaUrls(
             ...node.properties,
             media_url: presignedUrl,
           };
-        } catch (error) {
+        } catch (_error) {
           // Keep original URL if presigning fails
         }
       }
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           nodes: processedNodes,
         };
       }
-    } catch (error) {
+    } catch (_error) {
       // Continue with original data if processing fails
     }
 

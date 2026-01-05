@@ -36,7 +36,7 @@ export async function GET(
       repository = mockGitHubState.createRepository(owner, repo);
     }
 
-    let commits = mockGitHubState.getCommits(owner, repo);
+    const commits = mockGitHubState.getCommits(owner, repo);
     
     // Filter by SHA if provided (simulates branch filtering)
     if (sha) {

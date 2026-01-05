@@ -17,7 +17,7 @@ import { VMData } from "@/types/pool-manager";
 export default function CapacityPage() {
   const { workspace, slug } = useWorkspace();
   const isPoolActive = workspace?.poolState === "COMPLETE";
-  const { poolStatus, loading: statusLoading, error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
+  const { _poolStatus, loading: statusLoading, error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
 
   const [vmData, setVmData] = useState<VMData[]>([]);
   const [loading, setLoading] = useState(true);
