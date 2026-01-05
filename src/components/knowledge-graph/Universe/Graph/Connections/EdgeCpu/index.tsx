@@ -34,6 +34,7 @@ export function EdgesGPU({
     const startRef = useRef<Float32Array>(new Float32Array());
     const endRef = useRef<Float32Array>(new Float32Array());
     const highlightRef = useRef<Float32Array>(new Float32Array()); // 0 = normal, 1 = hovered, 2 = selected
+    const depthRef = useRef<Float32Array>(new Float32Array()); // 0 = direct, 1 = deeper subgraph
 
     const { size } = useThree();
     const storeId = useStoreId();
@@ -54,11 +55,13 @@ export function EdgesGPU({
         const aSide = new Float32Array(vCount);
         const aT = new Float32Array(vCount);
         const aHighlight = new Float32Array(vCount);
+        const aDepth = new Float32Array(vCount);
         const indices = new Uint32Array(iCount);
 
         startRef.current = aStart;
         endRef.current = aEnd;
         highlightRef.current = aHighlight;
+        depthRef.current = aDepth;
 
         for (let e = 0; e < edgeCount; e++) {
             const v = e * 4;
@@ -89,6 +92,7 @@ export function EdgesGPU({
         geometry.setAttribute("aSide", new THREE.BufferAttribute(aSide, 1));
         geometry.setAttribute("aT", new THREE.BufferAttribute(aT, 1));
         geometry.setAttribute("aHighlight", new THREE.BufferAttribute(aHighlight, 1));
+        geometry.setAttribute("aDepth", new THREE.BufferAttribute(aDepth, 1));
 
         const material = new THREE.ShaderMaterial({
             transparent: true,
@@ -119,11 +123,14 @@ export function EdgesGPU({
         attribute float aSide;
         attribute float aT;
         attribute float aHighlight;
+        attribute float aDepth;
 
         varying float vHighlight;
+        varying float vDepth;
 
         void main() {
           vHighlight = aHighlight;
+          vDepth = aDepth;
           vec4 sc = projectionMatrix * modelViewMatrix * vec4(aStart, 1.0);
           vec4 ec = projectionMatrix * modelViewMatrix * vec4(aEnd, 1.0);
 
@@ -144,6 +151,8 @@ export function EdgesGPU({
           } else if (aHighlight > 0.5) {
             lineWidth = uHoveredLineWidth; // Hovered state
           }
+          // Depth-based taper: deeper levels get thinner
+          lineWidth *= mix(1.0, 0.55, clamp(vDepth, 0.0, 1.0));
 
           vec2 offset = normal * aSide * lineWidth / uResolution.y * 2.0;
 
@@ -165,10 +174,13 @@ export function EdgesGPU({
         uniform float uHasActiveNode;
 
         varying float vHighlight;
+        varying float vDepth;
 
         void main() {
           vec3 color = uColor;
           float opacity = uOpacity;
+          float depthFade = mix(1.0, 0.55, clamp(vDepth, 0.0, 1.0));
+          float depthTint = clamp(vDepth, 0.0, 1.0);
 
           // Apply colors based on highlight state: 0 = normal, 1 = hovered, 2 = selected
           if (vHighlight > 1.5) {
@@ -182,7 +194,10 @@ export function EdgesGPU({
             opacity = uDimmedOpacity;
           }
 
-          gl_FragColor = vec4(color, opacity);
+          // Depth tint: deeper edges shift toward hovered color
+          color = mix(color, uHoveredColor, depthTint * 0.6);
+
+          gl_FragColor = vec4(color, opacity * depthFade);
         }
       `,
         });
@@ -194,12 +209,13 @@ export function EdgesGPU({
 
     // 🛡 2. Guard: If geo not ready – don't render anything
     useFrame(() => {
-        if (!geoAndMat || !startRef.current || !endRef.current || !highlightRef.current) return;
+        if (!geoAndMat || !startRef.current || !endRef.current || !highlightRef.current || !depthRef.current) return;
 
         const { geometry, material } = geoAndMat;
         const aStart = startRef.current;
         const aEnd = endRef.current;
         const aHighlight = highlightRef.current;
+        const aDepth = depthRef.current;
         const max = aStart.length;
 
         // Get current graph state for highlighting logic
@@ -210,6 +226,22 @@ export function EdgesGPU({
         const hasActiveNode = !!(hoveredNode || selectedNode);
         material.uniforms.uHasActiveNode.value = hasActiveNode ? 1 : 0;
 
+        const subgraphIds = (() => {
+            const node = (hoveredNode || selectedNode) as any;
+            if (!node) return null;
+            const sources = node.sources || node.properties?.sources || [];
+            const targets = node.targets || node.properties?.targets || [];
+            const ids = new Set<string>([node.ref_id]);
+            [sources, targets].forEach((list) => {
+                if (Array.isArray(list)) {
+                    list.forEach((id) => {
+                        if (typeof id === "string") ids.add(id);
+                    });
+                }
+            });
+            return ids;
+        })();
+
         let v = 0;
 
         for (const [linkRefId, linkPos] of linksPosition.entries()) {
@@ -219,7 +251,8 @@ export function EdgesGPU({
 
             // Find the corresponding link data to get source/target info
             const linkData = linksNormalized?.get(linkRefId) as Link;
-            let highlightState = 0; // 0 = normal, 1 = hovered, 2 = selected
+            let highlightState = 0; // 0 = normal, 1 = hovered/active, 2 = selected
+            let depthState = 0; // 0 = direct, 1 = deeper subgraph
 
             if (linkData) {
                 const sourceId = typeof linkData.source === 'string' ? linkData.source : (linkData.source as Link)?.ref_id;
@@ -240,15 +273,22 @@ export function EdgesGPU({
                     const connectedToHoveredNode =
                         hoveredNode?.ref_id === sourceId || hoveredNode?.ref_id === targetId;
 
+                    const connectedToSubgraph =
+                        !!subgraphIds && (subgraphIds.has(sourceId) || subgraphIds.has(targetId));
+
+                    const isDirectToActive = connectedToSelectedNode || connectedToHoveredNode;
+
                     // Priority: selected > hovered > active link/search > normal
-                    if (activeLink || searchQuery || connectedToSelectedNode || connectedToHoveredNode) {
-                        if (connectedToSelectedNode) {
-                            highlightState = 2; // Selected state (green, thickest)
-                        } else if (connectedToHoveredNode) {
-                            highlightState = 1; // Hovered state (white, medium)
-                        } else {
-                            highlightState = 1; // Active link/search state (white, medium)
-                        }
+                    if (connectedToSelectedNode) {
+                        highlightState = 2; // Selected state (strongest)
+                    } else if (isDirectToActive || activeLink || searchQuery) {
+                        highlightState = 1; // Directly touched by active node or search
+                    } else if (connectedToSubgraph) {
+                        highlightState = 0.6; // In deeper subgraph
+                    }
+
+                    if (connectedToSubgraph && !isDirectToActive) {
+                        depthState = 1; // deeper layer for taper
                     }
                 }
             }
@@ -264,6 +304,7 @@ export function EdgesGPU({
                 aEnd[v + 2] = tz;
 
                 aHighlight[v / 3] = highlightState; // Per-vertex highlight state
+                aDepth[v / 3] = depthState; // Per-vertex depth state
 
                 v += 3;
             }
@@ -272,6 +313,7 @@ export function EdgesGPU({
         geometry.attributes.aStart.needsUpdate = true;
         geometry.attributes.aEnd.needsUpdate = true;
         geometry.attributes.aHighlight.needsUpdate = true;
+        geometry.attributes.aDepth.needsUpdate = true;
 
         material.uniforms.uResolution.value.set(size.width, size.height);
     });

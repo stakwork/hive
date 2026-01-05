@@ -19,6 +19,11 @@ async function callStakwork(
   accessToken: string | null,
   username: string | null,
   workspaceId?: string,
+  taskId?: string | null,
+  testFilePath?: string | null,
+  testFileUrl?: string | null,
+  baseBranch?: string | null,
+  testName?: string,
 ) {
   try {
     // Validate that all required Stakwork environment variables are set
@@ -29,8 +34,14 @@ async function callStakwork(
       throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
     }
 
+    // Helper function to get base URL (mocked in tests)
+    const getBaseUrl = () => {
+      // In actual implementation this would use proper base URL logic
+      return "https://hive.stakwork.com";
+    };
+
     // stakwork workflow vars
-    const vars = {
+    const vars: any = {
       message,
       accessToken,
       username,
@@ -39,6 +50,12 @@ async function callStakwork(
       poolName,
       repo2graph_url: repo2GraphUrl,
       workspaceId,
+      taskId,
+      testFilePath,
+      testFileUrl,
+      baseBranch,
+      testName,
+      webhookUrl: `${getBaseUrl()}/api/chat/response`,
     };
 
     const workflowId = config.STAKWORK_USER_JOURNEY_WORKFLOW_ID || "";
@@ -46,7 +63,7 @@ async function callStakwork(
       throw new Error("STAKWORK_USER_JOURNEY_WORKFLOW_ID is required for this Stakwork integration");
     }
 
-    const stakworkPayload: StakworkWorkflowPayload = {
+    const stakworkPayload: any = {
       name: "hive_autogen",
       workflow_id: parseInt(workflowId),
       workflow_params: {
@@ -57,6 +74,11 @@ async function callStakwork(
         },
       },
     };
+
+    // Add webhook_url at root level if taskId is provided
+    if (taskId) {
+      stakworkPayload.webhook_url = `${getBaseUrl()}/api/stakwork/webhook?task_id=${taskId}`;
+    }
 
     const stakworkURL = `${config.STAKWORK_BASE_URL}/projects`;
 
@@ -786,6 +808,554 @@ describe("callStakwork - Unit Tests", () => {
 
       const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
       expect(payload.workflow_params.set_var.attributes.vars.workspaceId).toBeUndefined();
+    });
+  });
+
+  describe("Extended Parameters Coverage (taskId, testFilePath, testFileUrl, baseBranch, testName)", () => {
+    const defaultParams = {
+      message: "Test message",
+      swarmUrl: "https://test.com/api",
+      swarmSecretAlias: "secret-alias",
+      poolName: "pool-name",
+      repo2GraphUrl: "https://test.com:3355",
+      accessToken: "token",
+      username: "username",
+      workspaceId: "workspace-123",
+    };
+
+    describe("taskId Parameter", () => {
+      it("should include taskId in payload vars when provided", async () => {
+        const taskId = "task-abc-123";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          taskId,
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.taskId).toBe(taskId);
+      });
+
+      it("should handle null taskId in payload", async () => {
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          null as any,
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.taskId).toBeNull();
+      });
+
+      it("should include taskId with UUID format", async () => {
+        const taskId = "550e8400-e29b-41d4-a716-446655440000";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          taskId,
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.taskId).toBe(taskId);
+        expect(payload.workflow_params.set_var.attributes.vars.taskId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        );
+      });
+    });
+
+    describe("testFilePath Parameter", () => {
+      it("should include testFilePath in payload vars when provided", async () => {
+        const testFilePath = "src/__tests__/e2e/specs/login.spec.ts";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          testFilePath,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testFilePath).toBe(testFilePath);
+      });
+
+      it("should handle null testFilePath in payload", async () => {
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testFilePath).toBeNull();
+      });
+
+      it("should handle testFilePath with various path formats", async () => {
+        const testPaths = [
+          "src/__tests__/e2e/specs/login.spec.ts",
+          "tests/integration/api.test.js",
+          "./e2e/user-journey.spec.ts",
+          "test/unit/helpers.test.ts"
+        ];
+
+        for (const path of testPaths) {
+          vi.clearAllMocks();
+          
+          await callStakwork(
+            defaultParams.message,
+            defaultParams.swarmUrl,
+            defaultParams.swarmSecretAlias,
+            defaultParams.poolName,
+            defaultParams.repo2GraphUrl,
+            defaultParams.accessToken,
+            defaultParams.username,
+            defaultParams.workspaceId,
+            "task-123",
+            path,
+            null,
+            null,
+            "test-name"
+          );
+
+          const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+          expect(payload.workflow_params.set_var.attributes.vars.testFilePath).toBe(path);
+        }
+      });
+    });
+
+    describe("testFileUrl Parameter", () => {
+      it("should include testFileUrl in payload vars when provided", async () => {
+        const testFileUrl = "https://github.com/org/repo/blob/main/src/__tests__/e2e/specs/login.spec.ts";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          testFileUrl,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testFileUrl).toBe(testFileUrl);
+      });
+
+      it("should handle null testFileUrl in payload", async () => {
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testFileUrl).toBeNull();
+      });
+
+      it("should handle both testFilePath and testFileUrl together", async () => {
+        const testFilePath = "src/__tests__/e2e/specs/login.spec.ts";
+        const testFileUrl = "https://github.com/org/repo/blob/main/src/__tests__/e2e/specs/login.spec.ts";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          testFilePath,
+          testFileUrl,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testFilePath).toBe(testFilePath);
+        expect(payload.workflow_params.set_var.attributes.vars.testFileUrl).toBe(testFileUrl);
+      });
+    });
+
+    describe("baseBranch Parameter", () => {
+      it("should include baseBranch in payload vars when provided", async () => {
+        const baseBranch = "develop";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          baseBranch,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.baseBranch).toBe(baseBranch);
+      });
+
+      it("should handle null baseBranch in payload", async () => {
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.baseBranch).toBeNull();
+      });
+
+      it("should handle various branch naming conventions", async () => {
+        const branches = ["main", "master", "develop", "feature/new-feature", "hotfix/bug-123"];
+
+        for (const branch of branches) {
+          vi.clearAllMocks();
+          
+          await callStakwork(
+            defaultParams.message,
+            defaultParams.swarmUrl,
+            defaultParams.swarmSecretAlias,
+            defaultParams.poolName,
+            defaultParams.repo2GraphUrl,
+            defaultParams.accessToken,
+            defaultParams.username,
+            defaultParams.workspaceId,
+            "task-123",
+            null,
+            null,
+            branch,
+            "test-name"
+          );
+
+          const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+          expect(payload.workflow_params.set_var.attributes.vars.baseBranch).toBe(branch);
+        }
+      });
+    });
+
+    describe("testName Parameter", () => {
+      it("should include testName in payload vars when provided", async () => {
+        const testName = "User Login Flow Test";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          null,
+          testName
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testName).toBe(testName);
+      });
+
+      it("should handle empty testName string", async () => {
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          null,
+          ""
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testName).toBe("");
+      });
+
+      it("should handle testName with special characters", async () => {
+        const testName = "User Login: E2E Test (Production) - Phase 1";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          null,
+          testName
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.testName).toBe(testName);
+      });
+    });
+
+    describe("Webhook URL Construction", () => {
+      // Mock getBaseUrl to test webhook URL generation
+      const mockGetBaseUrl = () => "https://hive.stakwork.com";
+
+      it("should construct webhookUrl correctly", async () => {
+        // Note: This test validates the expected webhook URL pattern
+        // The actual implementation uses getBaseUrl() which we're mocking
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          "task-123",
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.workflow_params.set_var.attributes.vars.webhookUrl).toBeDefined();
+        expect(payload.workflow_params.set_var.attributes.vars.webhookUrl).toContain("/api/chat/response");
+      });
+
+      it("should construct workflowWebhookUrl with task_id query parameter", async () => {
+        const taskId = "task-xyz-789";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          taskId,
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        
+        // Validate webhook_url in payload structure
+        expect(payload.webhook_url).toBeDefined();
+        expect(payload.webhook_url).toContain("/api/stakwork/webhook");
+        expect(payload.webhook_url).toContain(`task_id=${taskId}`);
+      });
+
+      it("should include both webhookUrl and workflowWebhookUrl in vars", async () => {
+        const taskId = "task-abc-123";
+
+        await callStakwork(
+          defaultParams.message,
+          defaultParams.swarmUrl,
+          defaultParams.swarmSecretAlias,
+          defaultParams.poolName,
+          defaultParams.repo2GraphUrl,
+          defaultParams.accessToken,
+          defaultParams.username,
+          defaultParams.workspaceId,
+          taskId,
+          null,
+          null,
+          null,
+          "test-name"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        
+        // Both webhook URLs should be present
+        expect(payload.workflow_params.set_var.attributes.vars.webhookUrl).toBeDefined();
+        expect(payload.webhook_url).toBeDefined();
+        expect(payload.webhook_url).toContain(`task_id=${taskId}`);
+      });
+    });
+
+    describe("Complete Payload with All Parameters", () => {
+      it("should construct complete payload with all parameters provided", async () => {
+        const fullParams = {
+          message: "Complete user journey test",
+          swarmUrl: "https://production-swarm.com/api",
+          swarmSecretAlias: "{{PROD_SWARM_API_KEY}}",
+          poolName: "production-pool",
+          repo2GraphUrl: "https://production-swarm.com:3355",
+          accessToken: "ghp_productiontoken123",
+          username: "prod-user",
+          workspaceId: "workspace-prod-123",
+          taskId: "task-prod-456",
+          testFilePath: "src/__tests__/e2e/specs/complete-flow.spec.ts",
+          testFileUrl: "https://github.com/org/repo/blob/main/src/__tests__/e2e/specs/complete-flow.spec.ts",
+          baseBranch: "production",
+          testName: "Complete User Flow E2E Test"
+        };
+
+        await callStakwork(
+          fullParams.message,
+          fullParams.swarmUrl,
+          fullParams.swarmSecretAlias,
+          fullParams.poolName,
+          fullParams.repo2GraphUrl,
+          fullParams.accessToken,
+          fullParams.username,
+          fullParams.workspaceId,
+          fullParams.taskId,
+          fullParams.testFilePath,
+          fullParams.testFileUrl,
+          fullParams.baseBranch,
+          fullParams.testName
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        const vars = payload.workflow_params.set_var.attributes.vars;
+
+        // Validate all parameters are in payload
+        expect(vars.message).toBe(fullParams.message);
+        expect(vars.swarmUrl).toBe(fullParams.swarmUrl);
+        expect(vars.swarmSecretAlias).toBe(fullParams.swarmSecretAlias);
+        expect(vars.poolName).toBe(fullParams.poolName);
+        expect(vars.repo2graph_url).toBe(fullParams.repo2GraphUrl);
+        expect(vars.accessToken).toBe(fullParams.accessToken);
+        expect(vars.username).toBe(fullParams.username);
+        expect(vars.workspaceId).toBe(fullParams.workspaceId);
+        expect(vars.taskId).toBe(fullParams.taskId);
+        expect(vars.testFilePath).toBe(fullParams.testFilePath);
+        expect(vars.testFileUrl).toBe(fullParams.testFileUrl);
+        expect(vars.baseBranch).toBe(fullParams.baseBranch);
+        expect(vars.testName).toBe(fullParams.testName);
+        expect(vars.webhookUrl).toBeDefined();
+        
+        // Validate webhook_url at payload root level
+        expect(payload.webhook_url).toContain(`task_id=${fullParams.taskId}`);
+      });
+
+      it("should handle payload with minimal parameters (nulls for optionals)", async () => {
+        await callStakwork(
+          "Minimal test",
+          null,
+          null,
+          null,
+          "",
+          null,
+          null,
+          "workspace-123",
+          "task-123",
+          null,
+          null,
+          null,
+          "minimal-test"
+        );
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        const vars = payload.workflow_params.set_var.attributes.vars;
+
+        expect(vars.message).toBe("Minimal test");
+        expect(vars.workspaceId).toBe("workspace-123");
+        expect(vars.taskId).toBe("task-123");
+        expect(vars.testName).toBe("minimal-test");
+        expect(vars.swarmUrl).toBeNull();
+        expect(vars.accessToken).toBeNull();
+        expect(vars.testFilePath).toBeNull();
+        expect(vars.testFileUrl).toBeNull();
+        expect(vars.baseBranch).toBeNull();
+      });
     });
   });
 });

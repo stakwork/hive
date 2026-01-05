@@ -31,36 +31,11 @@ import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
+import { archiveTaskAndRedirect } from "./lib/archive-task";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
   return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
-// Helper to archive task and redirect on pod claim failure
-async function archiveTaskAndRedirect(taskId: string, slug: string, errorTitle: string, errorDescription: string) {
-  try {
-    // Archive the task
-    await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        archived: true,
-      }),
-    });
-
-    toast.error(errorTitle, { description: errorDescription });
-
-    // Redirect back to task list
-    window.location.href = `/w/${slug}/tasks`;
-  } catch (archiveError) {
-    console.error("Error archiving task:", archiveError);
-    toast.error("Error", {
-      description: "Failed to claim pod and couldn't archive task. Please contact support.",
-    });
-  }
 }
 
 export default function TaskChatPage() {
