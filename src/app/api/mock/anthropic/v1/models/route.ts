@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { config } from "@/config/env";
 
 /**
@@ -6,7 +6,7 @@ import { config } from "@/config/env";
  *
  * Simulates: GET https://api.anthropic.com/v1/models
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   if (!config.USE_MOCKS) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

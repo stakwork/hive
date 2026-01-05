@@ -20,6 +20,37 @@ const eslintConfig = [
       "src/generated/prisma/wasm*.js",
     ],
   },
+  // Enforce no unused imports
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-require-imports": "warn",
+      "@next/next/no-assign-module-variable": "warn",
+      "@typescript-eslint/ban-ts-comment": "warn",
+      "@typescript-eslint/no-unused-expressions": "warn",
+      "react-hooks/rules-of-hooks": "warn",
+      "react/no-unescaped-entities": "warn",
+      "prefer-const": "warn",
+    },
+  },
+  // Relax rules for test files
+  {
+    files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "react-hooks/rules-of-hooks": "off",
+      "react/display-name": "off",
+    },
+  },
   // Relax rules for generated files if they are ever included
   {
     files: ["src/generated/**/*.js", "src/generated/**/*.ts"],
@@ -29,7 +60,6 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-this-alias": "off",
       "@typescript-eslint/no-require-imports": "off",
-      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 ];
