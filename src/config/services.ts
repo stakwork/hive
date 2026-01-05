@@ -19,7 +19,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
   poolManager: {
     baseURL: optionalEnvVars.POOL_MANAGER_BASE_URL,
     apiKey: process.env.POOL_MANAGER_API_KEY || "",
-    timeout: optionalEnvVars.API_TIMEOUT,
+    timeout: 120000, // 2 minutes for pool operations
     headers: {
       "Content-Type": "application/json",
     },
@@ -37,7 +37,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
       ? `${MOCK_BASE}/api/mock/github`
       : "https://api.github.com",
     apiKey: "",
-    timeout: parseInt(process.env.API_TIMEOUT || "10000"),
+    timeout: parseInt(process.env.API_TIMEOUT || "20000"),
     headers: {
       Accept: "application/vnd.github.v3+json",
     },
@@ -47,7 +47,7 @@ export const serviceConfigs: Record<string, ServiceConfig> = {
       ? `${MOCK_BASE}/api/mock/github`
       : "https://api.github.com",
     apiKey: "",
-    timeout: parseInt(process.env.API_TIMEOUT || "10000"),
+    timeout: parseInt(process.env.API_TIMEOUT || "20000"),
     headers: {
       Accept: "application/vnd.github.v3+json",
     },
