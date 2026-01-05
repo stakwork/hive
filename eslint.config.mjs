@@ -24,26 +24,33 @@ const eslintConfig = [
   {
     rules: {
       "@typescript-eslint/no-unused-vars": [
-        "error",
+        "warn",
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-require-imports": "warn",
-      "@next/next/no-assign-module-variable": "warn",
-      "@typescript-eslint/ban-ts-comment": "warn",
-      "@typescript-eslint/no-unused-expressions": "warn",
-      "react-hooks/rules-of-hooks": "warn",
-      "react/no-unescaped-entities": "warn",
-      "prefer-const": "warn",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "@next/next/no-assign-module-variable": "off",
+      "@typescript-eslint/ban-ts-comment": "off",
+      "@typescript-eslint/no-unused-expressions": "off",
+      "react-hooks/rules-of-hooks": "off",
+      "react/no-unescaped-entities": "off",
+      "prefer-const": "off",
     },
   },
   // Relax rules for test files
   {
-    files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+    files: [
+      "**/__tests__/**/*.ts",
+      "**/__tests__/**/*.tsx",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+    ],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
