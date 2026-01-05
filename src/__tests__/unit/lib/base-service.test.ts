@@ -89,7 +89,7 @@ describe("BaseServiceClass", () => {
 
       expect(HttpClient).toHaveBeenCalledWith(
         expect.objectContaining({
-          timeout: 10000,
+          timeout: 20000,
         })
       );
     });
