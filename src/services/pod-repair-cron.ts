@@ -296,6 +296,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
     workspacesProcessed: 0,
     workspacesWithRunningPods: 0,
     repairsTriggered: 0,
+    staklinkRestarts: 0,
     skipped: {
       maxAttemptsReached: 0,
       workflowInProgress: 0,
@@ -380,20 +381,40 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           workspace.swarm.poolApiKey
         );
 
-        // Fetch jlist - if it fails, trigger repair for staklink-proxy
+        // Fetch jlist - if it fails, call staklink-start API directly
         const jlist = await fetchPodJlist(pod.subdomain);
         if (!jlist) {
           console.log(
-            `[PodRepairCron] jlist not available for ${workspace.slug}/${pod.subdomain} - triggering staklink-proxy repair`
+            `[PodRepairCron] jlist not available for ${workspace.slug}/${pod.subdomain} - calling staklink-start`
           );
-          await triggerPodRepair(
-            workspace.id,
-            workspace.slug,
-            pod.subdomain,
-            pod.password || "",
-            [STAKLINK_PROXY_PROCESS]
-          );
-          result.repairsTriggered++;
+          try {
+            const poolService = poolManagerService();
+            const staklinkResult = await poolService.startStaklink(
+              workspace.swarm.id,
+              pod.subdomain,
+              workspace.swarm.poolApiKey
+            );
+            if (staklinkResult.success) {
+              console.log(
+                `[PodRepairCron] staklink started for ${workspace.slug}/${pod.subdomain}: ${staklinkResult.message}`
+              );
+              result.staklinkRestarts++;
+            } else {
+              console.warn(
+                `[PodRepairCron] staklink-start returned success=false for ${workspace.slug}/${pod.subdomain}`
+              );
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(
+              `[PodRepairCron] Failed to start staklink for ${workspace.slug}/${pod.subdomain}:`,
+              errorMessage
+            );
+            result.errors.push({
+              workspaceSlug: workspace.slug,
+              error: `Failed to start staklink: ${errorMessage}`,
+            });
+          }
           continue;
         }
 
@@ -411,16 +432,36 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
 
         if (staklinkNeedsRepair) {
           console.log(
-            `[PodRepairCron] staklink-proxy needs repair for ${workspace.slug}/${pod.subdomain}`
+            `[PodRepairCron] staklink-proxy needs repair for ${workspace.slug}/${pod.subdomain} - calling staklink-start`
           );
-          await triggerPodRepair(
-            workspace.id,
-            workspace.slug,
-            pod.subdomain,
-            pod.password || "",
-            [STAKLINK_PROXY_PROCESS]
-          );
-          result.repairsTriggered++;
+          try {
+            const poolService = poolManagerService();
+            const staklinkResult = await poolService.startStaklink(
+              workspace.swarm.id,
+              pod.subdomain,
+              workspace.swarm.poolApiKey
+            );
+            if (staklinkResult.success) {
+              console.log(
+                `[PodRepairCron] staklink started for ${workspace.slug}/${pod.subdomain}: ${staklinkResult.message}`
+              );
+              result.staklinkRestarts++;
+            } else {
+              console.warn(
+                `[PodRepairCron] staklink-start returned success=false for ${workspace.slug}/${pod.subdomain}`
+              );
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(
+              `[PodRepairCron] Failed to start staklink for ${workspace.slug}/${pod.subdomain}:`,
+              errorMessage
+            );
+            result.errors.push({
+              workspaceSlug: workspace.slug,
+              error: `Failed to start staklink: ${errorMessage}`,
+            });
+          }
           continue;
         }
 

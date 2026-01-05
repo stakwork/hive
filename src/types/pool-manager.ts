@@ -167,3 +167,12 @@ export interface PoolWorkspacesResponse {
   pool_name: string;
   workspaces: VMData[];
 }
+
+export interface StaklinkStartResponse {
+  success: boolean;
+  message: string;
+  workspace_id: string;
+  namespace?: string;
+  output?: string;
+  pod_name?: string;
+}

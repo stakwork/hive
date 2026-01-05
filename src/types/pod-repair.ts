@@ -38,6 +38,7 @@ export interface PodRepairCronResult {
   workspacesProcessed: number;
   workspacesWithRunningPods: number;
   repairsTriggered: number;
+  staklinkRestarts: number;
   skipped: {
     maxAttemptsReached: number;
     workflowInProgress: number;

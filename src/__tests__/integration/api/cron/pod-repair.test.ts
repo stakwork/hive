@@ -53,6 +53,7 @@ function createMockRequest(authHeader?: string): NextRequest {
 let mockStakworkRequest: ReturnType<typeof vi.fn>;
 let mockGetWorkflowData: ReturnType<typeof vi.fn>;
 let mockGetPoolWorkspaces: ReturnType<typeof vi.fn>;
+let mockStartStaklink: ReturnType<typeof vi.fn>;
 
 vi.mock('@/lib/service-factory', () => ({
   stakworkService: () => ({
@@ -61,6 +62,7 @@ vi.mock('@/lib/service-factory', () => ({
   }),
   poolManagerService: () => ({
     getPoolWorkspaces: mockGetPoolWorkspaces,
+    startStaklink: mockStartStaklink,
   }),
 }));
 
@@ -96,6 +98,11 @@ describe('GET /api/cron/pod-repair', () => {
 
     mockGetWorkflowData = vi.fn().mockResolvedValue({ status: 'completed' });
     mockGetPoolWorkspaces = vi.fn().mockResolvedValue({ workspaces: [] });
+    mockStartStaklink = vi.fn().mockResolvedValue({
+      success: true,
+      message: 'staklink started',
+      workspace_id: 'test-workspace',
+    });
 
     // Default pod utils mocks
     mockGetPodFromPool.mockResolvedValue({
@@ -412,7 +419,7 @@ describe('GET /api/cron/pod-repair', () => {
   });
 
   describe('Frontend Availability Check', () => {
-    it('should trigger repair when jlist is unavailable', async () => {
+    it('should call staklink-start when jlist is unavailable', async () => {
       const user = await createTestUser({ email: 'jlistfail@example.com' });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -454,8 +461,9 @@ describe('GET /api/cron/pod-repair', () => {
         expect(response.status).toBe(200);
         const body = await response.json();
         expect(body.success).toBe(true);
-        // Should trigger repair for staklink-proxy when jlist fails
-        expect(body.repairsTriggered).toBeGreaterThanOrEqual(1);
+        // Should call staklink-start API when jlist fails
+        expect(body.staklinkRestarts).toBeGreaterThanOrEqual(1);
+        expect(mockStartStaklink).toHaveBeenCalled();
       } finally {
         global.fetch = originalFetch;
       }
