@@ -204,7 +204,6 @@ export async function GET(request: NextRequest) {
           // Check repositoryDraft first, then fall back to primary repository
           let repoUrl = workspace.repositoryDraft;
           if (!repoUrl) {
-            const { getPrimaryRepository } = await import("@/lib/helpers/repository");
             const primaryRepo = await getPrimaryRepository(workspace.id);
             repoUrl = primaryRepo?.repositoryUrl ?? null;
           }
@@ -378,7 +377,6 @@ export async function GET(request: NextRequest) {
         // Check repositoryDraft first, then fall back to primary repository
         targetRepositoryUrl = workspace.repositoryDraft ?? undefined;
         if (!targetRepositoryUrl) {
-          const { getPrimaryRepository } = await import("@/lib/helpers/repository");
           const primaryRepo = await getPrimaryRepository(workspace.id);
           targetRepositoryUrl = primaryRepo?.repositoryUrl ?? undefined;
         }

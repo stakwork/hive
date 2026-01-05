@@ -3,13 +3,10 @@ import { mockGitHubState } from "@/lib/mock/github-state";
 
 /**
  * Mock GitHub List Repository Webhooks Endpoint
- * 
+ *
  * Simulates: GET https://api.github.com/repos/{owner}/{repo}/hooks
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ owner: string; repo: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ owner: string; repo: string }> }) {
   try {
     const authHeader = request.headers.get("authorization");
     if (!authHeader) {
@@ -23,7 +20,7 @@ export async function GET(
     }
 
     const { owner, repo } = await params;
-    
+
     // Ensure repository exists
     let repository = mockGitHubState.getRepository(owner, repo);
     if (!repository) {
@@ -46,13 +43,10 @@ export async function GET(
 
 /**
  * Mock GitHub Create Repository Webhook Endpoint
- * 
+ *
  * Simulates: POST https://api.github.com/repos/{owner}/{repo}/hooks
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ owner: string; repo: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ owner: string; repo: string }> }) {
   try {
     const authHeader = request.headers.get("authorization");
     if (!authHeader) {
@@ -67,8 +61,8 @@ export async function POST(
 
     const { owner, repo } = await params;
     const body = await request.json();
-    
-    const { config, events = ["push"], active = true } = body;
+
+    const { config, events = ["push"] } = body;
 
     if (!config || !config.url) {
       return NextResponse.json(
@@ -88,7 +82,7 @@ export async function POST(
     }
 
     const webhook = mockGitHubState.createWebhook(owner, repo, config, events);
-    
+
     return NextResponse.json(webhook, { status: 201 });
   } catch (error) {
     console.error("Mock GitHub create webhook error:", error);
