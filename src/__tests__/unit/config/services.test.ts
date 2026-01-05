@@ -6,7 +6,7 @@ vi.mock("@/config/env", () => ({
     POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
     SWARM_SUPER_ADMIN_URL: "https://app.superadmin.sphinx.chat",
     GEMINI_API_BASE_URL: "https://generativelanguage.googleapis.com",
-    API_TIMEOUT: 10000,
+    API_TIMEOUT: 20000,
   },
   config: {
     USE_MOCKS: false,
