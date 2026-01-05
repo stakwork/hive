@@ -30,7 +30,7 @@ const NODE_CONFIG = {
   fileNodeSize: { width: 4, height: 2.5, depth: 0.3 },
 
   // Animation controls
-  floatingAmplitude: 0.15,
+  floatingAmplitude: 0,
   rotationSpeed: 0.002,
 
   // Visual adjustments
