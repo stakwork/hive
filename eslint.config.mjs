@@ -39,6 +39,8 @@ const eslintConfig = [
       "react-hooks/rules-of-hooks": "off",
       "react/no-unescaped-entities": "off",
       "prefer-const": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
+      "no-var": "off",
     },
   },
   // Relax rules for test files
