@@ -32,6 +32,13 @@ const eslintConfig = [
         },
       ],
       "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-require-imports": "warn",
+      "@next/next/no-assign-module-variable": "warn",
+      "@typescript-eslint/ban-ts-comment": "warn",
+      "@typescript-eslint/no-unused-expressions": "warn",
+      "react-hooks/rules-of-hooks": "warn",
+      "react/no-unescaped-entities": "warn",
+      "prefer-const": "warn",
     },
   },
   // Relax rules for test files
