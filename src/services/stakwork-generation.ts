@@ -1,5 +1,4 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import type { ServiceConfig } from "@/types";
 import type { StakworkRunType, StakworkRunDecision } from "@prisma/client";
 
 interface StakworkRun {

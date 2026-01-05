@@ -43,23 +43,6 @@ export function generateScreenshotS3Key(workspaceId: string, hash: string): stri
 }
 
 /**
- * Extracts image dimensions from a data URL by creating an in-memory image
- * This is a best-effort operation and may not work for all image formats
- * @param dataUrl Base64 data URL
- * @returns Object with width and height, or null if extraction fails
- */
-export function extractImageDimensions(dataUrl: string): { width: number; height: number } | null {
-  try {
-    // For server-side, we'll need to parse the image buffer
-    // For now, we'll return null and extract dimensions on the client side
-    // or use a library like 'sharp' or 'image-size' if needed
-    return null
-  } catch {
-    return null
-  }
-}
-
-/**
  * Uploads a screenshot to S3 and returns the metadata
  * @param buffer Image buffer
  * @param workspaceId Workspace ID

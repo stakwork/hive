@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { TaskStatus, Priority, SystemAssigneeType } from "@prisma/client";
+import { TaskStatus, Priority } from "@prisma/client";
 import type {
   CreateRoadmapTaskRequest,
   UpdateRoadmapTaskRequest,
@@ -10,7 +10,7 @@ import { validateFeatureAccess, validateRoadmapTaskAccess, calculateNextOrder } 
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
-import { getSystemAssigneeEnum, getSystemAssigneeUser, isSystemAssigneeId } from "@/lib/system-assignees";
+import { getSystemAssigneeUser } from "@/lib/system-assignees";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
