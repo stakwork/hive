@@ -20,17 +20,28 @@ const eslintConfig = [
       "src/generated/prisma/wasm*.js",
     ],
   },
-  // Enforce no unused imports
+  // Enforce no unused imports (warning for gradual adoption)
   {
     rules: {
       "@typescript-eslint/no-unused-vars": [
-        "error",
+        "warn",
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
+  // Relax rules for test files
+  {
+    files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "react-hooks/rules-of-hooks": "off",
+      "react/display-name": "off",
     },
   },
   // Relax rules for generated files if they are ever included
@@ -42,7 +53,6 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-this-alias": "off",
       "@typescript-eslint/no-require-imports": "off",
-      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 ];
