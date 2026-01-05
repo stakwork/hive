@@ -5,6 +5,19 @@ import { resetDatabase, createTestUser, createTestWorkspace, createTestSwarm } f
 import { WorkflowStatus, StakworkRunType } from '@prisma/client';
 import { NextRequest } from 'next/server';
 
+// Mock pods/utils functions
+const mockGetPodFromPool = vi.fn();
+const mockCheckFrontendAvailable = vi.fn();
+
+vi.mock('@/lib/pods/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/pods/utils')>();
+  return {
+    ...actual,
+    getPodFromPool: (...args: unknown[]) => mockGetPodFromPool(...args),
+    checkFrontendAvailable: (...args: unknown[]) => mockCheckFrontendAvailable(...args),
+  };
+});
+
 /**
  * Integration tests for GET /api/cron/pod-repair endpoint
  * 
@@ -74,15 +87,27 @@ describe('GET /api/cron/pod-repair', () => {
     
     // Reset mocks
     vi.clearAllMocks();
-    
+
     // Setup default mocks
     mockStakworkRequest = vi.fn().mockResolvedValue({
       success: true,
       data: { project_id: 123 },
     });
-    
+
     mockGetWorkflowData = vi.fn().mockResolvedValue({ status: 'completed' });
     mockGetPoolWorkspaces = vi.fn().mockResolvedValue({ workspaces: [] });
+
+    // Default pod utils mocks
+    mockGetPodFromPool.mockResolvedValue({
+      portMappings: {
+        '15552': 'https://control.example.com',
+        '3000': 'https://frontend.example.com',
+      },
+    });
+    mockCheckFrontendAvailable.mockResolvedValue({
+      available: true,
+      frontendUrl: 'https://frontend.example.com',
+    });
   });
 
   afterEach(() => {
@@ -383,6 +408,173 @@ describe('GET /api/cron/pod-repair', () => {
       expect(typeof body.repairsTriggered).toBe('number');
       expect(Array.isArray(body.errors)).toBe(true);
       expect(typeof body.timestamp).toBe('string');
+    });
+  });
+
+  describe('Frontend Availability Check', () => {
+    it('should trigger repair when jlist is unavailable', async () => {
+      const user = await createTestUser({ email: 'jlistfail@example.com' });
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'jlist-fail-workspace'
+      });
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmApiKey: 'test-api-key',
+        poolApiKey: 'test-pool-api-key',
+        containerFilesSetUp: true,
+        containerFiles: [{ name: 'test.json', content: 'test' }],
+      });
+
+      // Mock pool with non-running pod
+      mockGetPoolWorkspaces.mockResolvedValueOnce({
+        workspaces: [
+          { subdomain: 'pod-1', state: 'stopped', password: 'test-pass' },
+        ],
+      });
+
+      // Mock global fetch to return null for jlist (simulating jlist unavailable)
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/jlist')) {
+          return Promise.resolve({
+            ok: false,
+            status: 503,
+            text: () => Promise.resolve('Service Unavailable'),
+          });
+        }
+        return originalFetch(url);
+      });
+
+      try {
+        const request = createMockRequest('Bearer test-secret-123');
+        const response = await GET(request);
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.success).toBe(true);
+        // Should trigger repair for staklink-proxy when jlist fails
+        expect(body.repairsTriggered).toBeGreaterThanOrEqual(1);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('should trigger repair when frontend is not available', async () => {
+      const user = await createTestUser({ email: 'frontendfail@example.com' });
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'frontend-fail-workspace'
+      });
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmApiKey: 'test-api-key',
+        poolApiKey: 'test-pool-api-key',
+        containerFilesSetUp: true,
+        containerFiles: [{ name: 'test.json', content: 'test' }],
+      });
+
+      // Mock pool with non-running pod
+      mockGetPoolWorkspaces.mockResolvedValueOnce({
+        workspaces: [
+          { subdomain: 'pod-1', state: 'stopped', password: 'test-pass' },
+        ],
+      });
+
+      // Mock jlist to return healthy processes including staklink-proxy
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/jlist')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([
+              { pid: 1234, name: 'staklink-proxy', status: 'online' },
+              { pid: 5678, name: 'frontend', status: 'online', port: '3000' },
+            ]),
+          });
+        }
+        return originalFetch(url);
+      });
+
+      // Mock frontend check to return unavailable
+      mockCheckFrontendAvailable.mockResolvedValueOnce({
+        available: false,
+        frontendUrl: 'https://frontend.example.com',
+        error: 'Frontend URL not responding',
+      });
+
+      try {
+        const request = createMockRequest('Bearer test-secret-123');
+        const response = await GET(request);
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.success).toBe(true);
+        // Should trigger repair for frontend when it's not available
+        expect(body.repairsTriggered).toBeGreaterThanOrEqual(1);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('should skip repair when frontend is available and no failed processes', async () => {
+      const user = await createTestUser({ email: 'frontendok@example.com' });
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'frontend-ok-workspace'
+      });
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmApiKey: 'test-api-key',
+        poolApiKey: 'test-pool-api-key',
+        containerFilesSetUp: true,
+        containerFiles: [{ name: 'test.json', content: 'test' }],
+      });
+
+      // Mock pool with non-running pod
+      mockGetPoolWorkspaces.mockResolvedValueOnce({
+        workspaces: [
+          { subdomain: 'pod-1', state: 'stopped', password: 'test-pass' },
+        ],
+      });
+
+      // Mock jlist to return healthy processes including staklink-proxy
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/jlist')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([
+              { pid: 1234, name: 'staklink-proxy', status: 'online' },
+              { pid: 5678, name: 'frontend', status: 'online', port: '3000' },
+            ]),
+          });
+        }
+        return originalFetch(url);
+      });
+
+      // Mock frontend check to return available
+      mockCheckFrontendAvailable.mockResolvedValueOnce({
+        available: true,
+        frontendUrl: 'https://frontend.example.com',
+      });
+
+      try {
+        const request = createMockRequest('Bearer test-secret-123');
+        const response = await GET(request);
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.success).toBe(true);
+        // Should not trigger repair when everything is healthy
+        expect(body.skipped.noFailedProcesses).toBeGreaterThanOrEqual(1);
+        expect(body.repairsTriggered).toBe(0);
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
   });
 

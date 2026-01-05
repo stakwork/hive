@@ -2,6 +2,7 @@ import { config } from "@/config/env";
 import { parsePM2Content } from "@/utils/devContainerUtils";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { JlistProcess } from "@/types/pod-repair";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -382,6 +383,62 @@ export async function updatePodRepositories(
 export function checkGooseRunning(processList: ProcessInfo[]): boolean {
   const gooseProcess = processList.find((proc) => proc.name === PROCESS_NAMES.GOOSE);
   return !!gooseProcess;
+}
+
+/**
+ * Result of frontend availability check
+ */
+export interface FrontendCheckResult {
+  available: boolean;
+  frontendUrl: string | null;
+  error?: string;
+}
+
+/**
+ * Check if frontend is available by verifying:
+ * 1. Frontend process exists in jlist
+ * 2. Frontend URL is accessible (HTTP health check)
+ *
+ * Uses same URL resolution logic as claimPodAndGetFrontend with fallbacks.
+ */
+export async function checkFrontendAvailable(
+  jlist: JlistProcess[],
+  portMappings: Record<string, string>,
+  controlPortUrl: string
+): Promise<FrontendCheckResult> {
+  // 1. Find frontend process in jlist
+  const frontendProcess = jlist.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
+
+  if (!frontendProcess) {
+    return { available: false, frontendUrl: null, error: "Frontend process not found in jlist" };
+  }
+
+  // 2. Resolve frontend URL using same fallback logic as claimPodAndGetFrontend
+  let frontendUrl: string | null = null;
+
+  if (frontendProcess.port && portMappings[frontendProcess.port]) {
+    frontendUrl = portMappings[frontendProcess.port];
+  } else if (portMappings[POD_PORTS.FRONTEND_FALLBACK]) {
+    frontendUrl = portMappings[POD_PORTS.FRONTEND_FALLBACK];
+  } else if (controlPortUrl) {
+    const fallbackPort = frontendProcess.port || POD_PORTS.FRONTEND_FALLBACK;
+    frontendUrl = controlPortUrl.replace(POD_PORTS.CONTROL, fallbackPort);
+  }
+
+  if (!frontendUrl) {
+    return { available: false, frontendUrl: null, error: "Could not resolve frontend URL" };
+  }
+
+  // 3. HTTP health check to frontend (5s timeout)
+  try {
+    const response = await fetch(frontendUrl, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+    });
+    return { available: response.ok, frontendUrl };
+  } catch {
+    return { available: false, frontendUrl, error: "Frontend URL not responding" };
+  }
 }
 
 /**

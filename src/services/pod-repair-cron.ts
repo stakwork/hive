@@ -11,11 +11,20 @@ import {
   STAKLINK_PROXY_PROCESS,
 } from "@/types/pod-repair";
 import { config } from "@/config/env";
+import { EncryptionService } from "@/lib/encryption";
+import {
+  getPodFromPool,
+  checkFrontendAvailable,
+  POD_PORTS,
+  PROCESS_NAMES,
+} from "@/lib/pods/utils";
 
 const MAX_REPAIR_ATTEMPTS = parseInt(
   process.env.POD_REPAIR_MAX_ATTEMPTS || "10",
   10
 );
+
+const encryptionService = EncryptionService.getInstance();
 
 /**
  * Get workspaces eligible for pod repair check:
@@ -365,9 +374,26 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           continue;
         }
 
-        // Fetch jlist
+        // Decrypt pool API key for direct API calls
+        const decryptedPoolApiKey = encryptionService.decryptField(
+          "poolApiKey",
+          workspace.swarm.poolApiKey
+        );
+
+        // Fetch jlist - if it fails, trigger repair for staklink-proxy
         const jlist = await fetchPodJlist(pod.subdomain);
         if (!jlist) {
+          console.log(
+            `[PodRepairCron] jlist not available for ${workspace.slug}/${pod.subdomain} - triggering staklink-proxy repair`
+          );
+          await triggerPodRepair(
+            workspace.id,
+            workspace.slug,
+            pod.subdomain,
+            pod.password || "",
+            [STAKLINK_PROXY_PROCESS]
+          );
+          result.repairsTriggered++;
           continue;
         }
 
@@ -379,21 +405,81 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         // Get failed processes
         const failedProcesses = getFailedProcesses(jlist);
 
-        // If no failed processes AND staklink-proxy exists, skip
-        if (failedProcesses.length === 0 && staklinkExists) {
+        // Prioritize staklink-proxy: if it's failed OR missing, repair that first
+        const staklinkFailed = failedProcesses.includes(STAKLINK_PROXY_PROCESS);
+        const staklinkNeedsRepair = staklinkFailed || !staklinkExists;
+
+        if (staklinkNeedsRepair) {
+          console.log(
+            `[PodRepairCron] staklink-proxy needs repair for ${workspace.slug}/${pod.subdomain}`
+          );
+          await triggerPodRepair(
+            workspace.id,
+            workspace.slug,
+            pod.subdomain,
+            pod.password || "",
+            [STAKLINK_PROXY_PROCESS]
+          );
+          result.repairsTriggered++;
+          continue;
+        }
+
+        // Get full pod data with portMappings for frontend check
+        let podWithPortMappings;
+        try {
+          podWithPortMappings = await getPodFromPool(
+            pod.subdomain,
+            decryptedPoolApiKey
+          );
+        } catch (error) {
+          console.warn(
+            `[PodRepairCron] Could not get pod details for ${pod.subdomain}:`,
+            error
+          );
+          // Fall through to check failed processes without frontend check
+          podWithPortMappings = null;
+        }
+
+        // Check frontend availability if we have portMappings
+        let frontendNeedsRepair = false;
+        if (podWithPortMappings?.portMappings) {
+          const controlPortUrl = podWithPortMappings.portMappings[POD_PORTS.CONTROL];
+          if (controlPortUrl) {
+            const frontendCheck = await checkFrontendAvailable(
+              jlist,
+              podWithPortMappings.portMappings,
+              controlPortUrl
+            );
+
+            if (!frontendCheck.available) {
+              console.log(
+                `[PodRepairCron] Frontend not available for ${workspace.slug}/${pod.subdomain}: ${frontendCheck.error}`
+              );
+              frontendNeedsRepair = true;
+            }
+          }
+        }
+
+        // Build list of services to repair
+        const servicesToRepair: string[] = [];
+        if (frontendNeedsRepair) {
+          servicesToRepair.push(PROCESS_NAMES.FRONTEND);
+        }
+        // Add other failed processes (excluding frontend if already added)
+        for (const proc of failedProcesses) {
+          if (!servicesToRepair.includes(proc)) {
+            servicesToRepair.push(proc);
+          }
+        }
+
+        // If no services need repair, skip
+        if (servicesToRepair.length === 0) {
           console.log(
             `[PodRepairCron] No failed processes for ${workspace.slug}`
           );
           result.skipped.noFailedProcesses++;
           continue;
         }
-
-        // Prioritize staklink-proxy: if it's failed OR missing, only repair that first
-        const staklinkFailed = failedProcesses.includes(STAKLINK_PROXY_PROCESS);
-        const staklinkNeedsRepair = staklinkFailed || !staklinkExists;
-        const servicesToRepair = staklinkNeedsRepair
-          ? [STAKLINK_PROXY_PROCESS]
-          : failedProcesses;
 
         console.log(
           `[PodRepairCron] Triggering repair for ${workspace.slug}/${pod.subdomain} - services: ${servicesToRepair.join(", ")}`
