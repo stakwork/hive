@@ -6,7 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ./src --max-warnings=212",
+    "lint": "eslint ./src --max-warnings=204",
     "setup": "node scripts/setup-env.js",
     "test": "npm run test:unit && npm run test:integration",
     "test:watch": "vitest --watch",
