@@ -1,5 +1,5 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse } from "@/types";
+import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse, StaklinkStartResponse } from "@/types";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
 import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";
@@ -28,6 +28,7 @@ interface IPoolManagerService {
   ) => Promise<void>;
   getPoolStatus: (poolId: string, poolApiKey: string) => Promise<PoolStatusResponse>;
   getPoolWorkspaces: (poolId: string, poolApiKey: string) => Promise<PoolWorkspacesResponse>;
+  startStaklink: (poolId: string, podId: string, poolApiKey: string) => Promise<StaklinkStartResponse>;
 }
 
 export class PoolManagerService extends BaseServiceClass implements IPoolManagerService {
@@ -158,6 +159,34 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
           password: vm.password,
         })),
       };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("fetch")) {
+        throw new Error("Unable to connect to pool service");
+      }
+      throw error;
+    }
+  }
+
+  async startStaklink(poolId: string, podId: string, poolApiKey: string): Promise<StaklinkStartResponse> {
+    try {
+      const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
+
+      const response = await fetch(
+        `${this.config.baseURL}/pools/${poolId}/workspaces/${podId}/staklink-start`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${decryptedApiKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to start staklink: ${response.status}`);
+      }
+
+      return response.json();
     } catch (error) {
       if (error instanceof Error && error.message.includes("fetch")) {
         throw new Error("Unable to connect to pool service");
