@@ -19,8 +19,7 @@ import { TaskStatus, Prisma } from "@prisma/client";
 export function sanitizeTask<T extends { agentPassword?: string | null; agentUrl?: string | null }>(
   task: T,
 ): Omit<T, "agentPassword" | "agentUrl"> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { agentPassword, agentUrl, ...sanitized } = task;
+  const { agentPassword: _, agentUrl: __, ...sanitized } = task;
   return sanitized;
 }
 

@@ -336,8 +336,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Return task with hasActionArtifact flag and PR artifact, removing chatMessages array to keep response clean
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { chatMessages, ...taskWithoutMessages } = task;
+        const { chatMessages: _, ...taskWithoutMessages } = task;
         return {
           ...taskWithoutMessages,
           hasActionArtifact,

@@ -29,22 +29,21 @@ export function ServerParticles({ position, active, intensity }: ServerParticles
         return temp;
     }, []);
 
-    useFrame((state) => {
+    useFrame(() => {
         if (!mesh.current || !active) return;
 
         particles.forEach((particle, i) => {
             // Calculate particle movement
-            let { t, factor, speed, xFactor, yFactor, zFactor } = particle;
-            t = particle.t += speed / 2;
+            let t = particle.t += particle.speed / 2;
+            const s = Math.cos(t);
             const a = Math.cos(t) + Math.sin(t * 1) / 10;
             const b = Math.sin(t) + Math.cos(t * 2) / 10;
-            const s = Math.cos(t);
 
             // Update position relative to server center
             dummy.position.set(
-                (particle.mx / 10) * a + xFactor + Math.cos((t / 10) * factor) + (Math.sin(t * 1) * factor) / 10,
-                (particle.my / 10) * b + yFactor + Math.sin((t / 10) * factor) + (Math.cos(t * 2) * factor) / 10,
-                (particle.my / 10) * b + zFactor + Math.cos((t / 10) * factor) + (Math.sin(t * 3) * factor) / 10
+                (particle.mx / 10) * a + particle.xFactor + Math.cos((t / 10) * particle.factor) + (Math.sin(t * 1) * particle.factor) / 10,
+                (particle.my / 10) * b + particle.yFactor + Math.sin((t / 10) * particle.factor) + (Math.cos(t * 2) * particle.factor) / 10,
+                (particle.my / 10) * b + particle.zFactor + Math.cos((t / 10) * particle.factor) + (Math.sin(t * 3) * particle.factor) / 10
             );
 
             // Scale based on intensity
