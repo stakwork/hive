@@ -29,8 +29,7 @@ export class S3MockWrapper {
    */
   async generatePresignedUploadUrl(
     key: string,
-    contentType: string,
-    expiresIn: number = 300 // 5 minutes default
+    contentType: string
   ): Promise<string> {
     return s3MockState.generateMockPresignedUploadUrl(key, contentType);
   }
@@ -38,10 +37,7 @@ export class S3MockWrapper {
   /**
    * Generate a mock presigned download URL
    */
-  async generatePresignedDownloadUrl(
-    key: string,
-    expiresIn: number = 3600 // 1 hour default
-  ): Promise<string> {
+  async generatePresignedDownloadUrl(key: string): Promise<string> {
     return s3MockState.generateMockPresignedDownloadUrl(key);
   }
 
@@ -50,8 +46,7 @@ export class S3MockWrapper {
    */
   async generatePresignedDownloadUrlForBucket(
     bucket: string,
-    key: string,
-    expiresIn: number = 3600 // 1 hour default
+    key: string
   ): Promise<string> {
     // In mock mode, we ignore the bucket parameter and use the same mock logic
     return s3MockState.generateMockPresignedDownloadUrl(key);
