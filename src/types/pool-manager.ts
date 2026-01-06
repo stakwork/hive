@@ -1,5 +1,6 @@
 // Pool Manager-specific types and interfaces
 
+import { z } from "zod";
 import { EnvironmentVariable } from "./wizard";
 
 //Example Payload
@@ -176,3 +177,19 @@ export interface StaklinkStartResponse {
   output?: string;
   pod_name?: string;
 }
+
+// Pod Launch Failure Webhook types
+
+export interface PodLaunchFailureWebhookPayload {
+  poolName: string; // Maps to Swarm.id (pool_name in Pool Manager)
+  podId: string; // Pod subdomain
+  containerLogs: string; // stdout/stderr from failed container
+  timestamp?: string; // ISO timestamp (optional)
+}
+
+export const PodLaunchFailureWebhookSchema = z.object({
+  poolName: z.string().min(1),
+  podId: z.string().min(1),
+  containerLogs: z.string(),
+  timestamp: z.string().optional(),
+});

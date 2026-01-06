@@ -911,6 +911,7 @@ enum StakworkRunType {
   USER_STORIES
   REQUIREMENTS
   POD_REPAIR
+  POD_LAUNCH_FAILURE
 }
 
 enum StakworkRunDecision {
