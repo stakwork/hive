@@ -44,7 +44,7 @@ export function VMConfigSection() {
       } else {
         setErrorMessage(result.message || "Unable to fetch pool data right now");
       }
-    } catch (error) {
+    } catch {
       setErrorMessage("Unable to fetch pool data right now");
     } finally {
       setLoading(false);

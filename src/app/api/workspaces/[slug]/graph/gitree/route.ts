@@ -40,8 +40,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const limit = searchParams.get("limit") || "100";
     const limitMode = searchParams.get("limit_mode") || "per_type";
     const concise = searchParams.get("concise") === "true";
-    const typeLimits = searchParams.get("per_type_limits") || "Feature:10,File:100,Function:50,Endpoint:25";
-
 
     // Get swarm for this workspace
     const swarm = await db.swarm.findUnique({

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { repo_url, username, pat, callback_url, use_lsp = false } = body;
+    const { repo_url, callback_url } = body;
 
     if (!repo_url) {
       return NextResponse.json(
@@ -37,9 +37,9 @@ export async function POST(request: NextRequest) {
     // Create sync request (reuse ingest state machine)
     const requestId = stakgraphState.createIngestRequest(
       repo_url,
-      username || 'mock-user',
+      body.username || 'mock-user',
       callback_url,
-      use_lsp
+      body.use_lsp || false
     );
 
     console.log(`[StakgraphMock] Started sync for ${repo_url} (request: ${requestId})`);
@@ -50,8 +50,7 @@ export async function POST(request: NextRequest) {
       message: "Sync started",
     });
 
-  } catch (error) {
-    console.error("[StakgraphMock] Sync error:", error);
+  } catch {
     return NextResponse.json(
       { error: "Failed to start sync" },
       { status: 500 }

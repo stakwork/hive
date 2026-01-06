@@ -11,7 +11,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Kbd } from "@/components/ui/kbd";
 import {
   Circle,
   CheckCircle,
@@ -168,8 +167,6 @@ export function GlobalSearch() {
   );
 
   const showEmpty = query.length >= 2 && !loading && !hasResults;
-
-  const isMac = typeof window !== "undefined" && navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   return (
     <CommandDialog open={open} onOpenChange={handleOpenChange}>

@@ -41,7 +41,7 @@ export function TestCoverageStats() {
       }
 
       setData(result.data);
-    } catch (error) {
+    } catch {
       setHasError(true);
     } finally {
       setIsLoading(false);
