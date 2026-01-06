@@ -98,7 +98,7 @@ export const CameraController = ({
     }
 
     // Height variation for more dynamic movement
-    const heightVariation = Math.sin(orbitTime * cameraConfig.heightVariationSpeed) * cameraConfig.heightVariationAmplitude;
+    const heightVariation = 0;
 
     // Orbital movement
     const angle = orbitTime * cameraConfig.orbitSpeed;
