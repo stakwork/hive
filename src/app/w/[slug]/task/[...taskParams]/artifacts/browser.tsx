@@ -36,7 +36,6 @@ export function BrowserArtifactPanel({
   onUserJourneySave,
   externalTestCode,
   externalTestTitle,
-  isMobile = false,
   onClose,
 }: {
   artifacts: Artifact[];
@@ -157,7 +156,6 @@ export function BrowserArtifactPanel({
     debugMode,
     isSubmittingDebug,
     setDebugMode,
-    handleDebugElement,
     handleDebugSelection: handleDebugSelectionHook,
   } = useDebugSelection({ onDebugMessage, iframeRef });
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
