@@ -35,11 +35,6 @@ interface SynchronizedGraphComponentProps {
   onTimeMarkerClick?: (time: number) => void;
 }
 
-interface NodeWithTimestamp extends Node {
-  start?: number;
-  neighbourHood?: string;
-}
-
 interface LinkWithTimestamp extends Link {
   properties?: {
     start?: number;
@@ -97,16 +92,13 @@ export const SynchronizedGraphComponent = ({
 
 const SynchronizedGraphComponentInner = ({
   endpoint: propEndpoint,
-  title = "Synchronized Knowledge Graph",
   className,
   height = "h-full",
   width = "w-full",
-  currentTime = 0,
-  onTimeMarkerClick
+  currentTime = 0
 }: SynchronizedGraphComponentProps) => {
   const { id: workspaceId } = useWorkspace();
   const [nodesLoading, setNodesLoading] = useState(false);
-  const [markers, setMarkers] = useState<NodeWithTimestamp[]>([]);
   const [activeEdge, setActiveEdge] = useState<LinkWithTimestamp | null>(null);
 
   const requestRef = useRef<number | null>(null);
@@ -120,28 +112,6 @@ const SynchronizedGraphComponentInner = ({
 
   // Graph filter state
   const activeFilterTab = useGraphStoreStandalone((s) => s.activeFilterTab);
-  const setActiveFilterTab = useGraphStoreStandalone((s) => s.setActiveFilterTab);
-
-  // Calculate markers from data
-  const calculateMarkers = useCallback((data: { nodes: Node[], edges: Link[] }): NodeWithTimestamp[] => {
-    const edgesWithStart = data.edges
-      .filter((e) => e?.properties?.start)
-      .map((edge) => ({
-        source: edge.source,
-        target: edge.target,
-        start: edge.properties!.start as number,
-      }));
-
-    const markers = data.nodes
-      .filter((node) => data.edges.some((ed) => ed.source === node.ref_id || ed.target === node.ref_id))
-      .map((node) => {
-        const matchingEdge = edgesWithStart.find((ed) => node.ref_id === ed.source || node.ref_id === ed.target);
-        return { ...node, start: matchingEdge?.start || 0 } as NodeWithTimestamp;
-      })
-      .filter((node) => node && node.node_type !== 'Clip' && node.node_type !== 'Episode' && node.node_type !== 'Call' && node.node_type !== 'Show');
-
-    return markers;
-  }, []);
 
   // Handle time-based node visibility updates
   useEffect(() => {
@@ -247,7 +217,7 @@ const SynchronizedGraphComponentInner = ({
     fetchSchema();
   }, [workspaceId, setSchemas]);
 
-  // Load nodes and calculate markers
+  // Load nodes
   useEffect(() => {
     const fetchNodes = async () => {
       resetData();
@@ -277,13 +247,6 @@ const SynchronizedGraphComponentInner = ({
             edges: data.data.edges || []
           };
 
-          // Calculate and set markers
-          const computedMarkers = calculateMarkers({
-            nodes: nodesWithPosition,
-            edges: data.data.edges || []
-          });
-          setMarkers(computedMarkers);
-
           // Add initial nodes to store
           addNewNode({
             nodes: nodesWithPosition,
@@ -298,7 +261,7 @@ const SynchronizedGraphComponentInner = ({
     };
 
     fetchNodes();
-  }, [workspaceId, addNewNode, resetData, propEndpoint, calculateMarkers]);
+  }, [workspaceId, addNewNode, resetData, propEndpoint]);
 
   // Fetch data based on active filter tab
   const fetchFilteredData = useCallback(async (tab: FilterTab) => {
@@ -393,17 +356,12 @@ const SynchronizedGraphComponentInner = ({
     }
   }, [workspaceId, resetData, addNewNode, propEndpoint]);
 
-  // Handle filter tab changes
-  const handleTabChange = useCallback((tab: FilterTab) => {
-    setActiveFilterTab(tab);
-    fetchFilteredData(tab);
-  }, [setActiveFilterTab, fetchFilteredData]);
-
   // Load initial data when filter tab changes
   useEffect(() => {
     if (activeFilterTab) {
       fetchFilteredData(activeFilterTab);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
