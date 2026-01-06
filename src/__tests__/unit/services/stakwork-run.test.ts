@@ -10,6 +10,7 @@ import { stakworkService } from "@/lib/service-factory";
 import { pusherServer } from "@/lib/pusher";
 import { FieldEncryptionService } from "@/lib/encryption/field-encryption";
 import { StakworkRunType, StakworkRunDecision, WorkflowStatus } from "@prisma/client";
+import { config } from "@/config/env";
 
 vi.mock("@/lib/db");
 vi.mock("@/lib/service-factory");
@@ -24,15 +25,30 @@ vi.mock("@/lib/pusher", () => ({
   },
 }));
 vi.mock("@/lib/ai/utils", () => ({
-  buildFeatureContext: vi.fn((feature: any) => ({
-    title: feature.title,
-    brief: feature.brief || "",
-    workspaceDesc: feature.workspace?.description || "",
-    personasText: "",
-    userStoriesText: feature.userStories?.map((us: any) => us.title).join("\n") || "",
-    requirementsText: "",
-    architectureText: feature.architecture || "",
-  })),
+  buildFeatureContext: vi.fn((feature: any) => {
+    // Extract existing tasks from all phases
+    const existingTasks = feature.phases?.flatMap((phase: any) => phase.tasks || []) || [];
+    const tasksText = existingTasks.length > 0
+      ? `\n\nExisting Tasks:\n${existingTasks.map((t: any) => {
+          let taskLine = `- ${t.title} (${t.status}, ${t.priority})`;
+          if (t.description) {
+            taskLine += `\n  Description: ${t.description}`;
+          }
+          return taskLine;
+        }).join('\n')}`
+      : null;
+
+    return {
+      title: feature.title,
+      brief: feature.brief || "",
+      workspaceDesc: feature.workspace?.description || "",
+      personasText: "",
+      userStoriesText: feature.userStories?.map((us: any) => us.title).join("\n") || "",
+      requirementsText: "",
+      architectureText: feature.architecture || "",
+      tasksText,
+    };
+  }),
 }));
 
 vi.mock("@/lib/encryption", () => ({
@@ -476,6 +492,635 @@ describe("Stakwork Run Service", () => {
       expect(result.type).toBe(StakworkRunType.REQUIREMENTS);
       expect(result.featureId).toBe("feature-1");
       expect(result.projectId).toBe(12345);
+    });
+
+    test("should create TASK_GENERATION run with feature context including existing tasks", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      const mockFeature = {
+        id: "feature-1",
+        title: "Test Feature",
+        brief: "Test brief",
+        userStories: [{ title: "User story 1" }],
+        workspace: { description: "Test workspace" },
+        phases: [
+          {
+            tasks: [
+              { title: "Task 1", description: "Desc 1", status: "TODO", priority: "HIGH" },
+              { title: "Task 2", description: null, status: "IN_PROGRESS", priority: "MEDIUM" },
+            ],
+          },
+        ],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.TASK_GENERATION,
+        workspaceId: "ws-1",
+        featureId: "feature-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(mockFeature);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        success: true,
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const result = await createStakworkRun(
+        {
+          type: StakworkRunType.TASK_GENERATION,
+          workspaceId: "ws-1",
+          featureId: "feature-1",
+        },
+        "user-1"
+      );
+
+      expect(result.type).toBe(StakworkRunType.TASK_GENERATION);
+      expect(result.featureId).toBe("feature-1");
+      expect(result.projectId).toBe(12345);
+
+      // Verify feature context includes existing tasks
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  existingTasks: expect.stringContaining("Task 1"),
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should throw error when workspace is deleted", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: true,
+        members: [{ role: "OWNER" }],
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+
+      await expect(
+        createStakworkRun(
+          {
+            type: StakworkRunType.ARCHITECTURE,
+            workspaceId: "ws-1",
+            featureId: null,
+          },
+          "user-1"
+        )
+      ).rejects.toThrow("Workspace not found");
+    });
+
+    test("should throw error when user is not owner or member", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "different-user",
+        deleted: false,
+        members: [], // User is not a member
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+
+      await expect(
+        createStakworkRun(
+          {
+            type: StakworkRunType.ARCHITECTURE,
+            workspaceId: "ws-1",
+            featureId: null,
+          },
+          "user-1"
+        )
+      ).rejects.toThrow("Access denied");
+    });
+
+    test("should throw error when feature belongs to different workspace", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      // Feature belongs to different workspace
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.feature.findFirst = vi.fn().mockResolvedValue(null); // Not found in this workspace
+
+      await expect(
+        createStakworkRun(
+          {
+            type: StakworkRunType.ARCHITECTURE,
+            workspaceId: "ws-1",
+            featureId: "feature-from-different-workspace",
+          },
+          "user-1"
+        )
+      ).rejects.toThrow("Feature not found");
+    });
+
+    test("should throw error when STAKWORK_AI_GENERATION_WORKFLOW_ID is not configured", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValue({});
+
+      // Temporarily clear the config
+      const originalConfig = config.STAKWORK_AI_GENERATION_WORKFLOW_ID;
+      (config as any).STAKWORK_AI_GENERATION_WORKFLOW_ID = undefined;
+
+      await expect(
+        createStakworkRun(
+          {
+            type: StakworkRunType.ARCHITECTURE,
+            workspaceId: "ws-1",
+            featureId: null,
+          },
+          "user-1"
+        )
+      ).rejects.toThrow("STAKWORK_AI_GENERATION_WORKFLOW_ID not configured");
+
+      // Restore config
+      (config as any).STAKWORK_AI_GENERATION_WORKFLOW_ID = originalConfig;
+
+      // Should mark run as FAILED
+      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+        where: { id: "run-1" },
+        data: { status: WorkflowStatus.FAILED },
+      });
+    });
+
+    test("should throw error when Stakwork API returns response without projectId", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValue({});
+
+      // Mock response without project_id
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: {}, // No project_id
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await expect(
+        createStakworkRun(
+          {
+            type: StakworkRunType.ARCHITECTURE,
+            workspaceId: "ws-1",
+            featureId: null,
+          },
+          "user-1"
+        )
+      ).rejects.toThrow("Failed to get project ID from Stakwork");
+
+      // Should mark run as FAILED
+      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+        where: { id: "run-1" },
+        data: { status: WorkflowStatus.FAILED },
+      });
+    });
+
+    test("should correctly decrypt sensitive fields before sending to Stakwork", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: {
+          swarmUrl: "https://swarm.example.com",
+          swarmApiKey: "encrypted-swarm-key",
+          swarmSecretAlias: "secret-alias",
+          poolName: "test-pool",
+          id: "swarm-1",
+        },
+        sourceControlOrg: {
+          tokens: [{ token: "encrypted-pat" }],
+        },
+        repositories: [{ repositoryUrl: "https://github.com/test/repo" }],
+      };
+
+      const mockUser = {
+        id: "user-1",
+        githubAuth: { githubUsername: "testuser" },
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue(mockUser);
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: null,
+        },
+        "user-1"
+      );
+
+      // Verify decrypted values are in payload
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  pat: "decrypted-access_token",
+                  swarmApiKey: "decrypted-swarmApiKey",
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should include custom params override in Stakwork payload", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const customParams = {
+        customVar1: "value1",
+        customVar2: 42,
+        customVar3: true,
+      };
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: null,
+          params: customParams,
+        },
+        "user-1"
+      );
+
+      // Verify custom params are in payload
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining(customParams),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should include conversation history when provided for FEEDBACK flows", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      const conversationHistory = [
+        { role: "assistant" as const, content: "Here's the initial architecture..." },
+        { role: "user" as const, content: "Please add more detail about the database schema" },
+        { role: "assistant" as const, content: "Here's the updated architecture with database details..." },
+      ];
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: null,
+          history: conversationHistory,
+        },
+        "user-1"
+      );
+
+      // Verify history is in payload
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          workflow_params: expect.objectContaining({
+            set_var: expect.objectContaining({
+              attributes: expect.objectContaining({
+                vars: expect.objectContaining({
+                  history: conversationHistory,
+                }),
+              }),
+            }),
+          }),
+        })
+      );
+    });
+
+    test("should construct webhookUrl with run.id for Stakwork routing", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-123-unique",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: null,
+        },
+        "user-1"
+      );
+
+      // Verify webhook_url in Stakwork payload contains run.id
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          webhook_url: expect.stringContaining("run-123-unique"),
+        })
+      );
+
+      // Verify webhookUrl update contains correct query params
+      expect(db.stakworkRun.update).toHaveBeenNthCalledWith(1, {
+        where: { id: "run-123-unique" },
+        data: expect.objectContaining({
+          webhookUrl: expect.stringContaining("workspace_id=ws-1"),
+        }),
+      });
+    });
+
+    test("should verify Stakwork payload structure matches expected format", async () => {
+      const mockWorkspace = {
+        id: "ws-1",
+        ownerId: "user-1",
+        deleted: false,
+        members: [{ role: "OWNER" }],
+        swarm: null,
+        sourceControlOrg: null,
+        repositories: [],
+      };
+
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        workspaceId: "ws-1",
+        status: WorkflowStatus.PENDING,
+        webhookUrl: "",
+      };
+
+      const mockUpdatedRun = {
+        ...mockRun,
+        projectId: 12345,
+        status: WorkflowStatus.IN_PROGRESS,
+      };
+
+      mockedDb.workspace.findUnique = vi.fn().mockResolvedValue(mockWorkspace);
+      mockedDb.user.findUnique = vi.fn().mockResolvedValue({ id: "user-1" });
+      mockedDb.stakworkRun.create = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn()
+        .mockResolvedValueOnce({ ...mockRun, webhookUrl: "http://test.com/webhook" })
+        .mockResolvedValueOnce(mockUpdatedRun);
+
+      const mockStakworkRequest = vi.fn().mockResolvedValue({
+        data: { project_id: 12345 },
+      });
+      mockedStakworkService.mockReturnValue({
+        stakworkRequest: mockStakworkRequest,
+      } as any);
+
+      await createStakworkRun(
+        {
+          type: StakworkRunType.ARCHITECTURE,
+          workspaceId: "ws-1",
+          featureId: null,
+        },
+        "user-1"
+      );
+
+      // Verify complete payload structure
+      expect(mockStakworkRequest).toHaveBeenCalledWith(
+        "/projects",
+        expect.objectContaining({
+          name: expect.stringMatching(/^ai-gen-architecture-\d+$/),
+          workflow_id: 123,
+          webhook_url: expect.stringContaining("/api/stakwork/webhook"),
+          workflow_params: {
+            set_var: {
+              attributes: {
+                vars: expect.objectContaining({
+                  runId: "run-1",
+                  type: StakworkRunType.ARCHITECTURE,
+                  workspaceId: "ws-1",
+                  featureId: null,
+                  webhookUrl: expect.stringContaining("/api/webhook/stakwork/response"),
+                }),
+              },
+            },
+          },
+        })
+      );
     });
   });
 
