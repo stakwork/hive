@@ -1,6 +1,6 @@
-import { authOptions } from "@/lib/auth/nextauth";
+import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { parseEnv } from "@/lib/env-parser";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
@@ -9,6 +9,10 @@ import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUt
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest } from "next/server";
+import { poolManagerService } from "@/lib/service-factory";
+import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
+import { config } from "@/config/env";
+import type { EnvironmentVariable, ServiceConfig } from "@/types";
 
 export const runtime = "nodejs";
 
@@ -256,6 +260,169 @@ export async function GET(request: NextRequest) {
                   pollDuration: Date.now() - pollStartTime,
                   finalServiceCount: services?.length || 0,
                 });
+
+                // Automatically create pool after successful services setup
+                try {
+                  console.log("[agent-stream] Starting automatic pool creation", {
+                    ...logContext,
+                    swarmId: swarm.id,
+                  });
+
+                  sendEvent({
+                    status: "CREATING_POOL",
+                    message: "Creating development environment..."
+                  });
+
+                  // Set poolState to STARTED before attempting creation
+                  await saveOrUpdateSwarm({
+                    workspaceId: swarm.workspaceId,
+                    poolState: 'STARTED',
+                  });
+
+                  // Retrieve or generate pool API key
+                  let poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+                  if (!poolApiKey) {
+                    console.log("[agent-stream] No pool API key found, generating new one", logContext);
+                    await updateSwarmPoolApiKeyFor(swarm.id);
+                    poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
+                  }
+
+                  if (!poolApiKey) {
+                    throw new Error("Failed to retrieve or generate pool API key");
+                  }
+
+                  // Get GitHub credentials
+                  const github_pat = await getGithubUsernameAndPAT(session.user.id, swarm.workspace.slug);
+                  console.log("[agent-stream] Retrieved GitHub credentials", {
+                    ...logContext,
+                    hasUsername: !!github_pat?.username,
+                    hasPAT: !!github_pat?.token,
+                  });
+
+                  // Get repository
+                  const repository = await db.repository.findFirst({
+                    where: { workspaceId: swarm.workspaceId },
+                  });
+
+                  if (!repository) {
+                    throw new Error("No repository found for workspace");
+                  }
+
+                  console.log("[agent-stream] Found repository", {
+                    ...logContext,
+                    repositoryUrl: repository.repositoryUrl,
+                    branch: repository.branch,
+                  });
+
+                  // Decrypt environment variables from swarm
+                  let decryptedEnvVars: EnvironmentVariable[] = [];
+                  if (swarm.environmentVariables) {
+                    try {
+                      // Parse swarm.environmentVariables (handle both string and array)
+                      let envVarsArray: Array<{ name: string; value: unknown }>;
+                      
+                      if (typeof swarm.environmentVariables === 'string') {
+                        const parsed = JSON.parse(swarm.environmentVariables);
+                        envVarsArray = Array.isArray(parsed) ? parsed : [];
+                      } else if (Array.isArray(swarm.environmentVariables)) {
+                        envVarsArray = swarm.environmentVariables as Array<{ name: string; value: unknown }>;
+                      } else {
+                        envVarsArray = [];
+                      }
+
+                      // Use decryptEnvVars to decrypt values
+                      const decrypted = decryptEnvVars(envVarsArray);
+                      
+                      // Map to EnvironmentVariable[] format
+                      decryptedEnvVars = decrypted.map(({ name, value }) => ({
+                        name,
+                        value: String(value),
+                      }));
+
+                      console.log("[agent-stream] Decrypted environment variables", {
+                        ...logContext,
+                        envVarCount: decryptedEnvVars.length,
+                      });
+                    } catch (error) {
+                      console.error("[agent-stream] Failed to decrypt environment variables", {
+                        ...logContext,
+                        error: error instanceof Error ? error.message : String(error),
+                      });
+                      // Continue with empty env vars rather than failing
+                      decryptedEnvVars = [];
+                    }
+                  }
+
+                  // Initialize poolManagerService and update API key
+                  const poolManager = poolManagerService();
+                  const decryptedPoolApiKey = encryptionService.decryptField('poolApiKey', poolApiKey);
+                  poolManager.updateApiKey(decryptedPoolApiKey);
+
+                  console.log("[agent-stream] Calling poolManager.createPool", {
+                    ...logContext,
+                    poolName: swarm.id,
+                    minimumVms: 2,
+                    repositoryUrl: repository.repositoryUrl,
+                    branch: repository.branch,
+                    envVarCount: decryptedEnvVars.length,
+                    containerFileCount: Object.keys(containerFiles).length,
+                  });
+
+                  // Call createPool with parameters
+                  await poolManager.createPool({
+                    pool_name: swarm.id,
+                    minimum_vms: 2,
+                    repo_name: repository.repositoryUrl || '',
+                    branch_name: repository.branch || '',
+                    github_pat: github_pat?.token || '',
+                    github_username: github_pat?.username || '',
+                    env_vars: decryptedEnvVars,
+                    container_files: containerFiles,
+                  });
+
+                  // On success: update poolState to COMPLETE
+                  await saveOrUpdateSwarm({
+                    workspaceId: swarm.workspaceId,
+                    poolName: swarm.id,
+                    poolState: 'COMPLETE',
+                  });
+
+                  console.log("[agent-stream] Pool created successfully", {
+                    ...logContext,
+                    poolName: swarm.id,
+                  });
+
+                  sendEvent({
+                    status: "POOL_CREATED",
+                    message: "Development environment created successfully!"
+                  });
+
+                } catch (poolError) {
+                  // On failure: set poolState to FAILED and log error
+                  console.error("[agent-stream] Failed to create pool automatically", {
+                    ...logContext,
+                    error: poolError instanceof Error ? poolError.message : String(poolError),
+                    errorStack: poolError instanceof Error ? poolError.stack : undefined,
+                  });
+
+                  try {
+                    await saveOrUpdateSwarm({
+                      workspaceId: swarm.workspaceId,
+                      poolState: 'FAILED',
+                    });
+                  } catch (updateError) {
+                    console.error("[agent-stream] Failed to update poolState to FAILED", {
+                      ...logContext,
+                      error: updateError instanceof Error ? updateError.message : String(updateError),
+                    });
+                  }
+
+                  // Send error event but don't break the stream
+                  sendEvent({
+                    status: "POOL_CREATION_FAILED",
+                    message: `Pool creation failed: ${poolError instanceof Error ? poolError.message : 'Unknown error'}. You can manually create the pool from the Services modal.`
+                  });
+                }
 
                 // Send success event
                 sendEvent({

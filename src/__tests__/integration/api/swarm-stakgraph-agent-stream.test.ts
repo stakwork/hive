@@ -324,7 +324,7 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
       expect(events.length).toBeGreaterThanOrEqual(1);
       expect(events[0].event).toBe("message");
       expect(events[0].data.status).toBe("STARTING");
-    });
+    }, 10000); // Increased timeout for pool creation
   });
 
   describe("SSE Streaming Lifecycle", () => {
@@ -674,7 +674,7 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalled();
       const saveCallArgs = mockSaveOrUpdateSwarm.mock.calls[0][0];
       expect(saveCallArgs.services).toEqual(mockServices);
-    });
+    }, 10000); // Increased timeout for pool creation
 
     it("should parse environment variables from .env file", async () => {
       const mockEnvContent = `
@@ -959,7 +959,7 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
       // Verify it can be decrypted
       const decryptedKey = enc.decryptField("swarmApiKey", swarm!.swarmApiKey!);
       expect(decryptedKey).toBe(PLAINTEXT_SWARM_API_KEY);
-    });
+    }, 10000); // Increased timeout for pool creation
 
     it("should handle repository not found error", async () => {
       mockPollAgentProgress.mockResolvedValue({
@@ -1196,7 +1196,7 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
       expect(completedEvent).toBeDefined();
       expect(completedEvent!.data.status).toBe("COMPLETED");
       expect(completedEvent!.data.data.services).toHaveLength(1);
-    });
+    }, 10000); // Increased timeout for pool creation
 
     it("should handle in_progress agent status with continued polling", async () => {
       let pollCount = 0;
