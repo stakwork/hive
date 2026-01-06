@@ -77,8 +77,7 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
   const stepAttributes = (rawData.attributes as Record<string, unknown>) || step.step?.attributes || {};
   const stepVars = (stepAttributes.vars as Record<string, unknown>) || {};
 
-  // Get step name and id from top level
-  const skillName = step.name;
+  // Get step id from top level
   const stepId = step.id || step.display_id;
 
   return (

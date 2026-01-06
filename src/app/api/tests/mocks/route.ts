@@ -6,7 +6,6 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccessById } from "@/services/workspace";
 import { config } from "@/config/env";
-import type { MockInventoryResponse } from "@/types/stakgraph";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 

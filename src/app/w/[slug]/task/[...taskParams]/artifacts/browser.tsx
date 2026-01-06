@@ -9,8 +9,6 @@ import {
   Circle,
   Square,
   Target,
-  FlaskConical,
-  Bug,
   List,
   CheckCircle2,
   ArrowLeft,

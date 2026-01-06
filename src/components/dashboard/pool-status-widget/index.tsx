@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeOrDate } from "@/lib/date-utils";
-import { Clock, Loader2, Server } from "lucide-react";
+import { Loader2, Server } from "lucide-react";
 import Link from "next/link";
 import { useModal } from "@/components/modals/ModlaProvider";
 import { PoolStatusResponse } from "@/types";

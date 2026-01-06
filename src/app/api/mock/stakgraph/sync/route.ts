@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { repo_url, username, use_lsp = false } = body;
+    const { repo_url } = body;
 
     if (!repo_url) {
       return NextResponse.json(
@@ -45,8 +45,7 @@ export async function POST(request: NextRequest) {
       repo_url,
     });
 
-  } catch (error) {
-    console.error("[StakgraphMock] Sync error:", error);
+  } catch {
     return NextResponse.json(
       { error: "Failed to sync" },
       { status: 500 }
