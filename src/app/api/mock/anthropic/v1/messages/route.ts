@@ -282,7 +282,7 @@ function streamTextResponse(model: string, text: string) {
       );
 
       // Stream text chunks
-      for (const chunk of mockAnthropicState.generateStreamChunks(text, 10)) {
+      for (const chunk of mockAnthropicState.generateStreamChunks(text)) {
         controller.enqueue(
           encoder.encode(
             `event: content_block_delta\ndata: ${JSON.stringify({
