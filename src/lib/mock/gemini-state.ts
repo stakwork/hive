@@ -38,7 +38,7 @@ class GeminiMockState {
       prompt,
       model,
       createdAt: new Date(),
-      imageBuffer: this.generateMockDiagram(prompt),
+      imageBuffer: this.generateMockDiagram(),
     };
     
     this.requests.set(id, request);
