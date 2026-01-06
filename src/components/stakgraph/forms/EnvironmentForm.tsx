@@ -2,7 +2,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, EyeOff, Clipboard, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Clipboard } from "lucide-react";
 import { EnvironmentData, FormSectionProps } from "../types";
 import { useEnvironmentVars } from "@/hooks/useEnvironmentVars";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
@@ -78,7 +78,7 @@ export default function EnvironmentForm({
       toast.success("Variables imported", {
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''}.`,
       });
-    } catch (err) {
+    } catch {
       toast.error("Paste failed", { description: "Unable to read from clipboard. Please try again." });
     }
   };
@@ -100,7 +100,7 @@ export default function EnvironmentForm({
         description: `Successfully imported ${count} environment variable${count > 1 ? 's' : ''} from ${fileName}.`,
       });
       setShowImportSection(false);
-    } catch (err) {
+    } catch {
       toast.error("Import failed", { description: "Failed to parse the file. Please check the format." });
     }
   };

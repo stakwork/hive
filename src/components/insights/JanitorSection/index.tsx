@@ -88,7 +88,7 @@ export function JanitorSection({
 
     try {
       await toggleJanitor(workspace.slug, janitor.configKey);
-    } catch (error) {
+    } catch {
       toast.error("Failed to update janitor configuration", { description: "Please try again." });
     }
   };

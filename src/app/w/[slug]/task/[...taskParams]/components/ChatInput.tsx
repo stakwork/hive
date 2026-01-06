@@ -33,7 +33,6 @@ interface ChatInputProps {
 }
 
 export function ChatInput({
-  logs,
   onSend,
   disabled = false,
   isLoading = false,

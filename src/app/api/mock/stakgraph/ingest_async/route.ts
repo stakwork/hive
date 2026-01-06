@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { repo_url, username, pat, callback_url, use_lsp = false, realtime = true } = body;
+    const { repo_url, callback_url } = body;
 
     // Validate required fields
     if (!repo_url) {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!username || !pat) {
+    if (!body.username || !body.pat) {
       return NextResponse.json(
         { error: "username and pat are required for authentication" },
         { status: 400 }
@@ -46,9 +46,9 @@ export async function POST(request: NextRequest) {
     // Create the ingestion request
     const requestId = stakgraphState.createIngestRequest(
       repo_url,
-      username,
+      body.username,
       callback_url,
-      use_lsp
+      body.use_lsp || false
     );
 
     console.log(`[StakgraphMock] Started ingest for ${repo_url} (request: ${requestId})`);
@@ -59,8 +59,7 @@ export async function POST(request: NextRequest) {
       message: "Ingestion started",
     });
 
-  } catch (error) {
-    console.error("[StakgraphMock] Ingest error:", error);
+  } catch {
     return NextResponse.json(
       { error: "Failed to start ingestion" },
       { status: 500 }
