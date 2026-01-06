@@ -269,7 +269,7 @@ class NodeArray {
     }
   }
 
-  setIfConditionEdges(node: any, i: number): void {
+  setIfConditionEdges(node: any): void {
     if (node.status) {
       node.bgColor = "#67C083";
       node.borderColor = "#67C083";
@@ -303,7 +303,7 @@ class NodeArray {
             });
           });
 
-          this.setIfConditionEdges(node, i);
+          this.setIfConditionEdges(node);
         }
       } else if (nextNode?.stepType === "Add") {
         nextNode.targetNode = node.targetNode;
@@ -405,7 +405,7 @@ class NodeArray {
 
           this.addNode(ifConditionNode);
         } else {
-          this.nodeBuilder(step, type, connections, name);
+          this.nodeBuilder(step, type, connections);
         }
       }
     }
@@ -441,7 +441,7 @@ class NodeArray {
     return this.edges;
   }
 
-  nodeBuilder(step: WorkflowTransition, type: string, connections: string | string[], name: string): void {
+  nodeBuilder(step: WorkflowTransition, type: string, connections: string | string[]): void {
     const id = step.id;
     const status = this.getStatus(step);
 
