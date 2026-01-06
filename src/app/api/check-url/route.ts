@@ -14,8 +14,8 @@ export async function GET(request: Request) {
       signal: AbortSignal.timeout(5000), // 5 second timeout
     });
 
-    // Only continue polling on 502 Bad Gateway, otherwise show iframe
-    const isReady = response.status !== 502;
+    // Only continue polling on 502/503, otherwise show iframe
+    const isReady = response.status !== 502 && response.status !== 503;
 
     return NextResponse.json({
       isReady,

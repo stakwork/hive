@@ -110,8 +110,44 @@ describe("GET /api/check-url Integration Tests", () => {
     });
   });
 
-  describe("Failed URL Checks", () => {
-    test("returns isReady: false for status 400 (boundary case)", async () => {
+  describe("Gateway Error Polling", () => {
+    test("returns isReady: false for status 502 (bad gateway) - keeps polling", async () => {
+      const testUrl = "https://example.com";
+      mockFetch.mockResolvedValueOnce({
+        status: 502,
+        ok: false,
+      });
+
+      const request = new Request(`http://localhost:3000/api/check-url?url=${encodeURIComponent(testUrl)}`);
+      const response = await GET(request);
+
+      const data = await expectSuccess(response, 200);
+      expect(data).toEqual({
+        isReady: false,
+        status: 502,
+      });
+    });
+
+    test("returns isReady: false for status 503 (service unavailable) - keeps polling", async () => {
+      const testUrl = "https://example.com";
+      mockFetch.mockResolvedValueOnce({
+        status: 503,
+        ok: false,
+      });
+
+      const request = new Request(`http://localhost:3000/api/check-url?url=${encodeURIComponent(testUrl)}`);
+      const response = await GET(request);
+
+      const data = await expectSuccess(response, 200);
+      expect(data).toEqual({
+        isReady: false,
+        status: 503,
+      });
+    });
+  });
+
+  describe("Non-Gateway Errors Show Iframe", () => {
+    test("returns isReady: true for status 400 - shows iframe", async () => {
       const testUrl = "https://example.com";
       mockFetch.mockResolvedValueOnce({
         status: 400,
@@ -123,12 +159,12 @@ describe("GET /api/check-url Integration Tests", () => {
 
       const data = await expectSuccess(response, 200);
       expect(data).toEqual({
-        isReady: false,
+        isReady: true,
         status: 400,
       });
     });
 
-    test("returns isReady: false for status 404", async () => {
+    test("returns isReady: true for status 404 - shows iframe", async () => {
       const testUrl = "https://example.com/not-found";
       mockFetch.mockResolvedValueOnce({
         status: 404,
@@ -140,12 +176,12 @@ describe("GET /api/check-url Integration Tests", () => {
 
       const data = await expectSuccess(response, 200);
       expect(data).toEqual({
-        isReady: false,
+        isReady: true,
         status: 404,
       });
     });
 
-    test("returns isReady: false for status 500", async () => {
+    test("returns isReady: true for status 500 - shows iframe", async () => {
       const testUrl = "https://example.com";
       mockFetch.mockResolvedValueOnce({
         status: 500,
@@ -157,25 +193,8 @@ describe("GET /api/check-url Integration Tests", () => {
 
       const data = await expectSuccess(response, 200);
       expect(data).toEqual({
-        isReady: false,
+        isReady: true,
         status: 500,
-      });
-    });
-
-    test("returns isReady: false for status 503 (service unavailable)", async () => {
-      const testUrl = "https://example.com";
-      mockFetch.mockResolvedValueOnce({
-        status: 503,
-        ok: false,
-      });
-
-      const request = new Request(`http://localhost:3000/api/check-url?url=${encodeURIComponent(testUrl)}`);
-      const response = await GET(request);
-
-      const data = await expectSuccess(response, 200);
-      expect(data).toEqual({
-        isReady: false,
-        status: 503,
       });
     });
   });
@@ -471,15 +490,15 @@ describe("GET /api/check-url Integration Tests", () => {
       [301, true],
       [302, true],
       [399, true],   // Last valid redirect code
-      [400, false],  // Client error (boundary)
-      [401, false],
-      [403, false],
-      [404, false],
-      [499, false],
-      [500, false],  // Server error
-      [502, false],
-      [503, false],
-      [599, false],
+      [400, true],   // Client errors - show iframe
+      [401, true],
+      [403, true],
+      [404, true],
+      [499, true],
+      [500, true],   // Server error - show iframe
+      [502, false],  // Bad Gateway - keep polling
+      [503, false],  // Service Unavailable - keep polling
+      [599, true],   // Other server errors - show iframe
     ])("status code %i returns isReady: %s", async (statusCode, expectedReady) => {
       const testUrl = "https://example.com";
       mockFetch.mockResolvedValueOnce({
