@@ -150,7 +150,7 @@ export class MockAnthropicStateManager {
   /**
    * Simulate streaming response chunks
    */
-  *generateStreamChunks(response: string, delayMs = 10): Generator<string> {
+  *generateStreamChunks(response: string): Generator<string> {
     const words = response.split(" ");
     for (const word of words) {
       yield word + " ";

@@ -52,10 +52,9 @@ class GeminiMockState {
    * In a real implementation, could use canvas/sharp to generate actual diagram
    * For testing purposes, a minimal valid PNG is sufficient
    * 
-   * @param prompt - Architecture description (unused in mock)
    * @returns Buffer containing mock PNG image
    */
-  private generateMockDiagram(prompt: string): Buffer {
+  private generateMockDiagram(): Buffer {
     // Simple 1x1 transparent PNG (smallest valid PNG)
     // Base64: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
     const base64PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
