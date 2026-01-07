@@ -8,7 +8,7 @@ import * as THREE from 'three'
 import { nodeSize } from '../Cubes/constants'
 
 // Helper function to distribute neighborhoods based on node_type positioning
-const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; name?: string }[], nodeTypes: string[]) => {
+const distributeNeighborhoodsByNodeType = (neighbourhoods: { ref_id: string; name?: string }[]) => {
   return neighbourhoods.reduce((acc: Record<string, { x: number; y: number; z: number }>, neighbourhood, i) => {
     // Use the same logic as addSplitForce for consistent positioning
     const index = i + 1
