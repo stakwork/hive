@@ -3,9 +3,9 @@ import { PodLaunchFailureWebhookSchema } from "@/types/pool-manager";
 import { processPodLaunchFailure } from "@/services/pod-launch-failure";
 
 export async function POST(request: NextRequest) {
-  // Verify global secret (CRON_SECRET)
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Verify API token (used by Pool Manager webhook)
+  const apiToken = request.headers.get("x-api-token");
+  if (!apiToken || apiToken !== process.env.API_TOKEN) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
