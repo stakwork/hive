@@ -27,7 +27,7 @@ interface CustomEdgeData {
 
 export default function EdgeButtons(props: EdgeProps) {
   const { setEdges } = useReactFlow();
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, style = {}, markerEnd } = props;
+  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data } = props;
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,

@@ -315,7 +315,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
           message: `Failed to submit: ${fetchError.message}`
         });
       }
-    } catch (jsonError) {
+    } catch {
       setSubmitStatus({
         type: 'error',
         message: 'Invalid JSON format. Please check your input.'
@@ -360,7 +360,7 @@ const ImportNodeModal = ({ onSubmitSuccess = undefined }: ImportNodeModalProps) 
                     try {
                       JSON.parse(value);
                       return true;
-                    } catch (error) {
+                    } catch {
                       return "Please enter valid JSON";
                     }
                   }
