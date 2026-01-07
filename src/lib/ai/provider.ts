@@ -87,6 +87,5 @@ export function getProviderTool(
   }
 
   // Otherwise, use the real aieo implementation
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return getProviderToolAieo(provider, apiKey, toolName as ProviderTool) as any;
+  return getProviderToolAieo(provider, apiKey, toolName as ProviderTool);
 }

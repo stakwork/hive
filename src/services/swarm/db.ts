@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
-import { PoolState, SwarmStatus } from "@prisma/client";
+import { PoolState, SwarmStatus, Prisma } from "@prisma/client";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -79,8 +79,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     where: { workspaceId: params.workspaceId },
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: Record<string, any> = {};
+  const data: Record<string, unknown> = {};
   if (params.name !== undefined) data.name = params.name;
   if (params.instanceType !== undefined) data.instanceType = params.instanceType;
   if (params.environmentVariables !== undefined)
@@ -119,7 +118,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       select,
     });
   } else {
-    const createData = {
+    const createData: Prisma.SwarmCreateInput = {
       workspaceId: params.workspaceId,
       name: params.name || "",
       instanceType: params.instanceType || "",
@@ -129,7 +128,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
             name: string;
             value: string;
           }>,
-        ) as unknown)
+        ) as unknown as Prisma.InputJsonValue)
         : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,
@@ -145,15 +144,14 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       poolName: params.poolName || "",
       poolCpu: params.poolCpu || "2",
       poolMemory: params.poolMemory || "4Gi",
-      services: params.services ? params.services : [],
+      services: params.services ? (params.services as unknown as Prisma.InputJsonValue) : [],
       swarmSecretAlias: params.swarmSecretAlias || "",
-      containerFiles: params.containerFiles,
+      containerFiles: params.containerFiles as unknown as Prisma.InputJsonValue | undefined,
       swarmId: params.swarmId,
       ingestRefId: params.ingestRefId,
       poolState: params.poolState || PoolState.NOT_STARTED,
       ingestRequestInProgress: params.ingestRequestInProgress || false,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any;
+    };
     console.log("[saveOrUpdateSwarm] Create data:", createData);
     swarm = await db.swarm.create({
       data: createData,

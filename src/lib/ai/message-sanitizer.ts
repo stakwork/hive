@@ -18,10 +18,8 @@ export async function sanitizeAndCompleteToolCalls(
     if (msg.role === "tool" && Array.isArray(msg.content)) {
       toolResultMessages.push(msg);
       for (const item of msg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((item as any).type === "tool-result" && (item as any).toolCallId) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          toolCallIdsWithResults.add((item as any).toolCallId);
+        if ("type" in item && item.type === "tool-result" && "toolCallId" in item) {
+          toolCallIdsWithResults.add(item.toolCallId);
         }
       }
     }
@@ -31,21 +29,20 @@ export async function sanitizeAndCompleteToolCalls(
   const missingToolCalls: Array<{
     toolCallId: string;
     toolName: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input: any;
+    input: unknown;
   }> = [];
 
   for (const msg of messages) {
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       for (const item of msg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolCall = item as any;
-        if (toolCall.type === "tool-call" && !toolCallIdsWithResults.has(toolCall.toolCallId)) {
-          missingToolCalls.push({
-            toolCallId: toolCall.toolCallId,
-            toolName: toolCall.toolName,
-            input: toolCall.input,
-          });
+        if ("type" in item && item.type === "tool-call" && "toolCallId" in item && "toolName" in item) {
+          if (!toolCallIdsWithResults.has(item.toolCallId)) {
+            missingToolCalls.push({
+              toolCallId: item.toolCallId,
+              toolName: item.toolName,
+              input: "input" in item ? item.input : undefined,
+            });
+          }
         }
       }
     }
@@ -60,7 +57,8 @@ export async function sanitizeAndCompleteToolCalls(
 
       if (toolCall.toolName === "learn_concept") {
         // Execute learn_concept
-        const conceptId = toolCall.input?.conceptId;
+        const input = toolCall.input as { conceptId?: string } | undefined;
+        const conceptId = input?.conceptId;
         if (conceptId) {
           console.log(`🔧 Executing missing tool call: learn_concept(${conceptId})`);
           const res = await fetch(`${swarmUrl}/gitree/features/${encodeURIComponent(conceptId)}`, {
@@ -107,8 +105,7 @@ export async function sanitizeAndCompleteToolCalls(
               type: "tool-result",
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              output: { type: "json", value: output as any },
+              output: { type: "json", value: output as unknown },
             },
           ],
         };
@@ -129,10 +126,8 @@ export async function sanitizeAndCompleteToolCalls(
   for (const resultMsg of newToolResults) {
     if (Array.isArray(resultMsg.content)) {
       for (const item of resultMsg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = item as any;
-        if (result.type === "tool-result" && result.toolCallId) {
-          newResultsByCallId.set(result.toolCallId, resultMsg);
+        if ("type" in item && item.type === "tool-result" && "toolCallId" in item) {
+          newResultsByCallId.set(item.toolCallId, resultMsg);
         }
       }
     }
@@ -144,17 +139,14 @@ export async function sanitizeAndCompleteToolCalls(
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       // Check if this message has tool-calls
       const hasToolCalls = msg.content.some(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (item: any) => item.type === "tool-call"
+        (item) => "type" in item && item.type === "tool-call"
       );
 
       if (hasToolCalls) {
         // Filter out tool-calls without results (that we couldn't execute)
         const filteredContent = msg.content.filter((item) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const toolCall = item as any;
-          if (toolCall.type === "tool-call") {
-            return toolCallIdsWithResults.has(toolCall.toolCallId);
+          if ("type" in item && item.type === "tool-call" && "toolCallId" in item) {
+            return toolCallIdsWithResults.has(item.toolCallId);
           }
           return true; // Keep non-tool-call content
         });
@@ -165,8 +157,8 @@ export async function sanitizeAndCompleteToolCalls(
 
           // Check if any of the tool calls in this message have new results we need to insert
           const toolCallsInMessage = filteredContent
-            .filter((item) => (item as any).type === "tool-call")
-            .map((item) => (item as any).toolCallId);
+            .filter((item) => "type" in item && item.type === "tool-call" && "toolCallId" in item)
+            .map((item) => "toolCallId" in item ? item.toolCallId as string : "");
 
           // Check if the next message is already a tool result for these calls
           const nextMsg = messages[i + 1];
