@@ -21,8 +21,6 @@ const Fallback = () => (
 
 const Content = ({ enableRotation }: { enableRotation: boolean }) => {
 
-  const dataInitial = useDataStore((s) => s.dataInitial)
-
   return (
     <>
       <color args={[colors.BLUE_PRESS_STATE]} attach="transparent" />

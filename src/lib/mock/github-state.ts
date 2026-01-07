@@ -313,7 +313,7 @@ class MockGitHubStateManager {
    * Returns true if token was found and revoked, false otherwise
    */
   revokeToken(accessToken: string): boolean {
-    for (const [code, token] of this.tokens.entries()) {
+    for (const [, token] of this.tokens.entries()) {
       if (token.access_token === accessToken) {
         // Return false if token is already revoked
         if (token.revoked) {

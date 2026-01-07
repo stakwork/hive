@@ -3,7 +3,6 @@ import { NodeExtended } from "@Universe/types";
 export const CalloutLabel = ({
     node,
     title,
-    baseColor = '#7DDCFF',
     onHover,
     onUnhover,
     onClick
