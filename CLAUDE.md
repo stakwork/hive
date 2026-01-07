@@ -37,9 +37,11 @@ Hive Platform is an AI-first PM toolkit that hardens codebases and lifts test co
 
 Key features:
 - **Janitor System**: Automated codebase analysis with AI-powered recommendations
-- **Task Management**: AI-enhanced task tracking with chat integration
+- **Task Management**: AI-enhanced task tracking with chat integration and dependency coordination
+- **Planning/Roadmap**: Features, phases, and user stories for product planning
 - **GitHub Integration**: GitHub App integration for repo access and webhooks
 - **Workspace Management**: Multi-tenant workspaces with role-based access control
+- **Pod Management**: Automated pod provisioning, repair, and monitoring via Pool Manager
 
 ## Architecture Overview
 
@@ -55,7 +57,7 @@ Key features:
 
 ### Key Directories
 
-- `/src/app` - Next.js App Router with API routes organized by feature and workspace pages under `/w/[slug]/*`
+- `/src/app` - Next.js App Router with API routes by feature; workspace pages under `/w/[slug]/*` (tasks, plan, janitors, recommendations, stakgraph, testing, calls, learn, settings)
 - `/src/components` - React components; always create directories with `index.tsx` for new components
 - `/src/lib` - Core utilities: auth, encryption, AI tools, database client, feature flags
 - `/src/services` - External API services using service factory pattern
@@ -66,6 +68,11 @@ Key features:
 ### Database Schema
 
 Hierarchical structure: Users/Auth → Source Control → Workspaces → Tasks/Janitors/Features
+
+**Key Models**:
+- `Feature`, `Phase`, `UserStory` - Product planning hierarchy
+- `StakworkRun` - Tracks AI workflow executions (architecture, task generation, user stories, pod repair)
+- `Screenshot` - Test screenshot storage with S3 integration
 
 **Task Dual Status System**:
 - `status` (TaskStatus) - User/PM work tracking: TODO, IN_PROGRESS, DONE, CANCELLED, BLOCKED
@@ -140,5 +147,11 @@ Field-level encryption via `FieldEncryptionService` for OAuth tokens, API keys. 
 - Endpoints: `/api/github/app/install`, `/api/github/app/callback`, `/api/github/webhook`
 - Use `githubApp.ts` for token management
 
-### Janitor Cron Jobs
-Automated via Vercel cron (`/api/cron/janitors`). Enable with `JANITOR_CRON_ENABLED=true` and `CRON_SECRET`. Schedule in `vercel.json`.
+### Cron Jobs
+Three automated cron jobs run via Vercel (configured in `vercel.json`, secured with `CRON_SECRET`):
+- `/api/cron/janitors` - Runs janitor analysis on enabled workspaces
+- `/api/cron/pod-repair` - Monitors and repairs workspace pods (restarts failed services)
+- `/api/cron/task-coordinator` - Coordinates task dependencies and triggers workflows when dependencies are satisfied
+
+### Logging
+Use `logger` from `/src/lib/logger.ts` for structured logging with automatic sensitive data sanitization. Supports LOG_LEVEL env var (ERROR, WARN, INFO, DEBUG).
