@@ -21,7 +21,7 @@ export function PoolStatusWidget() {
 
   const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded] = useState(false);
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const servicesReady = workspace?.containerFilesSetUp === true;

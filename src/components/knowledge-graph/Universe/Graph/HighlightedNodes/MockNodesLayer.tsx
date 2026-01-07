@@ -28,7 +28,6 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
   const nodeTypes = useDataStore((s) => s.nodeTypes)
 
   const [mockNodes, setMockNodes] = useState<MockNode[]>([])
-  const [isLoadingNodes, setIsLoadingNodes] = useState(false)
   const [hasFetchedMocks, setHasFetchedMocks] = useState(false)
 
   // Calculate Y position for Mock nodes (put them at the top) - updates when nodeTypes change
@@ -45,8 +44,6 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
     }
 
     try {
-      setIsLoadingNodes(true)
-
       const depth = 0
       const limit = 5000
       const topNodeCount = 5000
@@ -100,8 +97,6 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
     } catch (error) {
       console.error(`[MockNodesLayer] Error fetching Mock data:`, error)
       setMockNodes([])
-    } finally {
-      setIsLoadingNodes(false)
     }
   }, [workspaceId, hasFetchedMocks, radius])
 
