@@ -50,7 +50,7 @@ export const Neighbourhoods = () => {
         name: nodeType
       }))
 
-      const positionsMap = distributeNeighborhoodsByNodeType(nodeTypeNeighbourhoods, nodeTypes)
+      const positionsMap = distributeNeighborhoodsByNodeType(nodeTypeNeighbourhoods)
 
       const boundingBoxMap = simulationInProgress
         ? {}
