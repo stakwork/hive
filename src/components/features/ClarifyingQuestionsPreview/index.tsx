@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { HelpCircle, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ClarifyingQuestion } from "@/types/stakwork";
+import type { ClarifyingQuestion, QuestionOption } from "@/types/stakwork";
+import { normalizeOptions } from "@/types/stakwork";
+import { ArtifactRenderer, CustomColorPicker } from "./artifacts";
 
 interface ClarifyingQuestionsPreviewProps {
   questions: ClarifyingQuestion[];
@@ -15,17 +17,36 @@ interface ClarifyingQuestionsPreviewProps {
 
 // Unified answer structure for all question types
 interface Answer {
-  selections: string[];  // For choice questions
-  text: string;          // For text questions or custom text on choice questions
+  selections: string[]; // For choice questions (stores option values)
+  text: string; // For text questions or custom text on choice questions
+  customColor?: string; // For custom color picker
 }
 
-const emptyAnswer: Answer = { selections: [], text: "" };
+const emptyAnswer: Answer = { selections: [], text: "", customColor: "" };
 
-function getDisplayAnswer(question: ClarifyingQuestion, answer: Answer): string {
+function getDisplayAnswer(
+  question: ClarifyingQuestion,
+  answer: Answer,
+  normalizedOptions?: QuestionOption[]
+): string {
+  // Handle custom color
+  if (answer.customColor) {
+    const parts = [`Custom color: ${answer.customColor}`];
+    if (answer.text.trim()) parts.push(answer.text.trim());
+    return parts.join(" | ");
+  }
+
   if (question.type === "text") {
     return answer.text.trim() || "Not answered";
   }
-  const parts = [...answer.selections];
+
+  // Map selection values back to labels for display
+  const selectedLabels =
+    normalizedOptions
+      ?.filter((opt) => answer.selections.includes(opt.value))
+      .map((opt) => opt.label) || answer.selections;
+
+  const parts = [...selectedLabels];
   if (answer.text.trim()) {
     parts.push(answer.text.trim());
   }
@@ -38,7 +59,8 @@ function formatAnswersForFeedback(
 ): string {
   return questions
     .map((q, i) => {
-      const answer = getDisplayAnswer(q, answers[i] || emptyAnswer);
+      const normalizedOptions = normalizeOptions(q.options);
+      const answer = getDisplayAnswer(q, answers[i] || emptyAnswer, normalizedOptions);
       return `Q: ${q.question}\nA: ${answer}`;
     })
     .join("\n\n");
@@ -60,6 +82,18 @@ export function ClarifyingQuestionsPreview({
   const isFirstQuestion = currentIndex === 0;
   const currentAnswer = answers[currentIndex] || emptyAnswer;
 
+  // Normalize options for current question
+  const normalizedOptions = useMemo(
+    () => normalizeOptions(currentQuestion?.options),
+    [currentQuestion?.options]
+  );
+
+  // Check if options have color swatches
+  const hasColorSwatches = useMemo(
+    () => normalizedOptions?.some((opt) => opt.artifact?.type === "color_swatch") ?? false,
+    [normalizedOptions]
+  );
+
   const updateAnswer = (update: Partial<Answer>) => {
     setAnswers((prev) => ({
       ...prev,
@@ -67,19 +101,32 @@ export function ClarifyingQuestionsPreview({
     }));
   };
 
-  const handleOptionSelect = (option: string) => {
+  const handleOptionSelect = (optionValue: string) => {
     if (currentQuestion.type === "single_choice") {
       // single_choice - toggle selection (allow deselection)
-      const isSelected = currentAnswer.selections.includes(option);
-      updateAnswer({ selections: isSelected ? [] : [option] });
+      const isSelected = currentAnswer.selections.includes(optionValue);
+      updateAnswer({
+        selections: isSelected ? [] : [optionValue],
+        customColor: "", // Clear custom color when predefined selected
+      });
     } else {
       // multiple_choice - toggle selection
-      const isSelected = currentAnswer.selections.includes(option);
+      const isSelected = currentAnswer.selections.includes(optionValue);
       const newSelections = isSelected
-        ? currentAnswer.selections.filter((o) => o !== option)
-        : [...currentAnswer.selections, option];
-      updateAnswer({ selections: newSelections });
+        ? currentAnswer.selections.filter((o) => o !== optionValue)
+        : [...currentAnswer.selections, optionValue];
+      updateAnswer({
+        selections: newSelections,
+        customColor: "", // Clear custom color when predefined selected
+      });
     }
+  };
+
+  const handleCustomColorChange = (color: string) => {
+    updateAnswer({
+      selections: [], // Clear predefined selections when custom selected
+      customColor: color,
+    });
   };
 
   const handlePrevious = () => {
@@ -90,9 +137,12 @@ export function ClarifyingQuestionsPreview({
     }
   };
 
-  const hasCurrentAnswer = currentQuestion?.type === "text"
-    ? currentAnswer.text.trim().length > 0
-    : currentAnswer.selections.length > 0 || currentAnswer.text.trim().length > 0;
+  const hasCurrentAnswer =
+    currentQuestion?.type === "text"
+      ? currentAnswer.text.trim().length > 0
+      : currentAnswer.selections.length > 0 ||
+        currentAnswer.text.trim().length > 0 ||
+        (currentAnswer.customColor?.length ?? 0) > 0;
 
   const handleNext = () => {
     if (showReview) {
@@ -109,6 +159,21 @@ export function ClarifyingQuestionsPreview({
       e.preventDefault();
       handleNext();
     }
+  };
+
+  // Helper to get selected color for review screen
+  const getSelectedColor = (
+    question: ClarifyingQuestion,
+    answer: Answer
+  ): string | undefined => {
+    if (answer.customColor) return answer.customColor;
+
+    const opts = normalizeOptions(question.options);
+    const selectedOpt = opts?.find((opt) => answer.selections.includes(opt.value));
+    if (selectedOpt?.artifact?.type === "color_swatch") {
+      return selectedOpt.artifact.data.color as string;
+    }
+    return undefined;
   };
 
   return (
@@ -141,8 +206,8 @@ export function ClarifyingQuestionsPreview({
                 index < currentStep - 1
                   ? "bg-primary"
                   : index === currentStep - 1
-                  ? "bg-primary/60"
-                  : "bg-border"
+                    ? "bg-primary/60"
+                    : "bg-border"
               )}
             />
           ))}
@@ -151,16 +216,34 @@ export function ClarifyingQuestionsPreview({
         {showReview ? (
           /* Review Step */
           <div className="space-y-4 min-h-[280px]">
-            {questions.map((question, index) => (
-              <div key={index} className="space-y-1">
-                <p className="text-xs text-muted-foreground">
-                  {index + 1}) {question.question}
-                </p>
-                <p className="text-sm text-foreground pl-4">
-                  {getDisplayAnswer(question, answers[index] || emptyAnswer)}
-                </p>
-              </div>
-            ))}
+            {questions.map((question, index) => {
+              const answer = answers[index] || emptyAnswer;
+              const opts = normalizeOptions(question.options);
+              const selectedColor = getSelectedColor(question, answer);
+              const hasColorArtifacts = opts?.some(
+                (opt) => opt.artifact?.type === "color_swatch"
+              );
+
+              return (
+                <div key={index} className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {index + 1}) {question.question}
+                  </p>
+                  <div className="flex items-center gap-2 pl-4">
+                    {/* Show color swatch if applicable */}
+                    {hasColorArtifacts && selectedColor && (
+                      <div
+                        className="w-6 h-6 rounded border border-border flex-shrink-0"
+                        style={{ backgroundColor: selectedColor }}
+                      />
+                    )}
+                    <p className="text-sm text-foreground">
+                      {getDisplayAnswer(question, answer, opts)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           /* Question Step */
@@ -169,47 +252,82 @@ export function ClarifyingQuestionsPreview({
               {currentQuestion.question}
             </h3>
 
-            {/* Options for choice questions */}
-            {(currentQuestion.type === "single_choice" || currentQuestion.type === "multiple_choice") &&
-              currentQuestion.options && (
-              <div className="space-y-2 mb-3">
-                {currentQuestion.options.map((option, optIndex) => {
-                  const isSelected = currentAnswer.selections.includes(option);
+            {/* Color Swatches Layout */}
+            {hasColorSwatches && normalizedOptions && (
+              <div className="space-y-3 mb-3">
+                {/* Color swatches in a flex row */}
+                <div className="flex flex-wrap gap-3">
+                  {normalizedOptions.map((option) => {
+                    const isSelected =
+                      currentAnswer.selections.includes(option.value) &&
+                      !currentAnswer.customColor;
 
-                  return (
-                    <button
-                      key={optIndex}
-                      type="button"
-                      onClick={() => handleOptionSelect(option)}
-                      disabled={isLoading}
-                      className={cn(
-                        "w-full flex items-start gap-3 p-3 rounded-md text-left transition-colors",
-                        "border border-transparent",
-                        isSelected
-                          ? "bg-primary/10 border-primary/30"
-                          : "hover:bg-muted/50",
-                        isLoading && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <div className={cn(
-                        "mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center",
-                        currentQuestion.type === "multiple_choice" && "rounded-sm",
-                        isSelected
-                          ? "border-primary bg-primary"
-                          : "border-muted-foreground/40"
-                      )}>
-                        {isSelected && (
-                          <Check className="h-3 w-3 text-primary-foreground" />
-                        )}
-                      </div>
-                      <span className="text-sm leading-relaxed">
-                        {option}
-                      </span>
-                    </button>
-                  );
-                })}
+                    return (
+                      <ArtifactRenderer
+                        key={option.id}
+                        artifact={option.artifact!}
+                        label={option.label}
+                        selected={isSelected}
+                        onClick={() => handleOptionSelect(option.value)}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Custom color picker (if enabled) */}
+                {currentQuestion.allowCustomColor && (
+                  <CustomColorPicker
+                    value={currentAnswer.customColor || ""}
+                    onChange={handleCustomColorChange}
+                    selected={!!currentAnswer.customColor}
+                  />
+                )}
               </div>
             )}
+
+            {/* Standard Options (no color swatches) */}
+            {!hasColorSwatches &&
+              normalizedOptions &&
+              (currentQuestion.type === "single_choice" ||
+                currentQuestion.type === "multiple_choice") && (
+                <div className="space-y-2 mb-3">
+                  {normalizedOptions.map((option) => {
+                    const isSelected = currentAnswer.selections.includes(option.value);
+
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleOptionSelect(option.value)}
+                        disabled={isLoading}
+                        className={cn(
+                          "w-full flex items-start gap-3 p-3 rounded-md text-left transition-colors",
+                          "border border-transparent",
+                          isSelected
+                            ? "bg-primary/10 border-primary/30"
+                            : "hover:bg-muted/50",
+                          isLoading && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                            currentQuestion.type === "multiple_choice" && "rounded-sm",
+                            isSelected
+                              ? "border-primary bg-primary"
+                              : "border-muted-foreground/40"
+                          )}
+                        >
+                          {isSelected && (
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          )}
+                        </div>
+                        <span className="text-sm leading-relaxed">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
             {/* Text input - always shown, fills remaining space for text questions */}
             <Textarea
