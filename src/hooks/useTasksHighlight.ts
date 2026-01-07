@@ -230,7 +230,7 @@ export const useTasksHighlight = ({
       console.log("[useTasksHighlight] Task fetch completed");
       setTasksLoading(false);
     }
-  }, [activeWorkspaceId, session?.user, onTasksUpdate, mapJarvisNodeToTask, workspaceId, activeWorkspaceSlug]);
+  }, [activeWorkspaceId, session?.user, onTasksUpdate, mapJarvisNodeToTask, workspaceId]);
 
   // Refresh function for external use
   const refreshTasks = useCallback(async () => {
