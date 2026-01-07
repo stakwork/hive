@@ -50,7 +50,7 @@ export function getStoreBundle(id: string): StoreBundle {
     const data = createDataStore();
 
     // Create a lazy getter for graph store to handle circular dependency
-    // eslint-disable-next-line prefer-const
+     
     let graphStore: ReturnType<typeof createGraphStore>;
     const getGraphStore = () => graphStore;
 

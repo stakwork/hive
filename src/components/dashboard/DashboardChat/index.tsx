@@ -172,7 +172,7 @@ export function DashboardChat() {
                         type: "tool-result" as const,
                         toolCallId: tc.id,
                         toolName: tc.toolName,
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                         
                         output: wrappedOutput as any,
                       };
                     }),
@@ -419,7 +419,7 @@ export function DashboardChat() {
                       type: "tool-result" as const,
                       toolCallId: tc.id,
                       toolName: tc.toolName,
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                       
                       output: wrappedOutput as any,
                     };
                   }),

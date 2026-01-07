@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
 import { extractPrArtifact } from "@/lib/helpers/tasks";
 import { TaskStatus } from "@prisma/client";

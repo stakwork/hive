@@ -260,7 +260,7 @@ export async function clueToolMsgs(swarmUrl: string, swarmApiKey: string, query:
           toolName: "search_relevant_clues",
           output: {
             type: "json" as const,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             value: limitedClues as unknown as any,
           },
         },

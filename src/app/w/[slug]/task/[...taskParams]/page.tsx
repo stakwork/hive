@@ -172,7 +172,7 @@ export default function TaskChatPage() {
       toast.error("Connection Error", { description: "Lost connection to chat server. Attempting to reconnect..." });
     }
     // toast in deps causes infinite re-render
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [connectionError]);
 
   const loadTaskMessages = useCallback(async (taskId: string) => {

@@ -1,5 +1,3 @@
-import { config } from '@/config/env';
-
 // Log levels with numeric values for comparison
 export enum LogLevel {
   ERROR = 0,
