@@ -277,7 +277,8 @@ export const useTasksHighlight = ({
         console.error("[useTasksHighlight] Channel subscription error:", error);
       });
 
-      const handleRunUpdate = (data: StakworkRunUpdateEvent) => {
+      const handleRunUpdate = (payload: unknown) => {
+        const data = payload as StakworkRunUpdateEvent;
         // console.log("[useTasksHighlight] Received Stakwork run update:", {
         //   data,
         //   timestamp: new Date().toISOString(),
@@ -293,15 +294,8 @@ export const useTasksHighlight = ({
       // console.log("[useTasksHighlight] Binding to event:", PUSHER_EVENTS.STAKWORK_RUN_UPDATE);
       channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleRunUpdate);
 
-      // Log all events for debugging
-      channel.bind_global((eventName: string, data: any) => {
-        console.log("[useTasksHighlight] Pusher event received:", {
-          eventName,
-          data,
-          channelName,
-          timestamp: new Date().toISOString(),
-        });
-      });
+      // Note: bind_global is not available on ChannelLike interface
+      // If you need to debug all events, you'll need to bind to each event individually
 
       // console.log("[useTasksHighlight] Pusher setup complete for workspace:", activeWorkspaceSlug);
 

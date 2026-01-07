@@ -211,7 +211,7 @@ describe("usePusherConnection Hook", () => {
       rerender({ taskId: "task-456" });
 
       // Should unsubscribe from old channel
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith("task-task-123");
 
       // Should subscribe to new channel
@@ -506,7 +506,7 @@ describe("usePusherConnection Hook", () => {
         result.current.disconnect();
       });
 
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalledWith();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`task-${taskId}`);
       
       await waitFor(() => {
@@ -529,7 +529,7 @@ describe("usePusherConnection Hook", () => {
       // Disable connection
       rerender({ enabled: false });
 
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`task-${taskId}`);
     });
 
@@ -544,7 +544,7 @@ describe("usePusherConnection Hook", () => {
       // Remove taskId
       rerender({ taskId: null });
 
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalled();
     });
 
@@ -553,7 +553,7 @@ describe("usePusherConnection Hook", () => {
 
       // Should not throw when disconnecting without being connected
       expect(() => result.current.disconnect()).not.toThrow();
-      expect(mockChannel.unbind_all).not.toHaveBeenCalled();
+      expect(mockChannel.unbind).not.toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).not.toHaveBeenCalled();
     });
   });
@@ -572,7 +572,7 @@ describe("usePusherConnection Hook", () => {
       // Unmount component
       unmount();
 
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`task-${taskId}`);
     });
 
@@ -589,7 +589,7 @@ describe("usePusherConnection Hook", () => {
       // Unmount component
       unmount();
 
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`workspace-${workspaceSlug}`);
     });
 
@@ -598,7 +598,7 @@ describe("usePusherConnection Hook", () => {
 
       // Should not throw
       expect(() => unmount()).not.toThrow();
-      expect(mockChannel.unbind_all).not.toHaveBeenCalled();
+      expect(mockChannel.unbind).not.toHaveBeenCalled();
     });
   });
 
@@ -640,7 +640,7 @@ describe("usePusherConnection Hook", () => {
       result.current.connect("task-456", "task");
 
       // Should disconnect from first
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith("task-task-123");
 
       // Should connect to second
@@ -883,7 +883,7 @@ describe("usePusherConnection Hook", () => {
       // 4. Cleanup on unmount
       unmount();
 
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`task-${taskId}`);
     });
 
@@ -929,7 +929,7 @@ describe("usePusherConnection Hook", () => {
       // 4. Cleanup on unmount
       unmount();
 
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`workspace-${workspaceSlug}`);
     });
 
@@ -965,7 +965,7 @@ describe("usePusherConnection Hook", () => {
       rerender({ taskId: null, workspaceSlug: "test-workspace" });
 
       // Should disconnect from task and connect to workspace
-      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockChannel.unbind).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith("task-task-123");
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith("workspace-test-workspace");
     });
