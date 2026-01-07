@@ -244,8 +244,8 @@ describe('deepEqual', () => {
     });
 
     it('should handle sparse arrays', () => {
-      const arr1 = [1, , 3]; // eslint-disable-line no-sparse-arrays
-      const arr2 = [1, , 3]; // eslint-disable-line no-sparse-arrays
+      const arr1 = [1, , 3];  
+      const arr2 = [1, , 3];  
       
       expect(deepEqual(arr1, arr2)).toBe(true);
     });

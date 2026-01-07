@@ -66,10 +66,10 @@ describe("StakgraphWebhookService", () => {
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
         swarmApiKey: "encrypted-key",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
       } as any);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       (service as any).encryptionService = {
         decryptField: vi.fn().mockReturnValue("decrypted-key"),
       };
@@ -102,10 +102,10 @@ describe("StakgraphWebhookService", () => {
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
         swarmApiKey: "encrypted-key",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
       } as any);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       (service as any).encryptionService = {
         decryptField: vi.fn().mockReturnValue("decrypted-key"),
       };
@@ -141,10 +141,10 @@ describe("StakgraphWebhookService", () => {
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
         swarmApiKey: "encrypted-key",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
       } as any);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       (service as any).encryptionService = {
         decryptField: vi.fn().mockReturnValue("decrypted-key"),
       };

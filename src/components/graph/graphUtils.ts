@@ -90,12 +90,12 @@ export const setupZoom = (
       container.attr("transform", event.transform);
     });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   svg.call(zoom as any);
 
   // Restore previous zoom/pan state
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     (svg as any).call(zoom.transform, previousTransform);
   } catch {
     // Ignore if transform can't be reapplied
