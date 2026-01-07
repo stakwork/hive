@@ -18,9 +18,7 @@ export async function sanitizeAndCompleteToolCalls(
     if (msg.role === "tool" && Array.isArray(msg.content)) {
       toolResultMessages.push(msg);
       for (const item of msg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((item as any).type === "tool-result" && (item as any).toolCallId) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           toolCallIdsWithResults.add((item as any).toolCallId);
         }
       }
@@ -31,14 +29,12 @@ export async function sanitizeAndCompleteToolCalls(
   const missingToolCalls: Array<{
     toolCallId: string;
     toolName: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     input: any;
   }> = [];
 
   for (const msg of messages) {
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       for (const item of msg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const toolCall = item as any;
         if (toolCall.type === "tool-call" && !toolCallIdsWithResults.has(toolCall.toolCallId)) {
           missingToolCalls.push({
@@ -107,7 +103,6 @@ export async function sanitizeAndCompleteToolCalls(
               type: "tool-result",
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               output: { type: "json", value: output as any },
             },
           ],
@@ -129,7 +124,6 @@ export async function sanitizeAndCompleteToolCalls(
   for (const resultMsg of newToolResults) {
     if (Array.isArray(resultMsg.content)) {
       for (const item of resultMsg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = item as any;
         if (result.type === "tool-result" && result.toolCallId) {
           newResultsByCallId.set(result.toolCallId, resultMsg);
@@ -144,14 +138,12 @@ export async function sanitizeAndCompleteToolCalls(
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       // Check if this message has tool-calls
       const hasToolCalls = msg.content.some(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (item: any) => item.type === "tool-call"
       );
 
       if (hasToolCalls) {
         // Filter out tool-calls without results (that we couldn't execute)
         const filteredContent = msg.content.filter((item) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const toolCall = item as any;
           if (toolCall.type === "tool-call") {
             return toolCallIdsWithResults.has(toolCall.toolCallId);

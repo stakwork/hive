@@ -79,7 +79,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
     where: { workspaceId: params.workspaceId },
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: Record<string, any> = {};
   if (params.name !== undefined) data.name = params.name;
   if (params.instanceType !== undefined) data.instanceType = params.instanceType;
@@ -152,7 +151,6 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       ingestRefId: params.ingestRefId,
       poolState: params.poolState || PoolState.NOT_STARTED,
       ingestRequestInProgress: params.ingestRequestInProgress || false,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
     swarm = await db.swarm.create({
