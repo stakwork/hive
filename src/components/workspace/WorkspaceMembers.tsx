@@ -24,7 +24,6 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { WorkspaceMember } from "@/types/workspace";
 import type { WorkspaceRole } from "@/lib/auth/roles";
-import { useSession } from "next-auth/react";
 
 interface WorkspaceMembersProps {
   canAdmin: boolean;

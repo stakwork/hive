@@ -18,7 +18,6 @@ type TestConnectionsLayerProps = {
 const NODE_SIZE = 50 // Size of test indicator nodes
 const NODE_SCALE = 0.7 // Scale factor for test indicator nodes
 const NODE_OPACITY = 0.8 // Opacity for test indicator nodes
-const CLONE_OFFSET = 15 // Distance to offset the test indicator nodes
 const LINE_WIDTH = 0.1 // Width of test edge lines
 const LINE_OPACITY = 0.3 // Opacity for test edge lines
 
