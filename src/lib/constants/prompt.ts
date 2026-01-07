@@ -35,7 +35,6 @@ export function getQuickAskPrefixMessages(concepts: Record<string, unknown>[], r
           toolName: "list_concepts",
           output: {
             type: "json",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             value: concepts as any,
           },
         },
