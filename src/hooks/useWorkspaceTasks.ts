@@ -226,7 +226,7 @@ export function useWorkspaceTasks(
       setLoading(false);
       setIsRestoringFromStorage(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived, search, pageLimit, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod]);
+  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived]);
 
   // Handle real-time task title updates (also handles archive status changes)
   const handleTaskTitleUpdate = useCallback(
