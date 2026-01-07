@@ -139,10 +139,51 @@ export type DataType = "string" | "number" | "boolean" | "json" | "array" | "nul
 
 export type ClarifyingQuestionType = "text" | "single_choice" | "multiple_choice";
 
+// =============================================
+// ARTIFACT TYPES (Visual elements for options/questions)
+// =============================================
+
+export type OptionArtifactType = "color_swatch";
+
+export interface OptionArtifact {
+  type: OptionArtifactType;
+  data: Record<string, unknown>;
+}
+
+// Enhanced option with optional visual artifact
+export interface QuestionOption {
+  id: string;
+  label: string;
+  value: string;
+  artifact?: OptionArtifact;
+}
+
 export interface ClarifyingQuestion {
   question: string;
   type: ClarifyingQuestionType;
-  options?: string[]; // Required for single_choice and multiple_choice
+  // Supports both string[] (backward compat) and QuestionOption[] (with artifacts)
+  options?: string[] | QuestionOption[];
+  // Enable custom color picker widget (for color_swatch questions)
+  allowCustomColor?: boolean;
+}
+
+/**
+ * Normalize options for backward compatibility
+ * Converts string[] to QuestionOption[] format
+ */
+export function normalizeOptions(
+  options: string[] | QuestionOption[] | undefined
+): QuestionOption[] | undefined {
+  if (!options || options.length === 0) return undefined;
+  // Check if first item is a string (old format)
+  if (typeof options[0] === "string") {
+    return (options as string[]).map((opt, idx) => ({
+      id: `option-${idx}`,
+      label: opt,
+      value: opt,
+    }));
+  }
+  return options as QuestionOption[];
 }
 
 export interface ClarifyingQuestionsResponse {
