@@ -224,7 +224,6 @@ index 1234567..abcdefg 100644
           create: [
             {
               type: "DIFF",
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               content: { diffs } as any,
             },
           ],
