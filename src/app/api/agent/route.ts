@@ -279,7 +279,6 @@ export async function POST(request: NextRequest) {
 
     try {
       // Type assertion needed because .tee() loses async iterable typing
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for await (const chunk of dbFullStream as any) {
         // Only process text-delta chunks for message content
         if (chunk.type === "text-delta") {
@@ -351,7 +350,6 @@ export async function POST(request: NextRequest) {
         if (!sendEvent({ type: "start" })) return;
         if (!sendEvent({ type: "start-step" })) return;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for await (const chunk of frontendFullStream as any) {
           // Exit early if client disconnected
           if (clientDisconnected) {

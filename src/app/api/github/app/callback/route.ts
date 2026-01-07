@@ -138,7 +138,6 @@ export async function GET(request: NextRequest) {
     let githubOwner: string;
     let ownerType: "user" | "org" = "user";
     let installationIdNumber: number | undefined;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let installationAccount: any = null;
 
     if (installationId) {
@@ -154,7 +153,6 @@ export async function GET(request: NextRequest) {
         const installationsData = await installationsResponse.json();
 
         console.log("installationsData", installationsData);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const installation = installationsData.installations?.find((inst: any) => inst.id === parseInt(installationId));
 
         if (installation) {

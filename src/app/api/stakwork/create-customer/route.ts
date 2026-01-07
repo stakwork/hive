@@ -76,7 +76,6 @@ export async function POST(request: NextRequest) {
         ) {
           decryptedSwarmApiKey = encryptionService.decryptField(
             "swarmApiKey",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             maybeEncryptedAgain as any,
           );
         }

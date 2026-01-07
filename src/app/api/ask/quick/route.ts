@@ -92,7 +92,6 @@ export async function POST(request: NextRequest) {
     const lastMessageContent = typeof lastMessage?.content === "string"
       ? lastMessage.content
       : Array.isArray(lastMessage?.content)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ? lastMessage.content.find((part: any) => part.type === "text")?.text || ""
         : "";
 
