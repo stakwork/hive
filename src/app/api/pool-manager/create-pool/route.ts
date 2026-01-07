@@ -8,6 +8,14 @@ import { EnvironmentVariable } from "@/types";
 import { isApiError } from "@/types/errors";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  devcontainerJsonContent,
+  dockerComposeContent,
+  dockerfileContent,
+  formatPM2Apps,
+  generatePM2Apps,
+} from "@/utils/devContainerUtils";
+import { ServiceDataConfig } from "@/components/stakgraph/types";
 
 export const runtime = "nodejs";
 
@@ -47,7 +55,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { swarmId, workspaceId, container_files } = body;
+    const { swarmId, workspaceId } = body;
 
     const userId = (session.user as { id?: string })?.id;
     if (!userId) {
@@ -90,21 +98,63 @@ export async function POST(request: NextRequest) {
       poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    // Check if swarm already has container files
-    let finalContainerFiles = container_files;
+    // Generate container files from database services and environment variables
+    let finalContainerFiles: Record<string, string> = {};
 
-    if (swarm.containerFiles && Object.keys(swarm.containerFiles).length > 0) {
+    if (swarm.containerFiles &&
+        typeof swarm.containerFiles === 'object' &&
+        Object.keys(swarm.containerFiles).length > 0) {
       // Use existing container files if they exist
-      finalContainerFiles = swarm.containerFiles;
+      finalContainerFiles = swarm.containerFiles as Record<string, string>;
       console.log("Using existing container files from database");
     } else {
-      // Save new container files to database if none exist
+      console.log("Generating container files from database services");
+
+      // Get repository name for file generation
+      const repository = await db.repository.findFirst({
+        where: { workspaceId: swarm.workspaceId },
+      });
+      const repoName = repository?.name || swarm.workspace.slug;
+
+      // Convert swarm services to ServiceDataConfig format
+      let services: ServiceDataConfig[] = [];
+      if (swarm.services) {
+        try {
+          const parsedServices = typeof swarm.services === 'string'
+            ? JSON.parse(swarm.services)
+            : swarm.services;
+          services = Array.isArray(parsedServices) ? parsedServices : [];
+        } catch (error) {
+          console.warn("Failed to parse swarm services:", error);
+          services = [];
+        }
+      }
+
+      // Generate container files using existing utilities
+      const pm2Apps = generatePM2Apps(repoName, services);
+      const containerFiles = {
+        "devcontainer.json": devcontainerJsonContent(repoName),
+        "pm2.config.js": `module.exports = {\n  apps: ${formatPM2Apps(pm2Apps)},\n};\n`,
+        "docker-compose.yml": dockerComposeContent(),
+        "Dockerfile": dockerfileContent(),
+      };
+
+      // Base64 encode the generated files
+      finalContainerFiles = Object.entries(containerFiles).reduce(
+        (acc, [name, content]) => {
+          acc[name] = Buffer.from(content).toString("base64");
+          return acc;
+        },
+        {} as Record<string, string>
+      );
+
+      // Save generated container files to database
       await saveOrUpdateSwarm({
         swarmId,
         workspaceId,
-        containerFiles: container_files,
+        containerFiles: finalContainerFiles,
       });
-      console.log("Saved new container files to database");
+      console.log("Generated and saved new container files to database");
     }
 
     if (!swarm) {

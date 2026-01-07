@@ -92,8 +92,8 @@ export function VMConfigSection() {
           {isPoolActive
             ? "Manage environment variables and services any time."
             : servicesReady
-            ? "Complete your pool setup to get started."
-            : "Services are being set up."}
+              ? "Complete your pool setup to get started."
+              : "Services are being set up."}
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -201,7 +201,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: { ".devcontainer/devcontainer.json": "{}" },
         }
       );
       const response = await POST(request);
@@ -241,7 +240,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: { ".devcontainer/devcontainer.json": "{}" },
         }
       );
       const response = await POST(request);
@@ -252,12 +250,8 @@ describe("POST /api/pool-manager/create-pool", () => {
   });
 
   describe("Successful Pool Creation", () => {
-    test("successfully creates pool with new container files", async () => {
+    test("successfully creates pool and generates container files from services", async () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
-
-      const containerFiles = {
-        ".devcontainer/devcontainer.json": '{"name": "test"}',
-      };
 
       const mockPool = {
         id: "pool-789",
@@ -279,7 +273,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: containerFiles,
         }
       );
       const response = await POST(request);
@@ -294,12 +287,12 @@ describe("POST /api/pool-manager/create-pool", () => {
           branch_name: repository.branch,
           github_pat: "test-github-token",
           github_username: "testuser",
-          container_files: containerFiles,
+          container_files: expect.any(Object),
         })
       );
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
-          containerFiles: containerFiles,
+          containerFiles: expect.any(Object),
         })
       );
     });
@@ -317,10 +310,6 @@ describe("POST /api/pool-manager/create-pool", () => {
           containerFiles: existingContainerFiles,
         },
       });
-
-      const newContainerFiles = {
-        ".devcontainer/devcontainer.json": '{"name": "new"}',
-      };
 
       const mockPool = {
         id: "pool-101",
@@ -342,7 +331,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: newContainerFiles,
         }
       );
       const response = await POST(request);
@@ -378,7 +366,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -426,7 +413,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -464,7 +450,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -496,7 +481,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -528,7 +512,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -555,7 +538,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -576,7 +558,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -618,7 +599,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -662,7 +642,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -697,7 +676,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -729,7 +707,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -771,7 +748,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -807,7 +783,6 @@ describe("POST /api/pool-manager/create-pool", () => {
         {
           swarmId: swarm.swarmId,
           workspaceId: workspace.id,
-          container_files: {},
         }
       );
       const response = await POST(request);
@@ -815,7 +790,7 @@ describe("POST /api/pool-manager/create-pool", () => {
       await expectSuccess(response, 201);
       expect(mockSaveOrUpdateSwarm).toHaveBeenCalledWith(
         expect.objectContaining({
-          containerFiles: {},
+          containerFiles: expect.any(Object),
         })
       );
     });

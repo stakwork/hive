@@ -12,31 +12,7 @@ import { parseEnv } from "@/lib/env-parser";
 import { Clipboard, Loader2, Save, Settings, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import ServicesForm from "@/components/stakgraph/forms/ServicesForm";
-import {
-  devcontainerJsonContent,
-  dockerComposeContent,
-  dockerfileContent,
-  formatPM2Apps,
-  generatePM2Apps,
-} from "../../utils/devContainerUtils";
 import { ModalComponentProps } from "./ModlaProvider";
-
-const getFiles = (
-  repoName: string,
-  servicesData: ServiceDataConfig[],
-) => {
-  const pm2Apps = generatePM2Apps(repoName, servicesData);
-
-  return {
-    "devcontainer.json": devcontainerJsonContent(repoName),
-    "pm2.config.js": `module.exports = {
-  apps: ${formatPM2Apps(pm2Apps)},
-};
-`,
-    "docker-compose.yml": dockerComposeContent(),
-    Dockerfile: dockerfileContent(),
-  };
-};
 
 type ServicesModalProps = {
   /** optional: anything you might want to pass in future */
@@ -60,7 +36,6 @@ export default function ServicesModal({
     bulkAddEnvVars,
   } = useEnvironmentVars();
   const [dataLoading, setDataLoading] = useState(true);
-  const [repoName, setRepoName] = useState<string>("");
   const [showImportSection, setShowImportSection] = useState(false);
   const [showAdvancedSection, setShowAdvancedSection] = useState(false);
 
@@ -93,13 +68,7 @@ export default function ServicesModal({
               );
             }
 
-            // Set repo name from swarm data
-            if (settings.repositoryName) {
-              setRepoName(settings.repositoryName);
-            } else {
-              // Fallback to slug if no repo name in swarm
-              setRepoName(slug);
-            }
+            // Repository name is now handled server-side in pool creation
           }
         }
       } catch (error) {
@@ -113,7 +82,7 @@ export default function ServicesModal({
     };
 
     loadData();
-  }, [slug]);
+  }, [slug, setEnvVars]);
 
   // Close on Escape
   useEffect(() => {
@@ -209,17 +178,6 @@ export default function ServicesModal({
         throw new Error("Failed to update swarm");
       }
 
-      // Generate container files using the repo name from swarm data
-      const files = getFiles(repoName, services);
-
-      const base64EncodedFiles = Object.entries(files).reduce(
-        (acc, [name, content]) => {
-          acc[name] = Buffer.from(content).toString("base64");
-          return acc;
-        },
-        {} as Record<string, string>,
-      );
-
       // Create pool after swarm update
       await fetch("/api/pool-manager/create-pool", {
         method: "POST",
@@ -227,7 +185,6 @@ export default function ServicesModal({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          container_files: base64EncodedFiles,
           workspaceId: workspaceId,
         }),
       });
@@ -248,7 +205,7 @@ export default function ServicesModal({
     } finally {
       setLoading(false);
     }
-  }, [slug, workspaceId, services, envVars, repoName, onResolve, updateWorkspace]);
+  }, [slug, workspaceId, services, envVars, onResolve, updateWorkspace]);
 
 
   return (

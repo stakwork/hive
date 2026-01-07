@@ -34,14 +34,11 @@ async function processNodesMediaUrls(
 
     // Check if node has properties.media_url and if it's an S3 URL
     if (node.properties?.media_url && typeof node.properties.media_url === "string") {
-      console.log(`[Jarvis Search] Processing node ${node.ref_id} with media_url: ${node.properties.media_url}`);
 
       // Only presign if it's a sphinx-livekit-recordings URL
       if (node.properties.media_url.includes("sphinx-livekit-recordings")) {
-        console.log(`[Jarvis Search] Found sphinx-livekit-recordings URL for node ${node.ref_id}`);
         try {
           const s3Key = extractS3KeyFromUrl(node.properties.media_url);
-          console.log(`[Jarvis Search] Extracted S3 key for node ${node.ref_id}: "${s3Key}"`);
 
           // Generate presigned URL with 1 hour expiration
           const presignedUrl = await s3Service.generatePresignedDownloadUrlForBucket(
@@ -49,13 +46,11 @@ async function processNodesMediaUrls(
             s3Key,
             3600,
           );
-          console.log(`[Jarvis Search] Generated presigned URL for node ${node.ref_id}: ${presignedUrl}`);
 
           processedNode.properties = {
             ...node.properties,
             media_url: presignedUrl,
           };
-          console.log(`[Jarvis Search] Successfully presigned media_url for node ${node.ref_id}`);
         } catch (error) {
           console.error(`[Jarvis Search] Failed to presign media_url for node ${node.ref_id}:`, error);
           console.error(`[Jarvis Search] Original URL was: ${node.properties.media_url}`);
@@ -171,9 +166,6 @@ export async function POST(request: NextRequest) {
       data: requestBody,
     });
 
-    console.log("[Jarvis Search] API result status:", apiResult.status);
-    console.log("[Jarvis Search] API result success:", apiResult.ok);
-
     // Process the response data to presign any media_url fields in nodes
     let processedData = apiResult.data;
     try {
@@ -186,7 +178,6 @@ export async function POST(request: NextRequest) {
           ...data,
           nodes: processedNodes,
         };
-        console.log("[Jarvis Search] Successfully processed media URLs in nodes");
       }
     } catch (error) {
       console.error("[Jarvis Search] Error processing media URLs:", error);

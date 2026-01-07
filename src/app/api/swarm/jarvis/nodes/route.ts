@@ -187,10 +187,6 @@ export async function GET(request: NextRequest) {
       // Continue with original data if processing fails
     }
 
-    console.log('[Jarvis Nodes] API result:', searchParams.toString());
-    console.log('[Jarvis Nodes] Processed data:', processedData);
-
-
     return NextResponse.json(
       {
         success: apiResult.ok,

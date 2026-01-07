@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useModal } from "@/components/modals/ModlaProvider";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { formatRelativeOrDate } from "@/lib/date-utils";
+import { PoolStatusResponse } from "@/types";
 import { Loader2, Server } from "lucide-react";
 import Link from "next/link";
-import { useModal } from "@/components/modals/ModlaProvider";
-import { PoolStatusResponse } from "@/types";
+import React, { useCallback, useEffect, useState } from "react";
 
 export function PoolStatusWidget() {
   const { slug, workspace } = useWorkspace();
@@ -25,6 +25,7 @@ export function PoolStatusWidget() {
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
   const servicesReady = workspace?.containerFilesSetUp === true;
+  const disableAutoLaunch = process.env.NEXT_PUBLIC_DISABLE_AUTO_LAUNCH_PODS === 'true';
 
   const fetchPoolStatus = useCallback(async () => {
     if (!slug || !isPoolActive) {
@@ -57,6 +58,42 @@ export function PoolStatusWidget() {
     e.preventDefault();
     open("ServicesWizard");
   };
+
+  // Auto-launch pool when services are ready (unless disabled)
+  useEffect(() => {
+    if (servicesReady && !isPoolActive && !disableAutoLaunch && slug && workspace?.id) {
+      console.log("Auto-launching pool for workspace:", workspace.id);
+
+      const autoLaunchPool = async () => {
+        try {
+          const poolResponse = await fetch("/api/pool-manager/create-pool", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              workspaceId: workspace.id,
+            }),
+          });
+
+          if (!poolResponse.ok) {
+            console.error("Auto-launch pool creation failed:", poolResponse.status);
+            return;
+          }
+
+          const poolData = await poolResponse.json();
+          console.log("Auto-launch pool creation result:", poolData);
+
+          // The workspace state will be updated by the pool creation endpoint
+          // or we could trigger a refresh here if needed
+        } catch (error) {
+          console.error("Auto-launch pool creation error:", error);
+        }
+      };
+
+      autoLaunchPool();
+    }
+  }, [servicesReady, isPoolActive, disableAutoLaunch, slug, workspace?.id]);
 
   // Compact state when pool is active
   if (isPoolActive && !isExpanded) {
@@ -138,15 +175,28 @@ export function PoolStatusWidget() {
       );
     }
 
-    // Ready to launch pods
-    return (
-      <Button asChild size="sm" className="h-10 gap-2">
-        <Link onClick={handleOpenModal} href={`/w/${slug}`}>
-          <Server className="w-4 h-4" />
-          Launch Pods
-        </Link>
-      </Button>
-    );
+    // Ready to launch pods or show auto-launch status
+    if (disableAutoLaunch) {
+      return (
+        <Button asChild size="sm" className="h-10 gap-2">
+          <Link onClick={handleOpenModal} href={`/w/${slug}`}>
+            <Server className="w-4 h-4" />
+            Launch Pods
+          </Link>
+        </Button>
+      );
+    } else {
+      // Auto-launch is enabled, show loading state
+      return (
+        <div className="flex items-center gap-2 px-3 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm">
+          <div className="relative flex items-center justify-center">
+            <Server className="w-4 h-4 text-foreground" />
+            <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+          </div>
+          <div className="text-xs font-medium text-muted-foreground">Auto-launching...</div>
+        </div>
+      );
+    }
   }
 
   return null;
