@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -43,7 +43,7 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
   const { slug } = useWorkspace();
 
   // Fetch workspace members
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     if (!slug) return;
     
     try {
@@ -61,11 +61,11 @@ export function WorkspaceMembers({ canAdmin }: WorkspaceMembersProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [slug]);
 
   useEffect(() => {
     fetchMembers();
-  }, [slug]);
+  }, [fetchMembers]);
 
   const handleRemoveMember = (userId: string, userName: string) => {
     // Skip if trying to remove owner

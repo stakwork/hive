@@ -244,7 +244,7 @@ export function WorkspaceProvider({
 
       fetchCurrentWorkspace();
     }
-  }, [pathname, status, initialSlug, currentLoadedSlug]); // Remove workspace from dependencies to prevent loops
+  }, [pathname, status, initialSlug, currentLoadedSlug, fetchTaskNotifications]); // Remove workspace from dependencies to prevent loops
 
   // Refresh notification count when pathname changes (user navigates between pages)
   useEffect(() => {

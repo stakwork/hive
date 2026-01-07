@@ -97,7 +97,7 @@ export function useAIGeneration({
         setIsLoading(false);
       }
     },
-    [content, source, currentRunId, featureId, enabled, type]
+    [content, source, currentRunId, featureId, enabled, type, displayName]
   );
 
   const reject = useCallback(
@@ -149,7 +149,7 @@ export function useAIGeneration({
         setIsLoading(false);
       }
     },
-    [source, currentRunId, enabled, type]
+    [source, currentRunId, enabled, type, displayName]
   );
 
   const provideFeedback = useCallback(

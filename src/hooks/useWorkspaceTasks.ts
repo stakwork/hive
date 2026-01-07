@@ -161,7 +161,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -226,7 +226,7 @@ export function useWorkspaceTasks(
       setLoading(false);
       setIsRestoringFromStorage(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived]);
+  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived, search, pageLimit, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod]);
 
   // Handle real-time task title updates (also handles archive status changes)
   const handleTaskTitleUpdate = useCallback(
@@ -265,7 +265,7 @@ export function useWorkspaceTasks(
         );
       });
     },
-    [showArchived, fetchTasks, currentPage, includeNotifications, pagination?.hasMore],
+    [showArchived, fetchTasks, includeNotifications, pagination?.hasMore],
   );
 
   // Subscribe to workspace-level updates if workspaceSlug is provided

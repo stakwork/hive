@@ -162,5 +162,5 @@ export const useWebhookHighlights = () => {
     } catch (error) {
       console.error('Error subscribing to webhook highlights:', error)
     }
-  }, [workspace?.slug, fetchNodes, fetchSubgraph, addHighlightChunk, addNewNode])
+  }, [workspace?.slug, fetchNodes, fetchSubgraph, addHighlightChunk, addNewNode, addCallout])
 }
