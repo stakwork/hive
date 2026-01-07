@@ -16,7 +16,7 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 
 export function PoolStatusWidget() {
-  const { slug, workspace } = useWorkspace();
+  const { slug, workspace, updateWorkspace } = useWorkspace();
   const open = useModal();
 
   const [poolStatus, setPoolStatus] = useState<PoolStatusResponse | null>(null);
@@ -84,8 +84,11 @@ export function PoolStatusWidget() {
           const poolData = await poolResponse.json();
           console.log("Auto-launch pool creation result:", poolData);
 
-          // The workspace state will be updated by the pool creation endpoint
-          // or we could trigger a refresh here if needed
+          // Update workspace state to reflect successful pool creation
+          updateWorkspace({ poolState: 'COMPLETE' });
+
+          // Fetch pool status after successful creation
+          await fetchPoolStatus();
         } catch (error) {
           console.error("Auto-launch pool creation error:", error);
         }
@@ -93,7 +96,7 @@ export function PoolStatusWidget() {
 
       autoLaunchPool();
     }
-  }, [servicesReady, isPoolActive, disableAutoLaunch, slug, workspace?.id]);
+  }, [servicesReady, isPoolActive, disableAutoLaunch, slug, workspace?.id, updateWorkspace, fetchPoolStatus]);
 
   // Compact state when pool is active
   if (isPoolActive && !isExpanded) {
