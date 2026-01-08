@@ -45,4 +45,5 @@ export const PUSHER_EVENTS = {
   STAKWORK_RUN_DECISION: "stakwork-run-decision",
   HIGHLIGHT_NODES: "highlight-nodes",
   FOLLOW_UP_QUESTIONS: "follow-up-questions",
+  PROVENANCE_DATA: "provenance-data",
 } as const;

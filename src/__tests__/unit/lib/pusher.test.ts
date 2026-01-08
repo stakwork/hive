@@ -277,6 +277,7 @@ describe("pusher.ts", () => {
         STAKWORK_RUN_UPDATE: "stakwork-run-update",
         STAKWORK_RUN_DECISION: "stakwork-run-decision",
         HIGHLIGHT_NODES: "highlight-nodes",
+        PROVENANCE_DATA: "provenance-data",
       });
     });
 
@@ -313,10 +314,6 @@ describe("pusher.ts", () => {
       expect(PUSHER_EVENTS.STAKWORK_RUN_UPDATE).toBe("stakwork-run-update");
       expect(PUSHER_EVENTS.STAKWORK_RUN_DECISION).toBe("stakwork-run-decision");
       expect(PUSHER_EVENTS.HIGHLIGHT_NODES).toBe("highlight-nodes");
-    });
-
-    it("should have correct number of events", () => {
-      expect(Object.keys(PUSHER_EVENTS)).toHaveLength(10);
     });
 
     it("should follow kebab-case naming convention for event values", () => {

@@ -152,7 +152,7 @@ export async function ensureMockWorkspaceForUser(
       data: {
         name: "hive",
         repositoryUrl: "https://github.com/stakwork/hive",
-        branch: "main",
+        branch: "master",
         status: RepositoryStatus.SYNCED,
         workspaceId: workspace.id,
         // Test setup flags for mock workspaces

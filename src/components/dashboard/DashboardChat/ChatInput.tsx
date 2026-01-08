@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Lightbulb, Image as ImageIcon, X } from "lucide-react";
+import { Send, Lightbulb, Image as ImageIcon, X, Eye } from "lucide-react";
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
@@ -13,6 +13,9 @@ interface ChatInputProps {
   imageData?: string | null;
   onImageUpload?: (imageData: string) => void;
   onImageRemove?: () => void;
+  showProvenanceToggle?: boolean;
+  isProvenanceSidebarOpen?: boolean;
+  onToggleProvenance?: () => void;
 }
 
 export function ChatInput({
@@ -24,6 +27,9 @@ export function ChatInput({
   imageData = null,
   onImageUpload,
   onImageRemove,
+  showProvenanceToggle = false,
+  isProvenanceSidebarOpen = false,
+  onToggleProvenance,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -228,6 +234,19 @@ export function ChatInput({
           title="Create Feature"
         >
           <Lightbulb className="w-4 h-4" />
+        </Button>
+      )}
+      {showProvenanceToggle && (
+        <Button
+          type="button"
+          onClick={onToggleProvenance}
+          disabled={disabled}
+          variant="outline"
+          size="icon"
+          className="rounded-full h-10 w-10"
+          title={isProvenanceSidebarOpen ? "Hide sources" : "Show sources"}
+        >
+          <Eye className={`w-4 h-4 ${isProvenanceSidebarOpen ? "text-primary" : ""}`} />
         </Button>
       )}
     </form>
