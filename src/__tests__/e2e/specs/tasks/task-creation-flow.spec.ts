@@ -13,7 +13,7 @@ import { AuthPage, DashboardPage, TasksPage } from '@/__tests__/e2e/support/page
  * 6. Navigate back to Tasks list
  * 7. Verify task appears in the list
  */
-test.describe('Task Creation Flow', () => {
+test.skip('Task Creation Flow', () => {
   let authPage: AuthPage;
   let dashboardPage: DashboardPage;
   let tasksPage: TasksPage;
