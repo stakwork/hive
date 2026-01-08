@@ -15,9 +15,16 @@ interface ColorSwatchItem {
 
 function isValidColorSwatchArtifact(artifact: QuestionArtifact | undefined): artifact is QuestionArtifact & { data: ColorSwatchItem[] } {
   if (!artifact || artifact.type !== "color_swatch") return false;
-  if (!Array.isArray(artifact.data)) return false;
-  return artifact.data.some(
-    (item) => typeof item === "object" && item !== null && typeof (item as ColorSwatchItem).label === "string" && typeof (item as ColorSwatchItem).value === "string"
+  if (!Array.isArray(artifact.data) || artifact.data.length === 0) return false;
+  // Every item must have label and value as non-empty strings
+  return artifact.data.every(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as ColorSwatchItem).label === "string" &&
+      (item as ColorSwatchItem).label.length > 0 &&
+      typeof (item as ColorSwatchItem).value === "string" &&
+      (item as ColorSwatchItem).value.length > 0
   );
 }
 
@@ -29,16 +36,37 @@ function isValidMermaidArtifact(artifact: QuestionArtifact | undefined): boolean
 function isValidComparisonTableArtifact(artifact: QuestionArtifact | undefined): boolean {
   if (!artifact || artifact.type !== "comparison_table") return false;
   if (typeof artifact.data !== "object" || artifact.data === null) return false;
+
   const data = artifact.data as Record<string, unknown>;
+
+  // Validate columns array
   if (!Array.isArray(data.columns) || data.columns.length === 0) return false;
+  const validColumns = (data.columns as unknown[]).every((col) => typeof col === "string" && col.length > 0);
+  if (!validColumns) return false;
+
+  // Validate rows array
   if (!Array.isArray(data.rows) || data.rows.length === 0) return false;
-  const validColumns = (data.columns as unknown[]).some(
-    (col) => typeof col === "object" && col !== null && "category" in col && "type" in col
-  );
-  const validRows = (data.rows as unknown[]).some(
-    (row) => typeof row === "object" && row !== null && "label" in row && "cells" in row
-  );
-  return validColumns && validRows;
+  const validRows = (data.rows as unknown[]).every((row) => {
+    if (typeof row !== "object" || row === null) return false;
+    const r = row as Record<string, unknown>;
+
+    // Must have label (string) and cells (object)
+    if (typeof r.label !== "string" || r.label.length === 0) return false;
+    if (typeof r.cells !== "object" || r.cells === null) return false;
+
+    // Validate cells structure
+    const cells = r.cells as Record<string, unknown>;
+    for (const key of Object.keys(cells)) {
+      const value = cells[key];
+      // Each cell value must be an array of strings
+      if (!Array.isArray(value)) return false;
+      if (!value.every((item) => typeof item === "string")) return false;
+    }
+
+    return true;
+  });
+
+  return validRows;
 }
 
 function isValidArtifact(artifact: QuestionArtifact | undefined): boolean {

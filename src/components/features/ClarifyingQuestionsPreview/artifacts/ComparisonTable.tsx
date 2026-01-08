@@ -3,27 +3,29 @@
 import { Check, X, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Column = fixed category (Pros, Cons, etc.)
-interface ComparisonColumn {
-  category: string;
-  type: "pros" | "cons" | "neutral";
-}
-
 // Row = variable choice (SSE, WebSockets, Polling, etc.)
 interface ComparisonRow {
   label: string;
   description?: string;
-  cells: Record<string, string[]>; // keyed by category
+  cells: Record<string, string[]>; // keyed by column name
 }
 
 interface ComparisonTableData {
-  columns: ComparisonColumn[];
+  columns: string[]; // Simple array: ["Pros", "Cons"]
   rows: ComparisonRow[];
 }
 
 interface ComparisonTableProps {
   data: ComparisonTableData;
   className?: string;
+}
+
+// Determine column type from name
+function getColumnType(column: string): "pros" | "cons" | "neutral" {
+  const lowerColumn = column.toLowerCase();
+  if (lowerColumn.includes("pro")) return "pros";
+  if (lowerColumn.includes("con")) return "cons";
+  return "neutral";
 }
 
 const colConfig = {
@@ -53,14 +55,6 @@ const colConfig = {
 export function ComparisonTable({ data, className }: ComparisonTableProps) {
   const { columns, rows } = data;
 
-  if (!columns || columns.length === 0) {
-    return (
-      <div className={cn("p-4 text-sm text-muted-foreground", className)}>
-        No comparison data provided
-      </div>
-    );
-  }
-
   return (
     <div className={cn("overflow-auto rounded-md border border-border", className)}>
       <table className="w-full border-collapse text-sm">
@@ -69,12 +63,13 @@ export function ComparisonTable({ data, className }: ComparisonTableProps) {
             {/* Empty header for choice column */}
             <th className="p-3 text-left font-medium text-muted-foreground border-b border-border" />
             {/* Category column headers (Pros, Cons, etc.) */}
-            {columns.map((col) => {
-              const config = colConfig[col.type];
+            {columns.map((col, idx) => {
+              const colType = getColumnType(col);
+              const config = colConfig[colType];
               const Icon = config.icon;
               return (
                 <th
-                  key={col.category}
+                  key={idx}
                   className={cn(
                     "p-3 text-left font-semibold border-b",
                     config.borderClass,
@@ -83,7 +78,7 @@ export function ComparisonTable({ data, className }: ComparisonTableProps) {
                 >
                   <div className="flex items-center gap-1.5">
                     <Icon className={cn("h-4 w-4", config.iconClass)} />
-                    <span className={config.labelClass}>{col.category}</span>
+                    <span className={config.labelClass}>{col}</span>
                   </div>
                 </th>
               );
@@ -104,12 +99,13 @@ export function ComparisonTable({ data, className }: ComparisonTableProps) {
                 )}
               </td>
               {/* Cells for each category column */}
-              {columns.map((col) => {
-                const config = colConfig[col.type];
-                const cellItems = row.cells[col.category] || [];
+              {columns.map((col, colIdx) => {
+                const colType = getColumnType(col);
+                const config = colConfig[colType];
+                const cellItems = row.cells[col] || [];
                 return (
                   <td
-                    key={col.category}
+                    key={colIdx}
                     className={cn("p-3 align-top", config.bgClass)}
                   >
                     {cellItems.length > 0 ? (

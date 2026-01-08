@@ -39,33 +39,30 @@ const exampleQuestions: ClarifyingQuestion[] = [
     questionArtifact: {
       type: "comparison_table",
       data: {
-        columns: [
-          { category: "Pros", type: "pros" },
-          { category: "Cons", type: "cons" },
-        ],
+        columns: ["Pros", "Cons"],
         rows: [
           {
             label: "SSE",
             description: "Server-Sent Events",
             cells: {
-              Pros: ["Simple to implement", "Auto-reconnect built-in", "Works over HTTP"],
-              Cons: ["Server to client only", "Limited browser support", "No binary data"],
+              Pros: ["Simple", "Auto-reconnect", "HTTP-based"],
+              Cons: ["Server→Client only", "No binary data"],
             },
           },
           {
             label: "WebSockets",
-            description: "Full duplex communication",
+            description: "Full duplex",
             cells: {
-              Pros: ["Bi-directional", "Low latency", "Real-time updates"],
-              Cons: ["More complex setup", "Requires special server", "Can be blocked by proxies"],
+              Pros: ["Bi-directional", "Low latency", "Real-time"],
+              Cons: ["Complex setup", "Special server needed"],
             },
           },
           {
             label: "Polling",
-            description: "Regular HTTP requests",
+            description: "HTTP requests",
             cells: {
-              Pros: ["Works everywhere", "Simple fallback", "No special server support"],
-              Cons: ["High latency", "Increased server load", "Inefficient"],
+              Pros: ["Works everywhere", "Simple"],
+              Cons: ["High latency", "Inefficient"],
             },
           },
         ],
