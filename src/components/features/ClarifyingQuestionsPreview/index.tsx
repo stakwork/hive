@@ -33,10 +33,10 @@ function isValidComparisonTableArtifact(artifact: QuestionArtifact | undefined):
   if (!Array.isArray(data.columns) || data.columns.length === 0) return false;
   if (!Array.isArray(data.rows) || data.rows.length === 0) return false;
   const validColumns = (data.columns as unknown[]).some(
-    (col) => typeof col === "object" && col !== null && "category" in col && "type" in col
+    (col) => typeof col === "object" && col !== null && "label" in col
   );
   const validRows = (data.rows as unknown[]).some(
-    (row) => typeof row === "object" && row !== null && "label" in row && "cells" in row
+    (row) => typeof row === "object" && row !== null && "category" in row && "cells" in row
   );
   return validColumns && validRows;
 }

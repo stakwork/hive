@@ -40,32 +40,33 @@ const exampleQuestions: ClarifyingQuestion[] = [
       type: "comparison_table",
       data: {
         columns: [
-          { category: "Pros", type: "pros" },
-          { category: "Cons", type: "cons" },
+          { label: "SSE", description: "Server-Sent Events" },
+          { label: "WebSockets", description: "Full duplex communication" },
+          { label: "Polling", description: "Regular HTTP requests" },
         ],
         rows: [
           {
-            label: "SSE",
-            description: "Server-Sent Events",
+            category: "Pros",
             cells: {
-              Pros: ["Simple to implement", "Auto-reconnect built-in", "Works over HTTP"],
-              Cons: ["Server to client only", "Limited browser support", "No binary data"],
+              SSE: ["Simple to implement", "Auto-reconnect built-in", "Works over HTTP"],
+              WebSockets: ["Bi-directional", "Low latency", "Real-time updates"],
+              Polling: ["Works everywhere", "Simple fallback", "No special server support"],
             },
           },
           {
-            label: "WebSockets",
-            description: "Full duplex communication",
+            category: "Cons",
             cells: {
-              Pros: ["Bi-directional", "Low latency", "Real-time updates"],
-              Cons: ["More complex setup", "Requires special server", "Can be blocked by proxies"],
+              SSE: ["Server to client only", "Limited browser support", "No binary data"],
+              WebSockets: ["More complex setup", "Requires special server", "Can be blocked by proxies"],
+              Polling: ["High latency", "Increased server load", "Inefficient"],
             },
           },
           {
-            label: "Polling",
-            description: "Regular HTTP requests",
+            category: "Use When",
             cells: {
-              Pros: ["Works everywhere", "Simple fallback", "No special server support"],
-              Cons: ["High latency", "Increased server load", "Inefficient"],
+              SSE: ["Live feeds", "Notifications", "Log streaming"],
+              WebSockets: ["Chat applications", "Gaming", "Collaborative editing"],
+              Polling: ["Legacy systems", "Simple status checks", "Low-frequency updates"],
             },
           },
         ],
