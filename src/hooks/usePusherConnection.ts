@@ -7,6 +7,8 @@ import {
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
+import { USE_MOCKS, MOCK_BASE } from "@/config/env";
+import { logger } from "@/lib/logger";
 
 export interface WorkflowStatusUpdate {
   taskId: string;
@@ -68,7 +70,8 @@ export function usePusherConnection({
   const [error, setError] = useState<string | null>(null);
 
   // Use refs to avoid circular dependencies
-  const channelRef = useRef<Channel | null>(null);
+  // Note: Channel type is flexible to support both real Pusher and mock implementations
+  const channelRef = useRef<Channel | null | any>(null);
   const onMessageRef = useRef(onMessage);
   const onWorkflowStatusUpdateRef = useRef(onWorkflowStatusUpdate);
   const onRecommendationsUpdatedRef = useRef(onRecommendationsUpdated);
@@ -259,6 +262,93 @@ export function usePusherConnection({
       return;
     }
 
+    // Mock mode: Use HTTP polling instead of WebSocket
+    if (USE_MOCKS) {
+      const channelName = taskId
+        ? getTaskChannelName(taskId)
+        : workspaceSlug
+          ? getWorkspaceChannelName(workspaceSlug)
+          : null;
+
+      if (!channelName) {
+        setError("Either taskId or workspaceSlug must be provided");
+        return;
+      }
+
+      setIsConnected(true);
+      setConnectionId(`mock-connection-${Date.now()}`);
+
+      let lastEventId: string | undefined;
+      let pollingInterval: NodeJS.Timeout | null = null;
+
+      const pollEvents = async () => {
+        try {
+          const url = new URL(`${MOCK_BASE}/api/mock/pusher/events`);
+          url.searchParams.set("channel", channelName);
+          if (lastEventId) {
+            url.searchParams.set("lastEventId", lastEventId);
+          }
+
+          const response = await fetch(url.toString());
+          if (!response.ok) {
+            throw new Error(`Polling failed: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          const events = data.events || [];
+
+          events.forEach((event: { id: string; eventName: string; data: unknown }) => {
+            lastEventId = event.id;
+
+            // Route events to appropriate callbacks
+            if (event.eventName === PUSHER_EVENTS.NEW_MESSAGE && onMessage) {
+              onMessage(event.data as ChatMessage);
+            } else if (
+              event.eventName === PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE &&
+              onWorkflowStatusUpdate
+            ) {
+              onWorkflowStatusUpdate(event.data as WorkflowStatusUpdate);
+            } else if (
+              event.eventName === PUSHER_EVENTS.RECOMMENDATIONS_UPDATED &&
+              onRecommendationsUpdated
+            ) {
+              onRecommendationsUpdated(event.data as RecommendationsUpdatedEvent);
+            } else if (
+              (event.eventName === PUSHER_EVENTS.TASK_TITLE_UPDATE ||
+                event.eventName === PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE) &&
+              onTaskTitleUpdate
+            ) {
+              onTaskTitleUpdate(event.data as TaskTitleUpdateEvent);
+            }
+          });
+        } catch (error) {
+          logger.error("[MockPusher] Polling error", "polling", { error });
+          setError(error instanceof Error ? error.message : "Polling failed");
+        }
+      };
+
+      // Initial poll
+      pollEvents();
+
+      // Start polling interval (500ms)
+      pollingInterval = setInterval(pollEvents, 500);
+
+      logger.debug("[MockPusher] Polling started", "polling", {
+        channel: channelName,
+        interval: 500,
+      });
+
+      // Cleanup
+      return () => {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+        }
+        setIsConnected(false);
+        logger.debug("[MockPusher] Polling stopped", "polling", { channel: channelName });
+      };
+    }
+
+    // Real Pusher mode: Use existing connect logic
     // Determine which connection to make
     if (taskId && taskId !== currentChannelIdRef.current) {
       if (LOGS) {
@@ -275,7 +365,7 @@ export function usePusherConnection({
     }
 
     return disconnect;
-  }, [taskId, workspaceSlug, enabled, connect, disconnect]);
+  }, [taskId, workspaceSlug, enabled, connect, disconnect, onMessage, onWorkflowStatusUpdate, onRecommendationsUpdated, onTaskTitleUpdate]);
 
   // Cleanup on unmount
   useEffect(() => {

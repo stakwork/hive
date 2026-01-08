@@ -1,6 +1,6 @@
 // Mock mode - when true, URLs resolve to local mock endpoints
-const USE_MOCKS = process.env.USE_MOCKS === "true";
-const MOCK_BASE = process.env.NEXTAUTH_URL || "http://localhost:3000";
+export const USE_MOCKS = process.env.USE_MOCKS === "true";
+export const MOCK_BASE = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
 const requiredEnvVars = {
   STAKWORK_API_KEY: process.env.STAKWORK_API_KEY,
@@ -62,6 +62,20 @@ export const optionalEnvVars = {
   USE_MOCKS,
   MOCK_BASE,
 } as const;
+
+// Pusher configuration
+export const PUSHER_CONFIG = {
+  appId: USE_MOCKS ? "mock-app-id" : process.env.PUSHER_APP_ID || "",
+  key: USE_MOCKS ? "mock-pusher-key" : process.env.PUSHER_KEY || "",
+  secret: USE_MOCKS ? "mock-pusher-secret" : process.env.PUSHER_SECRET || "",
+  cluster: USE_MOCKS ? "mock-cluster" : process.env.PUSHER_CLUSTER || "",
+  publicKey: USE_MOCKS
+    ? "mock-pusher-key"
+    : process.env.NEXT_PUBLIC_PUSHER_KEY || "",
+  publicCluster: USE_MOCKS
+    ? "mock-cluster"
+    : process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "",
+};
 
 /**
  * Validates and returns Gemini API key
