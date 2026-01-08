@@ -7,7 +7,7 @@ import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { PromptsPanel } from "./PromptsPanel";
+import { PromptsPanel } from "@/components/prompts";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
