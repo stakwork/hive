@@ -8,8 +8,6 @@ import { isDevelopmentMode } from "@/lib/runtime";
 export const runtime = "nodejs";
 export const fetchCache = "force-no-store";
 
-const STAKWORK_JOBS_BASE_URL = "https://jobs.stakwork.com/api/v1";
-
 interface StakworkPrompt {
   id: number;
   name: string;
@@ -70,7 +68,7 @@ export async function GET(request: NextRequest) {
     const includeUsages = searchParams.get("include_usages") === "true";
 
     // Fetch prompts from Stakwork API
-    let promptsUrl = `${STAKWORK_JOBS_BASE_URL}/prompts?page=${page}`;
+    let promptsUrl = `${config.STAKWORK_BASE_URL}/prompts?page=${page}`;
     if (workflowId) {
       promptsUrl += `&workflow_id=${workflowId}`;
     }
@@ -149,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create prompt via Stakwork API
-    const promptsUrl = `${STAKWORK_JOBS_BASE_URL}/prompts/`;
+    const promptsUrl = `${config.STAKWORK_BASE_URL}/prompts/`;
 
     const response = await fetch(promptsUrl, {
       method: "POST",
