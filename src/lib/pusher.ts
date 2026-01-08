@@ -1,30 +1,61 @@
 import Pusher from "pusher";
 import PusherClient from "pusher-js";
+import { mockPusherState } from "./mock/pusher-state";
+
+// Detect mock mode
+const USE_MOCKS = process.env.USE_MOCKS === "true";
 
 // Server-side Pusher instance for triggering events
-export const pusherServer = new Pusher({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.PUSHER_CLUSTER!,
-  useTLS: true,
-});
+// In mock mode, wrap trigger calls to use in-memory event bus
+const createPusherServer = (): Pusher => {
+  if (USE_MOCKS) {
+    // Return mock server with trigger method that uses MockPusherState
+    return {
+      trigger: (channel: string, event: string, data: any) => {
+        mockPusherState.trigger(channel, event, data);
+        return Promise.resolve();
+      },
+    } as unknown as Pusher;
+  }
+
+  return new Pusher({
+    appId: process.env.PUSHER_APP_ID!,
+    key: process.env.PUSHER_KEY!,
+    secret: process.env.PUSHER_SECRET!,
+    cluster: process.env.PUSHER_CLUSTER!,
+    useTLS: true,
+  });
+};
+
+export const pusherServer = createPusherServer();
 
 // Client-side Pusher instance - lazy initialization to avoid build-time errors
 let _pusherClient: PusherClient | null = null;
 
 export const getPusherClient = (): PusherClient => {
   if (!_pusherClient) {
-    if (
-      !process.env.NEXT_PUBLIC_PUSHER_KEY ||
-      !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
-    ) {
-      throw new Error("Pusher environment variables are not configured");
-    }
+    if (USE_MOCKS) {
+      // Return mock client that uses MockPusherState
+      _pusherClient = {
+        subscribe: (channelName: string) => {
+          return mockPusherState.subscribe(channelName) as any;
+        },
+        unsubscribe: (channelName: string) => {
+          mockPusherState.unsubscribe(channelName);
+        },
+      } as unknown as PusherClient;
+    } else {
+      if (
+        !process.env.NEXT_PUBLIC_PUSHER_KEY ||
+        !process.env.NEXT_PUBLIC_PUSHER_CLUSTER
+      ) {
+        throw new Error("Pusher environment variables are not configured");
+      }
 
-    _pusherClient = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY, {
-      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
-    });
+      _pusherClient = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY, {
+        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER,
+      });
+    }
   }
   return _pusherClient;
 };
