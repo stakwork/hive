@@ -31,6 +31,8 @@ vi.mock('lucide-react', () => {
     HelpCircle: ({ className }: any) => React.createElement('div', { 'data-testid': 'help-circle-icon', className }),
     Check: ({ className }: any) => React.createElement('div', { 'data-testid': 'check-icon', className }),
     Loader2: ({ className }: any) => React.createElement('div', { 'data-testid': 'loader2-icon', className }),
+    X: ({ className }: any) => React.createElement('div', { 'data-testid': 'x-icon', className }),
+    Minus: ({ className }: any) => React.createElement('div', { 'data-testid': 'minus-icon', className }),
   };
 });
 
