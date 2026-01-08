@@ -117,6 +117,11 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
       if (data?.workspace?.slug && data?.workspace?.id) {
         await refreshWorkspaces();
 
+        // Update lastAccessedAt for the new workspace to ensure proper workspace selection
+        fetch(`/api/workspaces/${data.workspace.slug}/access`, {
+          method: "POST",
+        }).catch(console.error);
+
         // Check GitHub App status for this workspace/repository
         const statusResponse = await fetch(`/api/github/app/check?repositoryUrl=${encodeURIComponent(repoUrl)}`);
         const statusData = await statusResponse.json();
