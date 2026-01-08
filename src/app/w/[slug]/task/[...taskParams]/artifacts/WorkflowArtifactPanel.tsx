@@ -7,6 +7,7 @@ import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PromptsPanel } from "./PromptsPanel";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -17,7 +18,7 @@ interface WorkflowArtifactPanelProps {
 export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "stakwork">("editor");
+  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "prompts" | "stakwork">("editor");
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
@@ -135,12 +136,13 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       <div className="h-full w-full flex flex-col overflow-hidden relative">
         <Tabs
           value={activeDisplayTab}
-          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "stakwork")}
+          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "prompts" | "stakwork")}
           className="flex flex-col h-full"
         >
-          <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
-            <TabsTrigger value="editor">Editor</TabsTrigger>
-            <TabsTrigger value="stakwork">Stakwork</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+            <TabsTrigger value="editor">Edit Steps</TabsTrigger>
+            <TabsTrigger value="prompts">Prompts</TabsTrigger>
+            <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
           </TabsList>
 
           <TabsContent value="editor" className="flex-1 overflow-hidden mt-0 relative">
@@ -165,6 +167,10 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
               onClose={handleModalClose}
               onSelect={handleStepSelectFromModal}
             />
+          </TabsContent>
+
+          <TabsContent value="prompts" className="flex-1 overflow-hidden mt-0">
+            <PromptsPanel workflowId={workflowId} />
           </TabsContent>
 
           <TabsContent value="stakwork" className="flex-1 overflow-hidden mt-0">
