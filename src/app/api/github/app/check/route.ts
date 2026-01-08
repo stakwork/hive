@@ -42,9 +42,11 @@ export async function GET(request: Request) {
 
     // 3️⃣ Parse GitHub URL
     const githubMatch = repoUrl.match(
-      /github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/
+      /github\.com[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?(?:[\/]?$)/
     );
     console.log("[REPO CHECK] URL parsing result:", { match: !!githubMatch });
+
+    console.log("[REPO CHECK] Github Match:", githubMatch);
 
     if (!githubMatch) {
       console.log("[REPO CHECK] Invalid GitHub repository URL format");
