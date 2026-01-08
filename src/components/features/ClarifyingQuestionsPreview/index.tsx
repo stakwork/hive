@@ -5,9 +5,72 @@ import { HelpCircle, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ClarifyingQuestion, QuestionOption } from "@/types/stakwork";
-import { normalizeOptions } from "@/types/stakwork";
-import { ArtifactRenderer, CustomColorPicker, QuestionArtifactRenderer } from "./artifacts";
+import type { ClarifyingQuestion, QuestionArtifact } from "@/types/stakwork";
+import { ColorSwatch, CustomColorPicker, QuestionArtifactRenderer } from "./artifacts";
+
+interface ColorSwatchItem {
+  label: string;
+  value: string;
+}
+
+function isValidColorSwatchArtifact(artifact: QuestionArtifact | undefined): artifact is QuestionArtifact & { data: ColorSwatchItem[] } {
+  if (!artifact || artifact.type !== "color_swatch") return false;
+  if (!Array.isArray(artifact.data)) return false;
+  return artifact.data.some(
+    (item) => typeof item === "object" && item !== null && typeof (item as ColorSwatchItem).label === "string" && typeof (item as ColorSwatchItem).value === "string"
+  );
+}
+
+function isValidMermaidArtifact(artifact: QuestionArtifact | undefined): boolean {
+  if (!artifact || artifact.type !== "mermaid") return false;
+  return typeof artifact.data === "string" && artifact.data.trim().length > 0;
+}
+
+function isValidComparisonTableArtifact(artifact: QuestionArtifact | undefined): boolean {
+  if (!artifact || artifact.type !== "comparison_table") return false;
+  if (typeof artifact.data !== "object" || artifact.data === null) return false;
+  const data = artifact.data as Record<string, unknown>;
+  if (!Array.isArray(data.columns) || data.columns.length === 0) return false;
+  if (!Array.isArray(data.rows) || data.rows.length === 0) return false;
+  const validColumns = (data.columns as unknown[]).some(
+    (col) => typeof col === "object" && col !== null && "category" in col && "type" in col
+  );
+  const validRows = (data.rows as unknown[]).some(
+    (row) => typeof row === "object" && row !== null && "label" in row && "cells" in row
+  );
+  return validColumns && validRows;
+}
+
+function isValidArtifact(artifact: QuestionArtifact | undefined): boolean {
+  if (!artifact) return false;
+  switch (artifact.type) {
+    case "mermaid":
+      return isValidMermaidArtifact(artifact);
+    case "comparison_table":
+      return isValidComparisonTableArtifact(artifact);
+    case "color_swatch":
+      return isValidColorSwatchArtifact(artifact);
+    default:
+      return false;
+  }
+}
+
+function shouldSkipQuestion(question: ClarifyingQuestion): boolean {
+  if (!question.questionArtifact) return false;
+  const { type } = question.questionArtifact;
+  if (type === "mermaid" || type === "comparison_table") {
+    return !isValidArtifact(question.questionArtifact);
+  }
+  return false;
+}
+
+function getColorFromArtifact(artifact: QuestionArtifact | undefined, optionLabel: string): string | undefined {
+  if (!isValidColorSwatchArtifact(artifact)) return undefined;
+  const item = (artifact.data as ColorSwatchItem[]).find(
+    (i) => i.label.toLowerCase() === optionLabel.toLowerCase()
+  );
+  return item?.value;
+}
 
 interface ClarifyingQuestionsPreviewProps {
   questions: ClarifyingQuestion[];
@@ -15,21 +78,18 @@ interface ClarifyingQuestionsPreviewProps {
   isLoading?: boolean;
 }
 
-// Unified answer structure for all question types
 interface Answer {
-  selections: string[]; // For choice questions (stores option values)
-  text: string; // For text questions or custom text on choice questions
-  customColor?: string; // For custom color picker
+  selections: string[];
+  text: string;
+  customColor?: string;
 }
 
 const emptyAnswer: Answer = { selections: [], text: "", customColor: "" };
 
 function getDisplayAnswer(
   question: ClarifyingQuestion,
-  answer: Answer,
-  normalizedOptions?: QuestionOption[]
+  answer: Answer
 ): string {
-  // Handle custom color
   if (answer.customColor) {
     const parts = [`Custom color: ${answer.customColor}`];
     if (answer.text.trim()) parts.push(answer.text.trim());
@@ -40,13 +100,7 @@ function getDisplayAnswer(
     return answer.text.trim() || "Not answered";
   }
 
-  // Map selection values back to labels for display
-  const selectedLabels =
-    normalizedOptions
-      ?.filter((opt) => answer.selections.includes(opt.value))
-      .map((opt) => opt.label) || answer.selections;
-
-  const parts = [...selectedLabels];
+  const parts = [...answer.selections];
   if (answer.text.trim()) {
     parts.push(answer.text.trim());
   }
@@ -59,8 +113,7 @@ function formatAnswersForFeedback(
 ): string {
   return questions
     .map((q, i) => {
-      const normalizedOptions = normalizeOptions(q.options);
-      const answer = getDisplayAnswer(q, answers[i] || emptyAnswer, normalizedOptions);
+      const answer = getDisplayAnswer(q, answers[i] || emptyAnswer);
       return `Q: ${q.question}\nA: ${answer}`;
     })
     .join("\n\n");
@@ -71,28 +124,29 @@ export function ClarifyingQuestionsPreview({
   onSubmit,
   isLoading = false,
 }: ClarifyingQuestionsPreviewProps) {
+  const validQuestions = useMemo(
+    () => questions.filter((q) => !shouldSkipQuestion(q)),
+    [questions]
+  );
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const [showReview, setShowReview] = useState(false);
 
-  const totalSteps = questions.length;
+  const totalSteps = validQuestions.length;
   const currentStep = currentIndex + 1;
-  const currentQuestion = questions[currentIndex];
-  const isLastQuestion = currentIndex === questions.length - 1;
+  const currentQuestion = validQuestions[currentIndex];
+  const isLastQuestion = currentIndex === validQuestions.length - 1;
   const isFirstQuestion = currentIndex === 0;
   const currentAnswer = answers[currentIndex] || emptyAnswer;
 
-  // Normalize options for current question
-  const normalizedOptions = useMemo(
-    () => normalizeOptions(currentQuestion?.options),
-    [currentQuestion?.options]
-  );
+  const options = currentQuestion?.options;
 
-  // Check if options have color swatches
-  const hasColorSwatches = useMemo(
-    () => normalizedOptions?.some((opt) => opt.artifact?.type === "color_swatch") ?? false,
-    [normalizedOptions]
-  );
+  const isColorSwatchQuestion = isValidColorSwatchArtifact(currentQuestion?.questionArtifact);
+
+  const hasValidDiagramArtifact = currentQuestion?.questionArtifact &&
+    isValidArtifact(currentQuestion.questionArtifact) &&
+    currentQuestion.questionArtifact.type !== "color_swatch";
 
   const updateAnswer = (update: Partial<Answer>) => {
     setAnswers((prev) => ({
@@ -103,28 +157,26 @@ export function ClarifyingQuestionsPreview({
 
   const handleOptionSelect = (optionValue: string) => {
     if (currentQuestion.type === "single_choice") {
-      // single_choice - toggle selection (allow deselection)
       const isSelected = currentAnswer.selections.includes(optionValue);
       updateAnswer({
         selections: isSelected ? [] : [optionValue],
-        customColor: "", // Clear custom color when predefined selected
+        customColor: "",
       });
     } else {
-      // multiple_choice - toggle selection
       const isSelected = currentAnswer.selections.includes(optionValue);
       const newSelections = isSelected
         ? currentAnswer.selections.filter((o) => o !== optionValue)
         : [...currentAnswer.selections, optionValue];
       updateAnswer({
         selections: newSelections,
-        customColor: "", // Clear custom color when predefined selected
+        customColor: "",
       });
     }
   };
 
   const handleCustomColorChange = (color: string) => {
     updateAnswer({
-      selections: [], // Clear predefined selections when custom selected
+      selections: [],
       customColor: color,
     });
   };
@@ -146,7 +198,7 @@ export function ClarifyingQuestionsPreview({
 
   const handleNext = () => {
     if (showReview) {
-      onSubmit(formatAnswersForFeedback(questions, answers));
+      onSubmit(formatAnswersForFeedback(validQuestions, answers));
     } else if (isLastQuestion) {
       setShowReview(true);
     } else {
@@ -161,17 +213,13 @@ export function ClarifyingQuestionsPreview({
     }
   };
 
-  // Helper to get selected color for review screen
   const getSelectedColor = (
     question: ClarifyingQuestion,
     answer: Answer
   ): string | undefined => {
     if (answer.customColor) return answer.customColor;
-
-    const opts = normalizeOptions(question.options);
-    const selectedOpt = opts?.find((opt) => answer.selections.includes(opt.value));
-    if (selectedOpt?.artifact?.type === "color_swatch") {
-      return selectedOpt.artifact.data.color as string;
+    if (isValidColorSwatchArtifact(question.questionArtifact) && answer.selections[0]) {
+      return getColorFromArtifact(question.questionArtifact, answer.selections[0]);
     }
     return undefined;
   };
@@ -179,7 +227,6 @@ export function ClarifyingQuestionsPreview({
   return (
     <div className="relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300">
       <div className="p-4 pb-[80px]">
-        {/* Header */}
         <div className="flex items-start gap-3 mb-4">
           <HelpCircle className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
@@ -196,7 +243,6 @@ export function ClarifyingQuestionsPreview({
           </div>
         </div>
 
-        {/* Progress bar */}
         <div className="flex gap-1.5 mb-4">
           {Array.from({ length: totalSteps }).map((_, index) => (
             <div
@@ -214,15 +260,10 @@ export function ClarifyingQuestionsPreview({
         </div>
 
         {showReview ? (
-          /* Review Step */
           <div className="space-y-4 min-h-[280px]">
-            {questions.map((question, index) => {
+            {validQuestions.map((question, index) => {
               const answer = answers[index] || emptyAnswer;
-              const opts = normalizeOptions(question.options);
               const selectedColor = getSelectedColor(question, answer);
-              const hasColorArtifacts = opts?.some(
-                (opt) => opt.artifact?.type === "color_swatch"
-              );
 
               return (
                 <div key={index} className="space-y-1">
@@ -230,43 +271,39 @@ export function ClarifyingQuestionsPreview({
                     {index + 1}) {question.question}
                   </p>
                   <div className="flex items-center gap-2 pl-4">
-                    {/* Show color swatch if applicable */}
-                    {hasColorArtifacts && selectedColor && (
+                    {isValidColorSwatchArtifact(question.questionArtifact) && selectedColor && (
                       <div
                         className="w-6 h-6 rounded border border-border flex-shrink-0"
                         style={{ backgroundColor: selectedColor }}
                       />
                     )}
                     <p className="text-sm text-foreground">
-                      {getDisplayAnswer(question, answer, opts)}
+                      {getDisplayAnswer(question, answer)}
                     </p>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : currentQuestion.questionArtifact ? (
-          /* Question Step - Side-by-side layout with diagram */
+        ) : hasValidDiagramArtifact ? (
           <div className="flex gap-4 min-h-[280px]">
-            {/* Left: Question content (30%) */}
             <div className="w-[30%] flex flex-col">
               <h3 className="text-base font-semibold leading-relaxed text-foreground mb-3">
                 {currentQuestion.question}
               </h3>
 
-              {/* Standard Options */}
-              {normalizedOptions &&
+              {options &&
                 (currentQuestion.type === "single_choice" ||
                   currentQuestion.type === "multiple_choice") && (
                   <div className="space-y-2 mb-3">
-                    {normalizedOptions.map((option) => {
-                      const isSelected = currentAnswer.selections.includes(option.value);
+                    {options.map((option, idx) => {
+                      const isSelected = currentAnswer.selections.includes(option);
 
                       return (
                         <button
-                          key={option.id}
+                          key={idx}
                           type="button"
-                          onClick={() => handleOptionSelect(option.value)}
+                          onClick={() => handleOptionSelect(option)}
                           disabled={isLoading}
                           className={cn(
                             "w-full flex items-start gap-3 p-3 rounded-md text-left transition-colors",
@@ -290,14 +327,13 @@ export function ClarifyingQuestionsPreview({
                               <Check className="h-3 w-3 text-primary-foreground" />
                             )}
                           </div>
-                          <span className="text-sm leading-relaxed">{option.label}</span>
+                          <span className="text-sm leading-relaxed">{option}</span>
                         </button>
                       );
                     })}
                   </div>
                 )}
 
-              {/* Text input */}
               <Textarea
                 placeholder="Add additional context or type a custom answer..."
                 value={currentAnswer.text}
@@ -309,68 +345,62 @@ export function ClarifyingQuestionsPreview({
               />
             </div>
 
-            {/* Right: Diagram (70%) */}
             <div className="w-[70%]">
               <QuestionArtifactRenderer
-                artifact={currentQuestion.questionArtifact}
+                artifact={currentQuestion.questionArtifact!}
                 className="h-full"
               />
             </div>
           </div>
         ) : (
-          /* Question Step - Standard layout (no diagram) */
           <div className="flex flex-col min-h-[280px]">
             <h3 className="text-base font-semibold leading-relaxed text-foreground mb-3">
               {currentQuestion.question}
             </h3>
 
-            {/* Color Swatches Layout */}
-            {hasColorSwatches && normalizedOptions && (
+            {isColorSwatchQuestion && options && (
               <div className="space-y-3 mb-3">
-                {/* Color swatches in a flex row */}
                 <div className="flex flex-wrap gap-3">
-                  {normalizedOptions.map((option) => {
+                  {options.map((option, idx) => {
                     const isSelected =
-                      currentAnswer.selections.includes(option.value) &&
+                      currentAnswer.selections.includes(option) &&
                       !currentAnswer.customColor;
+                    const color = getColorFromArtifact(currentQuestion.questionArtifact, option);
+                    if (!color) return null;
 
                     return (
-                      <ArtifactRenderer
-                        key={option.id}
-                        artifact={option.artifact!}
-                        label={option.label}
+                      <ColorSwatch
+                        key={idx}
+                        color={color}
+                        label={option}
                         selected={isSelected}
-                        onClick={() => handleOptionSelect(option.value)}
+                        onClick={() => handleOptionSelect(option)}
                       />
                     );
                   })}
                 </div>
 
-                {/* Custom color picker (if enabled) */}
-                {currentQuestion.allowCustomColor && (
-                  <CustomColorPicker
-                    value={currentAnswer.customColor || ""}
-                    onChange={handleCustomColorChange}
-                    selected={!!currentAnswer.customColor}
-                  />
-                )}
+                <CustomColorPicker
+                  value={currentAnswer.customColor || ""}
+                  onChange={handleCustomColorChange}
+                  selected={!!currentAnswer.customColor}
+                />
               </div>
             )}
 
-            {/* Standard Options (no color swatches) */}
-            {!hasColorSwatches &&
-              normalizedOptions &&
+            {!isColorSwatchQuestion &&
+              options &&
               (currentQuestion.type === "single_choice" ||
                 currentQuestion.type === "multiple_choice") && (
                 <div className="space-y-2 mb-3">
-                  {normalizedOptions.map((option) => {
-                    const isSelected = currentAnswer.selections.includes(option.value);
+                  {options.map((option, idx) => {
+                    const isSelected = currentAnswer.selections.includes(option);
 
                     return (
                       <button
-                        key={option.id}
+                        key={idx}
                         type="button"
-                        onClick={() => handleOptionSelect(option.value)}
+                        onClick={() => handleOptionSelect(option)}
                         disabled={isLoading}
                         className={cn(
                           "w-full flex items-start gap-3 p-3 rounded-md text-left transition-colors",
@@ -394,14 +424,13 @@ export function ClarifyingQuestionsPreview({
                             <Check className="h-3 w-3 text-primary-foreground" />
                           )}
                         </div>
-                        <span className="text-sm leading-relaxed">{option.label}</span>
+                        <span className="text-sm leading-relaxed">{option}</span>
                       </button>
                     );
                   })}
                 </div>
               )}
 
-            {/* Text input - always shown, fills remaining space for text questions */}
             <Textarea
               placeholder={
                 currentQuestion.type === "text"
@@ -422,7 +451,6 @@ export function ClarifyingQuestionsPreview({
         )}
       </div>
 
-      {/* Action Bar */}
       <div className="absolute bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border/50 rounded-b-md">
         <div className="flex items-center justify-center gap-3 p-3">
           {(!isFirstQuestion || showReview) && (
