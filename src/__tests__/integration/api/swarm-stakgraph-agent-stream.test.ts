@@ -16,6 +16,8 @@ vi.mock("@/services/swarm/stakgraph-services", () => ({
   pollAgentProgress: vi.fn(),
 }));
 
+
+
 vi.mock("@/utils/devContainerUtils", () => ({
   parsePM2Content: vi.fn(),
   devcontainerJsonContent: vi.fn(() => "{}"),
@@ -600,8 +602,9 @@ describe("GET /api/swarm/stakgraph/agent-stream - Integration Tests", () => {
       
       // Verify swarm URL (should be cleaned and have port 3355)
       expect(callArgs[0]).toContain("3355");
-      // Verify request ID
-      expect(callArgs[1]).toBe(requestId);
+      // Verify request ID (should match the pattern and start with agent-req-)
+      expect(callArgs[1]).toMatch(/^agent-req-\d+-[a-z0-9]+$/);
+      expect(callArgs[1]).toBe(requestId); // Should match the one set in beforeEach
       // Verify decrypted API key (should be plaintext)
       expect(callArgs[2]).toBe(PLAINTEXT_SWARM_API_KEY);
     });
