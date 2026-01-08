@@ -70,7 +70,7 @@ interface GitHubInfo {
 }
 
 /**
- * Parse GitHub URL to extract owner/repo
+ * Parse GitHub URL to extract owner/repo and strip owner/repo from file paths
  */
 function parseGitHubUrl(url: string | undefined, branch: string): GitHubInfo | null {
   if (!url) return null;
@@ -95,6 +95,28 @@ function parseGitHubUrl(url: string | undefined, branch: string): GitHubInfo | n
   } catch {
     return null;
   }
+}
+
+/**
+ * Strip owner/repo from file path (e.g., "stakwork/hive/src/file.ts" -> "src/file.ts")
+ */
+function stripOwnerRepoFromPath(filePath: string, repo: string): string {
+  const parts = filePath.split("/");
+
+  // Find where the repo name is in the path
+  const repoIndex = parts.findIndex(part => part === repo);
+
+  if (repoIndex >= 0 && repoIndex < parts.length - 1) {
+    // Return everything after the repo name
+    return parts.slice(repoIndex + 1).join("/");
+  }
+
+  // Fallback: assume first two parts are owner/repo
+  if (parts.length > 2) {
+    return parts.slice(2).join("/");
+  }
+
+  return filePath;
 }
 
 /**
@@ -131,8 +153,9 @@ function CodeEntityNode({
   entity: ProvenanceCodeEntity;
   githubInfo: GitHubInfo | null;
 }) {
+  const cleanPath = githubInfo ? stripOwnerRepoFromPath(entity.file, githubInfo.repo) : entity.file;
   const githubUrl = githubInfo
-    ? `https://github.com/${githubInfo.owner}/${githubInfo.repo}/blob/${githubInfo.branch}/${entity.file}#L${entity.start}`
+    ? `https://github.com/${githubInfo.owner}/${githubInfo.repo}/tree/${githubInfo.branch}/${cleanPath}#L${entity.start}`
     : null;
 
   return (
@@ -176,8 +199,9 @@ function FileNode({
   file: ProvenanceFile;
   githubInfo: GitHubInfo | null;
 }) {
+  const cleanPath = githubInfo ? stripOwnerRepoFromPath(file.path, githubInfo.repo) : file.path;
   const githubUrl = githubInfo
-    ? `https://github.com/${githubInfo.owner}/${githubInfo.repo}/blob/${githubInfo.branch}/${file.path}`
+    ? `https://github.com/${githubInfo.owner}/${githubInfo.repo}/tree/${githubInfo.branch}/${cleanPath}`
     : null;
 
   return (
@@ -205,19 +229,13 @@ function FileNode({
           )}
         </div>
         <CollapsibleContent>
-          {file.codeEntities.length > 0 ? (
-            file.codeEntities.map((entity) => (
-              <CodeEntityNode
-                key={entity.refId}
-                entity={entity}
-                githubInfo={githubInfo}
-              />
-            ))
-          ) : (
-            <div className="pl-4 py-1 text-xs text-muted-foreground/60">
-              No code entities
-            </div>
-          )}
+          {file.codeEntities.map((entity) => (
+            <CodeEntityNode
+              key={entity.refId}
+              entity={entity}
+              githubInfo={githubInfo}
+            />
+          ))}
         </CollapsibleContent>
       </Collapsible>
     </div>
@@ -248,13 +266,9 @@ function ConceptNode({
               {concept.description}
             </div>
           )}
-          {concept.files.length > 0 ? (
-            concept.files.map((file) => (
-              <FileNode key={file.refId} file={file} githubInfo={githubInfo} />
-            ))
-          ) : (
-            <div className="pl-6 text-xs text-muted-foreground/60">No files</div>
-          )}
+          {concept.files.map((file) => (
+            <FileNode key={file.refId} file={file} githubInfo={githubInfo} />
+          ))}
         </CollapsibleContent>
       </Collapsible>
     </div>
@@ -282,17 +296,13 @@ export function ProvenanceTree({
         <Layers className="w-4 h-4 mr-2" />
         Knowledge Sources
       </h3>
-      {provenanceData.concepts.length > 0 ? (
-        provenanceData.concepts.map((concept) => (
-          <ConceptNode
-            key={concept.refId}
-            concept={concept}
-            githubInfo={githubInfo}
-          />
-        ))
-      ) : (
-        <div className="text-xs text-muted-foreground/60">No sources available</div>
-      )}
+      {provenanceData.concepts.map((concept) => (
+        <ConceptNode
+          key={concept.refId}
+          concept={concept}
+          githubInfo={githubInfo}
+        />
+      ))}
     </div>
   );
 }
