@@ -37,11 +37,11 @@ describe('claimPodAndGetFrontend', () => {
     image: 'stakwork/hive:latest',
     customImage: false,
     created: '2024-01-15T10:30:00Z',
-    marked_at: null,
+    marked_at: '',
     usage_status: 'available',
     flagged_for_recreation: false,
-    primaryRepo: null,
-    repoName: null,
+    primaryRepo: '',
+    repoName: '',
     repositories: [],
     branches: [],
     useDevContainer: false,
@@ -642,9 +642,9 @@ describe('claimPodAndGetFrontend', () => {
       expect(result.processList?.length).toBe(5);
     });
 
-    it('should handle workspace with null or undefined optional fields', async () => {
+    it('should handle workspace with empty string optional fields', async () => {
       // Arrange
-      const workspaceWithNulls: PodWorkspace = {
+      const workspaceWithEmptyStrings: PodWorkspace = {
         id: 'workspace-xyz',
         password: 'password',
         fqdn: 'xyz.example.com',
@@ -652,16 +652,16 @@ describe('claimPodAndGetFrontend', () => {
           '3000': 'https://app-xyz.example.com',
         },
         state: 'running',
-        url: null,
+        url: 'https://ide-xyz.example.com',
         subdomain: 'xyz',
         image: 'default',
-        customImage: null,
+        customImage: false,
         created: '2024-01-01T00:00:00Z',
-        marked_at: null,
+        marked_at: '',
         usage_status: 'available',
         flagged_for_recreation: false,
-        primaryRepo: null,
-        repoName: null,
+        primaryRepo: '',
+        repoName: '',
         repositories: [],
         branches: [],
         useDevContainer: false,
@@ -670,7 +670,7 @@ describe('claimPodAndGetFrontend', () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ workspace: workspaceWithNulls }),
+          json: async () => ({ workspace: workspaceWithEmptyStrings }),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -681,9 +681,9 @@ describe('claimPodAndGetFrontend', () => {
       const result = await claimPodAndGetFrontend(mockPoolName, mockPoolApiKey);
 
       // Assert
-      expect(result.workspace.url).toBeNull();
-      expect(result.workspace.customImage).toBeNull();
-      expect(result.workspace.primaryRepo).toBeNull();
+      expect(result.workspace.marked_at).toBe('');
+      expect(result.workspace.primaryRepo).toBe('');
+      expect(result.workspace.repoName).toBe('');
       expect(result.frontend).toBe('https://app-xyz.example.com');
     });
 
