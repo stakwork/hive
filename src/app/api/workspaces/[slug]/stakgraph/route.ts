@@ -178,7 +178,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         swarmSecretAlias: swarm.swarmSecretAlias || "",
         poolName: swarm.id || "",
         poolCpu: swarm.poolCpu || "2",
-        poolMemory: swarm.poolMemory || "4Gi",
+        poolMemory: swarm.poolMemory || "8Gi",
         environmentVariables:
           typeof environmentVariables === "string"
             ? (() => {

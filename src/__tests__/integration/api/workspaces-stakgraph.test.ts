@@ -151,7 +151,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
           status: "ACTIVE",
           swarmUrl: "https://test.sphinx.chat",
           poolCpu: "2",
-          poolMemory: "4Gi",
+          poolMemory: "8Gi",
           poolApiKey: JSON.stringify(encryptionService.encryptField("poolApiKey", "test-pool-key")),
           environmentVariables: encryptEnvVars(PLAINTEXT_ENV as any) as any,
           services: DEFAULT_SERVICES,
