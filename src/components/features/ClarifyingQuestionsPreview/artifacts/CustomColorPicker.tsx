@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Pipette } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { HslColorPicker } from "./HslColorPicker";
 
 interface CustomColorPickerProps {
   value: string;
@@ -14,6 +21,7 @@ export function CustomColorPicker({
   onChange,
   selected,
 }: CustomColorPickerProps) {
+  const [open, setOpen] = useState(false);
   const [hexInput, setHexInput] = useState(value || "");
 
   // Sync hex input when value changes externally
@@ -22,12 +30,6 @@ export function CustomColorPicker({
       setHexInput(value);
     }
   }, [value]);
-
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newColor = e.target.value;
-    onChange(newColor);
-    setHexInput(newColor);
-  };
 
   const handleHexChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let input = e.target.value;
@@ -45,6 +47,11 @@ export function CustomColorPicker({
     }
   };
 
+  const handlePickerChange = (hex: string) => {
+    onChange(hex);
+    setHexInput(hex);
+  };
+
   return (
     <div
       className={cn(
@@ -57,13 +64,28 @@ export function CustomColorPicker({
       <span className="text-sm text-muted-foreground whitespace-nowrap">
         Custom:
       </span>
-      <input
-        type="color"
-        value={value || "#000000"}
-        onChange={handleColorChange}
-        className="w-10 h-10 rounded cursor-pointer border-0 bg-transparent"
-        aria-label="Pick custom color"
-      />
+
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "w-10 h-10 rounded border-2 cursor-pointer flex items-center justify-center transition-all",
+              value
+                ? "border-border hover:border-foreground/50"
+                : "border-dashed border-muted-foreground/40 hover:border-foreground/50"
+            )}
+            style={{ backgroundColor: value || "transparent" }}
+            aria-label="Open color picker"
+          >
+            {!value && <Pipette className="h-4 w-4 text-muted-foreground" />}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-3" align="start">
+          <HslColorPicker value={value || "#000000"} onChange={handlePickerChange} />
+        </PopoverContent>
+      </Popover>
+
       <input
         type="text"
         value={hexInput}
