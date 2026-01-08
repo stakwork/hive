@@ -47,7 +47,7 @@ interface ProcessInfo {
   cwd?: string;
 }
 
-export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace> {
+export async function getWorkspaceFromPool(poolName: string, poolApiKey: string): Promise<PodWorkspace | null> {
   console.log(">>> getWorkspaceFromPool poolName", poolName);
   const url = `${getBaseUrl()}/pools/${encodeURIComponent(poolName)}/workspace`;
 
@@ -67,7 +67,7 @@ export async function getWorkspaceFromPool(poolName: string, poolApiKey: string)
 
   const data = await response.json();
   console.log(">>> getWorkspaceFromPool workspace data", data);
-  return data.workspace as PodWorkspace;
+  return (data.workspace as PodWorkspace) || null;
 }
 
 export async function getPodFromPool(podId: string, poolApiKey: string): Promise<PodWorkspace> {
@@ -220,6 +220,10 @@ export async function claimPodAndGetFrontend(
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Get workspace from pool
   const workspace = await getWorkspaceFromPool(poolName, poolApiKey);
+
+  if (!workspace) {
+    throw new Error(`No available workspaces in pool: ${poolName}`);
+  }
 
   console.log(">>> workspace data", workspace);
 
