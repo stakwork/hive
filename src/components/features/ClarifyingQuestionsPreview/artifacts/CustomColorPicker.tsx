@@ -26,7 +26,7 @@ export function CustomColorPicker({
 
   // Sync hex input when value changes externally
   useEffect(() => {
-    if (value && value !== hexInput) {
+    if (value) {
       setHexInput(value);
     }
   }, [value]);
