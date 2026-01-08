@@ -7,6 +7,7 @@ import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/p
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
 import { CreateFeatureModal } from "./CreateFeatureModal";
+import { ProvenanceTree, type ProvenanceData } from "./ProvenanceTree";
 import { toast } from "sonner";
 import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
@@ -37,6 +38,8 @@ export function DashboardChat() {
   const [showFeatureModal, setShowFeatureModal] = useState(false);
   const [activeToolCalls, setActiveToolCalls] = useState<ToolCall[]>([]);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
+  const [isProvenanceSidebarOpen, setIsProvenanceSidebarOpen] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { processStream } = useStreamProcessor();
@@ -46,7 +49,7 @@ export function DashboardChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeToolCalls]);
 
-  // Subscribe to Pusher for follow-up questions
+  // Subscribe to Pusher for follow-up questions and provenance data
   useEffect(() => {
     if (!slug || !process.env.NEXT_PUBLIC_PUSHER_KEY) return;
 
@@ -60,10 +63,17 @@ export function DashboardChat() {
       setFollowUpQuestions(payload.questions);
     };
 
+    const handleProvenanceData = (payload: { provenance: ProvenanceData; timestamp: number }) => {
+      console.log("provenance data received:", payload.provenance);
+      setProvenanceData(payload.provenance);
+    };
+
     channel.bind(PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, handleFollowUpQuestions);
+    channel.bind(PUSHER_EVENTS.PROVENANCE_DATA, handleProvenanceData);
 
     return () => {
       channel.unbind(PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, handleFollowUpQuestions);
+      channel.unbind(PUSHER_EVENTS.PROVENANCE_DATA, handleProvenanceData);
       pusher.unsubscribe(channelName);
     };
   }, [slug]);
@@ -77,8 +87,10 @@ export function DashboardChat() {
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
 
-    // Clear follow-up questions when user sends a message
+    // Clear follow-up questions and provenance when user sends a message
     setFollowUpQuestions([]);
+    setProvenanceData(null);
+    setIsProvenanceSidebarOpen(false);
 
     // Check if the last message is an empty user message with an image
     const lastMessage = messages[messages.length - 1];
@@ -494,48 +506,65 @@ export function DashboardChat() {
   // const hasAssistantMessages = assistantMessages.length > 0;
   const hasMessages = messages.length > 0;
 
+  // Check if provenance has any files to show
+  const hasProvenanceFiles = provenanceData?.concepts.some(
+    concept => concept.files && concept.files.length > 0
+  ) ?? false;
+
   return (
     <div className="pointer-events-none">
-      {/* Message history */}
+      {/* Message history with optional provenance sidebar */}
       {(messages.length > 0 || activeToolCalls.length > 0) && (
-        <div className="max-h-[300px] overflow-y-auto pb-2">
-          <div className="space-y-2 px-4">
-            {messages.map((message, index) => {
-              // Only the last message is streaming
-              const isLastMessage = index === messages.length - 1;
-              const isMessageStreaming = isLastMessage && isLoading;
-              return (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  isStreaming={isMessageStreaming}
-                  onDelete={handleDeleteMessage}
-                />
-              );
-            })}
-            {/* Show tool call indicator when tools are active */}
-            {activeToolCalls.length > 0 && (
-              <ToolCallIndicator toolCalls={activeToolCalls} />
-            )}
-            {/* Follow-up question bubbles */}
-            {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
-              <div className="pointer-events-auto pt-2">
-                <div className="flex flex-col items-end gap-1.5">
-                  {followUpQuestions.map((question, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleFollowUpClick(question)}
-                      className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
-                    >
-                      {question}
-                    </button>
-                  ))}
+        <div className="flex gap-4">
+          {/* Message history */}
+          <div className="flex-1 max-h-[300px] overflow-y-auto pb-2">
+            <div className="space-y-2 px-4">
+              {messages.map((message, index) => {
+                // Only the last message is streaming
+                const isLastMessage = index === messages.length - 1;
+                const isMessageStreaming = isLastMessage && isLoading;
+                return (
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    isStreaming={isMessageStreaming}
+                    onDelete={handleDeleteMessage}
+                  />
+                );
+              })}
+              {/* Show tool call indicator when tools are active */}
+              {activeToolCalls.length > 0 && (
+                <ToolCallIndicator toolCalls={activeToolCalls} />
+              )}
+              {/* Follow-up question bubbles */}
+              {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
+                <div className="pointer-events-auto pt-2">
+                  <div className="flex flex-col items-end gap-1.5">
+                    {followUpQuestions.map((question, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleFollowUpClick(question)}
+                        className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
+                      >
+                        {question}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-            {/* Scroll anchor */}
-            <div ref={messagesEndRef} />
+              )}
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
+
+          {/* Provenance sidebar - only shows when toggled AND data available */}
+          {isProvenanceSidebarOpen && provenanceData && (
+            <div className="w-80 overflow-y-auto max-h-[300px] pointer-events-auto">
+              <div className="backdrop-blur-md bg-background/20 border border-border/50 rounded-lg p-4 shadow-lg">
+                <ProvenanceTree provenanceData={provenanceData} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -550,6 +579,9 @@ export function DashboardChat() {
           imageData={currentImageData}
           onImageUpload={handleImageUpload}
           onImageRemove={handleImageRemove}
+          showProvenanceToggle={hasProvenanceFiles}
+          isProvenanceSidebarOpen={isProvenanceSidebarOpen}
+          onToggleProvenance={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
         />
       </div>
 

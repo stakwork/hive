@@ -16,6 +16,76 @@ import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
 
 type Provider = "anthropic" | "google" | "openai" | "claude_code";
 
+/**
+ * Provenance data types
+ */
+interface ProvenanceData {
+  concepts: Array<{
+    refId: string;
+    name: string;
+    description?: string;
+    files: Array<{
+      refId: string;
+      name: string;
+      path: string;
+      codeEntities: Array<{
+        refId: string;
+        name: string;
+        nodeType: string;
+        file: string;
+        start: number;
+        end: number;
+      }>;
+    }>;
+  }>;
+}
+
+/**
+ * Extract concept IDs from step content (used during streaming)
+ */
+function extractConceptIdsFromStep(contents: unknown): string[] {
+  if (!Array.isArray(contents)) return [];
+
+  const conceptIds: string[] = [];
+  for (const content of contents) {
+    if (content.type === "tool-call" && content.toolName === "learn_concept") {
+      const conceptId = content.input?.conceptId;
+      if (conceptId) {
+        conceptIds.push(conceptId);
+      }
+    }
+  }
+  return conceptIds;
+}
+
+/**
+ * Fetch provenance data from stakgraph
+ * curl -X POST "http://localhost:3355/gitree/link-files"
+ */
+async function fetchProvenance(
+  swarmUrl: string,
+  apiKey: string,
+  conceptIds: string[]
+): Promise<ProvenanceData> {
+  console.log("========================> 🔍 fetchProvenance:", conceptIds);
+  console.log("========================> 🔍 swarmUrl:", swarmUrl);
+  console.log("========================> 🔍 apiKey:", apiKey);
+  const response = await fetch(`${swarmUrl}/gitree/provenance`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": apiKey,
+    },
+    body: JSON.stringify({ conceptIds }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch provenance: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function POST(request: NextRequest) {
   try {
     const context = getMiddlewareContext(request);
@@ -121,13 +191,23 @@ export async function POST(request: NextRequest) {
     });
 
     try {
+      // Collect concept IDs during streaming for provenance
+      const learnedConceptIds = new Set<string>();
+
       const result = streamText({
         model,
         tools,
         messages: modelMessages,
         stopWhen: createHasEndMarkerCondition(),
         stopSequences: ["[END_OF_ANSWER]"],
-        onStepFinish: (sf) => processStep(sf.content, workspaceSlug, features),
+        onStepFinish: (sf) => {
+          // Collect concept IDs for provenance
+          const conceptIds = extractConceptIdsFromStep(sf.content);
+          conceptIds.forEach(id => learnedConceptIds.add(id));
+
+          // Original processStep logic
+          processStep(sf.content, workspaceSlug, features);
+        },
       });
 
 
@@ -151,7 +231,7 @@ export async function POST(request: NextRequest) {
 
           const followUpModel = await getModel("anthropic", apiKey, workspaceSlug);
 
-          const result = await generateObject({
+          const followUpResult = await generateObject({
             model: followUpModel,
             schema: followUpSchema,
             messages: modelMessages,
@@ -162,15 +242,48 @@ export async function POST(request: NextRequest) {
 
           const channelName = getWorkspaceChannelName(workspaceSlug);
           const payload = {
-            questions: result.object.questions,
+            questions: followUpResult.object.questions,
             timestamp: Date.now(),
           };
 
           await pusherServer.trigger(channelName, PUSHER_EVENTS.FOLLOW_UP_QUESTIONS, payload);
 
-          console.log("✅ Follow-up questions generated and sent:", result.object.questions);
+          console.log("✅ Follow-up questions generated and sent:", followUpResult.object.questions);
         } catch (error) {
           console.error("❌ Error generating follow-up questions:", error);
+          // Silent failure - don't break the chat flow
+        }
+
+        // Generate provenance
+        try {
+          const conceptIds = Array.from(learnedConceptIds);
+
+          console.log("========================> 🔍 conceptIds:", conceptIds);
+          if (conceptIds.length > 0) {
+            console.log("🔍 Fetching provenance for concepts:", conceptIds);
+
+            const provenance = await fetchProvenance(
+              baseSwarmUrl,
+              decryptedSwarmApiKey,
+              conceptIds
+            );
+
+            const channelName = getWorkspaceChannelName(workspaceSlug);
+            await pusherServer.trigger(
+              channelName,
+              PUSHER_EVENTS.PROVENANCE_DATA,
+              {
+                provenance,
+                timestamp: Date.now(),
+              }
+            );
+
+            console.log("✅ Provenance data sent:", provenance.concepts.length, "concepts");
+          } else {
+            console.log("ℹ️ No concepts used in this response");
+          }
+        } catch (error) {
+          console.error("❌ Error generating provenance:", error);
           // Silent failure - don't break the chat flow
         }
       });

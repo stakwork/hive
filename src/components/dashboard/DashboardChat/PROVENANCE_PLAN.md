@@ -13,17 +13,17 @@ Add a simple tree-view sidebar to DashboardChat showing the knowledge sources (C
   3. **Code Entities** (Functions, Components, Endpoints, Datamodels within those files)
 
 ### Visual Elements
-- Expandable/collapsible tree nodes
-- Icons for node types:
-  - 📚 Concept/Feature
-  - 📄 File
-  - 🔧 Function
-  - ⚛️ Component (Page)
-  - 🔌 Endpoint
-  - 🗄️ Datamodel
-  - ✓ Test (UnitTest, IntegrationTest, E2etest)
+- tree nodes - nice sleek lines between them. modern minimalist but pretty design
+- just show the name, dont need to list node type. And line number for code nodes.
+- Icons for node types (really nice icons ... each one different color slightly. not bright colors but subtle professional looking)
+  - Concept/Feature
+  - File
+  - Function
+  - Component (Page)
+  - Endpoint
+  - Datamodel
+  - Test (UnitTest, IntegrationTest, E2etest)
 - Click behavior:
-  - Concept: Expand to show files
   - File: Open in GitHub or expand to show code entities
   - Code entity: Jump to line in GitHub
 
@@ -42,41 +42,57 @@ Add a simple tree-view sidebar to DashboardChat showing the knowledge sources (C
 
 **Props:**
 ```typescript
-interface ProvenanceTreeProps {
-  provenanceData: ProvenanceData | null;
-  isLoading: boolean;
-}
 
-interface ProvenanceData {
-  concepts: ConceptNode[];
-}
-
-interface ConceptNode {
+/**
+ * Code entity in provenance response
+ */
+export interface ProvenanceCodeEntity {
   refId: string;
   name: string;
-  description?: string;
-  files: FileNode[];
+  nodeType:
+    | "Function"
+    | "Page"
+    | "Endpoint"
+    | "Datamodel"
+    | "UnitTest"
+    | "IntegrationTest"
+    | "E2etest";
+  file: string;
+  start: number;
+  end: number;
 }
 
-interface FileNode {
+/**
+ * File with code entities in provenance response
+ */
+export interface ProvenanceFile {
   refId: string;
   name: string;
   path: string;
-  codeEntities: CodeEntityNode[];
+  codeEntities: ProvenanceCodeEntity[];
 }
 
-interface CodeEntityNode {
-  refId: string;
+/**
+ * Concept with files in provenance response
+ */
+export interface ProvenanceConcept {
+  id: string; // Feature ID (slug, e.g., "auth-system")
   name: string;
-  nodeType: 'Function' | 'Page' | 'Endpoint' | 'Datamodel' | 'UnitTest' | 'IntegrationTest' | 'E2etest';
-  file: string;
-  start: number; // line number
-  end: number;
+  description?: string;
+  files: ProvenanceFile[];
 }
+
+/**
+ * Response from /gitree/provenance endpoint
+ */
+export interface ProvenanceResponse {
+  concepts: ProvenanceConcept[];
+}
+
 ```
 
 **Implementation:**
-- Use shadcn/ui Collapsible component for tree nodes
+- Use shadcn/ui Collapsible component for tree nodes (but by default all nodes showing)
 - GitHub links: `https://github.com/{owner}/{repo}/blob/{branch}/{filePath}#L{lineNumber}`
 - Loading skeleton while provenance is being fetched
 
@@ -257,59 +273,12 @@ export const PUSHER_EVENTS = {
 
 ### Implementation Strategy
 
-**Cypher Query Approach:**
 
-```cypher
-// For each conceptId:
-MATCH (f:Feature {ref_id: $conceptId})
-OPTIONAL MATCH (f)-[:CONTAINS]->(file:File)
-OPTIONAL MATCH (file)-[:CONTAINS]->(entity)
-WHERE entity:Function OR entity:Page OR entity:Endpoint OR entity:Datamodel
-      OR entity:UnitTest OR entity:IntegrationTest OR entity:E2etest
-
-// Filter entities mentioned in Feature docs
-WITH f, file, entity, f.body as docs
-WHERE entity IS NULL OR docs IS NULL OR docs CONTAINS entity.properties.name
-
-RETURN f, collect(DISTINCT file) as files, collect(DISTINCT entity) as entities
-```
-
-**Text Matching Logic:**
-
-Since Feature docs mention code entities by name but don't have direct edges:
-
-1. Get Feature node (with `body` containing documentation)
-2. Get Files via `Feature-[:CONTAINS]->File` edges
-3. For each File, get code entities via `File-[:CONTAINS]->(Function|Page|Endpoint|...)`
-4. Filter code entities where:
-   - `featureDocs.includes(entity.name)` (case-insensitive)
-   - Or entity is in one of the linked files (include all as fallback)
-
-**Optimization:**
-- Return max 50 code entities per concept (most relevant first)
-- Use string matching with word boundaries to avoid false positives
-- Cache results for 5 minutes (concepts don't change frequently)
-
-### Alternative: Add to existing `get_nodes` tool
-
-Could extend `/stakgraph/mcp/src/tools/stakgraph/get_nodes.ts` with a new parameter:
-
-```typescript
-export const GetNodesSchema = z.object({
-  // ... existing params
-  concept_ref_id: z.string().optional()
-    .describe("Get nodes mentioned in this concept's documentation"),
-});
-```
-
-This way we reuse existing infrastructure.
-
----
 
 ## Implementation Steps
 
 ### Phase 1: Backend Foundation
-1. Add `/gitree/provenance` endpoint to stakgraph/mcp
+1. [DONE] Add `/gitree/provenance` endpoint to stakgraph/mcp
    - Implement Cypher query
    - Add text matching for entity names in Feature docs
    - Test with sample conceptIds
