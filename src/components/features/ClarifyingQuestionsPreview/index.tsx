@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ClarifyingQuestion, QuestionOption } from "@/types/stakwork";
 import { normalizeOptions } from "@/types/stakwork";
-import { ArtifactRenderer, CustomColorPicker } from "./artifacts";
+import { ArtifactRenderer, CustomColorPicker, QuestionArtifactRenderer } from "./artifacts";
 
 interface ClarifyingQuestionsPreviewProps {
   questions: ClarifyingQuestion[];
@@ -245,8 +245,80 @@ export function ClarifyingQuestionsPreview({
               );
             })}
           </div>
+        ) : currentQuestion.questionArtifact ? (
+          /* Question Step - Side-by-side layout with diagram */
+          <div className="flex gap-4 min-h-[280px]">
+            {/* Left: Question content (30%) */}
+            <div className="w-[30%] flex flex-col">
+              <h3 className="text-base font-semibold leading-relaxed text-foreground mb-3">
+                {currentQuestion.question}
+              </h3>
+
+              {/* Standard Options */}
+              {normalizedOptions &&
+                (currentQuestion.type === "single_choice" ||
+                  currentQuestion.type === "multiple_choice") && (
+                  <div className="space-y-2 mb-3">
+                    {normalizedOptions.map((option) => {
+                      const isSelected = currentAnswer.selections.includes(option.value);
+
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => handleOptionSelect(option.value)}
+                          disabled={isLoading}
+                          className={cn(
+                            "w-full flex items-start gap-3 p-3 rounded-md text-left transition-colors",
+                            "border border-transparent",
+                            isSelected
+                              ? "bg-primary/10 border-primary/30"
+                              : "hover:bg-muted/50",
+                            isLoading && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center",
+                              currentQuestion.type === "multiple_choice" && "rounded-sm",
+                              isSelected
+                                ? "border-primary bg-primary"
+                                : "border-muted-foreground/40"
+                            )}
+                          >
+                            {isSelected && (
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            )}
+                          </div>
+                          <span className="text-sm leading-relaxed">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+              {/* Text input */}
+              <Textarea
+                placeholder="Add additional context or type a custom answer..."
+                value={currentAnswer.text}
+                onChange={(e) => updateAnswer({ text: e.target.value })}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+
+            {/* Right: Diagram (70%) */}
+            <div className="w-[70%]">
+              <QuestionArtifactRenderer
+                artifact={currentQuestion.questionArtifact}
+                className="h-full"
+              />
+            </div>
+          </div>
         ) : (
-          /* Question Step */
+          /* Question Step - Standard layout (no diagram) */
           <div className="flex flex-col min-h-[280px]">
             <h3 className="text-base font-semibold leading-relaxed text-foreground mb-3">
               {currentQuestion.question}
