@@ -5,8 +5,7 @@ import { HelpCircle, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ClarifyingQuestion, QuestionOption, QuestionArtifact } from "@/types/stakwork";
-import { normalizeOptions } from "@/types/stakwork";
+import type { ClarifyingQuestion, QuestionArtifact } from "@/types/stakwork";
 import { ColorSwatch, CustomColorPicker, QuestionArtifactRenderer } from "./artifacts";
 
 interface ColorSwatchItem {
@@ -89,8 +88,7 @@ const emptyAnswer: Answer = { selections: [], text: "", customColor: "" };
 
 function getDisplayAnswer(
   question: ClarifyingQuestion,
-  answer: Answer,
-  normalizedOptions?: QuestionOption[]
+  answer: Answer
 ): string {
   if (answer.customColor) {
     const parts = [`Custom color: ${answer.customColor}`];
@@ -102,12 +100,7 @@ function getDisplayAnswer(
     return answer.text.trim() || "Not answered";
   }
 
-  const selectedLabels =
-    normalizedOptions
-      ?.filter((opt) => answer.selections.includes(opt.value))
-      .map((opt) => opt.label) || answer.selections;
-
-  const parts = [...selectedLabels];
+  const parts = [...answer.selections];
   if (answer.text.trim()) {
     parts.push(answer.text.trim());
   }
@@ -120,8 +113,7 @@ function formatAnswersForFeedback(
 ): string {
   return questions
     .map((q, i) => {
-      const normalizedOptions = normalizeOptions(q.options);
-      const answer = getDisplayAnswer(q, answers[i] || emptyAnswer, normalizedOptions);
+      const answer = getDisplayAnswer(q, answers[i] || emptyAnswer);
       return `Q: ${q.question}\nA: ${answer}`;
     })
     .join("\n\n");
@@ -148,10 +140,7 @@ export function ClarifyingQuestionsPreview({
   const isFirstQuestion = currentIndex === 0;
   const currentAnswer = answers[currentIndex] || emptyAnswer;
 
-  const normalizedOptions = useMemo(
-    () => normalizeOptions(currentQuestion?.options),
-    [currentQuestion?.options]
-  );
+  const options = currentQuestion?.options;
 
   const isColorSwatchQuestion = isValidColorSwatchArtifact(currentQuestion?.questionArtifact);
 
@@ -229,12 +218,8 @@ export function ClarifyingQuestionsPreview({
     answer: Answer
   ): string | undefined => {
     if (answer.customColor) return answer.customColor;
-    if (isValidColorSwatchArtifact(question.questionArtifact)) {
-      const opts = normalizeOptions(question.options);
-      const selectedOpt = opts?.find((opt) => answer.selections.includes(opt.value));
-      if (selectedOpt) {
-        return getColorFromArtifact(question.questionArtifact, selectedOpt.label);
-      }
+    if (isValidColorSwatchArtifact(question.questionArtifact) && answer.selections[0]) {
+      return getColorFromArtifact(question.questionArtifact, answer.selections[0]);
     }
     return undefined;
   };
@@ -278,7 +263,6 @@ export function ClarifyingQuestionsPreview({
           <div className="space-y-4 min-h-[280px]">
             {validQuestions.map((question, index) => {
               const answer = answers[index] || emptyAnswer;
-              const opts = normalizeOptions(question.options);
               const selectedColor = getSelectedColor(question, answer);
 
               return (
@@ -294,7 +278,7 @@ export function ClarifyingQuestionsPreview({
                       />
                     )}
                     <p className="text-sm text-foreground">
-                      {getDisplayAnswer(question, answer, opts)}
+                      {getDisplayAnswer(question, answer)}
                     </p>
                   </div>
                 </div>
@@ -308,18 +292,18 @@ export function ClarifyingQuestionsPreview({
                 {currentQuestion.question}
               </h3>
 
-              {normalizedOptions &&
+              {options &&
                 (currentQuestion.type === "single_choice" ||
                   currentQuestion.type === "multiple_choice") && (
                   <div className="space-y-2 mb-3">
-                    {normalizedOptions.map((option) => {
-                      const isSelected = currentAnswer.selections.includes(option.value);
+                    {options.map((option, idx) => {
+                      const isSelected = currentAnswer.selections.includes(option);
 
                       return (
                         <button
-                          key={option.id}
+                          key={idx}
                           type="button"
-                          onClick={() => handleOptionSelect(option.value)}
+                          onClick={() => handleOptionSelect(option)}
                           disabled={isLoading}
                           className={cn(
                             "w-full flex items-start gap-3 p-3 rounded-md text-left transition-colors",
@@ -343,7 +327,7 @@ export function ClarifyingQuestionsPreview({
                               <Check className="h-3 w-3 text-primary-foreground" />
                             )}
                           </div>
-                          <span className="text-sm leading-relaxed">{option.label}</span>
+                          <span className="text-sm leading-relaxed">{option}</span>
                         </button>
                       );
                     })}
@@ -374,23 +358,23 @@ export function ClarifyingQuestionsPreview({
               {currentQuestion.question}
             </h3>
 
-            {isColorSwatchQuestion && normalizedOptions && (
+            {isColorSwatchQuestion && options && (
               <div className="space-y-3 mb-3">
                 <div className="flex flex-wrap gap-3">
-                  {normalizedOptions.map((option) => {
+                  {options.map((option, idx) => {
                     const isSelected =
-                      currentAnswer.selections.includes(option.value) &&
+                      currentAnswer.selections.includes(option) &&
                       !currentAnswer.customColor;
-                    const color = getColorFromArtifact(currentQuestion.questionArtifact, option.label);
+                    const color = getColorFromArtifact(currentQuestion.questionArtifact, option);
                     if (!color) return null;
 
                     return (
                       <ColorSwatch
-                        key={option.id}
+                        key={idx}
                         color={color}
-                        label={option.label}
+                        label={option}
                         selected={isSelected}
-                        onClick={() => handleOptionSelect(option.value)}
+                        onClick={() => handleOptionSelect(option)}
                       />
                     );
                   })}
@@ -405,18 +389,18 @@ export function ClarifyingQuestionsPreview({
             )}
 
             {!isColorSwatchQuestion &&
-              normalizedOptions &&
+              options &&
               (currentQuestion.type === "single_choice" ||
                 currentQuestion.type === "multiple_choice") && (
                 <div className="space-y-2 mb-3">
-                  {normalizedOptions.map((option) => {
-                    const isSelected = currentAnswer.selections.includes(option.value);
+                  {options.map((option, idx) => {
+                    const isSelected = currentAnswer.selections.includes(option);
 
                     return (
                       <button
-                        key={option.id}
+                        key={idx}
                         type="button"
-                        onClick={() => handleOptionSelect(option.value)}
+                        onClick={() => handleOptionSelect(option)}
                         disabled={isLoading}
                         className={cn(
                           "w-full flex items-start gap-3 p-3 rounded-md text-left transition-colors",
@@ -440,7 +424,7 @@ export function ClarifyingQuestionsPreview({
                             <Check className="h-3 w-3 text-primary-foreground" />
                           )}
                         </div>
-                        <span className="text-sm leading-relaxed">{option.label}</span>
+                        <span className="text-sm leading-relaxed">{option}</span>
                       </button>
                     );
                   })}
