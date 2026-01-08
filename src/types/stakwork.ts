@@ -144,9 +144,15 @@ export type ClarifyingQuestionType = "text" | "single_choice" | "multiple_choice
 // =============================================
 
 export type OptionArtifactType = "color_swatch";
+export type QuestionArtifactType = "mermaid";
 
 export interface OptionArtifact {
   type: OptionArtifactType;
+  data: Record<string, unknown>;
+}
+
+export interface QuestionArtifact {
+  type: QuestionArtifactType;
   data: Record<string, unknown>;
 }
 
@@ -165,6 +171,8 @@ export interface ClarifyingQuestion {
   options?: string[] | QuestionOption[];
   // Enable custom color picker widget (for color_swatch questions)
   allowCustomColor?: boolean;
+  // Question-level artifact (shown above the question, e.g., diagrams)
+  questionArtifact?: QuestionArtifact;
 }
 
 /**
