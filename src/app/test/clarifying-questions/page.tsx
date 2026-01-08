@@ -39,34 +39,30 @@ const exampleQuestions: ClarifyingQuestion[] = [
     questionArtifact: {
       type: "comparison_table",
       data: {
-        columns: [
-          { label: "SSE", description: "Server-Sent Events" },
-          { label: "WebSockets", description: "Full duplex communication" },
-          { label: "Polling", description: "Regular HTTP requests" },
-        ],
+        columns: ["Pros", "Cons"],
         rows: [
           {
-            category: "Pros",
+            label: "SSE",
+            description: "Server-Sent Events",
             cells: {
-              SSE: ["Simple to implement", "Auto-reconnect built-in", "Works over HTTP"],
-              WebSockets: ["Bi-directional", "Low latency", "Real-time updates"],
-              Polling: ["Works everywhere", "Simple fallback", "No special server support"],
+              Pros: ["Simple", "Auto-reconnect", "HTTP-based"],
+              Cons: ["Server→Client only", "No binary data"],
             },
           },
           {
-            category: "Cons",
+            label: "WebSockets",
+            description: "Full duplex",
             cells: {
-              SSE: ["Server to client only", "Limited browser support", "No binary data"],
-              WebSockets: ["More complex setup", "Requires special server", "Can be blocked by proxies"],
-              Polling: ["High latency", "Increased server load", "Inefficient"],
+              Pros: ["Bi-directional", "Low latency", "Real-time"],
+              Cons: ["Complex setup", "Special server needed"],
             },
           },
           {
-            category: "Use When",
+            label: "Polling",
+            description: "HTTP requests",
             cells: {
-              SSE: ["Live feeds", "Notifications", "Log streaming"],
-              WebSockets: ["Chat applications", "Gaming", "Collaborative editing"],
-              Polling: ["Legacy systems", "Simple status checks", "Low-frequency updates"],
+              Pros: ["Works everywhere", "Simple"],
+              Cons: ["High latency", "Inefficient"],
             },
           },
         ],
