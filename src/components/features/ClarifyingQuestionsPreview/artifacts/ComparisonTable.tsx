@@ -55,14 +55,6 @@ const colConfig = {
 export function ComparisonTable({ data, className }: ComparisonTableProps) {
   const { columns, rows } = data;
 
-  if (!columns || columns.length === 0) {
-    return (
-      <div className={cn("p-4 text-sm text-muted-foreground", className)}>
-        No comparison data provided
-      </div>
-    );
-  }
-
   return (
     <div className={cn("overflow-auto rounded-md border border-border", className)}>
       <table className="w-full border-collapse text-sm">
