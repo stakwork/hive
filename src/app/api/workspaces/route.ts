@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { requireAuthFromRequest } from "@/lib/api/auth-helpers";
 import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
@@ -8,22 +7,18 @@ import { getErrorMessage } from "@/lib/utils/error";
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+export async function GET(request: NextRequest) {
+  const { error, userId } = requireAuthFromRequest(request);
+  if (error) return error;
+
   const workspaces = await getUserWorkspaces(userId);
   return NextResponse.json({ workspaces }, { status: 200 });
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+  const { error, userId } = requireAuthFromRequest(request);
+  if (error) return error;
+
   const body = await request.json();
   const { name, description, slug, repositoryUrl } = body;
   if (!name || !slug) {
@@ -47,12 +42,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+export async function DELETE(request: NextRequest) {
+  const { error, userId } = requireAuthFromRequest(request);
+  if (error) return error;
+
   // Find the workspace owned by this user
   const workspace = await db.workspace.findFirst({
     where: { ownerId: userId, deleted: false },
