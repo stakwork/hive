@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { SupportedLanguages } from "@/lib/constants";
+import { slugify } from "@/utils/slugify";
 import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
@@ -34,7 +35,8 @@ function nextIndexedName(base: string, pool: string[]) {
 function extractRepoNameFromUrl(url: string): string | null {
   try {
     // Handle various GitHub URL formats
-    const githubMatch = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+    // Captures full repo name including dots, strips .git suffix only
+    const githubMatch = url.match(/github\.com[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/);
     if (githubMatch) {
       return githubMatch[2]; // Return the repository name
     }
@@ -83,7 +85,8 @@ export const WelcomeStep = ({}: WelcomeStepProps) => {
         throw new Error("Could not extract repository name from URL");
       }
 
-      const base = repoName.toLowerCase();
+      // Apply slugify to convert dots to hyphens and normalize the name
+      const base = slugify(repoName);
       const pool = workspaces.map(w => w.slug.toLowerCase());
       let projectName = nextIndexedName(base, pool);
 
