@@ -11,6 +11,7 @@ import {
   PhaseStatus,
   Priority,
   RecommendationStatus,
+  RepositoryStatus,
   StakworkRunDecision,
   StakworkRunType,
   TaskSourceType,
@@ -48,11 +49,14 @@ export async function seedMockData(
   // Create fake team members
   const teamMemberIds = await seedTeamMembers(workspaceId);
 
+  // Create additional repositories for multi-repo workspace scenarios
+  const additionalRepositories = await seedAdditionalRepositories(workspaceId);
+
   // Create features with phases and user stories
   const features = await seedFeatures(userId, workspaceId, teamMemberIds);
 
   // Create tasks of various types (with team member assignments and pod links)
-  const { tasksWithPods, allTasks } = await seedTasks(userId, workspaceId, features, teamMemberIds);
+  const { tasksWithPods, allTasks } = await seedTasks(userId, workspaceId, features, teamMemberIds, additionalRepositories);
 
   // Pre-seed pool state for capacity page
   preseedPoolState(tasksWithPods);
@@ -75,6 +79,68 @@ export async function seedMockData(
   await seedAttachments(workspaceId, allTasks);
 
   console.log("[MockSeed] Mock data seeding complete");
+}
+
+/**
+ * Seeds additional repositories with varied statuses and configurations
+ * Creates 2 repositories to demonstrate multi-repo workspace scenarios
+ */
+async function seedAdditionalRepositories(workspaceId: string): Promise<Array<{ id: string; name: string; repositoryUrl: string }>> {
+  const repositories = [
+    {
+      name: "backend-api",
+      repositoryUrl: "https://github.com/stakwork/backend-api",
+      branch: "main",
+      status: RepositoryStatus.SYNCED,
+      testingFrameworkSetup: true,
+      playwrightSetup: false,
+      unitGlob: "src/**/*.test.ts",
+      integrationGlob: "tests/integration/**/*.test.ts",
+      e2eGlob: null,
+    },
+    {
+      name: "mobile-app",
+      repositoryUrl: "https://github.com/stakwork/mobile-app",
+      branch: "develop",
+      status: RepositoryStatus.PENDING,
+      testingFrameworkSetup: false,
+      playwrightSetup: false,
+      unitGlob: null,
+      integrationGlob: null,
+      e2eGlob: null,
+    },
+  ];
+
+  const createdRepos: Array<{ id: string; name: string; repositoryUrl: string }> = [];
+
+  for (const repo of repositories) {
+    // Check if repository already exists for idempotency
+    const existing = await db.repository.findFirst({
+      where: {
+        workspaceId,
+        repositoryUrl: repo.repositoryUrl,
+      },
+      select: { id: true, name: true, repositoryUrl: true },
+    });
+
+    if (existing) {
+      createdRepos.push(existing);
+      continue;
+    }
+
+    const created = await db.repository.create({
+      data: {
+        ...repo,
+        workspaceId,
+      },
+      select: { id: true, name: true, repositoryUrl: true },
+    });
+
+    createdRepos.push(created);
+  }
+
+  console.log(`[MockSeed] Created ${createdRepos.length} additional repositories`);
+  return createdRepos;
 }
 
 /**
@@ -315,7 +381,8 @@ async function seedTasks(
   userId: string,
   workspaceId: string,
   features: Array<{ id: string; title: string; phaseId: string }>,
-  teamMemberIds: string[]
+  teamMemberIds: string[],
+  repositories: Array<{ id: string; name: string; repositoryUrl: string }> = []
 ): Promise<{ tasksWithPods: TaskWithPod[]; allTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> }> {
   const mockPodUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
@@ -483,6 +550,42 @@ async function seedTasks(
       mode: "test",
       withPod: true,
     },
+
+    // TASK_COORDINATOR type
+    {
+      title: "Coordinate dependent tasks for multi-service deployment",
+      description:
+        "System-generated task to coordinate deployment sequence across backend-api and mobile-app repositories. Ensures API deployment completes before mobile app release.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.TASK_COORDINATOR,
+      priority: Priority.HIGH,
+      assignToTeamMember: 1, // Bob (PM)
+    },
+
+    // Repository-linked task
+    {
+      title: "Refactor authentication module in backend-api",
+      description:
+        "Refactor the authentication module to use the new OAuth 2.0 provider. This task is linked to the backend-api repository.",
+      status: TaskStatus.IN_PROGRESS,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+      assignToTeamMember: 2, // Carol (DEVELOPER)
+      withPod: true,
+      linkedRepositoryIndex: 0, // Link to backend-api repository
+    },
+
+    // Detailed BLOCKED task
+    {
+      title: "Implement real-time notifications in mobile app",
+      description:
+        "Add push notification support for task updates, comments, and mentions. Requires WebSocket infrastructure deployment.",
+      status: TaskStatus.BLOCKED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+      assignToTeamMember: 3, // David (DEVELOPER)
+      blockingReason: "Blocked: WebSocket infrastructure deployment pending DevOps approval. Security review in progress for real-time data streaming. Expected resolution: 2 weeks.",
+    },
   ];
 
   const createdTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> = [];
@@ -513,6 +616,11 @@ async function seedTasks(
       podIndex++;
     }
 
+    // Link to repository if specified
+    const linkedRepository = template.linkedRepositoryIndex !== undefined && repositories[template.linkedRepositoryIndex]
+      ? repositories[template.linkedRepositoryIndex]
+      : null;
+
     const task = await db.task.create({
       data: {
         title: template.title,
@@ -537,6 +645,7 @@ async function seedTasks(
         mode: template.mode || undefined,
         podId,
         agentUrl,
+        repositoryId: linkedRepository?.id || null,
       },
       select: { id: true, title: true, status: true, sourceType: true },
     });
@@ -962,6 +1071,65 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
       });
     }
 
+    // Add PUBLISH_WORKFLOW artifact (for task index 0 and 4)
+    if (tasks.indexOf(task) === 0 || tasks.indexOf(task) === 4) {
+      const publishMsg = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          message: "The deployment workflow has been configured and published:",
+          role: "ASSISTANT",
+        },
+      });
+
+      await db.artifact.create({
+        data: {
+          messageId: publishMsg.id,
+          type: ArtifactType.PUBLISH_WORKFLOW,
+          content: {
+            workflowName: "Production Deploy",
+            status: "published",
+            version: "v1.2.3",
+            environment: "production",
+            triggers: ["push", "manual"],
+            steps: [
+              {
+                name: "Checkout code",
+                status: "completed",
+                duration: "5s",
+              },
+              {
+                name: "Build application",
+                status: "completed",
+                duration: "2m 30s",
+              },
+              {
+                name: "Run tests",
+                status: "completed",
+                duration: "4m 15s",
+              },
+              {
+                name: "Build Docker image",
+                status: "completed",
+                duration: "1m 45s",
+              },
+              {
+                name: "Push to registry",
+                status: "completed",
+                duration: "45s",
+              },
+              {
+                name: "Deploy to production",
+                status: "completed",
+                duration: "3m 20s",
+              },
+            ],
+            publishedAt: new Date().toISOString(),
+            publishedBy: "automation-bot",
+          },
+        },
+      });
+    }
+
     // If task is done, add completion message
     if (task.status === TaskStatus.DONE) {
       await db.chatMessage.create({
@@ -1360,6 +1528,47 @@ Non-Functional Requirements:
           decision: StakworkRunDecision.ACCEPTED,
           createdAt: new Date(Date.now() - 86400000 * 0.25), // 6 hours ago
           updatedAt: new Date(Date.now() - 86400000 * 0.25),
+        },
+      });
+    }
+
+    // Pod launch failure run (for second feature)
+    if (features.indexOf(feature) === 1) {
+      await db.stakworkRun.create({
+        data: {
+          workspaceId,
+          featureId: feature.id,
+          type: StakworkRunType.POD_LAUNCH_FAILURE,
+          webhookUrl: `${mockWebhookUrl}/api/stakwork/webhook`,
+          projectId: Math.floor(Math.random() * 10000),
+          status: WorkflowStatus.FAILED,
+          result: JSON.stringify({
+            podId: "pod-456-failed",
+            error: {
+              code: "LAUNCH_FAILURE",
+              message: "Failed to launch pod due to insufficient resources",
+              details: "Pool capacity exceeded. No available pods in the specified instance type.",
+            },
+            diagnostics: {
+              requestedInstanceType: "XL",
+              availableCapacity: 0,
+              queuePosition: 3,
+              estimatedWaitTime: "15-20 minutes",
+            },
+            failureReason: "INSUFFICIENT_CAPACITY",
+            attemptCount: 3,
+            lastAttempt: new Date().toISOString(),
+            suggestedActions: [
+              "Wait for capacity to become available",
+              "Try a different instance type (L or M)",
+              "Contact support to increase pool capacity",
+              "Schedule launch during off-peak hours",
+            ],
+          }),
+          dataType: "json",
+          decision: StakworkRunDecision.REJECTED,
+          createdAt: new Date(Date.now() - 86400000 * 0.1), // 2.4 hours ago
+          updatedAt: new Date(Date.now() - 86400000 * 0.1),
         },
       });
     }
