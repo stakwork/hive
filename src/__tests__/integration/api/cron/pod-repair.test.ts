@@ -70,19 +70,25 @@ describe('GET /api/cron/pod-repair', () => {
   let originalCronEnabled: string | undefined;
   let originalCronSecret: string | undefined;
   let originalWorkflowId: string | undefined;
+  let originalEncryptionKey: string | undefined;
+  let originalEncryptionKeyId: string | undefined;
 
   beforeEach(async () => {
     // Store and set environment variables
     originalCronEnabled = process.env.POD_REPAIR_CRON_ENABLED;
     originalCronSecret = process.env.CRON_SECRET;
     originalWorkflowId = process.env.STAKWORK_POD_REPAIR_WORKFLOW_ID;
-    
+    originalEncryptionKey = process.env.TOKEN_ENCRYPTION_KEY;
+    originalEncryptionKeyId = process.env.TOKEN_ENCRYPTION_KEY_ID;
+
     process.env.POD_REPAIR_CRON_ENABLED = 'true';
     process.env.CRON_SECRET = 'test-secret-123';
     process.env.STAKWORK_POD_REPAIR_WORKFLOW_ID = '12345';
     process.env.STAKWORK_API_KEY = 'test-api-key';
     process.env.STAKWORK_BASE_URL = 'https://api.stakwork.com';
     process.env.POD_REPAIR_MAX_ATTEMPTS = '10';
+    process.env.TOKEN_ENCRYPTION_KEY = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+    process.env.TOKEN_ENCRYPTION_KEY_ID = 'k-test';
 
     // Reset database
     await resetDatabase();
@@ -124,17 +130,29 @@ describe('GET /api/cron/pod-repair', () => {
     } else {
       delete process.env.POD_REPAIR_CRON_ENABLED;
     }
-    
+
     if (originalCronSecret !== undefined) {
       process.env.CRON_SECRET = originalCronSecret;
     } else {
       delete process.env.CRON_SECRET;
     }
-    
+
     if (originalWorkflowId !== undefined) {
       process.env.STAKWORK_POD_REPAIR_WORKFLOW_ID = originalWorkflowId;
     } else {
       delete process.env.STAKWORK_POD_REPAIR_WORKFLOW_ID;
+    }
+
+    if (originalEncryptionKey !== undefined) {
+      process.env.TOKEN_ENCRYPTION_KEY = originalEncryptionKey;
+    } else {
+      delete process.env.TOKEN_ENCRYPTION_KEY;
+    }
+
+    if (originalEncryptionKeyId !== undefined) {
+      process.env.TOKEN_ENCRYPTION_KEY_ID = originalEncryptionKeyId;
+    } else {
+      delete process.env.TOKEN_ENCRYPTION_KEY_ID;
     }
   });
 
@@ -309,36 +327,29 @@ describe('GET /api/cron/pod-repair', () => {
       expect(body.repairsTriggered).toBe(0);
     });
 
-    it('should skip workspaces with running pods', async () => {
-      const user = await createTestUser({ email: 'running@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
-        slug: 'running-pods-workspace' 
+    it('should skip workspaces with COMPLETED podState', async () => {
+      const user = await createTestUser({ email: 'completed@example.com' });
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'completed-pods-workspace'
       });
 
-      const swarm = await createTestSwarm({
+      await createTestSwarm({
         workspaceId: workspace.id,
         swarmApiKey: 'test-api-key',
         poolApiKey: 'test-pool-api-key',
         containerFilesSetUp: true,
         containerFiles: [{ name: 'test.json', content: 'test' }],
-      });
-
-      // Mock pool with running pods
-      mockGetPoolWorkspaces.mockResolvedValueOnce({
-        workspaces: [
-          { subdomain: 'pod-1', state: 'running', password: 'test-pass' },
-          { subdomain: 'pod-2', state: 'running', password: 'test-pass' },
-        ],
+        podState: 'COMPLETED',
       });
 
       const request = createMockRequest('Bearer test-secret-123');
       const response = await GET(request);
-      
+
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
-      // Should count as having running pods
+      // Should count as workspace with completed pods (skipped)
       expect(body.workspacesWithRunningPods).toBeGreaterThanOrEqual(1);
       expect(body.repairsTriggered).toBe(0);
     });
@@ -537,7 +548,7 @@ describe('GET /api/cron/pod-repair', () => {
       }
     });
 
-    it('should skip repair when frontend is available and no failed processes', async () => {
+    it('should validate frontend when all checks pass and no failed processes', async () => {
       const user = await createTestUser({ email: 'frontendok@example.com' });
       const workspace = await createTestWorkspace({
         ownerId: user.id,
@@ -560,6 +571,7 @@ describe('GET /api/cron/pod-repair', () => {
       });
 
       // Mock jlist to return healthy processes including staklink-proxy
+      // Also mock /validate_frontend endpoint
       const originalFetch = global.fetch;
       global.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes('/jlist')) {
@@ -569,6 +581,12 @@ describe('GET /api/cron/pod-repair', () => {
               { pid: 1234, name: 'staklink-proxy', status: 'online' },
               { pid: 5678, name: 'frontend', status: 'online', port: '3000' },
             ]),
+          });
+        }
+        if (url.includes('/validate_frontend')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ ok: true }),
           });
         }
         return originalFetch(url);
@@ -587,8 +605,8 @@ describe('GET /api/cron/pod-repair', () => {
         expect(response.status).toBe(200);
         const body = await response.json();
         expect(body.success).toBe(true);
-        // Should not trigger repair when everything is healthy
-        expect(body.skipped.noFailedProcesses).toBeGreaterThanOrEqual(1);
+        // Should trigger validation when everything is healthy
+        expect(body.validationsTriggered).toBeGreaterThanOrEqual(1);
         expect(body.repairsTriggered).toBe(0);
       } finally {
         global.fetch = originalFetch;
