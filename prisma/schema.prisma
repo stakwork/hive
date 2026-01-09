@@ -277,6 +277,7 @@ model Swarm {
 
   // Stakgraph configuration fields
   poolState            PoolState @default(NOT_STARTED) @map("pool_state")
+  podState             PodState  @default(NOT_STARTED) @map("pod_state")
   poolName             String?   @map("pool_name")
   poolApiKey           String?   @map("pool_api_key") // Pool API Key for Pool Manager
   poolCpu              String?   @map("pool_cpu") // CPU allocation for pool tasks
@@ -658,6 +659,13 @@ enum PoolState {
   STARTED
   FAILED
   COMPLETE
+}
+
+enum PodState {
+  NOT_STARTED
+  VALIDATING
+  COMPLETED
+  FAILED
 }
 
 enum TaskStatus {

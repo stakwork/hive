@@ -93,7 +93,7 @@ describe("getWorkspaceById - Unit Tests", () => {
             select: { id: true, name: true, email: true },
           },
           swarm: {
-            select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
+            select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
           },
           repositories: {
             select: {
@@ -125,6 +125,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         },
         ingestRefId: "ingest-123",
         poolState: "COMPLETE",
+        podState: "NOT_STARTED",
         isCodeGraphSetup: true,
         swarmStatus: "ACTIVE",
         swarmUrl: null,
@@ -270,6 +271,7 @@ describe("getWorkspaceById - Unit Tests", () => {
         repositoryDraft: null,
         ingestRefId: "ingest-123",
         poolState: "COMPLETE",
+        podState: "NOT_STARTED",
         repositories: [
           {
             id: "repo-123",

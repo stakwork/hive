@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "PodState" AS ENUM ('NOT_STARTED', 'VALIDATING', 'COMPLETED', 'FAILED');
+
+-- AlterTable
+ALTER TABLE "swarms" ADD COLUMN "pod_state" "PodState" NOT NULL DEFAULT 'NOT_STARTED';
