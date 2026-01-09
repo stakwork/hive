@@ -42,7 +42,7 @@ export interface PodLaunchFailureResult {
 export async function processPodLaunchFailure(
   payload: PodLaunchFailureWebhookPayload
 ): Promise<PodLaunchFailureResult> {
-  const { poolName, podId, containerLogs } = payload;
+  const { poolName, podId, eventMessage, reason, containers } = payload;
 
   console.log(
     `[PodLaunchFailure] Received launch failure for pool ${poolName}, pod ${podId}`
@@ -116,7 +116,9 @@ export async function processPodLaunchFailure(
       workspace.id,
       workspace.slug,
       podId,
-      containerLogs
+      eventMessage,
+      reason,
+      containers
     );
 
     console.log(
@@ -147,13 +149,15 @@ export async function processPodLaunchFailure(
 
 /**
  * Trigger a Stakwork repair workflow for pod launch failure
- * Uses POD_LAUNCH_FAILURE type with containerLogs for Stakwork to fix container files
+ * Uses POD_LAUNCH_FAILURE type with structured container data for Stakwork to fix container files
  */
 async function triggerLaunchFailureRepair(
   workspaceId: string,
   workspaceSlug: string,
   podId: string,
-  containerLogs: string
+  eventMessage: string,
+  reason: string,
+  containers: import("@/types/pool-manager").ContainerStatus[]
 ): Promise<{ runId: string; projectId: number | null }> {
   const baseUrl = getBaseUrl();
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=POD_LAUNCH_FAILURE&workspace_id=${workspaceId}`;
@@ -191,7 +195,11 @@ async function triggerLaunchFailureRepair(
               workspaceSlug,
               podId,
               webhookUrl,
-              containerLogs, // Key indicator for launch failure
+              message: JSON.stringify({
+                eventMessage,
+                reason,
+                containers,
+              }),
               failureType: "LAUNCH", // Distinguishes from runtime failures
             },
           },
