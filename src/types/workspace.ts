@@ -41,6 +41,7 @@ export interface WorkspaceWithAccess extends WorkspaceResponse {
   isCodeGraphSetup: boolean;
   ingestRefId: string | null;
   poolState: "NOT_STARTED" | "STARTED" | "FAILED" | "COMPLETE" | null;
+  podState: "NOT_STARTED" | "VALIDATING" | "COMPLETED" | "FAILED";
   swarmStatus: "PENDING" | "ACTIVE" | "FAILED" | "DELETED" | null;
   swarmId: string | null;
   containerFilesSetUp: boolean | null;

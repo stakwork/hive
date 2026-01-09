@@ -24,6 +24,9 @@ export function PoolStatusWidget() {
   const [isExpanded] = useState(false);
 
   const isPoolActive = workspace?.poolState === "COMPLETE";
+  const isPodReady = workspace?.podState === "COMPLETED";
+  const isPodFailed = workspace?.podState === "FAILED";
+  const isPodValidating = workspace?.podState === "VALIDATING" || workspace?.podState === "NOT_STARTED";
   const servicesReady = workspace?.containerFilesSetUp === true;
   const disableAutoLaunch = process.env.NEXT_PUBLIC_DISABLE_AUTO_LAUNCH_PODS === 'true';
 
@@ -98,8 +101,48 @@ export function PoolStatusWidget() {
     }
   }, [servicesReady, isPoolActive, disableAutoLaunch, slug, workspace?.id, updateWorkspace, fetchPoolStatus]);
 
-  // Compact state when pool is active
-  if (isPoolActive && !isExpanded) {
+  // Show "Setup failed" state when pod validation failed permanently
+  if (isPoolActive && isPodFailed) {
+    return (
+      <TooltipProvider>
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-2 px-3 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm cursor-default">
+              <div className="relative flex items-center justify-center">
+                <Server className="w-4 h-4 text-foreground" />
+                <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-orange-500 rounded-full" />
+              </div>
+              <div className="text-xs font-medium text-muted-foreground">Setup failed</div>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="space-y-1 text-xs">
+              <div className="font-medium">Pod Setup Failed</div>
+              <div className="text-muted-foreground">
+                Maximum repair attempts reached. Please contact support.
+              </div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Show "Validating..." state when pool is active but pod isn't validated yet
+  if (isPoolActive && isPodValidating && !isExpanded) {
+    return (
+      <div className="flex items-center gap-2 px-3 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm">
+        <div className="relative flex items-center justify-center">
+          <Server className="w-4 h-4 text-foreground" />
+          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+        </div>
+        <div className="text-xs font-medium text-muted-foreground">Validating...</div>
+      </div>
+    );
+  }
+
+  // Compact state when pool is active and pod is validated
+  if (isPoolActive && isPodReady && !isExpanded) {
     if (loading) {
       return (
         <div className="flex items-center justify-center px-3 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm">

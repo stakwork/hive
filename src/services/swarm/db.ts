@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
-import { PoolState, SwarmStatus } from "@prisma/client";
+import { PodState, PoolState, SwarmStatus } from "@prisma/client";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -42,6 +42,7 @@ interface SaveOrUpdateSwarmParams {
   ingestRefId?: string;
   containerFiles?: Record<string, string>;
   poolState?: PoolState;
+  podState?: PodState;
   ingestRequestInProgress?: boolean;
 }
 
@@ -62,6 +63,7 @@ export const select = {
   poolCpu: true,
   poolMemory: true,
   poolState: true,
+  podState: true,
   services: true,
   swarmSecretAlias: true,
   swarmId: true,
@@ -102,6 +104,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.swarmId !== undefined) data.swarmId = params.swarmId;
   if (params.swarmSecretAlias !== undefined) data.swarmSecretAlias = params.swarmSecretAlias;
   if (params.poolState !== undefined) data.poolState = params.poolState;
+  if (params.podState !== undefined) data.podState = params.podState;
 
   if (params.services !== undefined) {
     data.services = params.services;

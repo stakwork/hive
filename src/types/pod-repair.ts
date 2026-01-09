@@ -39,6 +39,10 @@ export interface PodRepairCronResult {
   workspacesWithRunningPods: number;
   repairsTriggered: number;
   staklinkRestarts: number;
+  // Frontend validation metrics
+  validationsTriggered: number;
+  validationsPassed: number;
+  validationsFailedWithRepair: number;
   skipped: {
     maxAttemptsReached: number;
     workflowInProgress: number;

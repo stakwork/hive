@@ -148,7 +148,7 @@ export async function getWorkspaceById(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -189,6 +189,7 @@ export async function getWorkspaceById(
       swarmStatus: workspace.swarm?.status || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
+      podState: workspace.swarm?.podState || "NOT_STARTED",
       swarmUrl: workspace.swarm?.swarmUrl || null,
       repositories: workspace.repositories?.map((repo) => ({
         ...repo,
@@ -229,6 +230,7 @@ export async function getWorkspaceById(
     swarmStatus: workspace.swarm?.status || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
+    podState: workspace.swarm?.podState || "NOT_STARTED",
     swarmUrl: workspace.swarm?.swarmUrl || null,
     repositories: workspace.repositories?.map((repo) => ({
       ...repo,
@@ -255,7 +257,7 @@ export async function getWorkspaceBySlug(
         select: { id: true, name: true, email: true },
       },
       swarm: {
-        select: { id: true, status: true, ingestRefId: true, poolState: true, containerFilesSetUp: true, swarmUrl: true },
+        select: { id: true, status: true, ingestRefId: true, poolState: true, podState: true, containerFilesSetUp: true, swarmUrl: true },
       },
       repositories: {
         select: {
@@ -295,6 +297,7 @@ export async function getWorkspaceBySlug(
       swarmStatus: workspace.swarm?.status || null,
       ingestRefId: workspace.swarm?.ingestRefId || null,
       poolState: workspace.swarm?.poolState || null,
+      podState: workspace.swarm?.podState || "NOT_STARTED",
       swarmUrl: workspace.swarm?.swarmUrl || null,
       logoKey: workspace.logoKey,
       logoUrl: workspace.logoUrl,
@@ -338,6 +341,7 @@ export async function getWorkspaceBySlug(
     swarmStatus: workspace.swarm?.status || null,
     ingestRefId: workspace.swarm?.ingestRefId || null,
     poolState: workspace.swarm?.poolState || null,
+    podState: workspace.swarm?.podState || "NOT_STARTED",
     swarmUrl: workspace.swarm?.swarmUrl || null,
     logoKey: workspace.logoKey,
     logoUrl: workspace.logoUrl,
