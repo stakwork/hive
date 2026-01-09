@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuthFromRequest } from "@/lib/api/auth-helpers";
 import {
   getWorkspaceMembers,
   addWorkspaceMember,
@@ -13,17 +12,14 @@ export const runtime = "nodejs";
 
 // GET /api/workspaces/[slug]/members - Get all workspace members
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { error, userId } = requireAuthFromRequest(request);
+    if (error) return error;
 
     const { slug } = await params;
-    const userId = (session.user as { id: string }).id;
 
     // Check workspace access
     const workspace = await getWorkspaceBySlug(slug, userId);
@@ -48,17 +44,14 @@ export async function GET(
 
 // POST /api/workspaces/[slug]/members - Add a member to workspace
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { error, userId } = requireAuthFromRequest(request);
+    if (error) return error;
 
     const { slug } = await params;
-    const userId = (session.user as { id: string }).id;
     const body = await request.json();
 
     const { githubUsername, role } = body;

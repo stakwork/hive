@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth/nextauth";
+import { requireAuthFromRequest } from "@/lib/api/auth-helpers";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
@@ -16,17 +15,10 @@ export async function PUT(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { error, userId } = requireAuthFromRequest(req);
+    if (error) return error;
 
     const { slug } = await params;
-    const userId = (session.user as { id?: string })?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "User ID not found" }, { status: 401 });
-    }
 
     // Parse request body
     const body = await req.json();
@@ -102,17 +94,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { error, userId } = requireAuthFromRequest(req);
+    if (error) return error;
 
     const { slug } = await params;
-    const userId = (session.user as { id?: string })?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "User ID not found" }, { status: 401 });
-    }
 
     // Check if user has access to the workspace
     const workspace = await db.workspace.findFirst({
