@@ -18,6 +18,7 @@ import {
   POD_PORTS,
   PROCESS_NAMES,
 } from "@/lib/pods/utils";
+import { getWorkspaceRunHistory } from "@/services/stakwork-run";
 
 const MAX_REPAIR_ATTEMPTS = parseInt(
   process.env.POD_REPAIR_MAX_ATTEMPTS || "10",
@@ -172,36 +173,6 @@ async function getRepairAttemptCount(workspaceId: string): Promise<number> {
   });
 }
 
-/**
- * Get history of previous repair attempts for a workspace
- * Returns result + feedback for each run (similar to getFeatureRunHistory pattern)
- */
-async function getRepairHistory(workspaceId: string) {
-  const previousRuns = await db.stakworkRun.findMany({
-    where: {
-      workspaceId,
-      type: StakworkRunType.POD_REPAIR,
-    },
-    select: {
-      id: true,
-      status: true,
-      result: true,
-      feedback: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  return previousRuns.map((run) => ({
-    runId: run.id,
-    status: run.status,
-    result: run.result,
-    feedback: run.feedback,
-    createdAt: run.createdAt.toISOString(),
-    updatedAt: run.updatedAt.toISOString(),
-  }));
-}
 
 /**
  * Create a pod repair StakworkRun and trigger the workflow
@@ -217,7 +188,7 @@ async function triggerPodRepair(
   const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=POD_REPAIR&workspace_id=${workspaceId}`;
 
   // Get history of previous repair attempts
-  const history = await getRepairHistory(workspaceId);
+  const history = await getWorkspaceRunHistory(workspaceId, StakworkRunType.POD_REPAIR);
 
   // Create StakworkRun record
   const run = await db.stakworkRun.create({

@@ -4,28 +4,14 @@ import { stakworkService } from "@/lib/service-factory";
 import { getBaseUrl } from "@/lib/utils";
 import { config } from "@/config/env";
 import { PodLaunchFailureWebhookPayload } from "@/types/pool-manager";
+import { EncryptionService } from "@/lib/encryption";
+import { getWorkspaceRunHistory } from "@/services/stakwork-run";
 
 const MAX_LAUNCH_FAILURE_ATTEMPTS = parseInt(
   process.env.POD_LAUNCH_FAILURE_MAX_ATTEMPTS || "5",
   10
 );
 
-/**
- * Count launch failure attempts for a workspace
- * Isolated function for easy future time-windowing
- */
-async function getLaunchFailureAttemptCount(
-  workspaceId: string
-): Promise<number> {
-  return await db.stakworkRun.count({
-    where: {
-      workspaceId,
-      type: StakworkRunType.POD_LAUNCH_FAILURE,
-      // Future: add createdAt filter for time-windowing
-      // createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-    },
-  });
-}
 
 export interface PodLaunchFailureResult {
   success: boolean;
@@ -57,6 +43,12 @@ export async function processPodLaunchFailure(
     select: {
       id: true,
       slug: true,
+      swarm: {
+        select: {
+          swarmPassword: true,
+          containerFiles: true,
+        },
+      },
     },
   });
 
@@ -73,11 +65,11 @@ export async function processPodLaunchFailure(
     };
   }
 
-  // Check attempt count to prevent infinite loops
-  const attemptCount = await getLaunchFailureAttemptCount(workspace.id);
-  if (attemptCount >= MAX_LAUNCH_FAILURE_ATTEMPTS) {
+  // Get history and check attempt count to prevent infinite loops
+  const history = await getWorkspaceRunHistory(workspace.id, StakworkRunType.POD_LAUNCH_FAILURE);
+  if (history.length >= MAX_LAUNCH_FAILURE_ATTEMPTS) {
     console.log(
-      `[PodLaunchFailure] Max attempts (${attemptCount}) reached for ${workspace.slug}`
+      `[PodLaunchFailure] Max attempts (${history.length}) reached for ${workspace.slug}`
     );
     return {
       success: false,
@@ -110,12 +102,35 @@ export async function processPodLaunchFailure(
     };
   }
 
+  // Extract Dockerfile and docker-compose from containerFiles
+  const containerFiles = workspace.swarm?.containerFiles as Record<string, string> | null;
+  const dockerfile = containerFiles?.["Dockerfile"] || "";
+  const dockerCompose = containerFiles?.["docker-compose.yml"] || "";
+
+  // Decrypt swarm password if available
+  const encryptionService = EncryptionService.getInstance();
+  let podPassword = "";
+  if (workspace.swarm?.swarmPassword) {
+    try {
+      podPassword = encryptionService.decryptField(
+        "swarmPassword",
+        workspace.swarm.swarmPassword
+      );
+    } catch {
+      console.warn(`[PodLaunchFailure] Failed to decrypt swarm password`);
+    }
+  }
+
   // Trigger the repair workflow
   try {
     const { runId, projectId } = await triggerLaunchFailureRepair(
       workspace.id,
       workspace.slug,
       podId,
+      podPassword,
+      history,
+      dockerfile,
+      dockerCompose,
       eventMessage,
       reason,
       containers
@@ -155,6 +170,10 @@ async function triggerLaunchFailureRepair(
   workspaceId: string,
   workspaceSlug: string,
   podId: string,
+  podPassword: string,
+  history: Awaited<ReturnType<typeof getWorkspaceRunHistory>>,
+  dockerfile: string,
+  dockerCompose: string,
   eventMessage: string,
   reason: string,
   containers: import("@/types/pool-manager").ContainerStatus[]
@@ -194,7 +213,12 @@ async function triggerLaunchFailureRepair(
               workspaceId,
               workspaceSlug,
               podId,
+              podPassword,
               webhookUrl,
+              attemptNumber: history.length + 1,
+              history,
+              dockerfile,
+              dockerCompose,
               message: JSON.stringify({
                 eventMessage,
                 reason,

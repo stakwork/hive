@@ -74,6 +74,40 @@ export async function getFeatureRunHistory(
 }
 
 /**
+ * Get history of previous runs for a workspace by type
+ * Used by pod repair flows (POD_REPAIR, POD_LAUNCH_FAILURE) for context
+ */
+export async function getWorkspaceRunHistory(
+  workspaceId: string,
+  type: StakworkRunType
+) {
+  const runs = await db.stakworkRun.findMany({
+    where: { workspaceId, type },
+    select: {
+      id: true,
+      status: true,
+      result: true,
+      decision: true,
+      feedback: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+    take: 10,
+  });
+
+  return runs.map((run) => ({
+    runId: run.id,
+    status: run.status,
+    result: run.result,
+    decision: run.decision,
+    feedback: run.feedback,
+    createdAt: run.createdAt.toISOString(),
+    updatedAt: run.updatedAt.toISOString(),
+  }));
+}
+
+/**
  * Create a new Stakwork AI generation run
  * Follows the janitor pattern: Create DB record → Call Stakwork → Update with projectId
  */
