@@ -22,6 +22,8 @@ import {
   createPutRequest,
   createRequestWithHeaders,
   getMockedSession,
+  createAuthenticatedGetRequest,
+  createAuthenticatedPutRequest,
 } from "@/__tests__/support/helpers";
 
 // Mock Stakwork service
@@ -141,10 +143,8 @@ describe("Janitor API Integration Tests", () => {
   describe("Janitor Configuration", () => {
     test("GET /api/workspaces/[slug]/janitors/config - should get janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("OWNER");
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = createGetRequest("http://localhost/api/test");
+      const request = createAuthenticatedGetRequest("http://localhost/api/test", user);
       
       const response = await GetConfig(request, {
         params: Promise.resolve({ slug: workspace.slug }),
@@ -153,8 +153,10 @@ describe("Janitor API Integration Tests", () => {
       const responseData = await response.json();
 
       expect(response.status).toBe(200);
-      expect(responseData).toHaveProperty("config");
-      expect(responseData.config).toMatchObject({
+      expect(responseData).toHaveProperty("success");
+      expect(responseData).toHaveProperty("data");
+      expect(responseData.data).toHaveProperty("config");
+      expect(responseData.data.config).toMatchObject({
         workspaceId: workspace.id,
         unitTestsEnabled: false,
         integrationTestsEnabled: false,
@@ -163,10 +165,8 @@ describe("Janitor API Integration Tests", () => {
 
     test("PUT /api/workspaces/[slug]/janitors/config - should update janitor config", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("ADMIN");
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = createPutRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPutRequest("http://localhost/api/test", user, {
         unitTestsEnabled: true,
         integrationTestsEnabled: false,
       });
@@ -179,16 +179,15 @@ describe("Janitor API Integration Tests", () => {
 
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.config.unitTestsEnabled).toBe(true);
-      expect(responseData.config.integrationTestsEnabled).toBe(false);
+      expect(responseData.data).toHaveProperty("config");
+      expect(responseData.data.config.unitTestsEnabled).toBe(true);
+      expect(responseData.data.config.integrationTestsEnabled).toBe(false);
     });
 
     test("PUT /api/workspaces/[slug]/janitors/config - should reject unauthorized user", async () => {
       const { user, workspace } = await createTestWorkspaceWithUser("VIEWER");
-      
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user) as any);
 
-      const request = createPutRequest("http://localhost/api/test", {
+      const request = createAuthenticatedPutRequest("http://localhost/api/test", user, {
         unitTestsEnabled: true,
       });
       
