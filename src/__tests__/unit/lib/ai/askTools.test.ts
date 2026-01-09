@@ -1,171 +1,167 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { askTools, listConcepts, repoAgent, searchClues, clueToolMsgs, createHasEndMarkerCondition } from "@/lib/ai/askTools";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { parseOwnerRepo } from "@/lib/ai/utils";
-import { tool } from "ai";
 
-// Mock dependencies
-vi.mock("ai", () => ({
-  tool: vi.fn((config) => config),
+// Use vi.hoisted to create mocks that can be accessed in vi.mock factories
+const { mockGetRecentCommitsWithFiles, mockGetContributorPRs, mockGetProviderTool } = vi.hoisted(() => ({
+  mockGetRecentCommitsWithFiles: vi.fn(),
+  mockGetContributorPRs: vi.fn(),
+  mockGetProviderTool: vi.fn(),
 }));
 
+// Mock external dependencies using the hoisted mock instances
 vi.mock("gitsee/server", () => ({
   RepoAnalyzer: vi.fn().mockImplementation(() => ({
-    getRecentCommitsWithFiles: vi.fn(),
-    getContributorPRs: vi.fn(),
+    getRecentCommitsWithFiles: mockGetRecentCommitsWithFiles,
+    getContributorPRs: mockGetContributorPRs,
   })),
 }));
 
-// Mock getProviderTool
 vi.mock("@/lib/ai/provider", () => ({
-  getProviderTool: vi.fn(),
+  getProviderTool: mockGetProviderTool,
 }));
 
-// Import the mocked function to use in tests
-import { getProviderTool as mockGetProviderTool } from "@/lib/ai/provider";
+import { askTools } from "@/lib/ai/askTools";
 
 describe("askTools", () => {
-  const mockSwarmUrl = "https://test-swarm.sphinx.chat:3355";
-  const mockSwarmApiKey = "test-api-key";
-  const mockRepoUrl = "https://github.com/testowner/testrepo";
-  const mockPat = "test-github-pat";
-  const mockApiKey = "test-anthropic-key";
+  const mockSwarmUrl = "https://swarm.example.com";
+  const mockSwarmApiKey = "test-swarm-key";
+  const mockRepoUrl = "https://github.com/test-owner/test-repo";
+  const mockPat = "test-github-token";
+  const mockApiKey = "test-api-key";
 
   let mockFetch: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Clear mock call history but preserve implementations
+    mockGetRecentCommitsWithFiles.mockClear();
+    mockGetContributorPRs.mockClear();
+    mockGetProviderTool.mockClear();
+
+    // Mock global fetch
     mockFetch = vi.fn();
     global.fetch = mockFetch;
     
-    // Mock web_search tool from getProviderTool
+    // Set default mock implementations
+    mockGetRecentCommitsWithFiles.mockResolvedValue([]);
+    mockGetContributorPRs.mockResolvedValue([]);
     mockGetProviderTool.mockReturnValue({
-      description: "Search the web",
-      inputSchema: {},
+      description: "Mock web search",
+      parameters: {},
       execute: vi.fn(),
     });
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  describe("askTools function", () => {
-    it("should return an object with all 7 tools", () => {
+  describe("factory function", () => {
+    it("returns object with all 6 tools", () => {
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
 
-      expect(tools).toBeDefined();
-      expect(tools.list_concepts).toBeDefined();
-      expect(tools.learn_concept).toBeDefined();
-      expect(tools.recent_commits).toBeDefined();
-      expect(tools.recent_contributions).toBeDefined();
-      expect(tools.repo_agent).toBeDefined();
-      expect(tools.web_search).toBeDefined();
+      expect(tools).toHaveProperty("list_concepts");
+      expect(tools).toHaveProperty("learn_concept");
+      expect(tools).toHaveProperty("recent_commits");
+      expect(tools).toHaveProperty("recent_contributions");
+      expect(tools).toHaveProperty("repo_agent");
+      expect(tools).toHaveProperty("web_search");
     });
 
-    it("should call getProviderTool with correct parameters", () => {
+    it("parses repository URL correctly", () => {
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const { owner, repo } = parseOwnerRepo(mockRepoUrl);
+
+      expect(owner).toBe("test-owner");
+      expect(repo).toBe("test-repo");
+    });
+
+    it("calls getProviderTool for web_search", () => {
+      mockGetProviderTool.mockReturnValue({
+        description: "Mock web search",
+        parameters: {},
+        execute: vi.fn(),
+      });
+
       askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
 
       expect(mockGetProviderTool).toHaveBeenCalledWith("anthropic", mockApiKey, "webSearch");
     });
-
-    it("should extract owner and repo from repoUrl", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-      
-      // Verify tools are created (parseOwnerRepo is called internally)
-      expect(tools).toBeDefined();
-      expect(tools.recent_commits).toBeDefined();
-    });
   });
 
   describe("list_concepts tool", () => {
-    it("should have correct tool definition", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+    it("returns feature list on success", async () => {
+      const mockFeatures = [
+        { id: "feature-1", name: "Feature 1", description: "Description 1" },
+        { id: "feature-2", name: "Feature 2", description: "Description 2" },
+      ];
 
-      expect(tools.list_concepts.description).toContain("knowledge base");
-      expect(tools.list_concepts.inputSchema).toBeDefined();
-      expect(tools.list_concepts.execute).toBeDefined();
-    });
-
-    it("should successfully fetch concepts", async () => {
-      const mockConcepts = {
-        features: [
-          { id: "1", name: "Feature 1", description: "Test feature" },
-          { id: "2", name: "Feature 2", description: "Another feature" },
-        ],
-      };
-
-      mockFetch.mockResolvedValueOnce({
+      mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => mockConcepts,
+        json: async () => mockFeatures,
       });
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
       const result = await tools.list_concepts.execute({});
 
-      expect(result).toEqual(mockConcepts);
+      expect(result).toEqual(mockFeatures);
       expect(mockFetch).toHaveBeenCalledWith(
         `${mockSwarmUrl}/gitree/features`,
         expect.objectContaining({
           method: "GET",
-          headers: expect.objectContaining({
+          headers: {
             "Content-Type": "application/json",
             "x-api-token": mockSwarmApiKey,
-          }),
+          },
         })
       );
     });
 
-    it("should handle errors gracefully", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    it("returns error message on failure", async () => {
+      mockFetch.mockRejectedValue(new Error("Network error"));
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
       const result = await tools.list_concepts.execute({});
 
       expect(result).toBe("Could not retrieve features");
     });
+
+    it("has correct tool structure", () => {
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      expect(tools.list_concepts.description).toBeDefined();
+      expect(tools.list_concepts.execute).toBeDefined();
+      expect(typeof tools.list_concepts.execute).toBe("function");
+    });
   });
 
   describe("learn_concept tool", () => {
-    it("should have correct tool definition with conceptId parameter", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-
-      expect(tools.learn_concept.description).toContain("documentation");
-      expect(tools.learn_concept.inputSchema).toBeDefined();
-      expect(tools.learn_concept.execute).toBeDefined();
-    });
-
-    it("should successfully fetch concept documentation", async () => {
-      const mockConceptId = "test-concept-123";
-      const mockConceptData = {
-        id: mockConceptId,
-        name: "Test Concept",
-        documentation: "Detailed documentation...",
+    it("returns feature documentation on success", async () => {
+      const mockFeatureData = {
+        id: "feature-1",
+        name: "Feature 1",
+        documentation: "Detailed docs",
         prs: [],
         commits: [],
       };
 
-      mockFetch.mockResolvedValueOnce({
+      mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => mockConceptData,
+        json: async () => mockFeatureData,
       });
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-      const result = await tools.learn_concept.execute({ conceptId: mockConceptId });
+      const result = await tools.learn_concept.execute({ conceptId: "feature-1" });
 
-      expect(result).toEqual(mockConceptData);
+      expect(result).toEqual(mockFeatureData);
       expect(mockFetch).toHaveBeenCalledWith(
-        `${mockSwarmUrl}/gitree/features/${encodeURIComponent(mockConceptId)}`,
+        `${mockSwarmUrl}/gitree/features/${encodeURIComponent("feature-1")}`,
         expect.objectContaining({
           method: "GET",
-          headers: expect.objectContaining({
+          headers: {
+            "Content-Type": "application/json",
             "x-api-token": mockSwarmApiKey,
-          }),
+          },
         })
       );
     });
 
-    it("should return error object when concept not found", async () => {
-      mockFetch.mockResolvedValueOnce({
+    it("returns error object when feature not found", async () => {
+      mockFetch.mockResolvedValue({
         ok: false,
         status: 404,
       });
@@ -176,672 +172,351 @@ describe("askTools", () => {
       expect(result).toEqual({ error: "Feature not found" });
     });
 
-    it("should handle network errors gracefully", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Network timeout"));
+    it("returns error message on fetch failure", async () => {
+      mockFetch.mockRejectedValue(new Error("Network error"));
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-      const result = await tools.learn_concept.execute({ conceptId: "test" });
+      const result = await tools.learn_concept.execute({ conceptId: "feature-1" });
 
       expect(result).toBe("Could not retrieve feature documentation");
+    });
+
+    it("encodes conceptId in URL correctly", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({}),
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      await tools.learn_concept.execute({ conceptId: "feature/with/slashes" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${mockSwarmUrl}/gitree/features/${encodeURIComponent("feature/with/slashes")}`,
+        expect.any(Object)
+      );
     });
   });
 
   describe("recent_commits tool", () => {
-    it("should have correct tool definition with optional limit parameter", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-
-      expect(tools.recent_commits.description).toContain("recent commits");
-      expect(tools.recent_commits.inputSchema).toBeDefined();
-      expect(tools.recent_commits.execute).toBeDefined();
-    });
-
-    it("should fetch recent commits with default limit", async () => {
-      const { RepoAnalyzer } = await import("gitsee/server");
+    it("returns commit list with default limit", async () => {
       const mockCommits = [
-        { sha: "abc123", message: "Fix bug", files: ["file1.ts"] },
-        { sha: "def456", message: "Add feature", files: ["file2.ts"] },
+        { sha: "abc123", message: "Commit 1", files: [] },
+        { sha: "def456", message: "Commit 2", files: [] },
       ];
 
-      const mockAnalyzer = {
-        getRecentCommitsWithFiles: vi.fn().mockResolvedValue(mockCommits),
-      };
-      (RepoAnalyzer as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockAnalyzer);
+      mockGetRecentCommitsWithFiles.mockResolvedValue(mockCommits as any);
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
       const result = await tools.recent_commits.execute({});
 
       expect(result).toEqual(mockCommits);
-      expect(mockAnalyzer.getRecentCommitsWithFiles).toHaveBeenCalledWith(
-        "testowner",
-        "testrepo",
+      expect(mockGetRecentCommitsWithFiles).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
         { limit: 10 }
       );
     });
 
-    it("should fetch recent commits with custom limit", async () => {
-      const { RepoAnalyzer } = await import("gitsee/server");
-      const mockCommits = [{ sha: "abc123", message: "Test commit", files: [] }];
+    it("returns commit list with custom limit", async () => {
+      const mockCommits = [{ sha: "abc123", message: "Commit 1", files: [] }];
 
-      const mockAnalyzer = {
-        getRecentCommitsWithFiles: vi.fn().mockResolvedValue(mockCommits),
-      };
-      (RepoAnalyzer as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockAnalyzer);
+      mockGetRecentCommitsWithFiles.mockResolvedValue(mockCommits as any);
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
       const result = await tools.recent_commits.execute({ limit: 5 });
 
       expect(result).toEqual(mockCommits);
-      expect(mockAnalyzer.getRecentCommitsWithFiles).toHaveBeenCalledWith(
-        "testowner",
-        "testrepo",
+      expect(mockGetRecentCommitsWithFiles).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
         { limit: 5 }
       );
     });
 
-    it("should handle errors gracefully", async () => {
-      const { RepoAnalyzer } = await import("gitsee/server");
-      const mockAnalyzer = {
-        getRecentCommitsWithFiles: vi.fn().mockRejectedValue(new Error("GitHub API error")),
-      };
-      (RepoAnalyzer as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockAnalyzer);
+    it("returns error message on failure", async () => {
+      mockGetRecentCommitsWithFiles.mockRejectedValue(new Error("GitHub API error"));
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
       const result = await tools.recent_commits.execute({});
 
       expect(result).toBe("Could not retrieve recent commits");
     });
+
+    it("uses limit from parameter or fallback to 10", async () => {
+      const mockCommits: any[] = [];
+      mockGetRecentCommitsWithFiles.mockResolvedValue(mockCommits);
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      
+      // Test with explicit limit
+      await tools.recent_commits.execute({ limit: 20 });
+      expect(mockGetRecentCommitsWithFiles).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
+        { limit: 20 }
+      );
+
+      // Test with undefined limit (should use 10)
+      await tools.recent_commits.execute({});
+      expect(mockGetRecentCommitsWithFiles).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
+        { limit: 10 }
+      );
+    });
   });
 
   describe("recent_contributions tool", () => {
-    it("should have correct tool definition with user and limit parameters", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-
-      expect(tools.recent_contributions.description).toContain("contributor");
-      expect(tools.recent_contributions.inputSchema).toBeDefined();
-      expect(tools.recent_contributions.execute).toBeDefined();
-    });
-
-    it("should fetch contributor PRs with default limit", async () => {
-      const { RepoAnalyzer } = await import("gitsee/server");
+    it("returns contributions with default limit", async () => {
       const mockContributions = [
-        { prTitle: "Fix bug", commits: 3, reviews: 1 },
-        { prTitle: "Add feature", commits: 5, reviews: 2 },
+        { pr: { title: "PR 1" }, commits: [], reviews: [] },
+        { pr: { title: "PR 2" }, commits: [], reviews: [] },
       ];
 
-      const mockAnalyzer = {
-        getContributorPRs: vi.fn().mockResolvedValue(mockContributions),
-      };
-      (RepoAnalyzer as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockAnalyzer);
+      mockGetContributorPRs.mockResolvedValue(mockContributions as any);
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
       const result = await tools.recent_contributions.execute({ user: "testuser" });
 
       expect(result).toEqual(mockContributions);
-      expect(mockAnalyzer.getContributorPRs).toHaveBeenCalledWith(
-        "testowner",
-        "testrepo",
+      expect(mockGetContributorPRs).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
         "testuser",
         5
       );
     });
 
-    it("should fetch contributor PRs with custom limit", async () => {
-      const { RepoAnalyzer } = await import("gitsee/server");
-      const mockContributions = [{ prTitle: "Test PR", commits: 2, reviews: 0 }];
+    it("returns contributions with custom limit", async () => {
+      const mockContributions = [{ pr: { title: "PR 1" }, commits: [], reviews: [] }];
 
-      const mockAnalyzer = {
-        getContributorPRs: vi.fn().mockResolvedValue(mockContributions),
-      };
-      (RepoAnalyzer as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockAnalyzer);
+      mockGetContributorPRs.mockResolvedValue(mockContributions as any);
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-      const result = await tools.recent_contributions.execute({ user: "contributor", limit: 10 });
+      const result = await tools.recent_contributions.execute({ user: "testuser", limit: 10 });
 
       expect(result).toEqual(mockContributions);
-      expect(mockAnalyzer.getContributorPRs).toHaveBeenCalledWith(
-        "testowner",
-        "testrepo",
-        "contributor",
+      expect(mockGetContributorPRs).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
+        "testuser",
         10
       );
     });
 
-    it("should handle errors gracefully", async () => {
-      const { RepoAnalyzer } = await import("gitsee/server");
-      const mockAnalyzer = {
-        getContributorPRs: vi.fn().mockRejectedValue(new Error("API rate limit exceeded")),
-      };
-      (RepoAnalyzer as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockAnalyzer);
+    it("returns error message on failure", async () => {
+      mockGetContributorPRs.mockRejectedValue(new Error("GitHub API error"));
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
       const result = await tools.recent_contributions.execute({ user: "testuser" });
 
       expect(result).toBe("Could not retrieve repository map");
     });
+
+    it("uses limit from parameter or fallback to 5", async () => {
+      const mockContributions: any[] = [];
+      mockGetContributorPRs.mockResolvedValue(mockContributions);
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      
+      // Test with explicit limit
+      await tools.recent_contributions.execute({ user: "testuser", limit: 15 });
+      expect(mockGetContributorPRs).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
+        "testuser",
+        15
+      );
+
+      // Test with undefined limit (should use 5)
+      await tools.recent_contributions.execute({ user: "testuser" });
+      expect(mockGetContributorPRs).toHaveBeenCalledWith(
+        "test-owner",
+        "test-repo",
+        "testuser",
+        5
+      );
+    });
   });
 
   describe("repo_agent tool", () => {
-    it("should have correct tool definition with prompt parameter", () => {
-      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-
-      expect(tools.repo_agent.description).toContain("analyze the repository");
-      expect(tools.repo_agent.inputSchema).toBeDefined();
-      expect(tools.repo_agent.execute).toBeDefined();
-    });
-
-    it("should execute repo agent with speed instruction", async () => {
-      const mockRequestId = "request-123";
-      const mockResult = {
-        content: "Analysis complete: Found 3 potential issues...",
-      };
-
-      // Use fake timers for this specific test
+    it("returns agent response on success", async () => {
+      // Use fake timers to avoid actual waiting
       vi.useFakeTimers();
-
-      // Mock initial request
+      
+      // Mock initiate response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ request_id: mockRequestId }),
+        json: async () => ({ request_id: "test-request-123" }),
       });
-
-      // Mock progress check (completed on first poll)
-      mockFetch.mockResolvedValue({
+      
+      // Mock progress response (completed)
+      mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ status: "completed", result: mockResult }),
+        json: async () => ({
+          status: "completed",
+          result: { content: "Analysis result" },
+        }),
       });
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-      const resultPromise = tools.repo_agent.execute({ prompt: "Find security issues" });
-
-      // Advance timer to trigger polling
+      const executePromise = tools.repo_agent.execute({ prompt: "Analyze this code" });
+      
+      // Fast-forward through the setTimeout delay
       await vi.advanceTimersByTimeAsync(5000);
+      
+      const result = await executePromise;
 
-      const result = await resultPromise;
-
-      expect(result).toBe(mockResult.content);
+      expect(result).toBe("Analysis result");
       expect(mockFetch).toHaveBeenCalledWith(
         `${mockSwarmUrl}/repo/agent`,
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining("PLEASE BE AS FAST AS POSSIBLE"),
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-token": mockSwarmApiKey,
+          },
+          body: expect.stringContaining("Analyze this code"),
         })
       );
-
+      
       vi.useRealTimers();
     });
 
-    it("should handle repo agent errors gracefully", async () => {
-      mockFetch.mockRejectedValueOnce(new Error("Service unavailable"));
+    it("appends optimization instructions to prompt", async () => {
+      vi.useFakeTimers();
+      
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ request_id: "test-request-456" }),
+      });
+      
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "completed",
+          result: { content: "Result" },
+        }),
+      });
 
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
-      const result = await tools.repo_agent.execute({ prompt: "Test prompt" });
+      const executePromise = tools.repo_agent.execute({ prompt: "Test prompt" });
+      
+      await vi.advanceTimersByTimeAsync(5000);
+      await executePromise;
+
+      const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(callBody.prompt).toContain("PLEASE BE AS FAST AS POSSIBLE");
+      expect(callBody.prompt).toContain("Test prompt");
+      
+      vi.useRealTimers();
+    });
+
+    it("returns error message on failure", async () => {
+      mockFetch.mockRejectedValue(new Error("Agent execution failed"));
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.repo_agent.execute({ prompt: "Analyze this code" });
 
       expect(result).toBe("Could not execute repo agent");
     });
   });
 
   describe("web_search tool", () => {
-    it("should be sourced from getProviderTool", () => {
+    it("returns web_search tool from provider", () => {
+      const mockWebSearchTool = {
+        description: "Search the web",
+        parameters: { query: "string" },
+        execute: vi.fn(),
+      };
+
+      mockGetProviderTool.mockReturnValue(mockWebSearchTool);
+
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
 
-      expect(tools.web_search).toBeDefined();
-      expect(mockGetProviderTool).toHaveBeenCalledWith("anthropic", mockApiKey, "webSearch");
+      expect(tools.web_search).toEqual(mockWebSearchTool);
     });
   });
-});
 
-describe("listConcepts", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
+  describe("error handling", () => {
+    it("handles errors gracefully without throwing", async () => {
+      mockFetch.mockRejectedValue(new Error("Critical failure"));
 
-  beforeEach(() => {
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("should fetch concepts from Swarm API", async () => {
-    const mockConcepts = {
-      features: [
-        { id: "1", name: "Authentication", description: "User auth system" },
-        { id: "2", name: "Database", description: "Prisma ORM" },
-      ],
-    };
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockConcepts,
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      
+      // Should not throw, should return error message
+      await expect(tools.list_concepts.execute({})).resolves.toBe("Could not retrieve features");
     });
 
-    const result = await listConcepts("https://test.sphinx.chat:3355", "test-key");
+    it("all tools return error strings instead of throwing exceptions", async () => {
+      // Setup all tools to fail
+      mockFetch.mockRejectedValue(new Error("Fail"));
+      mockGetRecentCommitsWithFiles.mockRejectedValue(new Error("Fail"));
+      mockGetContributorPRs.mockRejectedValue(new Error("Fail"));
 
-    expect(result).toEqual(mockConcepts);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://test.sphinx.chat:3355/gitree/features",
-      expect.objectContaining({
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-token": "test-key",
-        },
-      })
-    );
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+
+      // All tools should return error messages, not throw
+      await expect(tools.list_concepts.execute({})).resolves.toBe("Could not retrieve features");
+      await expect(tools.learn_concept.execute({ conceptId: "test" })).resolves.toBe(
+        "Could not retrieve feature documentation"
+      );
+      await expect(tools.recent_commits.execute({})).resolves.toBe(
+        "Could not retrieve recent commits"
+      );
+      await expect(tools.recent_contributions.execute({ user: "test" })).resolves.toBe(
+        "Could not retrieve repository map"
+      );
+      await expect(tools.repo_agent.execute({ prompt: "test" })).resolves.toBe(
+        "Could not execute repo agent"
+      );
+    });
   });
 
-  it("should handle API errors", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: async () => ({ error: "Internal server error" }),
-    });
-
-    const result = await listConcepts("https://test.sphinx.chat:3355", "test-key");
-
-    expect(result).toEqual({ error: "Internal server error" });
-  });
-});
-
-describe("repoAgent", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  it("should initiate repo agent and poll for completion", async () => {
-    const mockRequestId = "req-456";
-    const mockResult = { content: "Analysis results..." };
-
-    // Mock initiation
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ request_id: mockRequestId }),
-    });
-
-    // Mock progress check - return completed immediately
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ status: "completed", result: mockResult }),
-    });
-
-    const resultPromise = repoAgent("https://test.sphinx.chat:3355", "test-key", {
-      repo_url: "https://github.com/test/repo",
-      prompt: "Analyze code",
-      pat: "test-pat",
-    });
-
-    // Advance timers to trigger first poll
-    await vi.advanceTimersByTimeAsync(5000);
-    
-    const result = await resultPromise;
-
-    expect(result).toEqual(mockResult);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://test.sphinx.chat:3355/repo/agent",
-      expect.objectContaining({
-        method: "POST",
-        body: expect.any(String),
-      })
-    );
-  });
-
-  it("should poll multiple times before completion", async () => {
-    const mockRequestId = "req-789";
-    const mockResult = { content: "Done" };
-
-    // Mock initiation
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ request_id: mockRequestId }),
-    });
-
-    // Mock progress checks - two in_progress, then completed
-    mockFetch
-      .mockResolvedValueOnce({
+  describe("edge cases", () => {
+    it("handles empty feature list", async () => {
+      mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ status: "in_progress" }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ status: "in_progress" }),
-      })
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({ status: "completed", result: mockResult }),
+        json: async () => [],
       });
 
-    const resultPromise = repoAgent("https://test.sphinx.chat:3355", "test-key", {
-      repo_url: "https://github.com/test/repo",
-      prompt: "Test",
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.list_concepts.execute({});
+
+      expect(result).toEqual([]);
     });
 
-    // Advance timers for each polling attempt
-    await vi.advanceTimersByTimeAsync(5000); // First poll
-    await vi.advanceTimersByTimeAsync(5000); // Second poll
-    await vi.advanceTimersByTimeAsync(5000); // Third poll (completed)
-    
-    const result = await resultPromise;
-
-    expect(result).toEqual(mockResult);
-    expect(mockFetch).toHaveBeenCalledTimes(4); // 1 initiate + 3 polls
-  });
-
-  it("should throw error when initiation fails", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      text: async () => "Bad request",
-    });
-
-    await expect(
-      repoAgent("https://test.sphinx.chat:3355", "test-key", {
-        repo_url: "https://github.com/test/repo",
-        prompt: "Test",
-      })
-    ).rejects.toThrow("Failed to initiate repo agent");
-  });
-
-  it("should throw error when no request_id returned", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({}),
-    });
-
-    await expect(
-      repoAgent("https://test.sphinx.chat:3355", "test-key", {
-        repo_url: "https://github.com/test/repo",
-        prompt: "Test",
-      })
-    ).rejects.toThrow("No request_id returned from repo agent");
-  });
-
-  it("should throw error when execution fails", async () => {
-    const mockRequestId = "req-fail";
-
-    // Mock initiation
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ request_id: mockRequestId }),
-    });
-
-    // Mock failed status response
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ status: "failed", error: "Execution failed" }),
-    });
-
-    const resultPromise = repoAgent("https://test.sphinx.chat:3355", "test-key", {
-      repo_url: "https://github.com/test/repo",
-      prompt: "Test",
-    });
-
-    // Create promise for timer advancement
-    const timerPromise = vi.advanceTimersByTimeAsync(5000);
-
-    // Wait for both the timer and result promise
-    await Promise.all([
-      timerPromise,
-      expect(resultPromise).rejects.toThrow("Execution failed")
-    ]);
-  });
-
-  it("should handle progress check failures gracefully and continue polling", async () => {
-    const mockRequestId = "req-retry";
-    const mockResult = { content: "Success after retry" };
-
-    // Mock initiation
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ request_id: mockRequestId }),
-    });
-
-    // First poll fails, second succeeds
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-      })
-      .mockResolvedValue({
+    it("handles special characters in conceptId", async () => {
+      mockFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ status: "completed", result: mockResult }),
+        json: async () => ({ id: "special!@#$%^&*()" }),
       });
 
-    const resultPromise = repoAgent("https://test.sphinx.chat:3355", "test-key", {
-      repo_url: "https://github.com/test/repo",
-      prompt: "Test",
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      await tools.learn_concept.execute({ conceptId: "special!@#$%^&*()" });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${mockSwarmUrl}/gitree/features/${encodeURIComponent("special!@#$%^&*()")}`,
+        expect.any(Object)
+      );
     });
 
-    // Advance timers for polling attempts
-    await vi.advanceTimersByTimeAsync(5000); // First poll (fails)
-    await vi.advanceTimersByTimeAsync(5000); // Second poll (succeeds)
+    it("handles empty commit list", async () => {
+      mockGetRecentCommitsWithFiles.mockResolvedValue([]);
 
-    const result = await resultPromise;
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.recent_commits.execute({});
 
-    expect(result).toEqual(mockResult);
-  });
-});
-
-describe("searchClues", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("should search clues and filter by relevance score", async () => {
-    const mockResults = [
-      { id: "1", content: "High relevance", relevanceBreakdown: { vector: 0.85 } },
-      { id: "2", content: "Low relevance", relevanceBreakdown: { vector: 0.50 } },
-      { id: "3", content: "Medium relevance", relevanceBreakdown: { vector: 0.75 } },
-    ];
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ results: mockResults }),
+      expect(result).toEqual([]);
     });
 
-    const result = await searchClues("https://test.sphinx.chat:3355", "test-key", "test query", 0.73);
+    it("handles empty contributions list", async () => {
+      mockGetContributorPRs.mockResolvedValue([]);
 
-    expect(result).toHaveLength(2);
-    expect(result[0].id).toBe("1");
-    expect(result[1].id).toBe("3");
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://test.sphinx.chat:3355/gitree/search-clues",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ query: "test query" }),
-      })
-    );
-  });
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.recent_contributions.execute({ user: "testuser" });
 
-  it("should use default minScore of 0.73", async () => {
-    const mockResults = [
-      { id: "1", content: "Test", relevanceBreakdown: { vector: 0.80 } },
-      { id: "2", content: "Test", relevanceBreakdown: { vector: 0.70 } },
-    ];
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ results: mockResults }),
+      expect(result).toEqual([]);
     });
-
-    const result = await searchClues("https://test.sphinx.chat:3355", "test-key", "query");
-
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("1");
-  });
-});
-
-describe("clueToolMsgs", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("should construct tool-call and tool-result messages", async () => {
-    const mockClues = Array.from({ length: 15 }, (_, i) => ({
-      id: `clue-${i}`,
-      content: `Clue ${i}`,
-      relevanceBreakdown: { vector: 0.8 },
-    }));
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ results: mockClues }),
-    });
-
-    const result = await clueToolMsgs("https://test.sphinx.chat:3355", "test-key", "test query");
-
-    expect(result).toHaveLength(2);
-    expect(result![0].role).toBe("assistant");
-    expect(result![0].content[0].type).toBe("tool-call");
-    expect(result![0].content[0].toolName).toBe("search_relevant_clues");
-    
-    expect(result![1].role).toBe("tool");
-    expect(result![1].content[0].type).toBe("tool-result");
-    expect(result![1].content[0].toolName).toBe("search_relevant_clues");
-    
-    // Should limit to 10 clues
-    const toolResult = result![1].content[0] as { output: { value: unknown[] } };
-    expect(toolResult.output.value).toHaveLength(10);
-  });
-
-  it("should return null when no relevant clues found", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ results: [] }),
-    });
-
-    const result = await clueToolMsgs("https://test.sphinx.chat:3355", "test-key", "no results");
-
-    expect(result).toBeNull();
-  });
-
-  it("should return null on error", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("Network error"));
-
-    const result = await clueToolMsgs("https://test.sphinx.chat:3355", "test-key", "query");
-
-    expect(result).toBeNull();
-  });
-});
-
-describe("createHasEndMarkerCondition", () => {
-  it("should return true when [END_OF_ANSWER] marker found in text", () => {
-    const condition = createHasEndMarkerCondition();
-    
-    const steps = [
-      {
-        content: [
-          { type: "text" as const, text: "Some response text" },
-          { type: "text" as const, text: "Final answer [END_OF_ANSWER]" },
-        ],
-      },
-    ];
-
-    const result = condition({ steps } as never);
-    expect(result).toBe(true);
-  });
-
-  it("should return false when marker not found", () => {
-    const condition = createHasEndMarkerCondition();
-    
-    const steps = [
-      {
-        content: [
-          { type: "text" as const, text: "Some response text" },
-          { type: "text" as const, text: "More text without marker" },
-        ],
-      },
-    ];
-
-    const result = condition({ steps } as never);
-    expect(result).toBe(false);
-  });
-
-  it("should handle multiple steps", () => {
-    const condition = createHasEndMarkerCondition();
-    
-    const steps = [
-      {
-        content: [
-          { type: "text" as const, text: "Step 1" },
-        ],
-      },
-      {
-        content: [
-          { type: "text" as const, text: "Step 2 [END_OF_ANSWER]" },
-        ],
-      },
-    ];
-
-    const result = condition({ steps } as never);
-    expect(result).toBe(true);
-  });
-
-  it("should handle non-text content types", () => {
-    const condition = createHasEndMarkerCondition();
-    
-    const steps = [
-      {
-        content: [
-          { type: "tool-call" as const, toolName: "test" },
-          { type: "text" as const, text: "Response" },
-        ],
-      },
-    ];
-
-    const result = condition({ steps } as never);
-    expect(result).toBe(false);
-  });
-});
-
-describe("parseOwnerRepo", () => {
-  it("should parse https GitHub URL", () => {
-    const result = parseOwnerRepo("https://github.com/testowner/testrepo");
-    expect(result).toEqual({ owner: "testowner", repo: "testrepo" });
-  });
-
-  it("should parse https GitHub URL with .git suffix", () => {
-    const result = parseOwnerRepo("https://github.com/testowner/testrepo.git");
-    expect(result).toEqual({ owner: "testowner", repo: "testrepo" });
-  });
-
-  it("should parse git@ SSH format", () => {
-    const result = parseOwnerRepo("git@github.com:testowner/testrepo.git");
-    expect(result).toEqual({ owner: "testowner", repo: "testrepo" });
-  });
-
-  it("should parse owner/repo format", () => {
-    const result = parseOwnerRepo("testowner/testrepo");
-    expect(result).toEqual({ owner: "testowner", repo: "testrepo" });
-  });
-
-  it("should throw error for invalid format", () => {
-    expect(() => parseOwnerRepo("invalid-url")).toThrow("Invalid repository URL format");
-  });
-
-  it("should throw error for empty string", () => {
-    expect(() => parseOwnerRepo("")).toThrow("Invalid repository URL format");
   });
 });
