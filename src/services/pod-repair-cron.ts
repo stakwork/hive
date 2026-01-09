@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { WorkflowStatus, StakworkRunType, Prisma, PodState, PoolState } from "@prisma/client";
+import { WorkflowStatus, StakworkRunType, Prisma, PodState } from "@prisma/client";
 import { poolManagerService, stakworkService } from "@/lib/service-factory";
 import { getBaseUrl } from "@/lib/utils";
 import {
@@ -222,6 +222,42 @@ async function validateFrontend(
 }
 
 /**
+ * Try to restart staklink-proxy for a pod
+ */
+async function tryRestartStaklink(
+  swarmId: string,
+  podId: string,
+  poolApiKey: string,
+  workspaceSlug: string,
+  result: PodRepairCronResult
+): Promise<void> {
+  try {
+    const poolService = poolManagerService();
+    const staklinkResult = await poolService.startStaklink(swarmId, podId, poolApiKey);
+    if (staklinkResult.success) {
+      console.log(
+        `[PodRepairCron] staklink started for ${workspaceSlug}/${podId}: ${staklinkResult.message}`
+      );
+      result.staklinkRestarts++;
+    } else {
+      console.warn(
+        `[PodRepairCron] staklink-start returned success=false for ${workspaceSlug}/${podId}`
+      );
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[PodRepairCron] Failed to start staklink for ${workspaceSlug}/${podId}:`,
+      errorMessage
+    );
+    result.errors.push({
+      workspaceSlug,
+      error: `Failed to start staklink: ${errorMessage}`,
+    });
+  }
+}
+
+/**
  * Get history of previous repair attempts for a workspace
  * Returns result + feedback for each run (similar to getFeatureRunHistory pattern)
  */
@@ -375,182 +411,49 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         continue;
       }
 
+      // Skip already-completed workspaces
+      if (workspace.swarm.podState === PodState.COMPLETED) {
+        result.workspacesWithRunningPods++;
+        continue;
+      }
+
+      // Skip failed workspaces (max attempts exhausted)
+      if (workspace.swarm.podState === PodState.FAILED) {
+        continue;
+      }
+
       try {
-        // Get pods for this workspace
+        // 1. Get pods for this workspace
         const poolService = poolManagerService();
         const poolData = await poolService.getPoolWorkspaces(
           workspace.swarm.id,
           workspace.swarm.poolApiKey
         );
 
-        // Check if there are any running pods
-        const runningPods = poolData.workspaces.filter(
-          (vm) => vm.state.toLowerCase() === "running"
-        );
-
-        // Check if this workspace is in onboarding (needs frontend validation)
-        const isOnboarding =
-          workspace.swarm.poolState === PoolState.COMPLETE &&
-          workspace.swarm.podState !== PodState.COMPLETED &&
-          workspace.swarm.podState !== PodState.FAILED;
-
-        // For onboarding workspaces with running pods, validate the frontend
-        if (isOnboarding && runningPods.length > 0) {
-          const runningPod = runningPods[0];
-          console.log(
-            `[PodRepairCron] Onboarding validation for ${workspace.slug}/${runningPod.subdomain}`
-          );
-
-          // Check attempt count first
-          const attemptCount = await getRepairAttemptCount(workspace.id);
-          if (attemptCount >= MAX_REPAIR_ATTEMPTS) {
-            console.log(
-              `[PodRepairCron] Max attempts reached for ${workspace.slug}, setting podState=FAILED`
-            );
-            await updatePodState(workspace.swarm.id, PodState.FAILED);
-            result.skipped.maxAttemptsReached++;
-            continue;
-          }
-
-          // Check if repair workflow is already in progress
-          if (await isRepairInProgress(workspace.id)) {
-            console.log(
-              `[PodRepairCron] Skipping ${workspace.slug}: repair already in progress`
-            );
-            result.skipped.workflowInProgress++;
-            continue;
-          }
-
-          // Decrypt pool API key for direct API calls
-          const decryptedPoolApiKey = encryptionService.decryptField(
-            "poolApiKey",
-            workspace.swarm.poolApiKey
-          );
-
-          // Fetch jlist to check process status
-          const jlist = await fetchPodJlist(runningPod.subdomain);
-          if (!jlist) {
-            console.log(
-              `[PodRepairCron] jlist not available for ${workspace.slug}/${runningPod.subdomain}`
-            );
-            continue;
-          }
-
-          // Check staklink-proxy
-          const staklinkExists = jlist.some(
-            (proc) => proc.name.toLowerCase() === STAKLINK_PROXY_PROCESS
-          );
-          const failedProcesses = getFailedProcesses(jlist);
-          const staklinkFailed = failedProcesses.includes(STAKLINK_PROXY_PROCESS);
-
-          if (!staklinkExists || staklinkFailed) {
-            console.log(
-              `[PodRepairCron] staklink-proxy not ready for ${workspace.slug}, skipping validation`
-            );
-            continue;
-          }
-
-          // Get pod details for frontend check
-          let podWithPortMappings;
-          try {
-            podWithPortMappings = await getPodFromPool(
-              runningPod.subdomain,
-              decryptedPoolApiKey
-            );
-          } catch (error) {
-            console.warn(
-              `[PodRepairCron] Could not get pod details for ${runningPod.subdomain}:`,
-              error
-            );
-            continue;
-          }
-
-          // Check frontend process is online
-          if (podWithPortMappings?.portMappings) {
-            const controlPortUrl = podWithPortMappings.portMappings[POD_PORTS.CONTROL];
-            if (controlPortUrl) {
-              const frontendCheck = await checkFrontendAvailable(
-                jlist,
-                podWithPortMappings.portMappings,
-                controlPortUrl
-              );
-
-              if (!frontendCheck.available) {
-                console.log(
-                  `[PodRepairCron] Frontend not available for ${workspace.slug}/${runningPod.subdomain}: ${frontendCheck.error}`
-                );
-                // Trigger repair
-                await triggerPodRepair(
-                  workspace.id,
-                  workspace.slug,
-                  runningPod.subdomain,
-                  runningPod.password || "",
-                  [PROCESS_NAMES.FRONTEND],
-                  frontendCheck.error || "Frontend not available"
-                );
-                result.repairsTriggered++;
-                continue;
-              }
-            }
-          }
-
-          // All checks passed - now do final /validate_frontend call
-          console.log(
-            `[PodRepairCron] All checks passed, calling /validate_frontend for ${workspace.slug}`
-          );
-          await updatePodState(workspace.swarm.id, PodState.VALIDATING);
-          result.validationsTriggered++;
-
-          const validationResult = await validateFrontend(runningPod.subdomain);
-
-          if (validationResult.ok) {
-            console.log(
-              `[PodRepairCron] Frontend validation passed for ${workspace.slug}`
-            );
-            await updatePodState(workspace.swarm.id, PodState.COMPLETED);
-            result.validationsPassed++;
-          } else {
-            console.log(
-              `[PodRepairCron] Frontend validation failed for ${workspace.slug}: ${validationResult.message}`
-            );
-            await triggerPodRepair(
-              workspace.id,
-              workspace.slug,
-              runningPod.subdomain,
-              runningPod.password || "",
-              [PROCESS_NAMES.FRONTEND],
-              validationResult.message
-            );
-            result.validationsFailedWithRepair++;
-            result.repairsTriggered++;
-          }
-          continue;
-        }
-
-        // For non-onboarding workspaces, skip if there are running pods
-        if (runningPods.length > 0) {
-          console.log(
-            `[PodRepairCron] Skipping ${workspace.slug}: has ${runningPods.length} running pods`
-          );
-          result.workspacesWithRunningPods++;
-          continue;
-        }
-
-        // === NON-RUNNING POD REPAIR LOGIC ===
-        // Pick first non-running pod
+        // 2. Pick a pod (prefer running)
         const pod = poolData.workspaces.find(
-          (vm) => vm.state.toLowerCase() !== "running"
-        );
+          (vm) => vm.state.toLowerCase() === "running"
+        ) || poolData.workspaces[0];
 
         if (!pod) {
           continue;
         }
 
         console.log(
-          `[PodRepairCron] Workspace ${workspace.slug}: checking pod ${pod.subdomain}`
+          `[PodRepairCron] Checking ${workspace.slug}/${pod.subdomain}`
         );
 
-        // Check if repair workflow is already in progress
+        // 3. Early exits
+        const attemptCount = await getRepairAttemptCount(workspace.id);
+        if (attemptCount >= MAX_REPAIR_ATTEMPTS) {
+          console.log(
+            `[PodRepairCron] Max attempts reached for ${workspace.slug}`
+          );
+          await updatePodState(workspace.swarm.id, PodState.FAILED);
+          result.skipped.maxAttemptsReached++;
+          continue;
+        }
+
         if (await isRepairInProgress(workspace.id)) {
           console.log(
             `[PodRepairCron] Skipping ${workspace.slug}: repair already in progress`
@@ -559,124 +462,61 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           continue;
         }
 
-        // Check attempt count
-        const attemptCount = await getRepairAttemptCount(workspace.id);
-        if (attemptCount >= MAX_REPAIR_ATTEMPTS) {
-          console.log(
-            `[PodRepairCron] Skipping ${workspace.slug}: max attempts (${attemptCount}) reached`
-          );
-          result.skipped.maxAttemptsReached++;
-          continue;
-        }
-
-        // Decrypt pool API key for direct API calls
+        // 4. Health checks - jlist, staklink, frontend
         const decryptedPoolApiKey = encryptionService.decryptField(
           "poolApiKey",
           workspace.swarm.poolApiKey
         );
 
-        // Fetch jlist - if it fails, call staklink-start API directly
         const jlist = await fetchPodJlist(pod.subdomain);
         if (!jlist) {
           console.log(
             `[PodRepairCron] jlist not available for ${workspace.slug}/${pod.subdomain} - calling staklink-start`
           );
-          try {
-            const poolService = poolManagerService();
-            const staklinkResult = await poolService.startStaklink(
-              workspace.swarm.id,
-              pod.subdomain,
-              workspace.swarm.poolApiKey
-            );
-            if (staklinkResult.success) {
-              console.log(
-                `[PodRepairCron] staklink started for ${workspace.slug}/${pod.subdomain}: ${staklinkResult.message}`
-              );
-              result.staklinkRestarts++;
-            } else {
-              console.warn(
-                `[PodRepairCron] staklink-start returned success=false for ${workspace.slug}/${pod.subdomain}`
-              );
-            }
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(
-              `[PodRepairCron] Failed to start staklink for ${workspace.slug}/${pod.subdomain}:`,
-              errorMessage
-            );
-            result.errors.push({
-              workspaceSlug: workspace.slug,
-              error: `Failed to start staklink: ${errorMessage}`,
-            });
-          }
+          await tryRestartStaklink(
+            workspace.swarm.id,
+            pod.subdomain,
+            workspace.swarm.poolApiKey,
+            workspace.slug,
+            result
+          );
           continue;
         }
 
-        // Check if staklink-proxy exists in jlist
+        // Check staklink-proxy status
         const staklinkExists = jlist.some(
           (proc) => proc.name.toLowerCase() === STAKLINK_PROXY_PROCESS
         );
-
-        // Get failed processes
         const failedProcesses = getFailedProcesses(jlist);
-
-        // Prioritize staklink-proxy: if it's failed OR missing, repair that first
         const staklinkFailed = failedProcesses.includes(STAKLINK_PROXY_PROCESS);
-        const staklinkNeedsRepair = staklinkFailed || !staklinkExists;
 
-        if (staklinkNeedsRepair) {
+        if (!staklinkExists || staklinkFailed) {
           console.log(
-            `[PodRepairCron] staklink-proxy needs repair for ${workspace.slug}/${pod.subdomain} - calling staklink-start`
+            `[PodRepairCron] staklink-proxy needs repair for ${workspace.slug}/${pod.subdomain}`
           );
-          try {
-            const poolService = poolManagerService();
-            const staklinkResult = await poolService.startStaklink(
-              workspace.swarm.id,
-              pod.subdomain,
-              workspace.swarm.poolApiKey
-            );
-            if (staklinkResult.success) {
-              console.log(
-                `[PodRepairCron] staklink started for ${workspace.slug}/${pod.subdomain}: ${staklinkResult.message}`
-              );
-              result.staklinkRestarts++;
-            } else {
-              console.warn(
-                `[PodRepairCron] staklink-start returned success=false for ${workspace.slug}/${pod.subdomain}`
-              );
-            }
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(
-              `[PodRepairCron] Failed to start staklink for ${workspace.slug}/${pod.subdomain}:`,
-              errorMessage
-            );
-            result.errors.push({
-              workspaceSlug: workspace.slug,
-              error: `Failed to start staklink: ${errorMessage}`,
-            });
-          }
+          await tryRestartStaklink(
+            workspace.swarm.id,
+            pod.subdomain,
+            workspace.swarm.poolApiKey,
+            workspace.slug,
+            result
+          );
           continue;
         }
 
-        // Get full pod data with portMappings for frontend check
+        // Check frontend availability
         let podWithPortMappings;
         try {
-          podWithPortMappings = await getPodFromPool(
-            pod.subdomain,
-            decryptedPoolApiKey
-          );
+          podWithPortMappings = await getPodFromPool(pod.subdomain, decryptedPoolApiKey);
         } catch (error) {
           console.warn(
             `[PodRepairCron] Could not get pod details for ${pod.subdomain}:`,
             error
           );
-          // Fall through to check failed processes without frontend check
           podWithPortMappings = null;
         }
 
-        // Check frontend availability if we have portMappings
-        let frontendNeedsRepair = false;
+        let frontendError: string | null = null;
         if (podWithPortMappings?.portMappings) {
           const controlPortUrl = podWithPortMappings.portMappings[POD_PORTS.CONTROL];
           if (controlPortUrl) {
@@ -685,49 +525,73 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
               podWithPortMappings.portMappings,
               controlPortUrl
             );
-
             if (!frontendCheck.available) {
               console.log(
                 `[PodRepairCron] Frontend not available for ${workspace.slug}/${pod.subdomain}: ${frontendCheck.error}`
               );
-              frontendNeedsRepair = true;
+              frontendError = frontendCheck.error || "Frontend not available";
             }
           }
         }
 
-        // Build list of services to repair
+        // 5. Build list of services that need repair
         const servicesToRepair: string[] = [];
-        if (frontendNeedsRepair) {
+        if (frontendError) {
           servicesToRepair.push(PROCESS_NAMES.FRONTEND);
         }
-        // Add other failed processes (excluding frontend if already added)
         for (const proc of failedProcesses) {
           if (!servicesToRepair.includes(proc)) {
             servicesToRepair.push(proc);
           }
         }
 
-        // If no services need repair, skip
-        if (servicesToRepair.length === 0) {
+        // 6. If issues found, trigger repair
+        if (servicesToRepair.length > 0) {
           console.log(
-            `[PodRepairCron] No failed processes for ${workspace.slug}`
+            `[PodRepairCron] Triggering repair for ${workspace.slug}/${pod.subdomain} - services: ${servicesToRepair.join(", ")}`
           );
-          result.skipped.noFailedProcesses++;
+          await triggerPodRepair(
+            workspace.id,
+            workspace.slug,
+            pod.subdomain,
+            pod.password || "",
+            servicesToRepair,
+            frontendError || undefined
+          );
+          result.repairsTriggered++;
           continue;
         }
 
+        // 7. All healthy - validate frontend and mark complete
         console.log(
-          `[PodRepairCron] Triggering repair for ${workspace.slug}/${pod.subdomain} - services: ${servicesToRepair.join(", ")}`
+          `[PodRepairCron] All checks passed, calling /validate_frontend for ${workspace.slug}`
         );
+        await updatePodState(workspace.swarm.id, PodState.VALIDATING);
+        result.validationsTriggered++;
 
-        await triggerPodRepair(
-          workspace.id,
-          workspace.slug,
-          pod.subdomain,
-          pod.password || "",
-          servicesToRepair
-        );
-        result.repairsTriggered++;
+        const validationResult = await validateFrontend(pod.subdomain);
+
+        if (validationResult.ok) {
+          console.log(
+            `[PodRepairCron] Frontend validation passed for ${workspace.slug}`
+          );
+          await updatePodState(workspace.swarm.id, PodState.COMPLETED);
+          result.validationsPassed++;
+        } else {
+          console.log(
+            `[PodRepairCron] Frontend validation failed for ${workspace.slug}: ${validationResult.message}`
+          );
+          await triggerPodRepair(
+            workspace.id,
+            workspace.slug,
+            pod.subdomain,
+            pod.password || "",
+            [PROCESS_NAMES.FRONTEND],
+            validationResult.message
+          );
+          result.validationsFailedWithRepair++;
+          result.repairsTriggered++;
+        }
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
