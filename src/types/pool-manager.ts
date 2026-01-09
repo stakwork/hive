@@ -180,16 +180,42 @@ export interface StaklinkStartResponse {
 
 // Pod Launch Failure Webhook types
 
+export interface ContainerStatus {
+  name: string;
+  type: "init" | "container";
+  status: "terminated" | "waiting" | "running";
+  exitCode: number | null;
+  reason: string | null;
+  logs: string;
+  lastExitCode?: number;
+  lastReason?: string;
+}
+
 export interface PodLaunchFailureWebhookPayload {
   poolName: string; // Maps to Swarm.id (pool_name in Pool Manager)
   podId: string; // Pod subdomain
-  containerLogs: string; // stdout/stderr from failed container
-  timestamp?: string; // ISO timestamp (optional)
+  eventMessage: string; // Main failure message
+  timestamp: string; // ISO timestamp
+  reason: string; // Failure reason (e.g., "BackOff")
+  containers: ContainerStatus[]; // Container status details
 }
+
+const ContainerStatusSchema = z.object({
+  name: z.string(),
+  type: z.enum(["init", "container"]),
+  status: z.enum(["terminated", "waiting", "running"]),
+  exitCode: z.number().nullable(),
+  reason: z.string().nullable(),
+  logs: z.string(),
+  lastExitCode: z.number().optional(),
+  lastReason: z.string().optional(),
+});
 
 export const PodLaunchFailureWebhookSchema = z.object({
   poolName: z.string().min(1),
   podId: z.string().min(1),
-  containerLogs: z.string(),
-  timestamp: z.string().optional(),
+  eventMessage: z.string(),
+  timestamp: z.string(),
+  reason: z.string(),
+  containers: z.array(ContainerStatusSchema),
 });
