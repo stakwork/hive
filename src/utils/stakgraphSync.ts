@@ -1,6 +1,7 @@
 import { ServiceConfig } from "@/services/swarm/db";
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { getPM2AppsContent, parsePM2Content } from "./devContainerUtils";
+import { slugify } from "./slugify";
 
 interface SyncResult {
   services: ServiceConfig[];
@@ -88,10 +89,11 @@ export function syncPM2AndServices(
 }
 
 /**
- * Extract repository name from GitHub URL
+ * Extract repository name from GitHub URL and convert to valid workspace slug
  */
 export function extractRepoName(repositoryUrl: string | undefined): string {
   if (!repositoryUrl) return "workspace";
   const match = repositoryUrl.match(/\/([^/]+?)(?:\.git)?$/);
-  return match?.[1]?.replace(/\.git$/i, "") || "workspace";
+  const repoName = match?.[1]?.replace(/\.git$/i, "") || "workspace";
+  return slugify(repoName);
 }

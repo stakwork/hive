@@ -30,6 +30,7 @@ import {
   WorkspaceWithRole,
 } from "@/types/workspace";
 import { WorkspaceRole } from "@prisma/client";
+import { slugify } from "@/utils/slugify";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -55,6 +56,9 @@ function hasValidApiKey(stakworkApiKey: string | null): boolean {
 export async function createWorkspace(
   data: CreateWorkspaceRequest,
 ): Promise<WorkspaceResponse> {
+  // Sanitize slug to ensure dots are converted to hyphens (defense-in-depth)
+  data.slug = slugify(data.slug);
+  
   // Validate the slug before creating
   const slugValidation = validateWorkspaceSlug(data.slug);
   if (!slugValidation.isValid) {
