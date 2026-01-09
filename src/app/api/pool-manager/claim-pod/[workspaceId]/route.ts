@@ -10,22 +10,61 @@ const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = (session.user as { id?: string })?.id;
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
-    }
-
+    const apiToken = request.headers.get("x-api-token");
+    const isApiTokenAuth = apiToken && apiToken === process.env.API_TOKEN;
     const { workspaceId } = await params;
 
     // Validate required fields
     if (!workspaceId) {
       return NextResponse.json({ error: "Missing required field: workspaceId" }, { status: 400 });
+    }
+    let workspace = null;
+    if (!isApiTokenAuth) {
+      const session = await getServerSession(authOptions);
+
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const userId = (session.user as { id?: string })?.id;
+      if (!userId) {
+        return NextResponse.json({ error: "Invalid user session" }, { status: 401 });
+      }
+
+      // Verify user has access to the workspace
+      workspace = await db.workspace.findFirst({
+        where: { id: workspaceId },
+        include: {
+          owner: true,
+          members: {
+            where: { userId },
+            select: { role: true },
+          },
+          swarm: true,
+          repositories: true,
+        },
+      });
+      if (!workspace) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+
+      const isOwner = workspace.ownerId === userId;
+      const isMember = workspace.members.length > 0;
+  
+      if (!isOwner && !isMember) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+    } else {
+      workspace = await db.workspace.findFirst({
+        where: { id: workspaceId },
+        include: {
+          swarm: true,
+          repositories: true,
+        },
+      });
+      if (!workspace) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
     }
 
     // Check for "latest", "goose", and "taskId" query parameters
@@ -33,24 +72,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const shouldUpdateToLatest = searchParams.get("latest") === "true";
     const shouldIncludeGoose = searchParams.get("goose") === "true";
     const taskId = searchParams.get("taskId");
-
-    // Verify user has access to the workspace
-    const workspace = await db.workspace.findFirst({
-      where: { id: workspaceId },
-      include: {
-        owner: true,
-        members: {
-          where: { userId },
-          select: { role: true },
-        },
-        swarm: true,
-        repositories: true,
-      },
-    });
-
-    if (!workspace) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
-    }
 
     // If using custom local Goose URL, return mock URLs instead of claiming a real pod
     if (process.env.CUSTOM_GOOSE_URL) {
@@ -103,13 +124,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       "shouldIncludeGoose:",
       shouldIncludeGoose,
     );
-
-    const isOwner = workspace.ownerId === userId;
-    const isMember = workspace.members.length > 0;
-
-    if (!isOwner && !isMember) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
 
     // Check if workspace has a swarm
     if (!workspace.swarm) {
@@ -209,6 +223,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         });
 
         console.log(`✅ Stored podId ${podWorkspace.id} and agent credentials for task ${taskId}`);
+      } catch (error) {
+        console.error("Failed to store pod info:", error);
+      }
+    } else if (taskId) {
+      try {
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            podId: podWorkspace.id,
+          },
+        });
       } catch (error) {
         console.error("Failed to store pod info:", error);
       }
