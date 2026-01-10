@@ -13,10 +13,6 @@
         {
             "path": "/api/cron/task-coordinator",
             "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/pod-repair",
-            "schedule": "*/15 * * * *"
         }
     ]
 }
