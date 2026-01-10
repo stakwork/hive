@@ -189,7 +189,8 @@ async function updatePodState(swarmId: string, podState: PodState): Promise<void
  * Returns { ok, message } indicating validation result
  */
 async function validateFrontend(
-  podId: string
+  podId: string,
+  password: string
 ): Promise<{ ok: boolean; message: string }> {
   const validateUrl = `https://${podId}-15552.workspaces.sphinx.chat/validate_frontend`;
 
@@ -201,7 +202,10 @@ async function validateFrontend(
 
     const response = await fetch(validateUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${password}`,
+      },
       body: JSON.stringify({ apiKey }),
       signal: AbortSignal.timeout(60000), // 60s timeout for AI validation
     });
@@ -569,7 +573,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         await updatePodState(workspace.swarm.id, PodState.VALIDATING);
         result.validationsTriggered++;
 
-        const validationResult = await validateFrontend(pod.subdomain);
+        const validationResult = await validateFrontend(pod.subdomain, pod.password || "");
 
         if (validationResult.ok) {
           console.log(
