@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricDisplay } from "@/components/ui/metric-display";
+import { MetricDisplayCountOnly } from "@/components/ui/metric-display-count-only";
 import { TestTube, FunctionSquare, Globe, Target, Shield } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -195,11 +196,10 @@ export function TestCoverageCard() {
                 <span className="text-sm font-medium">End to End Tests</span>
               </div>
 
-              <MetricDisplay
-                label="Test Coverage"
-                percent={data.e2e_tests.percent || 0}
-                covered={data.e2e_tests.covered || 0}
-                total={data.e2e_tests.total || 0}
+              <MetricDisplayCountOnly
+                label="Total Tests"
+                count={data.e2e_tests.covered || 0}
+                icon={null}
               />
             </div>
           )}
