@@ -6,6 +6,11 @@ import { NextRequest, NextResponse } from "next/server";
  * Monitors workspaces for failed pod processes and triggers repair workflows
  */
 export async function GET(request: NextRequest) {
+
+  if (process.env.SKIP_POD_REPAIR_CRON === "true") {
+    return NextResponse.json({ success: true, message: "Pod repair cron is skipped" });
+  }
+
   try {
     // Verify Vercel cron secret
     const authHeader = request.headers.get("authorization");
