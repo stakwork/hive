@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Pencil, Save, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Pencil, Save, X, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PromptUsage {
@@ -57,6 +58,10 @@ interface PromptsPanelProps {
 type ViewMode = "list" | "detail" | "create";
 
 export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkflow, workspaceSlug }: PromptsPanelProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedPrompt, setSelectedPrompt] = useState<PromptDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,6 +72,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [copiedNotation, setCopiedNotation] = useState(false);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isEditing, setIsEditing] = useState(false);
   const [selectedUsages, setSelectedUsages] = useState<PromptUsage[]>([]);
@@ -77,6 +83,20 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [formDescription, setFormDescription] = useState("");
 
   const isFullpage = variant === "fullpage";
+
+  // Update URL when selecting a prompt (only in fullpage mode)
+  const updateUrlWithPrompt = useCallback((promptId: number | null) => {
+    if (!isFullpage) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (promptId) {
+      params.set("prompt", promptId.toString());
+    } else {
+      params.delete("prompt");
+    }
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [isFullpage, pathname, router, searchParams]);
 
   const fetchPrompts = useCallback(async (pageNum: number) => {
     setIsLoading(true);
@@ -131,11 +151,26 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     fetchPrompts(page);
   }, [page, fetchPrompts]);
 
+  // Check for prompt ID in URL on mount (only in fullpage mode)
+  useEffect(() => {
+    if (!isFullpage) return;
+
+    const promptId = searchParams.get("prompt");
+    if (promptId) {
+      const id = parseInt(promptId, 10);
+      if (!isNaN(id)) {
+        setViewMode("detail");
+        fetchPromptDetail(id);
+      }
+    }
+  }, [isFullpage, searchParams, fetchPromptDetail]);
+
   const handlePromptClick = (prompt: Prompt) => {
     setViewMode("detail");
     setIsEditing(false);
     setSelectedUsages(prompt.usages || []);
     fetchPromptDetail(prompt.id);
+    updateUrlWithPrompt(prompt.id);
   };
 
   const handleBackToList = () => {
@@ -147,6 +182,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     setFormName("");
     setFormValue("");
     setFormDescription("");
+    updateUrlWithPrompt(null);
   };
 
   const handleCreateClick = () => {
@@ -270,6 +306,23 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   };
 
+  const handleSharePrompt = async (promptId: number) => {
+    // Extract workspace slug from pathname (format: /w/[slug]/...)
+    const pathParts = pathname.split("/");
+    const wIndex = pathParts.indexOf("w");
+    const slug = wIndex !== -1 && pathParts[wIndex + 1] ? pathParts[wIndex + 1] : workspaceSlug;
+
+    if (!slug) return;
+
+    // Generate the share URL - always points to prompts mode with the prompt selected
+    const baseUrl = window.location.origin;
+    const shareUrl = `${baseUrl}/w/${slug}/task/new?prompt=${promptId}`;
+
+    await navigator.clipboard.writeText(shareUrl);
+    setCopiedShareLink(true);
+    setTimeout(() => setCopiedShareLink(false), 2000);
+  };
+
   // Common wrapper classes for fullpage mode
   const wrapperClassName = isFullpage
     ? "w-full max-w-4xl mx-auto bg-card rounded-3xl shadow-sm border h-[70vh] overflow-hidden flex flex-col"
@@ -386,10 +439,24 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
           </Button>
           <span className="text-sm font-medium truncate flex-1">{selectedPrompt.name}</span>
           {!isEditing && (
-            <Button variant="outline" size="sm" onClick={handleEditClick}>
-              <Pencil className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSharePrompt(selectedPrompt.id)}
+                title="Copy share link"
+              >
+                {copiedShareLink ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Share2 className="h-4 w-4" />
+                )}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleEditClick}>
+                <Pencil className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
+            </>
           )}
         </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,6 +57,7 @@ export function TaskStartInput({
   isLoadingWorkflows = false,
   workflowsError,
 }: TaskStartInputProps) {
+  const searchParams = useSearchParams();
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -67,6 +69,14 @@ export function TaskStartInput({
   const devMode = isDevelopmentMode();
   const isWorkflowMode = taskMode === "workflow_editor";
   const isPromptsMode = taskMode === "prompts";
+
+  // Check URL for prompt param and switch to prompts mode if present
+  useEffect(() => {
+    const promptId = searchParams.get("prompt");
+    if (promptId && taskMode !== "prompts") {
+      onModeChange("prompts");
+    }
+  }, [searchParams, taskMode, onModeChange]);
 
   // Focus appropriate input based on mode
   useEffect(() => {
