@@ -25,6 +25,15 @@ vi.mock("@/config/env", () => ({
     STAKWORK_BASE_URL: "https://api.stakwork.test",
     STAKWORK_API_KEY: "test-key-123",
   },
+  USE_MOCKS: false,
+  PUSHER_CONFIG: {
+    appId: "test-app-id",
+    key: "test-key",
+    secret: "test-secret",
+    cluster: "test-cluster",
+    publicKey: "test-public-key",
+    publicCluster: "test-cluster",
+  },
 }));
 
 vi.mock("@/lib/runtime", () => ({
