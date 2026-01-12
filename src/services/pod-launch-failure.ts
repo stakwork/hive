@@ -1,14 +1,29 @@
 import { db } from "@/lib/db";
-import { WorkflowStatus, StakworkRunType } from "@prisma/client";
+import { WorkflowStatus, StakworkRunType, PodState } from "@prisma/client";
 import { stakworkService } from "@/lib/service-factory";
 import { getBaseUrl } from "@/lib/utils";
 import { config } from "@/config/env";
-import { PodLaunchFailureWebhookPayload } from "@/types/pool-manager";
+import {
+  PodLaunchFailureWebhookPayload,
+  ContainerStatus,
+  getNextMemoryTier,
+  PoolMemoryTier,
+} from "@/types/pool-manager";
+import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
 
 const MAX_LAUNCH_FAILURE_ATTEMPTS = parseInt(
   process.env.POD_LAUNCH_FAILURE_MAX_ATTEMPTS || "5",
   10
 );
+
+/**
+ * Check if any container has OOMKilled as the reason for failure
+ */
+function hasOOMKilled(containers: ContainerStatus[]): boolean {
+  return containers.some(
+    (c) => c.lastReason === "OOMKilled" || c.reason === "OOMKilled"
+  );
+}
 
 /**
  * Count launch failure attempts for a workspace
@@ -25,6 +40,79 @@ async function getLaunchFailureAttemptCount(
       // createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
     },
   });
+}
+
+interface WorkspaceWithSwarm {
+  id: string;
+  slug: string;
+  swarm: {
+    id: string;
+    poolName: string | null;
+    poolApiKey: string | null;
+    poolCpu: string | null;
+    poolMemory: string | null;
+    podState: string;
+  } | null;
+}
+
+/**
+ * Bump pool memory to the next tier
+ * Updates the database and syncs to Pool Manager
+ */
+async function bumpPoolMemory(
+  workspace: WorkspaceWithSwarm,
+  newMemory: PoolMemoryTier
+): Promise<{ success: boolean; error?: string }> {
+  if (!workspace.swarm) {
+    return { success: false, error: "No swarm configuration found" };
+  }
+
+  if (!workspace.swarm.poolApiKey) {
+    return { success: false, error: "No pool API key found for swarm" };
+  }
+
+  try {
+    // Update pool memory in database
+    await db.swarm.update({
+      where: { id: workspace.swarm.id },
+      data: { poolMemory: newMemory },
+    });
+
+    console.log(
+      `[PodLaunchFailure] Updated poolMemory to ${newMemory} for workspace ${workspace.slug}`
+    );
+
+    // Sync to Pool Manager
+    const syncResult = await syncPoolManagerSettings({
+      workspaceId: workspace.id,
+      workspaceSlug: workspace.slug,
+      swarmId: workspace.swarm.id,
+      poolApiKey: workspace.swarm.poolApiKey,
+      poolCpu: workspace.swarm.poolCpu,
+      poolMemory: newMemory,
+      // No userId - webhook context doesn't have user session
+    });
+
+    if (!syncResult.success) {
+      console.error(
+        `[PodLaunchFailure] Failed to sync to Pool Manager for ${workspace.slug}: ${syncResult.error}`
+      );
+      // Return success since database was updated - Pool Manager sync is best effort
+    } else {
+      console.log(
+        `[PodLaunchFailure] Synced memory bump to Pool Manager for ${workspace.slug}`
+      );
+    }
+
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[PodLaunchFailure] Failed to update poolMemory for ${workspace.slug}:`,
+      errorMessage
+    );
+    return { success: false, error: errorMessage };
+  }
 }
 
 export interface PodLaunchFailureResult {
@@ -57,6 +145,16 @@ export async function processPodLaunchFailure(
     select: {
       id: true,
       slug: true,
+      swarm: {
+        select: {
+          id: true,
+          poolName: true,
+          poolApiKey: true,
+          poolCpu: true,
+          poolMemory: true,
+          podState: true,
+        },
+      },
     },
   });
 
@@ -108,6 +206,58 @@ export async function processPodLaunchFailure(
       projectId: null,
       error: "Launch failure repair already in progress",
     };
+  }
+
+  // Check for OOMKilled - handle by bumping memory instead of Stakwork workflow
+  if (hasOOMKilled(containers)) {
+    console.log(
+      `[PodLaunchFailure] OOMKilled detected for ${workspace.slug}, attempting memory bump`
+    );
+
+    const currentMemory = workspace.swarm?.poolMemory;
+    const nextMemory = getNextMemoryTier(currentMemory);
+
+    if (!nextMemory) {
+      // Already at max memory (16Gi), mark pod as failed
+      console.log(
+        `[PodLaunchFailure] Already at max memory (${currentMemory}) for ${workspace.slug}, marking pod as FAILED`
+      );
+
+      if (workspace.swarm) {
+        await db.swarm.update({
+          where: { id: workspace.swarm.id },
+          data: { podState: PodState.FAILED },
+        });
+      }
+
+      return {
+        success: false,
+        workspaceSlug: workspace.slug,
+        runId: null,
+        projectId: null,
+        error: `OOMKilled at max memory (${currentMemory}), pod marked as FAILED`,
+      };
+    }
+
+    // Bump memory to next tier
+    const bumpResult = await bumpPoolMemory(workspace, nextMemory);
+
+    if (bumpResult.success) {
+      console.log(
+        `[PodLaunchFailure] Memory bumped from ${currentMemory} to ${nextMemory} for ${workspace.slug}`
+      );
+      return {
+        success: true,
+        workspaceSlug: workspace.slug,
+        runId: null,
+        projectId: null,
+      };
+    } else {
+      console.error(
+        `[PodLaunchFailure] Failed to bump memory for ${workspace.slug}: ${bumpResult.error}`
+      );
+      // Fall through to Stakwork workflow if memory bump fails
+    }
   }
 
   // Trigger the repair workflow

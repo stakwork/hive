@@ -1,17 +1,14 @@
 import { getServiceConfig } from "@/config/services";
-import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
-import { config } from "@/config/env";
+import { decryptEnvVars } from "@/lib/encryption";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
-import { PoolManagerService } from "@/services/pool-manager";
+import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
 import { saveOrUpdateSwarm, select as swarmSelect } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
 import { getWorkspaceBySlug } from "@/services/workspace";
-import { ServiceConfig } from "@/types";
 import type { SwarmSelectResult } from "@/types/swarm";
-import { getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 import { syncPM2AndServices, extractRepoName } from "@/utils/stakgraphSync";
 import { SwarmStatus } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
@@ -22,8 +19,6 @@ import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { z } from "zod";
 
 export const runtime = "nodejs";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 // Validation schema for stakgraph settings - all fields optional for partial updates
 const stakgraphSettingsSchema = z.object({
@@ -425,16 +420,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    // Get pool API key from swarm instead of user
-    let decryptedPoolApiKey: string;
-
-    try {
-      decryptedPoolApiKey = swarmPoolApiKey ? encryptionService.decryptField("poolApiKey", swarmPoolApiKey) : "";
-    } catch (error) {
-      console.error("Failed to decrypt poolApiKey:", error);
-      decryptedPoolApiKey = swarmPoolApiKey;
-    }
-
     // Only setup GitHub webhook when using session auth (not API token auth)
     if (!isApiTokenAuth && userId) {
       try {
@@ -470,42 +455,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const mergedPoolCpu = settings.poolCpu ?? existingSwarm?.poolCpu ?? undefined;
     const mergedPoolMemory = settings.poolMemory ?? existingSwarm?.poolMemory ?? undefined;
 
-    // After updating/creating the swarm, update environment variables in Pool Manager if poolName, poolApiKey, and environmentVariables are present
-    if (mergedPoolName && decryptedPoolApiKey && Array.isArray(settings.environmentVariables)) {
-      try {
-        const poolManager = new PoolManagerService(config as unknown as ServiceConfig);
+    // After updating/creating the swarm, sync settings to Pool Manager
+    if (mergedPoolName && swarmPoolApiKey && swarm && Array.isArray(settings.environmentVariables)) {
+      const syncResult2 = await syncPoolManagerSettings({
+        workspaceId: workspace.id,
+        workspaceSlug: slug,
+        swarmId: swarm.id,
+        poolApiKey: swarmPoolApiKey,
+        poolCpu: mergedPoolCpu,
+        poolMemory: mergedPoolMemory,
+        environmentVariables: settings.environmentVariables as Array<{ name: string; value: string }>,
+        containerFiles: syncResult.containerFiles,
+        userId: userId || undefined,
+      });
 
-        if (swarm) {
-          const currentEnvVars = await poolManager.getPoolEnvVars(swarm.id, decryptedPoolApiKey);
-
-          // Use synced containerFiles for Pool Manager update
-          const files = getDevContainerFilesFromBase64(syncResult.containerFiles);
-
-          // Only get GitHub PAT when using session auth
-          const github_pat = userId ? await getGithubUsernameAndPAT(userId, slug) : null;
-
-          await poolManager.updatePoolData(
-            swarm.id,
-            decryptedPoolApiKey,
-            settings.environmentVariables as unknown as Array<{
-              name: string;
-              value: string;
-            }>,
-            currentEnvVars as unknown as Array<{
-              name: string;
-              value: string;
-              masked?: boolean;
-            }>,
-            files,
-            mergedPoolCpu,
-            mergedPoolMemory,
-            github_pat?.token || "",
-            github_pat?.username || "",
-            primaryRepo?.branch || "",
-          );
-        }
-      } catch (err) {
-        console.error("Failed to update env vars in Pool Manager:", err);
+      if (!syncResult2.success) {
+        console.error("Failed to sync settings to Pool Manager:", syncResult2.error);
       }
     }
 
