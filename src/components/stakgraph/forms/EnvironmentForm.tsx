@@ -168,7 +168,11 @@ export default function EnvironmentForm({
               <SelectItem value="1Gi">1 Gi</SelectItem>
               <SelectItem value="2Gi">2 Gi</SelectItem>
               <SelectItem value="4Gi">4 Gi</SelectItem>
+              <SelectItem value="6Gi">6 Gi</SelectItem>
               <SelectItem value="8Gi">8 Gi</SelectItem>
+              <SelectItem value="10Gi">10 Gi</SelectItem>
+              <SelectItem value="12Gi">12 Gi</SelectItem>
+              <SelectItem value="14Gi">14 Gi</SelectItem>
               <SelectItem value="16Gi">16 Gi</SelectItem>
             </SelectContent>
           </Select>

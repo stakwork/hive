@@ -219,3 +219,27 @@ export const PodLaunchFailureWebhookSchema = z.object({
   reason: z.string(),
   containers: z.array(ContainerStatusSchema),
 });
+
+// Ordered list of memory tiers for auto-bump on OOMKilled
+export const POOL_MEMORY_TIERS = [
+  "1Gi",
+  "2Gi",
+  "4Gi",
+  "6Gi",
+  "8Gi",
+  "10Gi",
+  "12Gi",
+  "14Gi",
+  "16Gi",
+] as const;
+export type PoolMemoryTier = (typeof POOL_MEMORY_TIERS)[number];
+
+export function getNextMemoryTier(
+  current: string | null | undefined
+): PoolMemoryTier | null {
+  if (!current) return "2Gi";
+  const currentIndex = POOL_MEMORY_TIERS.indexOf(current as PoolMemoryTier);
+  if (currentIndex === -1) return "2Gi";
+  if (currentIndex >= POOL_MEMORY_TIERS.length - 1) return null;
+  return POOL_MEMORY_TIERS[currentIndex + 1];
+}
