@@ -8,18 +8,33 @@ import { ModelMessage } from "ai";
 export async function sanitizeAndCompleteToolCalls(
   messages: ModelMessage[],
   swarmUrl: string,
-  swarmApiKey: string
+  swarmApiKey: string,
 ): Promise<ModelMessage[]> {
   // First pass: collect all tool call IDs that have results
   const toolCallIdsWithResults = new Set<string>();
   const toolResultMessages: ModelMessage[] = [];
 
-  for (const msg of messages) {
+  // Also collect all tool call IDs for comparison
+  const allToolCallIds: Array<{ id: string; toolName: string; messageIndex: number }> = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     if (msg.role === "tool" && Array.isArray(msg.content)) {
       toolResultMessages.push(msg);
       for (const item of msg.content) {
         if ((item as any).type === "tool-result" && (item as any).toolCallId) {
           toolCallIdsWithResults.add((item as any).toolCallId);
+        }
+      }
+    }
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      for (const item of msg.content) {
+        if ((item as any).type === "tool-call" && (item as any).toolCallId) {
+          allToolCallIds.push({
+            id: (item as any).toolCallId,
+            toolName: (item as any).toolName,
+            messageIndex: i,
+          });
         }
       }
     }
@@ -47,6 +62,21 @@ export async function sanitizeAndCompleteToolCalls(
     }
   }
 
+  // Log diagnostic info if there are missing tool calls
+  if (missingToolCalls.length > 0) {
+    console.log(`🔧 [message-sanitizer] Found ${missingToolCalls.length} orphaned tool call(s):`, {
+      totalMessages: messages.length,
+      totalToolCalls: allToolCallIds.length,
+      totalToolResults: toolCallIdsWithResults.size,
+      orphanedCalls: missingToolCalls.map((tc) => ({
+        id: tc.toolCallId,
+        tool: tc.toolName,
+        inputKeys: Object.keys(tc.input || {}),
+      })),
+      allToolCalls: allToolCallIds,
+    });
+  }
+
   // Execute missing tool calls
   const newToolResults: ModelMessage[] = [];
 
@@ -71,6 +101,8 @@ export async function sanitizeAndCompleteToolCalls(
           } else {
             output = { error: "Feature not found" };
           }
+        } else {
+          output = { error: "Missing conceptId parameter" };
         }
       } else if (toolCall.toolName === "list_concepts") {
         // Execute list_concepts
@@ -88,9 +120,10 @@ export async function sanitizeAndCompleteToolCalls(
           output = { error: "Could not retrieve features" };
         }
       } else {
-        // For other tool calls, we can't execute them here, so skip
-        console.log(`⚠️ Cannot execute missing tool call: ${toolCall.toolName} (not implemented)`);
-        continue;
+        // For other tool calls, we can't execute them - create a dummy result
+        // to satisfy the API requirement that every tool_use has a tool_result
+        console.log(`⚠️ Creating placeholder result for unexecutable tool call: ${toolCall.toolName}`);
+        output = { error: `Tool execution was interrupted. Please try again.` };
       }
 
       // Add the tool result
@@ -112,6 +145,20 @@ export async function sanitizeAndCompleteToolCalls(
       }
     } catch (error) {
       console.error(`❌ Error executing missing tool call ${toolCall.toolName}:`, error);
+      // Still create a placeholder result to satisfy the API requirement
+      const toolResultMessage: ModelMessage = {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: toolCall.toolCallId,
+            toolName: toolCall.toolName,
+            output: { type: "json", value: { error: "Tool execution failed" } as any },
+          },
+        ],
+      };
+      newToolResults.push(toolResultMessage);
+      toolCallIdsWithResults.add(toolCall.toolCallId);
     }
   }
 
@@ -137,9 +184,7 @@ export async function sanitizeAndCompleteToolCalls(
 
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       // Check if this message has tool-calls
-      const hasToolCalls = msg.content.some(
-        (item: any) => item.type === "tool-call"
-      );
+      const hasToolCalls = msg.content.some((item: any) => item.type === "tool-call");
 
       if (hasToolCalls) {
         // Filter out tool-calls without results (that we couldn't execute)
@@ -164,9 +209,20 @@ export async function sanitizeAndCompleteToolCalls(
           const nextMsg = messages[i + 1];
           const nextIsToolResult = nextMsg?.role === "tool";
 
-          // If there's no tool result message immediately after, insert any new results
-          if (!nextIsToolResult) {
-            for (const toolCallId of toolCallsInMessage) {
+          // Collect tool call IDs that are covered by the next tool result message
+          const coveredByNextResult = new Set<string>();
+          if (nextIsToolResult && Array.isArray(nextMsg.content)) {
+            for (const item of nextMsg.content) {
+              const result = item as any;
+              if (result.type === "tool-result" && result.toolCallId) {
+                coveredByNextResult.add(result.toolCallId);
+              }
+            }
+          }
+
+          // Insert new results for tool calls not covered by the existing next message
+          for (const toolCallId of toolCallsInMessage) {
+            if (!coveredByNextResult.has(toolCallId)) {
               const newResult = newResultsByCallId.get(toolCallId);
               if (newResult && !sanitized.includes(newResult)) {
                 sanitized.push(newResult);
@@ -179,12 +235,62 @@ export async function sanitizeAndCompleteToolCalls(
         sanitized.push(msg);
       }
     } else if (msg.role === "tool") {
-      // Keep existing tool results
-      sanitized.push(msg);
+      // Normalize tool results - ensure output is in the correct format
+      // The AI SDK expects output to be an object { type: "json", value: ... }
+      // but UIMessages from frontend may have raw string outputs
+      if (Array.isArray(msg.content)) {
+        const normalizedContent = msg.content.map((item) => {
+          const toolResult = item as any;
+          if (toolResult.type === "tool-result" && toolResult.output !== undefined) {
+            // Check if output is a raw string or primitive instead of object format
+            if (
+              typeof toolResult.output === "string" ||
+              typeof toolResult.output === "number" ||
+              typeof toolResult.output === "boolean"
+            ) {
+              console.log(`🔧 [message-sanitizer] Normalizing string output for tool: ${toolResult.toolName}`);
+              return {
+                ...toolResult,
+                output: { type: "json", value: toolResult.output },
+              };
+            }
+            // Check if output is an object but not in the expected format
+            if (typeof toolResult.output === "object" && toolResult.output !== null) {
+              // If it doesn't have the { type, value } structure, wrap it
+              if (!("type" in toolResult.output && "value" in toolResult.output)) {
+                console.log(`🔧 [message-sanitizer] Wrapping object output for tool: ${toolResult.toolName}`);
+                return {
+                  ...toolResult,
+                  output: { type: "json", value: toolResult.output },
+                };
+              }
+            }
+          }
+          return item;
+        });
+        sanitized.push({ ...msg, content: normalizedContent });
+      } else {
+        sanitized.push(msg);
+      }
     } else {
       // Other message types (user, system), keep as-is
       sanitized.push(msg);
     }
+  }
+
+  // Log summary if any repairs were made
+  if (newToolResults.length > 0) {
+    console.log(`✅ [message-sanitizer] Repaired ${newToolResults.length} orphaned tool call(s):`, {
+      originalMessageCount: messages.length,
+      sanitizedMessageCount: sanitized.length,
+      insertedResults: newToolResults.map((r) => {
+        const content = Array.isArray(r.content) ? r.content[0] : null;
+        return {
+          toolCallId: (content as any)?.toolCallId,
+          toolName: (content as any)?.toolName,
+        };
+      }),
+    });
   }
 
   return sanitized;
