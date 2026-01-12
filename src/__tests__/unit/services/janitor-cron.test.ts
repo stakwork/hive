@@ -19,7 +19,9 @@ describe("Janitor Cron Configuration", () => {
       expect(vercelConfig.crons).toBeDefined();
       expect(Array.isArray(vercelConfig.crons)).toBe(true);
 
-      const janitorCron = vercelConfig.crons.find((cron: { path: string; schedule: string }) => cron.path === "/api/cron/janitors");
+      const janitorCron = vercelConfig.crons.find(
+        (cron: { path: string; schedule: string }) => cron.path === "/api/cron/janitors",
+      );
       expect(janitorCron).toBeDefined();
       expect(janitorCron.schedule).toBeDefined();
       expect(typeof janitorCron.schedule).toBe("string");
@@ -28,7 +30,9 @@ describe("Janitor Cron Configuration", () => {
     it("should have a valid cron schedule format", () => {
       const vercelPath = path.join(process.cwd(), "vercel.json");
       const vercelConfig = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
-      const janitorCron = vercelConfig.crons.find((cron: { path: string; schedule: string }) => cron.path === "/api/cron/janitors");
+      const janitorCron = vercelConfig.crons.find(
+        (cron: { path: string; schedule: string }) => cron.path === "/api/cron/janitors",
+      );
 
       // Basic validation that it has 5 parts (minute hour day month dayofweek)
       const scheduleParts = janitorCron.schedule.split(" ");
@@ -47,15 +51,24 @@ describe("shouldSkipJanitorRun", () => {
       janitorRecommendation: {
         findFirst: vi.fn(),
       },
+      janitorRun: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
     });
   });
 
-  const createMockTask = (overrides: {
-    status?: TaskStatus;
-    workflowStatus?: WorkflowStatus;
-    prArtifacts?: Array<{ content: { status?: string } }>;
-  } = {}) => {
-    const { status = TaskStatus.IN_PROGRESS, workflowStatus = WorkflowStatus.IN_PROGRESS, prArtifacts = [] } = overrides;
+  const createMockTask = (
+    overrides: {
+      status?: TaskStatus;
+      workflowStatus?: WorkflowStatus;
+      prArtifacts?: Array<{ content: { status?: string } }>;
+    } = {},
+  ) => {
+    const {
+      status = TaskStatus.IN_PROGRESS,
+      workflowStatus = WorkflowStatus.IN_PROGRESS,
+      prArtifacts = [],
+    } = overrides;
 
     return {
       id: "task-1",
@@ -64,13 +77,78 @@ describe("shouldSkipJanitorRun", () => {
       status,
       workflowStatus,
       deleted: false,
-      chatMessages: prArtifacts.length > 0 ? [{
-        artifacts: prArtifacts,
-      }] : [],
+      chatMessages:
+        prArtifacts.length > 0
+          ? [
+              {
+                artifacts: prArtifacts,
+              },
+            ]
+          : [],
     };
   };
 
+  describe("in-progress run check", () => {
+    it("should return true when a RUNNING janitor run exists", async () => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue({
+        id: "run-1",
+        status: "RUNNING",
+        janitorType: JanitorType.UNIT_TESTS,
+      } as any);
+
+      const result = await shouldSkipJanitorRun("ws-1", JanitorType.UNIT_TESTS);
+
+      expect(result).toBe(true);
+      expect(mockedDb.janitorRecommendation.findFirst).not.toHaveBeenCalled();
+      expect(mockedDb.task.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("should return true when a PENDING janitor run exists", async () => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue({
+        id: "run-1",
+        status: "PENDING",
+        janitorType: JanitorType.UNIT_TESTS,
+      } as any);
+
+      const result = await shouldSkipJanitorRun("ws-1", JanitorType.UNIT_TESTS);
+
+      expect(result).toBe(true);
+    });
+
+    it("should check for in-progress run with correct janitor type", async () => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue(null);
+      vi.mocked(mockedDb.janitorRecommendation.findFirst).mockResolvedValue(null);
+      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(null);
+
+      await shouldSkipJanitorRun("ws-1", JanitorType.SECURITY_REVIEW);
+
+      expect(mockedDb.janitorRun.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            janitorConfig: { workspaceId: "ws-1" },
+            janitorType: JanitorType.SECURITY_REVIEW,
+            status: { in: ["PENDING", "RUNNING"] },
+          }),
+        }),
+      );
+    });
+
+    it("should proceed to recommendation check when no in-progress run exists", async () => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue(null);
+      vi.mocked(mockedDb.janitorRecommendation.findFirst).mockResolvedValue(null);
+      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(null);
+
+      await shouldSkipJanitorRun("ws-1", JanitorType.UNIT_TESTS);
+
+      expect(mockedDb.janitorRecommendation.findFirst).toHaveBeenCalled();
+    });
+  });
+
   describe("pending recommendations check", () => {
+    beforeEach(() => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue(null);
+    });
+
     it("should return true when pending recommendation exists", async () => {
       vi.mocked(mockedDb.janitorRecommendation.findFirst).mockResolvedValue({
         id: "rec-1",
@@ -98,7 +176,7 @@ describe("shouldSkipJanitorRun", () => {
               janitorType: JanitorType.E2E_TESTS,
             },
           }),
-        })
+        }),
       );
     });
 
@@ -115,6 +193,7 @@ describe("shouldSkipJanitorRun", () => {
 
   describe("active task check", () => {
     beforeEach(() => {
+      vi.mocked(mockedDb.janitorRun.findFirst).mockResolvedValue(null);
       vi.mocked(mockedDb.janitorRecommendation.findFirst).mockResolvedValue(null);
     });
 
@@ -127,9 +206,7 @@ describe("shouldSkipJanitorRun", () => {
     });
 
     it("should return true when task has no PR artifacts and status is not DONE", async () => {
-      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
-        createMockTask({ status: TaskStatus.IN_PROGRESS }) as any,
-      );
+      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(createMockTask({ status: TaskStatus.IN_PROGRESS }) as any);
 
       const result = await shouldSkipJanitorRun("ws-1", JanitorType.UNIT_TESTS);
 
@@ -137,9 +214,7 @@ describe("shouldSkipJanitorRun", () => {
     });
 
     it("should return false when task has no PR artifacts and status is DONE", async () => {
-      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
-        createMockTask({ status: TaskStatus.DONE }) as any,
-      );
+      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(createMockTask({ status: TaskStatus.DONE }) as any);
 
       const result = await shouldSkipJanitorRun("ws-1", JanitorType.UNIT_TESTS);
 
@@ -183,9 +258,7 @@ describe("shouldSkipJanitorRun", () => {
     });
 
     it("should return false when task status is CANCELLED (discarded)", async () => {
-      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(
-        createMockTask({ status: TaskStatus.CANCELLED }) as any,
-      );
+      vi.mocked(mockedDb.task.findFirst).mockResolvedValue(createMockTask({ status: TaskStatus.CANCELLED }) as any);
 
       const result = await shouldSkipJanitorRun("ws-1", JanitorType.UNIT_TESTS);
 
@@ -225,7 +298,7 @@ describe("shouldSkipJanitorRun", () => {
             deleted: false,
           }),
           orderBy: { createdAt: "desc" },
-        })
+        }),
       );
     });
   });
