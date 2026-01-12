@@ -39,10 +39,10 @@ export default function CallsPage() {
     stopRecording,
     getRecentTranscript,
   } = useVoiceRecorder();
-  const [processingFeature, setProcessingFeature] = useState(false);
+  const [processingRequest, setProcessingRequest] = useState(false);
   const lastProcessedIndexRef = useRef(0);
   const lastProcessedTranscriptRef = useRef("");
-  const hasDetectedFeatureRequestRef = useRef(false);
+  const hasDetectedRequestRef = useRef(false);
   const isProcessingDetectionRef = useRef(false);
 
   const handleStartCall = async () => {
@@ -82,28 +82,23 @@ export default function CallsPage() {
   useEffect(() => {
     if (!isRecording) {
       console.log("🎤 Recording stopped, resetting flags");
-      hasDetectedFeatureRequestRef.current = false;
+      hasDetectedRequestRef.current = false;
       isProcessingDetectionRef.current = false;
       lastProcessedIndexRef.current = 0;
       lastProcessedTranscriptRef.current = "";
     }
   }, [isRecording]);
 
-  // Monitor transcript for wake word and feature requests
+  // Monitor transcript for wake word and feature/task requests
   useEffect(() => {
-    if (
-      !isRecording ||
-      !slug ||
-      processingFeature ||
-      hasDetectedFeatureRequestRef.current ||
-      isProcessingDetectionRef.current
-    )
+    if (!isRecording || !slug || processingRequest || hasDetectedRequestRef.current || isProcessingDetectionRef.current)
       return;
 
     // Set flag IMMEDIATELY before starting async work to block other effects
     isProcessingDetectionRef.current = true;
 
     const checkNewChunks = async () => {
+      console.log("🎤 Checking for wake word and feature/task requests");
       try {
         // Only check new chunks that haven't been processed
         const newChunks = transcriptBuffer.slice(lastProcessedIndexRef.current);
@@ -147,14 +142,14 @@ export default function CallsPage() {
           }
 
           const detectionData = await detectionResponse.json();
-          const isFeatureRequest = detectionData.isFeatureRequest;
+          const { isRequest, mode } = detectionData;
 
-          if (isFeatureRequest) {
-            console.log("🎯 Feature request detected! Creating feature...");
+          if (isRequest && mode) {
+            console.log(`🎯 ${mode} request detected! Creating ${mode}...`);
 
             // Set flag immediately to prevent duplicate processing
-            hasDetectedFeatureRequestRef.current = true;
-            setProcessingFeature(true);
+            hasDetectedRequestRef.current = true;
+            setProcessingRequest(true);
 
             try {
               // Get last hour of transcript from buffer (completed chunks)
@@ -166,49 +161,77 @@ export default function CallsPage() {
                 : currentTranscript;
 
               if (!fullTranscript || fullTranscript.trim().length === 0) {
-                throw new Error("No transcript available to create feature");
+                throw new Error(`No transcript available to create ${mode}`);
               }
 
-              console.log("📝 Creating feature from transcript:", {
+              console.log(`📝 Creating ${mode} from transcript:`, {
                 bufferedLength: bufferedTranscript.length,
                 currentLength: currentTranscript.length,
                 totalLength: fullTranscript.length,
                 preview: fullTranscript.substring(0, 100) + "...",
               });
 
-              // Create feature in background
-              const response = await fetch("/api/features/create-feature", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  workspaceSlug: slug,
-                  transcript: fullTranscript,
-                }),
-              });
+              if (mode === "task") {
+                // Create task and start workflow
+                const response = await fetch("/api/tasks/create-from-transcript", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    workspaceSlug: slug,
+                    transcript: fullTranscript,
+                  }),
+                });
 
-              if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const errorMessage = errorData.error || `Failed to create feature (${response.status})`;
-                throw new Error(errorMessage);
+                if (!response.ok) {
+                  const errorData = await response.json().catch(() => ({}));
+                  const errorMessage = errorData.error || `Failed to create task (${response.status})`;
+                  throw new Error(errorMessage);
+                }
+
+                const data = await response.json();
+
+                toast.success("Task created!", {
+                  description: `"${data.title}" has been created and workflow started.`,
+                });
+
+                console.log("✅ Task created:", data);
+              } else {
+                // Create feature (existing flow)
+                const response = await fetch("/api/features/create-feature", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    workspaceSlug: slug,
+                    transcript: fullTranscript,
+                  }),
+                });
+
+                if (!response.ok) {
+                  const errorData = await response.json().catch(() => ({}));
+                  const errorMessage = errorData.error || `Failed to create feature (${response.status})`;
+                  throw new Error(errorMessage);
+                }
+
+                const data = await response.json();
+
+                toast.success("Feature created!", {
+                  description: `"${data.title}" has been added to your workspace.`,
+                });
+
+                console.log("✅ Feature created:", data);
               }
-
-              const data = await response.json();
-
-              toast.success("Feature created!", {
-                description: `"${data.title}" has been added to your workspace.`,
-              });
-
-              console.log("✅ Feature created:", data);
             } catch (error) {
-              console.error("❌ Error creating feature:", error);
-              toast.error("Failed to create feature", { description: error instanceof Error ? error.message : "Unknown error" });
+              console.error(`❌ Error creating ${mode}:`, error);
+              toast.error(`Failed to create ${mode}`, {
+                description: error instanceof Error ? error.message : "Unknown error",
+              });
               // Reset flag on error so user can retry
-              hasDetectedFeatureRequestRef.current = false;
+              hasDetectedRequestRef.current = false;
             } finally {
-              setProcessingFeature(false);
+              setProcessingRequest(false);
             }
 
-            // Stop checking after first feature request to avoid duplicates
+            // Stop checking after first request to avoid duplicates
             break;
           }
         }
@@ -222,7 +245,7 @@ export default function CallsPage() {
     };
 
     checkNewChunks();
-  }, [transcriptBuffer, currentTranscript, isRecording, slug, processingFeature, getRecentTranscript]);
+  }, [transcriptBuffer, currentTranscript, isRecording, slug, processingRequest, getRecentTranscript]);
 
   useEffect(() => {
     if (!slug || workspace?.poolState !== "COMPLETE") {
@@ -283,13 +306,13 @@ export default function CallsPage() {
                 >
                   <Button
                     onClick={handleToggleRecording}
-                    disabled={processingFeature}
+                    disabled={processingRequest}
                     variant={isRecording ? "destructive" : "default"}
                   >
-                    {processingFeature ? (
+                    {processingRequest ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Creating Feature...
+                        Processing...
                       </>
                     ) : isRecording ? (
                       <>
@@ -334,8 +357,9 @@ export default function CallsPage() {
           <CardContent>
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                Say <strong>&quot;{WAKE_WORD}, make a feature from this&quot;</strong> to create a feature from the last
-                hour of conversation.
+                Say <strong>&quot;{WAKE_WORD}, make a feature from this&quot;</strong> to create a feature, or{" "}
+                <strong>&quot;{WAKE_WORD}, create a task from this&quot;</strong> to create a task from the last hour of
+                conversation.
               </p>
               {currentTranscript && (
                 <div className="mt-3 p-3 bg-muted rounded-md">
