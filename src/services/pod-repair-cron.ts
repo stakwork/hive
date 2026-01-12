@@ -19,8 +19,23 @@ import {
   PROCESS_NAMES,
 } from "@/lib/pods/utils";
 
+// Maximum repair attempts within the rolling window (burst limit)
 const MAX_REPAIR_ATTEMPTS = parseInt(
   process.env.POD_REPAIR_MAX_ATTEMPTS || "10",
+  10
+);
+
+// Rolling window for counting repair attempts (in hours)
+// Only count repairs within this window to prevent historical failures from blocking
+const REPAIR_ATTEMPT_WINDOW_HOURS = parseInt(
+  process.env.POD_REPAIR_ATTEMPT_WINDOW_HOURS || "24",
+  10
+);
+
+// Absolute maximum repair attempts (prevents infinite loops)
+// Once this is reached, workspace stays FAILED permanently
+const ABSOLUTE_MAX_REPAIR_ATTEMPTS = parseInt(
+  process.env.POD_REPAIR_ABSOLUTE_MAX_ATTEMPTS || "50",
   10
 );
 
@@ -163,9 +178,30 @@ async function isRepairInProgress(workspaceId: string): Promise<boolean> {
 }
 
 /**
- * Count previous repair attempts for a workspace
+ * Count previous repair attempts for a workspace within the rolling window.
+ * Only counts repairs created within REPAIR_ATTEMPT_WINDOW_HOURS to prevent
+ * historical failures (e.g., from 401 auth issues) from permanently blocking workspaces.
  */
 async function getRepairAttemptCount(workspaceId: string): Promise<number> {
+  const windowStart = new Date();
+  windowStart.setHours(windowStart.getHours() - REPAIR_ATTEMPT_WINDOW_HOURS);
+
+  return await db.stakworkRun.count({
+    where: {
+      workspaceId,
+      type: StakworkRunType.POD_REPAIR,
+      createdAt: {
+        gte: windowStart,
+      },
+    },
+  });
+}
+
+/**
+ * Count total repair attempts for a workspace (all time).
+ * Used for absolute maximum check to prevent infinite repair loops.
+ */
+async function getTotalRepairAttemptCount(workspaceId: string): Promise<number> {
   return await db.stakworkRun.count({
     where: {
       workspaceId,
@@ -386,6 +422,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
     success: true,
     workspacesProcessed: 0,
     workspacesWithRunningPods: 0,
+    workspacesReset: 0,
     repairsTriggered: 0,
     staklinkRestarts: 0,
     validationsTriggered: 0,
@@ -421,9 +458,30 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         continue;
       }
 
-      // Skip failed workspaces (max attempts exhausted)
+      // Check if this is a failed workspace that should be given a fresh start
+      // This handles workspaces that were incorrectly marked as FAILED due to
+      // historical repair attempts (e.g., from 401 auth issues before the fix)
       if (workspace.swarm.podState === PodState.FAILED) {
-        continue;
+        // First check if absolute max has been reached - never reset these
+        const totalAttempts = await getTotalRepairAttemptCount(workspace.id);
+        if (totalAttempts >= ABSOLUTE_MAX_REPAIR_ATTEMPTS) {
+          // Permanently failed - too many total attempts
+          continue;
+        }
+
+        const recentAttempts = await getRepairAttemptCount(workspace.id);
+        if (recentAttempts < MAX_REPAIR_ATTEMPTS) {
+          // No recent repair attempts within the window - reset to allow retry
+          console.log(
+            `[PodRepairCron] Resetting ${workspace.slug} from FAILED (${recentAttempts} recent, ${totalAttempts} total)`
+          );
+          await updatePodState(workspace.swarm.id, PodState.NOT_STARTED);
+          result.workspacesReset++;
+          // Continue processing this workspace
+        } else {
+          // Still has too many recent attempts - keep as failed
+          continue;
+        }
       }
 
       try {
@@ -447,11 +505,22 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
           `[PodRepairCron] Checking ${workspace.slug}/${pod.subdomain}`
         );
 
-        // 3. Early exits
-        const attemptCount = await getRepairAttemptCount(workspace.id);
-        if (attemptCount >= MAX_REPAIR_ATTEMPTS) {
+        // 3. Early exits - check both recent window and absolute limits
+        const recentAttemptCount = await getRepairAttemptCount(workspace.id);
+        const totalAttemptCount = await getTotalRepairAttemptCount(workspace.id);
+
+        if (totalAttemptCount >= ABSOLUTE_MAX_REPAIR_ATTEMPTS) {
           console.log(
-            `[PodRepairCron] Max attempts reached for ${workspace.slug}`
+            `[PodRepairCron] Absolute max attempts (${ABSOLUTE_MAX_REPAIR_ATTEMPTS}) reached for ${workspace.slug} (${totalAttemptCount} total)`
+          );
+          await updatePodState(workspace.swarm.id, PodState.FAILED);
+          result.skipped.maxAttemptsReached++;
+          continue;
+        }
+
+        if (recentAttemptCount >= MAX_REPAIR_ATTEMPTS) {
+          console.log(
+            `[PodRepairCron] Recent max attempts (${MAX_REPAIR_ATTEMPTS} in ${REPAIR_ATTEMPT_WINDOW_HOURS}h) reached for ${workspace.slug}`
           );
           await updatePodState(workspace.swarm.id, PodState.FAILED);
           result.skipped.maxAttemptsReached++;

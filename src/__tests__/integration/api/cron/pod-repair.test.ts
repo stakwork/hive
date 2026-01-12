@@ -241,12 +241,12 @@ describe('GET /api/cron/pod-repair', () => {
       expect(body.workspacesProcessed).toBeGreaterThanOrEqual(1);
     });
 
-    it('should respect MAX_REPAIR_ATTEMPTS limit', async () => {
+    it('should respect MAX_REPAIR_ATTEMPTS limit for recent attempts', async () => {
       // Create test user and workspace
       const user = await createTestUser({ email: 'maxtest@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
-        slug: 'max-test-workspace' 
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'max-test-workspace'
       });
 
       await createTestSwarm({
@@ -256,7 +256,7 @@ describe('GET /api/cron/pod-repair', () => {
         containerFiles: [{ name: 'test.json', content: 'test' }],
       });
 
-      // Create 10 existing repair attempts (max limit)
+      // Create 10 existing repair attempts within the recent window (max limit)
       for (let i = 0; i < 10; i++) {
         await db.stakworkRun.create({
           data: {
@@ -264,25 +264,180 @@ describe('GET /api/cron/pod-repair', () => {
             type: StakworkRunType.POD_REPAIR,
             status: WorkflowStatus.COMPLETED,
             webhookUrl: 'https://example.com/webhook',
+            // Default createdAt is now, which is within the 24-hour window
           },
         });
       }
 
       const request = createMockRequest('Bearer test-secret-123');
       const response = await GET(request);
-      
+
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
-      // Should skip due to max attempts
+      // Should skip due to max recent attempts
       expect(body.skipped.maxAttemptsReached).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should not count old repair attempts in recent window limit', async () => {
+      // Create test user and workspace
+      const user = await createTestUser({ email: 'oldattempts@example.com' });
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'old-attempts-workspace'
+      });
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmApiKey: 'test-api-key',
+        poolApiKey: 'test-pool-api-key',
+        containerFilesSetUp: true,
+        containerFiles: [{ name: 'test.json', content: 'test' }],
+      });
+
+      // Create 10 old repair attempts (outside 24-hour window)
+      const oldDate = new Date();
+      oldDate.setHours(oldDate.getHours() - 48); // 48 hours ago
+
+      for (let i = 0; i < 10; i++) {
+        await db.stakworkRun.create({
+          data: {
+            workspaceId: workspace.id,
+            type: StakworkRunType.POD_REPAIR,
+            status: WorkflowStatus.COMPLETED,
+            webhookUrl: 'https://example.com/webhook',
+            createdAt: oldDate,
+          },
+        });
+      }
+
+      // Mock pool with running pod
+      mockGetPoolWorkspaces.mockResolvedValueOnce({
+        workspaces: [
+          { subdomain: 'pod-1', state: 'running', password: 'test-pass' },
+        ],
+      });
+
+      const request = createMockRequest('Bearer test-secret-123');
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      // Should NOT skip due to max attempts - old attempts are outside the window
+      // Workspace should be processed (not skipped for max attempts)
+      expect(body.workspacesProcessed).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should respect absolute max repair attempts', async () => {
+      // Set a low absolute max for testing
+      process.env.POD_REPAIR_ABSOLUTE_MAX_ATTEMPTS = '15';
+
+      const user = await createTestUser({ email: 'absmax@example.com' });
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'abs-max-workspace'
+      });
+
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmApiKey: 'test-api-key',
+        poolApiKey: 'test-pool-api-key',
+        containerFilesSetUp: true,
+        containerFiles: [{ name: 'test.json', content: 'test' }],
+      });
+
+      // Create 15 old repair attempts (absolute max)
+      const oldDate = new Date();
+      oldDate.setHours(oldDate.getHours() - 48);
+
+      for (let i = 0; i < 15; i++) {
+        await db.stakworkRun.create({
+          data: {
+            workspaceId: workspace.id,
+            type: StakworkRunType.POD_REPAIR,
+            status: WorkflowStatus.COMPLETED,
+            webhookUrl: 'https://example.com/webhook',
+            createdAt: oldDate,
+          },
+        });
+      }
+
+      // Mock pool
+      mockGetPoolWorkspaces.mockResolvedValueOnce({
+        workspaces: [
+          { subdomain: 'pod-1', state: 'running', password: 'test-pass' },
+        ],
+      });
+
+      const request = createMockRequest('Bearer test-secret-123');
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      // Should skip due to absolute max attempts
+      expect(body.skipped.maxAttemptsReached).toBeGreaterThanOrEqual(1);
+
+      // Cleanup
+      delete process.env.POD_REPAIR_ABSOLUTE_MAX_ATTEMPTS;
+    });
+
+    it('should reset FAILED workspaces with no recent attempts', async () => {
+      const user = await createTestUser({ email: 'resetfailed@example.com' });
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'reset-failed-workspace'
+      });
+
+      // Create swarm with FAILED podState
+      await createTestSwarm({
+        workspaceId: workspace.id,
+        swarmApiKey: 'test-api-key',
+        poolApiKey: 'test-pool-api-key',
+        containerFilesSetUp: true,
+        containerFiles: [{ name: 'test.json', content: 'test' }],
+        podState: 'FAILED',
+      });
+
+      // Create some old repair attempts (outside window)
+      const oldDate = new Date();
+      oldDate.setHours(oldDate.getHours() - 48);
+
+      for (let i = 0; i < 5; i++) {
+        await db.stakworkRun.create({
+          data: {
+            workspaceId: workspace.id,
+            type: StakworkRunType.POD_REPAIR,
+            status: WorkflowStatus.COMPLETED,
+            webhookUrl: 'https://example.com/webhook',
+            createdAt: oldDate,
+          },
+        });
+      }
+
+      // Mock pool
+      mockGetPoolWorkspaces.mockResolvedValueOnce({
+        workspaces: [
+          { subdomain: 'pod-1', state: 'running', password: 'test-pass' },
+        ],
+      });
+
+      const request = createMockRequest('Bearer test-secret-123');
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      // Should reset the failed workspace
+      expect(body.workspacesReset).toBeGreaterThanOrEqual(1);
     });
 
     it('should skip workspaces without containerFiles setup', async () => {
       const user = await createTestUser({ email: 'nocontainer@example.com' });
-      const workspace = await createTestWorkspace({ 
-        ownerId: user.id, 
-        slug: 'no-container-workspace' 
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: 'no-container-workspace'
       });
 
       // Create swarm WITHOUT containerFiles setup
@@ -294,7 +449,7 @@ describe('GET /api/cron/pod-repair', () => {
 
       const request = createMockRequest('Bearer test-secret-123');
       const response = await GET(request);
-      
+
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
@@ -412,6 +567,7 @@ describe('GET /api/cron/pod-repair', () => {
       expect(body).toHaveProperty('success');
       expect(body).toHaveProperty('workspacesProcessed');
       expect(body).toHaveProperty('workspacesWithRunningPods');
+      expect(body).toHaveProperty('workspacesReset');
       expect(body).toHaveProperty('repairsTriggered');
       expect(body).toHaveProperty('skipped');
       expect(body.skipped).toHaveProperty('maxAttemptsReached');
@@ -419,10 +575,11 @@ describe('GET /api/cron/pod-repair', () => {
       expect(body.skipped).toHaveProperty('noFailedProcesses');
       expect(body).toHaveProperty('errors');
       expect(body).toHaveProperty('timestamp');
-      
+
       // Verify types
       expect(typeof body.success).toBe('boolean');
       expect(typeof body.workspacesProcessed).toBe('number');
+      expect(typeof body.workspacesReset).toBe('number');
       expect(typeof body.repairsTriggered).toBe('number');
       expect(Array.isArray(body.errors)).toBe(true);
       expect(typeof body.timestamp).toBe('string');

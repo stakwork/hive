@@ -37,6 +37,7 @@ export interface PodRepairCronResult {
   success: boolean;
   workspacesProcessed: number;
   workspacesWithRunningPods: number;
+  workspacesReset: number; // Workspaces reset from FAILED due to low recent attempts
   repairsTriggered: number;
   staklinkRestarts: number;
   // Frontend validation metrics
