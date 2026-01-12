@@ -11,6 +11,7 @@ import { ProvenanceTree, type ProvenanceData } from "./ProvenanceTree";
 import { toast } from "sonner";
 import type { ModelMessage } from "ai";
 import { ToolCallIndicator } from "./ToolCallIndicator";
+import { X } from "lucide-react";
 
 interface ToolCall {
   id: string;
@@ -79,10 +80,11 @@ export function DashboardChat() {
   }, [slug]);
 
   // Get the most recent image from the messages array
-  const currentImageData = messages
-    .slice()
-    .reverse()
-    .find((m) => m.imageData)?.imageData || null;
+  const currentImageData =
+    messages
+      .slice()
+      .reverse()
+      .find((m) => m.imageData)?.imageData || null;
 
   const handleSend = async (content: string, clearInput: () => void) => {
     if (!content.trim()) return;
@@ -95,10 +97,7 @@ export function DashboardChat() {
     // Check if the last message is an empty user message with an image
     const lastMessage = messages[messages.length - 1];
     const hasEmptyImageMessage =
-      lastMessage &&
-      lastMessage.role === "user" &&
-      lastMessage.content === "" &&
-      lastMessage.imageData;
+      lastMessage && lastMessage.role === "user" && lastMessage.content === "" && lastMessage.imageData;
 
     let updatedMessages: Message[];
 
@@ -141,13 +140,15 @@ export function DashboardChat() {
             .flatMap((m): ModelMessage[] => {
               // Handle content with images (always from user)
               if (m.imageData) {
-                return [{
-                  role: "user" as const,
-                  content: [
-                    { type: "image", image: m.imageData },
-                    { type: "text", text: m.content },
-                  ],
-                }];
+                return [
+                  {
+                    role: "user" as const,
+                    content: [
+                      { type: "image", image: m.imageData },
+                      { type: "text", text: m.content },
+                    ],
+                  },
+                ];
               }
 
               // Build separate messages for tool calls, results, and text (AI SDK format)
@@ -159,7 +160,7 @@ export function DashboardChat() {
                 // First message: tool calls only
                 const toolCallMessage: ModelMessage = {
                   role: m.role,
-                  content: m.toolCalls.map(tc => ({
+                  content: m.toolCalls.map((tc) => ({
                     type: "tool-call" as const,
                     toolCallId: tc.id,
                     toolName: tc.toolName,
@@ -169,11 +170,11 @@ export function DashboardChat() {
                 messages.push(toolCallMessage);
 
                 // Second message: tool results (if any tool has output)
-                const toolResults = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
+                const toolResults = m.toolCalls.filter((tc) => tc.output !== undefined || tc.errorText !== undefined);
                 if (toolResults.length > 0) {
                   const toolResultMessage = {
                     role: "tool" as const,
-                    content: toolResults.map(tc => {
+                    content: toolResults.map((tc) => {
                       // Ensure output is wrapped in AI SDK format
                       let wrappedOutput = tc.output;
                       if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
@@ -184,7 +185,7 @@ export function DashboardChat() {
                         type: "tool-result" as const,
                         toolCallId: tc.id,
                         toolName: tc.toolName,
-                         
+
                         output: wrappedOutput as any,
                       };
                     }),
@@ -205,10 +206,12 @@ export function DashboardChat() {
               }
 
               // Simple text message
-              return [{
-                role: m.role,
-                content: m.content,
-              }];
+              return [
+                {
+                  role: m.role,
+                  content: m.content,
+                },
+              ];
             }),
           workspaceSlug: slug,
         }),
@@ -220,92 +223,94 @@ export function DashboardChat() {
 
       const messageId = (Date.now() + 1).toString();
 
-      await processStream(
-        response,
-        messageId,
-        (updatedMessage) => {
-          // Turn off loading as soon as we get the first content
-          if (!hasReceivedContentRef.current) {
-            hasReceivedContentRef.current = true;
-            setIsLoading(false);
-            clearInput(); // Clear input when response starts
-          }
+      await processStream(response, messageId, (updatedMessage) => {
+        // Turn off loading as soon as we get the first content
+        if (!hasReceivedContentRef.current) {
+          hasReceivedContentRef.current = true;
+          setIsLoading(false);
+          clearInput(); // Clear input when response starts
+        }
 
-          // Use timeline to split messages at tool call boundaries
-          const timeline = updatedMessage.timeline || [];
+        // Use timeline to split messages at tool call boundaries
+        const timeline = updatedMessage.timeline || [];
 
-          // Build messages from timeline
-          const timelineMessages: Message[] = [];
-          let currentText = "";
-          let currentToolCalls: ToolCall[] = [];
-          let msgCounter = 0;
+        // Build messages from timeline
+        const timelineMessages: Message[] = [];
+        let currentText = "";
+        let currentToolCalls: ToolCall[] = [];
+        let msgCounter = 0;
 
-          for (const item of timeline) {
-            if (item.type === "text") {
-              currentText += (item.data as { content: string }).content;
-            } else if (item.type === "toolCall") {
-              // Flush any accumulated text as a message
-              if (currentText.trim()) {
-                timelineMessages.push({
-                  id: `${messageId}-${msgCounter++}`,
-                  role: "assistant",
-                  content: currentText,
-                  timestamp: new Date(),
-                });
-                currentText = "";
-              }
-
-              // Add tool call to current batch
-              const toolCall = item.data as { id: string; toolName: string; input?: unknown; output?: unknown; status: string };
-              currentToolCalls.push({
-                id: toolCall.id,
-                toolName: toolCall.toolName,
-                input: toolCall.input,
-                status: toolCall.status,
-                output: toolCall.output,
-                errorText: toolCall.status === "output-error" ? "Tool call failed" : undefined,
+        for (const item of timeline) {
+          if (item.type === "text") {
+            currentText += (item.data as { content: string }).content;
+          } else if (item.type === "toolCall") {
+            // Flush any accumulated text as a message
+            if (currentText.trim()) {
+              timelineMessages.push({
+                id: `${messageId}-${msgCounter++}`,
+                role: "assistant",
+                content: currentText,
+                timestamp: new Date(),
               });
+              currentText = "";
             }
-          }
 
-          // Flush any remaining tool calls as a message
-          if (currentToolCalls.length > 0) {
-            timelineMessages.push({
-              id: `${messageId}-${msgCounter++}`,
-              role: "assistant",
-              content: "", // Empty content for tool message
-              timestamp: new Date(),
-              toolCalls: currentToolCalls,
-            });
-            currentToolCalls = [];
-          }
-
-          // Flush any remaining text as a message
-          if (currentText.trim()) {
-            timelineMessages.push({
-              id: `${messageId}-${msgCounter++}`,
-              role: "assistant",
-              content: currentText,
-              timestamp: new Date(),
+            // Add tool call to current batch
+            const toolCall = item.data as {
+              id: string;
+              toolName: string;
+              input?: unknown;
+              output?: unknown;
+              status: string;
+            };
+            currentToolCalls.push({
+              id: toolCall.id,
+              toolName: toolCall.toolName,
+              input: toolCall.input,
+              status: toolCall.status,
+              output: toolCall.output,
+              errorText: toolCall.status === "output-error" ? "Tool call failed" : undefined,
             });
           }
+        }
 
-          // Show tool indicator if the last message has tool calls but no following text yet
-          const lastMsg = timelineMessages[timelineMessages.length - 1];
-          if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
-            setActiveToolCalls(lastMsg.toolCalls);
-          } else {
-            setActiveToolCalls([]);
-          }
+        // Flush any remaining tool calls as a message
+        if (currentToolCalls.length > 0) {
+          timelineMessages.push({
+            id: `${messageId}-${msgCounter++}`,
+            role: "assistant",
+            content: "", // Empty content for tool message
+            timestamp: new Date(),
+            toolCalls: currentToolCalls,
+          });
+          currentToolCalls = [];
+        }
 
-          // Update messages state
-          setMessages((prev) => {
-            // Remove old messages for this response
-            const filteredPrev = prev.filter(m => !m.id.startsWith(messageId));
-            return [...filteredPrev, ...timelineMessages];
+        // Flush any remaining text as a message
+        if (currentText.trim()) {
+          timelineMessages.push({
+            id: `${messageId}-${msgCounter++}`,
+            role: "assistant",
+            content: currentText,
+            timestamp: new Date(),
           });
         }
-      );
+
+        // Show tool indicator if the last message has tool calls but no following text yet
+        const lastMsg = timelineMessages[timelineMessages.length - 1];
+        if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
+          setActiveToolCalls(lastMsg.toolCalls);
+        } else {
+          setActiveToolCalls([]);
+        }
+
+        // Update messages state
+        setMessages((prev) => {
+          // Remove old messages for this response
+          const filteredPrev = prev.filter((m) => !m.id.startsWith(messageId));
+          return [...filteredPrev, ...timelineMessages];
+        });
+      });
 
       // Clear active tool call indicator when streaming is complete
       setActiveToolCalls([]);
@@ -313,8 +318,7 @@ export function DashboardChat() {
       console.error("Error calling ask API:", error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content:
-          "I'm sorry, but I encountered an error while processing your question. Please try again later.",
+        content: "I'm sorry, but I encountered an error while processing your question. Please try again later.",
         role: "assistant",
         timestamp: new Date(),
       };
@@ -325,16 +329,11 @@ export function DashboardChat() {
     }
   };
 
-  const handleDeleteMessage = (messageId: string) => {
-    setMessages((prev) => {
-      // Find the index of the message to delete
-      const deleteIndex = prev.findIndex((m) => m.id === messageId);
-      if (deleteIndex === -1) return prev;
-
-      // Delete this message and ALL messages before it
-      // This allows clearing the image by deleting the assistant response
-      return prev.slice(deleteIndex + 1);
-    });
+  const handleClearAll = () => {
+    setMessages([]);
+    setFollowUpQuestions([]);
+    setProvenanceData(null);
+    setIsProvenanceSidebarOpen(false);
   };
 
   const handleImageUpload = (imageData: string) => {
@@ -390,13 +389,15 @@ export function DashboardChat() {
           .flatMap((m): ModelMessage[] => {
             // Handle content with images (always from user in this context)
             if (m.imageData) {
-              return [{
-                role: "user" as const,
-                content: [
-                  { type: "image" as const, image: m.imageData },
-                  { type: "text" as const, text: m.content },
-                ],
-              }];
+              return [
+                {
+                  role: "user" as const,
+                  content: [
+                    { type: "image" as const, image: m.imageData },
+                    { type: "text" as const, text: m.content },
+                  ],
+                },
+              ];
             }
 
             // Build separate messages for tool calls, results, and text (AI SDK format)
@@ -406,7 +407,7 @@ export function DashboardChat() {
               // First message: tool calls only
               const toolCallMessage: ModelMessage = {
                 role: m.role,
-                content: m.toolCalls.map(tc => ({
+                content: m.toolCalls.map((tc) => ({
                   type: "tool-call" as const,
                   toolCallId: tc.id,
                   toolName: tc.toolName,
@@ -416,11 +417,11 @@ export function DashboardChat() {
               messages.push(toolCallMessage);
 
               // Second message: tool results (if any tool has output)
-              const toolResults = m.toolCalls.filter(tc => tc.output !== undefined || tc.errorText !== undefined);
+              const toolResults = m.toolCalls.filter((tc) => tc.output !== undefined || tc.errorText !== undefined);
               if (toolResults.length > 0) {
                 const toolResultMessage = {
                   role: "tool" as const,
-                  content: toolResults.map(tc => {
+                  content: toolResults.map((tc) => {
                     // Ensure output is wrapped in AI SDK format
                     let wrappedOutput = tc.output;
                     if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
@@ -431,7 +432,7 @@ export function DashboardChat() {
                       type: "tool-result" as const,
                       toolCallId: tc.id,
                       toolName: tc.toolName,
-                       
+
                       output: wrappedOutput as any,
                     };
                   }),
@@ -452,10 +453,12 @@ export function DashboardChat() {
             }
 
             // Simple text message
-            return [{
-              role: m.role as "user" | "assistant",
-              content: m.content,
-            }];
+            return [
+              {
+                role: m.role as "user" | "assistant",
+                content: m.content,
+              },
+            ];
           }),
         {
           role: "user" as const,
@@ -507,64 +510,66 @@ export function DashboardChat() {
   const hasMessages = messages.length > 0;
 
   // Check if provenance has any files to show
-  const hasProvenanceFiles = provenanceData?.concepts.some(
-    concept => concept.files && concept.files.length > 0
-  ) ?? false;
+  const hasProvenanceFiles =
+    provenanceData?.concepts.some((concept) => concept.files && concept.files.length > 0) ?? false;
 
   return (
     <div className="pointer-events-none">
       {/* Message history with optional provenance sidebar */}
       {(messages.length > 0 || activeToolCalls.length > 0) && (
-        <div className="flex gap-4">
-          {/* Message history */}
-          <div className="flex-1 max-h-[300px] overflow-y-auto pb-2">
-            <div className="space-y-2 px-4">
-              {messages.map((message, index) => {
-                // Only the last message is streaming
-                const isLastMessage = index === messages.length - 1;
-                const isMessageStreaming = isLastMessage && isLoading;
-                return (
-                  <ChatMessage
-                    key={message.id}
-                    message={message}
-                    isStreaming={isMessageStreaming}
-                    onDelete={handleDeleteMessage}
-                  />
-                );
-              })}
-              {/* Show tool call indicator when tools are active */}
-              {activeToolCalls.length > 0 && (
-                <ToolCallIndicator toolCalls={activeToolCalls} />
-              )}
-              {/* Follow-up question bubbles */}
-              {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
-                <div className="pointer-events-auto pt-2">
-                  <div className="flex flex-col items-end gap-1.5">
-                    {followUpQuestions.map((question, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleFollowUpClick(question)}
-                        className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
-                      >
-                        {question}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Scroll anchor */}
-              <div ref={messagesEndRef} />
-            </div>
+        <div className="flex flex-col">
+          {/* Clear all button - above scrollable area */}
+          <div className="flex justify-end px-4 pb-1">
+            <button
+              onClick={handleClearAll}
+              className="pointer-events-auto p-1.5 rounded-full bg-muted/50 hover:bg-muted opacity-50 hover:opacity-100 transition-opacity"
+              aria-label="Clear all messages"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-
-          {/* Provenance sidebar - only shows when toggled AND data available */}
-          {isProvenanceSidebarOpen && provenanceData && (
-            <div className="w-80 overflow-y-auto max-h-[300px] pointer-events-auto">
-              <div className="backdrop-blur-md bg-background/20 border border-border/50 rounded-lg p-4 shadow-lg">
-                <ProvenanceTree provenanceData={provenanceData} />
+          <div className="flex gap-4">
+            {/* Message history */}
+            <div className="flex-1 max-h-[300px] overflow-y-auto pb-2">
+              <div className="space-y-2 px-4">
+                {messages.map((message, index) => {
+                  // Only the last message is streaming
+                  const isLastMessage = index === messages.length - 1;
+                  const isMessageStreaming = isLastMessage && isLoading;
+                  return <ChatMessage key={message.id} message={message} isStreaming={isMessageStreaming} />;
+                })}
+                {/* Show tool call indicator when tools are active */}
+                {activeToolCalls.length > 0 && <ToolCallIndicator toolCalls={activeToolCalls} />}
+                {/* Follow-up question bubbles */}
+                {followUpQuestions.length > 0 && !isLoading && messages.length > 0 && (
+                  <div className="pointer-events-auto pt-2">
+                    <div className="flex flex-col items-end gap-1.5">
+                      {followUpQuestions.map((question, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleFollowUpClick(question)}
+                          className="rounded-full border border-border/50 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition-all hover:border-border hover:bg-muted/60 hover:text-foreground"
+                        >
+                          {question}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Scroll anchor */}
+                <div ref={messagesEndRef} />
               </div>
             </div>
-          )}
+
+            {/* Provenance sidebar - only shows when toggled AND data available */}
+            {isProvenanceSidebarOpen && provenanceData && (
+              <div className="w-80 overflow-y-auto max-h-[300px] pointer-events-auto">
+                <div className="backdrop-blur-md bg-background/20 border border-border/50 rounded-lg p-4 shadow-lg">
+                  <ProvenanceTree provenanceData={provenanceData} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
