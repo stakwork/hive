@@ -436,10 +436,13 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
 
         // 2. Pick a pod (prefer running)
         const pod = poolData.workspaces.find(
-          (vm) => vm.state.toLowerCase() === "running"
+          (vm) => vm.usage_status !== "used" && vm.state.toLowerCase() === "running"
         ) || poolData.workspaces[0];
 
         if (!pod) {
+          console.log(
+            `[PodRepairCron] No available pods for ${workspace.slug}`
+          );
           continue;
         }
 
