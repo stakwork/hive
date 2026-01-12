@@ -1,10 +1,7 @@
 import { db } from "@/lib/db";
 import { JanitorType } from "@prisma/client";
 import { createJanitorRun } from "@/services/janitor";
-import { 
-  createEnabledJanitorWhereConditions, 
-  isJanitorEnabled 
-} from "@/lib/constants/janitor";
+import { createEnabledJanitorWhereConditions, isJanitorEnabled } from "@/lib/constants/janitor";
 
 export interface CronExecutionResult {
   success: boolean;
@@ -22,27 +19,29 @@ export interface CronExecutionResult {
 /**
  * Get all workspaces with enabled janitors
  */
-export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
-  id: string;
-  slug: string;
-  name: string;
-  ownerId: string;
-  janitorConfig: {
+export async function getWorkspacesWithEnabledJanitors(): Promise<
+  Array<{
     id: string;
-    unitTestsEnabled: boolean;
-    integrationTestsEnabled: boolean;
-    e2eTestsEnabled: boolean;
-    securityReviewEnabled: boolean;
-    mockGenerationEnabled: boolean;
-    generalRefactoringEnabled: boolean;
-  } | null;
-}>> {
+    slug: string;
+    name: string;
+    ownerId: string;
+    janitorConfig: {
+      id: string;
+      unitTestsEnabled: boolean;
+      integrationTestsEnabled: boolean;
+      e2eTestsEnabled: boolean;
+      securityReviewEnabled: boolean;
+      mockGenerationEnabled: boolean;
+      generalRefactoringEnabled: boolean;
+    } | null;
+  }>
+> {
   return await db.workspace.findMany({
     where: {
       deleted: false,
       janitorConfig: {
-        OR: createEnabledJanitorWhereConditions()
-      }
+        OR: createEnabledJanitorWhereConditions(),
+      },
     },
     select: {
       id: true,
@@ -58,11 +57,14 @@ export async function getWorkspacesWithEnabledJanitors(): Promise<Array<{
           securityReviewEnabled: true,
           mockGenerationEnabled: true,
           generalRefactoringEnabled: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 }
+
+// Stale janitor run threshold (2 hours)
+const STALE_JANITOR_RUN_HOURS = 2;
 
 // Sequential janitor types - only one active task at a time per type
 const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [
@@ -75,14 +77,72 @@ const SEQUENTIAL_JANITOR_TYPES: JanitorType[] = [
 ];
 
 /**
- * Check if a janitor run should be skipped for a workspace/type.
- * Skip if there's a pending recommendation OR an active task.
+ * Cleanup stale janitor runs that have been stuck in PENDING or RUNNING for too long.
+ * Marks them as FAILED so new runs can be created.
  */
-export async function shouldSkipJanitorRun(
-  workspaceId: string,
-  janitorType: JanitorType
-): Promise<boolean> {
-  // Check for pending recommendations first
+export async function cleanupStaleJanitorRuns(): Promise<{
+  cleaned: number;
+  errors: Array<{ runId: string; error: string }>;
+}> {
+  const staleThreshold = new Date();
+  staleThreshold.setHours(staleThreshold.getHours() - STALE_JANITOR_RUN_HOURS);
+
+  // Find runs stuck in PENDING or RUNNING for > 2 hours
+  const staleRuns = await db.janitorRun.findMany({
+    where: {
+      status: { in: ["PENDING", "RUNNING"] },
+      createdAt: { lt: staleThreshold },
+    },
+  });
+
+  let cleaned = 0;
+  const errors: Array<{ runId: string; error: string }> = [];
+
+  for (const run of staleRuns) {
+    try {
+      await db.janitorRun.update({
+        where: { id: run.id },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+          error: `Janitor run timed out after ${STALE_JANITOR_RUN_HOURS} hour(s) in ${run.status} status`,
+        },
+      });
+      cleaned++;
+      console.log(`[JanitorCron] Cleaned up stale run ${run.id} (${run.janitorType}, was ${run.status})`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[JanitorCron] Failed to cleanup stale run ${run.id}:`, errorMessage);
+      errors.push({ runId: run.id, error: errorMessage });
+    }
+  }
+
+  return { cleaned, errors };
+}
+
+/**
+ * Check if a janitor run should be skipped for a workspace/type.
+ * Skip if there's an in-progress run, pending recommendation, OR an active task.
+ */
+export async function shouldSkipJanitorRun(workspaceId: string, janitorType: JanitorType): Promise<boolean> {
+  // Check for in-progress janitor run (PENDING or RUNNING)
+  const inProgressRun = await db.janitorRun.findFirst({
+    where: {
+      janitorConfig: { workspaceId },
+      janitorType,
+      status: { in: ["PENDING", "RUNNING"] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (inProgressRun) {
+    console.log(
+      `[JanitorCron] Skipping ${janitorType}: run ${inProgressRun.id} already in progress (status: ${inProgressRun.status})`,
+    );
+    return true;
+  }
+
+  // Check for pending recommendations
   const pendingRecommendation = await db.janitorRecommendation.findFirst({
     where: {
       workspaceId,
@@ -109,12 +169,12 @@ export async function shouldSkipJanitorRun(
     include: {
       chatMessages: {
         include: {
-          artifacts: { where: { type: "PULL_REQUEST" } }
+          artifacts: { where: { type: "PULL_REQUEST" } },
         },
-        orderBy: { createdAt: "desc" }
-      }
+        orderBy: { createdAt: "desc" },
+      },
     },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
   });
 
   if (!task) {
@@ -123,11 +183,13 @@ export async function shouldSkipJanitorRun(
 
   // Discarded tasks (cancelled, failed, or halted workflow) don't block
   if (task.status === "CANCELLED" || task.workflowStatus === "FAILED" || task.workflowStatus === "HALTED") {
-    console.log(`[JanitorCron] Most recent ${janitorType} task ${task.id} is discarded (status: ${task.status}, workflow: ${task.workflowStatus})`);
+    console.log(
+      `[JanitorCron] Most recent ${janitorType} task ${task.id} is discarded (status: ${task.status}, workflow: ${task.workflowStatus})`,
+    );
     return false;
   }
 
-  const prArtifacts = task.chatMessages.flatMap(m => m.artifacts);
+  const prArtifacts = task.chatMessages.flatMap((m) => m.artifacts);
 
   if (prArtifacts.length === 0) {
     // No PR yet - task is active if not manually done
@@ -152,7 +214,6 @@ export async function shouldSkipJanitorRun(
   return true;
 }
 
-
 /**
  * Execute scheduled janitor runs across all enabled workspaces
  */
@@ -163,10 +224,23 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     runsCreated: 0,
     skipped: 0,
     errors: [],
-    timestamp: new Date()
+    timestamp: new Date(),
   };
 
   console.log(`[JanitorCron] Starting scheduled janitor execution at ${result.timestamp.toISOString()}`);
+
+  // Cleanup stale janitor runs first
+  try {
+    const cleanupResult = await cleanupStaleJanitorRuns();
+    if (cleanupResult.cleaned > 0) {
+      console.log(`[JanitorCron] Cleaned up ${cleanupResult.cleaned} stale janitor runs`);
+    }
+    if (cleanupResult.errors.length > 0) {
+      console.error(`[JanitorCron] ${cleanupResult.errors.length} errors during stale run cleanup`);
+    }
+  } catch (error) {
+    console.error("[JanitorCron] Error cleaning up stale runs:", error);
+  }
 
   try {
     const workspaces = await getWorkspacesWithEnabledJanitors();
@@ -206,7 +280,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
             result.errors.push({
               workspaceSlug: slug,
               janitorType: janitorType,
-              error: errorMessage
+              error: errorMessage,
             });
             result.success = false;
           }
@@ -214,8 +288,9 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
       }
     }
 
-    console.log(`[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`);
-    
+    console.log(
+      `[JanitorCron] Execution completed. Runs created: ${result.runsCreated}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`,
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[JanitorCron] Critical error during execution:`, errorMessage);
@@ -223,7 +298,7 @@ export async function executeScheduledJanitorRuns(): Promise<CronExecutionResult
     result.errors.push({
       workspaceSlug: "SYSTEM",
       janitorType: "UNIT_TESTS", // placeholder
-      error: errorMessage
+      error: errorMessage,
     });
   }
 
