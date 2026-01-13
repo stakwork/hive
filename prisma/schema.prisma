@@ -396,9 +396,10 @@ model Task {
   runTestSuite Boolean @default(true) @map("run_test_suite")
 
   // Agent URLs and credentials (encrypted)
-  agentUrl      String? @map("agent_url")
-  agentPassword String? @map("agent_password") // Encrypted pod password
-  podId         String? @map("pod_id")
+  agentUrl           String? @map("agent_url")
+  agentPassword      String? @map("agent_password") // Encrypted pod password
+  agentWebhookSecret String? @map("agent_webhook_secret") // Encrypted webhook secret for JWT signing
+  podId              String? @map("pod_id")
 
   // Bounty code for external bounty platforms
   bountyCode String? @unique @map("bounty_code")

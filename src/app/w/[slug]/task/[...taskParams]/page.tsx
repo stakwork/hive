@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
   ChatMessage,
@@ -172,7 +171,6 @@ export default function TaskChatPage() {
       toast.error("Connection Error", { description: "Lost connection to chat server. Attempting to reconnect..." });
     }
     // toast in deps causes infinite re-render
-     
   }, [connectionError]);
 
   const loadTaskMessages = useCallback(async (taskId: string) => {
@@ -633,42 +631,52 @@ export default function TaskChatPage() {
     hasReceivedContentRef.current = false;
 
     try {
-      // Use agent mode streaming
+      // Agent mode: new direct streaming flow
       if (taskMode === "agent") {
-        // Mark user message as sent
+        // Mark user message as sent in UI
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
 
-        // Prepare artifacts for backend (convert to serializable format)
+        // Prepare artifacts for backend
         const backendArtifacts = artifacts.map((artifact) => ({
           type: artifact.type,
           content: artifact.content,
         }));
 
-        const response = await fetch("/api/agent", {
+        // 1. Call backend to create/refresh session
+        const sessionResponse = await fetch("/api/agent", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             taskId: options?.taskId || currentTaskId,
             message: messageText,
-            workspaceSlug: slug,
-            // gooseUrl removed - will be fetched from database in backend
             artifacts: backendArtifacts,
           }),
         });
 
-        if (!response.ok) {
-          throw new Error(`Failed to send message: ${response.statusText}`);
+        if (!sessionResponse.ok) {
+          throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
         }
 
-        // Process the streaming response
+        const { streamToken, streamUrl } = await sessionResponse.json();
+
+        // 2. Connect directly to remote server for streaming
+        const streamResponse = await fetch(`${streamUrl}?token=${encodeURIComponent(streamToken)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: messageText }),
+        });
+
+        if (!streamResponse.ok) {
+          throw new Error(`Stream failed: ${streamResponse.statusText}`);
+        }
+
+        // 3. Process stream using existing processor (now AI SDK native format)
         const assistantMessageId = generateUniqueId();
 
         await processStream(
-          response,
+          streamResponse,
           assistantMessageId,
           (updatedMessage) => {
             // Turn off loading as soon as we get the first content
@@ -677,7 +685,7 @@ export default function TaskChatPage() {
               setIsLoading(false);
             }
 
-            // Update messages array with AgentStreamingMessage
+            // Update messages array
             setMessages((prev) => {
               const existingIndex = prev.findIndex((m) => m.id === assistantMessageId);
               if (existingIndex >= 0) {
@@ -688,14 +696,10 @@ export default function TaskChatPage() {
               return [...prev, updatedMessage as unknown as ChatMessage];
             });
           },
-          // Additional fields specific to AgentStreamingMessage
-          {
-            role: "assistant" as const,
-            timestamp: new Date(),
-          },
+          { role: "assistant" as const, timestamp: new Date() },
         );
 
-        // Check for diffs after agent completes (agent mode only)
+        // 4. Check for diffs after agent completes
         if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
           try {
             const diffResponse = await fetch("/api/agent/diff", {
@@ -709,22 +713,16 @@ export default function TaskChatPage() {
 
             if (diffResponse.ok) {
               const diffResult = await diffResponse.json();
-
-              // Only add message if diffs exist
               if (diffResult.success && diffResult.message && !diffResult.noDiffs) {
                 setMessages((msgs) => [...msgs, diffResult.message]);
               }
-            } else {
-              // Pod might have been released or doesn't exist anymore - just skip silently
-              console.log("Failed to fetch diff (pod may no longer exist):", diffResponse.status);
             }
           } catch (error) {
             console.error("Error fetching diff:", error);
-            // Silent failure - don't interrupt user flow
           }
         }
 
-        // Note: Assistant message is saved by the backend via stream teeing (see /api/agent/route.ts)
+        // Messages are persisted via webhook - no need to save here
         return;
       }
 

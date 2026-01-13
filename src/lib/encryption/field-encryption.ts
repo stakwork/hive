@@ -65,6 +65,8 @@ export class FieldEncryptionService {
       "app_refresh_token",
       "source_control_token",
       "source_control_refresh_token",
+      "agentPassword",
+      "agentWebhookSecret",
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);
