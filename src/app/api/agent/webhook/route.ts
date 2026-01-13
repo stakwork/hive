@@ -39,16 +39,19 @@ export async function POST(request: NextRequest) {
   // 1. Extract token from query params
   const token = request.nextUrl.searchParams.get("token");
   if (!token) {
+    console.log("[Webhook] Missing token in request");
     return NextResponse.json({ error: "Missing token" }, { status: 400 });
   }
 
   // 2. Decode JWT to get taskId (unverified, just to load the secret)
   const decoded = decodeWebhookToken(token);
   if (!decoded) {
+    console.log("[Webhook] Failed to decode token");
     return NextResponse.json({ error: "Invalid token format" }, { status: 400 });
   }
 
   const { taskId } = decoded;
+  console.log("[Webhook] Processing request for taskId:", taskId);
 
   // 3. Load task and get webhook secret
   const task = await db.task.findUnique({
@@ -57,16 +60,26 @@ export async function POST(request: NextRequest) {
   });
 
   if (!task || !task.agentWebhookSecret) {
+    console.log("[Webhook] Task not found or no webhook secret:", { taskId, hasTask: !!task });
     return NextResponse.json({ error: "Task not found or not configured" }, { status: 404 });
   }
 
   // 4. Decrypt secret and verify JWT
-  const webhookSecret = encryptionService.decryptField("agentWebhookSecret", task.agentWebhookSecret);
+  let webhookSecret: string;
+  try {
+    webhookSecret = encryptionService.decryptField("agentWebhookSecret", task.agentWebhookSecret);
+  } catch (error) {
+    console.error("[Webhook] Failed to decrypt webhook secret:", error);
+    return NextResponse.json({ error: "Failed to decrypt webhook secret" }, { status: 500 });
+  }
 
   const verified = await verifyWebhookToken(token, webhookSecret);
   if (!verified) {
+    console.log("[Webhook] Token verification failed for taskId:", taskId);
     return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
   }
+
+  console.log("[Webhook] Token verified successfully for taskId:", taskId);
 
   // 5. Parse and validate body
   const body: WebhookPayload = await request.json();

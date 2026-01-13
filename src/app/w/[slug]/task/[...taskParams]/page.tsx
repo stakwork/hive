@@ -659,13 +659,18 @@ export default function TaskChatPage() {
           throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
         }
 
-        const { streamToken, streamUrl } = await sessionResponse.json();
+        const { streamToken, streamUrl, resume } = await sessionResponse.json();
 
         // 2. Connect directly to remote server for streaming
+        const streamBody: Record<string, unknown> = { prompt: messageText };
+        if (resume) {
+          streamBody.resume = true;
+        }
+
         const streamResponse = await fetch(`${streamUrl}?token=${encodeURIComponent(streamToken)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: messageText }),
+          body: JSON.stringify(streamBody),
         });
 
         if (!streamResponse.ok) {

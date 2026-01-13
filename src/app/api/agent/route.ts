@@ -27,16 +27,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "taskId is required" }, { status: 400 });
   }
 
-  // 2. Load task
-  const task = await db.task.findUnique({
-    where: { id: taskId },
-    select: {
-      agentUrl: true,
-      agentPassword: true,
-      agentWebhookSecret: true,
-      mode: true,
-    },
-  });
+  // 2. Load task and check for existing messages
+  const [task, messageCount] = await Promise.all([
+    db.task.findUnique({
+      where: { id: taskId },
+      select: {
+        agentUrl: true,
+        agentPassword: true,
+        agentWebhookSecret: true,
+        mode: true,
+      },
+    }),
+    db.chatMessage.count({
+      where: { taskId },
+    }),
+  ]);
+
+  // If there are existing messages, this is a resume
+  const isResume = messageCount > 0;
 
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
@@ -98,6 +106,8 @@ export async function POST(request: NextRequest) {
   let streamToken: string;
 
   try {
+    console.log("[Agent]", isResume ? "Resuming" : "Creating", "session for taskId:", taskId);
+
     const sessionResponse = await fetch(sessionUrl, {
       method: "POST",
       headers,
@@ -153,5 +163,6 @@ export async function POST(request: NextRequest) {
     sessionId: taskId,
     streamToken,
     streamUrl,
+    resume: isResume,
   });
 }
