@@ -1,3 +1,60 @@
+/**
+ * Agent V2 Session Broker
+ *
+ * This endpoint acts as a session broker between the frontend and a remote agent server.
+ * Instead of proxying the stream through Hive, the frontend connects directly to the
+ * remote server for streaming, while Hive handles authentication and message persistence.
+ *
+ * ## Architecture
+ *
+ * ```
+ * ┌──────────┐  1. POST /api/agent    ┌──────────┐  2. POST /session     ┌──────────────┐
+ * │ Frontend │ ────────────────────>  │   Hive   │ ──────────────────>   │ Agent Server │
+ * │          │ <────────────────────  │ Backend  │ <──────────────────   │              │
+ * │          │  { streamUrl, token }  │          │   { token }           │              │
+ * │          │                        │          │                       │              │
+ * │          │  3. POST /stream/:id   │          │                       │              │
+ * │          │ ─────────────────────────────────────────────────────>    │              │
+ * │          │ <═══════════════════════════════════════════════════════  │              │
+ * │          │      (SSE stream)      │          │                       │              │
+ * │          │                        │          │  4. POST /webhook     │              │
+ * │          │                        │          │ <──────────────────   │              │
+ * └──────────┘                        └──────────┘   (persist msgs)      └──────────────┘
+ * ```
+ *
+ * ## Flow
+ *
+ * 1. **Frontend → Hive** (`POST /api/agent`):
+ *    - Authenticates user session
+ *    - Generates/retrieves webhook secret for the task
+ *    - Creates JWT-signed webhook URL (10-min expiry)
+ *    - Calls remote server to create/refresh session
+ *    - Returns `{ streamUrl, streamToken, resume }` to frontend
+ *
+ * 2. **Hive → Agent Server** (`POST /session`):
+ *    - Sends `{ sessionId, webhookUrl }` to create/refresh session
+ *    - Receives `{ token }` for stream authentication
+ *
+ * 3. **Frontend → Agent Server** (`POST /stream/:sessionId`):
+ *    - Direct SSE connection with `{ prompt, resume?: true }`
+ *    - `resume: true` tells server to reload existing session context
+ *
+ * 4. **Agent Server → Hive** (`POST /api/agent/webhook`):
+ *    - JWT-authenticated webhook for message persistence
+ *    - Receives final text/tool events to store in database
+ *
+ * ## Environment Variables
+ *
+ * - `CUSTOM_GOOSE_URL`: Override agent URL for local development (bypasses auth requirement)
+ * - `NEXTAUTH_URL`: Base URL for webhook callback
+ *
+ * ## Database Fields (Task model)
+ *
+ * - `agentUrl`: Remote agent server URL
+ * - `agentPassword`: Encrypted auth token for agent server
+ * - `agentWebhookSecret`: Encrypted per-task secret for JWT signing
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/nextauth";
 import { getServerSession } from "next-auth/next";
