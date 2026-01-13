@@ -1,10 +1,5 @@
 import { useCallback } from "react";
-import type {
-  BaseStreamingMessage,
-  StreamProcessorConfig,
-  StreamEvent,
-  ToolCallStatus,
-} from "@/types/streaming";
+import type { BaseStreamingMessage, StreamProcessorConfig, StreamEvent, ToolCallStatus } from "@/types/streaming";
 import { DEFAULT_DEBOUNCE_MS } from "./constants";
 import { parseSSELine } from "./helpers";
 
@@ -20,6 +15,25 @@ interface InternalToolCall {
 /**
  * Generic streaming processor hook for AI SDK responses
  *
+ * IMPORTANT: AI SDK Stream Format Compatibility
+ * ---------------------------------------------
+ * The AI SDK has TWO different stream response formats with subtle differences:
+ *
+ * 1. `toUIMessageStreamResponse()` -> UIMessageChunk format:
+ *    - text-delta uses `delta` property
+ *    - reasoning-delta uses `delta` property
+ *    - tool-input-available includes `toolName` and may be sent without tool-input-start
+ *
+ * 2. `toDataStreamResponse()` -> TextStreamPart format:
+ *    - text-delta uses `text` property
+ *    - reasoning-delta uses `text` property
+ *    - Uses tool-input-start -> tool-input-delta -> tool-input-available flow
+ *    - Also supports tool-call/tool-result/tool-error events
+ *
+ * This processor handles BOTH formats by checking for both `text` and `delta`
+ * properties, and by registering tools on tool-input-available if they weren't
+ * registered via tool-input-start.
+ *
  * @example
  * const { processStream } = useStreamProcessor({
  *   debounceMs: 50,
@@ -34,22 +48,12 @@ interface InternalToolCall {
  * });
  */
 export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamingMessage>(
-  config: StreamProcessorConfig = {}
+  config: StreamProcessorConfig = {},
 ) {
-  const {
-    debounceMs = DEFAULT_DEBOUNCE_MS,
-    toolProcessors = {},
-    hiddenTools = [],
-    hiddenToolTextIds = {},
-  } = config;
+  const { debounceMs = DEFAULT_DEBOUNCE_MS, toolProcessors = {}, hiddenTools = [], hiddenToolTextIds = {} } = config;
 
   const processStream = useCallback(
-    async (
-      response: Response,
-      messageId: string,
-      onUpdate: (message: T) => void,
-      additionalFields?: Partial<T>
-    ) => {
+    async (response: Response, messageId: string, onUpdate: (message: T) => void, additionalFields?: Partial<T>) => {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -89,25 +93,29 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
           content: reasoningParts.get(id) || "",
         }));
 
-        const allToolCalls = toolCallsOrder.map((id) => {
-          const call = toolCalls.get(id);
-          return call ? { id, ...call } : null;
-        }).filter((call): call is NonNullable<typeof call> => call !== null);
+        const allToolCalls = toolCallsOrder
+          .map((id) => {
+            const call = toolCalls.get(id);
+            return call ? { id, ...call } : null;
+          })
+          .filter((call): call is NonNullable<typeof call> => call !== null);
 
         // Build timeline in insertion order
-        const timelineItems = timeline.map(item => {
-          if (item.type === "text") {
-            const textPart = allTextParts.find(p => p.id === item.id);
-            return textPart ? { type: "text" as const, id: item.id, data: textPart } : null;
-          } else if (item.type === "reasoning") {
-            const reasoningPart = allReasoningParts.find(p => p.id === item.id);
-            return reasoningPart ? { type: "reasoning" as const, id: item.id, data: reasoningPart } : null;
-          } else if (item.type === "toolCall") {
-            const toolCall = allToolCalls.find(t => t.id === item.id);
-            return toolCall ? { type: "toolCall" as const, id: item.id, data: toolCall } : null;
-          }
-          return null;
-        }).filter((item): item is NonNullable<typeof item> => item !== null);
+        const timelineItems = timeline
+          .map((item) => {
+            if (item.type === "text") {
+              const textPart = allTextParts.find((p) => p.id === item.id);
+              return textPart ? { type: "text" as const, id: item.id, data: textPart } : null;
+            } else if (item.type === "reasoning") {
+              const reasoningPart = allReasoningParts.find((p) => p.id === item.id);
+              return reasoningPart ? { type: "reasoning" as const, id: item.id, data: reasoningPart } : null;
+            } else if (item.type === "toolCall") {
+              const toolCall = allToolCalls.find((t) => t.id === item.id);
+              return toolCall ? { type: "toolCall" as const, id: item.id, data: toolCall } : null;
+            }
+            return null;
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null);
 
         return {
           id: messageId,
@@ -164,7 +172,9 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
               // Use the mapped unique ID for this stream ID
               const uniqueId = streamIdToUniqueId.get(data.id);
               if (uniqueId) {
-                textParts.set(uniqueId, (textParts.get(uniqueId) || "") + data.delta);
+                // Handle both TextStreamPart (text) and UIMessageChunk (delta) formats
+                const deltaText = data.text ?? data.delta ?? "";
+                textParts.set(uniqueId, (textParts.get(uniqueId) || "") + deltaText);
               }
             } else if (data.type === "reasoning-start") {
               reasoningParts.set(data.id, "");
@@ -173,7 +183,9 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                 timeline.push({ type: "reasoning", id: data.id });
               }
             } else if (data.type === "reasoning-delta") {
-              reasoningParts.set(data.id, (reasoningParts.get(data.id) || "") + data.delta);
+              // Handle both TextStreamPart (text) and UIMessageChunk (delta) formats
+              const deltaText = data.text ?? data.delta ?? "";
+              reasoningParts.set(data.id, (reasoningParts.get(data.id) || "") + deltaText);
             } else if (data.type === "tool-input-start") {
               // Track hidden tools separately
               if (hiddenTools.includes(data.toolName)) {
@@ -200,16 +212,29 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                 });
               }
             } else if (data.type === "tool-input-available") {
-              const existing = toolCalls.get(data.toolCallId);
-              if (existing) {
-                toolCalls.set(data.toolCallId, {
-                  ...existing,
+              // UIMessageChunk format may send tool-input-available directly without tool-input-start
+              // Check if this is a hidden tool first
+              if (data.toolName && hiddenTools.includes(data.toolName)) {
+                hiddenToolCallIds.set(data.toolCallId, data.toolName);
+              } else {
+                const existing = toolCalls.get(data.toolCallId);
+                const toolData = {
+                  toolName: data.toolName || existing?.toolName || "unknown",
                   input: data.input,
-                  inputText: typeof data.input === "string"
-                    ? data.input
-                    : JSON.stringify(data.input, null, 2),
-                  status: "input-available",
-                });
+                  inputText: typeof data.input === "string" ? data.input : JSON.stringify(data.input, null, 2),
+                  status: "input-available" as const,
+                };
+
+                if (existing) {
+                  toolCalls.set(data.toolCallId, { ...existing, ...toolData });
+                } else {
+                  // Register the tool if it wasn't registered via tool-input-start
+                  toolCalls.set(data.toolCallId, toolData);
+                  if (!toolCallsOrder.includes(data.toolCallId)) {
+                    toolCallsOrder.push(data.toolCallId);
+                    timeline.push({ type: "toolCall", id: data.toolCallId });
+                  }
+                }
                 // Update immediately when tool input is ready
                 updateMessage();
               }
@@ -284,17 +309,89 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
                   errorText: data.errorText,
                 });
               }
+            } else if (data.type === "tool-call") {
+              // AI SDK native format - combined tool-input-start + tool-input-available
+              if (hiddenTools.includes(data.toolName)) {
+                hiddenToolCallIds.set(data.toolCallId, data.toolName);
+              } else {
+                toolCalls.set(data.toolCallId, {
+                  toolName: data.toolName,
+                  input: data.input,
+                  inputText: typeof data.input === "string" ? data.input : JSON.stringify(data.input, null, 2),
+                  status: "input-available",
+                });
+                if (!toolCallsOrder.includes(data.toolCallId)) {
+                  toolCallsOrder.push(data.toolCallId);
+                  timeline.push({ type: "toolCall", id: data.toolCallId });
+                }
+                updateMessage();
+              }
+            } else if (data.type === "tool-result") {
+              // AI SDK native format - tool result
+              const hiddenToolName = hiddenToolCallIds.get(data.toolCallId);
+
+              if (hiddenToolName) {
+                // Handle hidden tools - add their output as text parts
+                const processor = toolProcessors[hiddenToolName];
+                let processedOutput = data.output;
+
+                if (processor) {
+                  try {
+                    processedOutput = processor(data.output, processorContext);
+                    processorContext[hiddenToolName] = processedOutput;
+                  } catch (err) {
+                    console.error(`Hidden tool processor error for ${hiddenToolName}:`, err);
+                  }
+                }
+
+                const textId = hiddenToolTextIds[hiddenToolName] || `${hiddenToolName}-output`;
+                if (typeof processedOutput === "string") {
+                  textParts.set(textId, processedOutput);
+                  if (!textPartsOrder.includes(textId)) {
+                    textPartsOrder.push(textId);
+                    timeline.push({ type: "text", id: textId });
+                  }
+                }
+              } else {
+                // Regular tool call
+                const existing = toolCalls.get(data.toolCallId);
+                if (existing) {
+                  const processor = toolProcessors[existing.toolName];
+                  let processedOutput = data.output;
+
+                  if (processor) {
+                    try {
+                      processedOutput = processor(data.output, processorContext);
+                      processorContext[existing.toolName] = processedOutput;
+                    } catch (err) {
+                      console.error(`Tool processor error for ${existing.toolName}:`, err);
+                    }
+                  }
+
+                  toolCalls.set(data.toolCallId, {
+                    ...existing,
+                    output: processedOutput,
+                    status: "output-available",
+                  });
+                  updateMessage();
+                }
+              }
+            } else if (data.type === "tool-error") {
+              // AI SDK native format - tool error
+              const existing = toolCalls.get(data.toolCallId);
+              if (existing) {
+                toolCalls.set(data.toolCallId, {
+                  ...existing,
+                  status: "output-error",
+                  errorText: typeof data.error === "string" ? data.error : "Tool error",
+                });
+              }
             } else if (data.type === "error") {
               error = data.errorText;
             }
 
             // Only update if there's content to show
-            if (
-              textParts.size > 0 ||
-              toolCalls.size > 0 ||
-              reasoningParts.size > 0 ||
-              error
-            ) {
+            if (textParts.size > 0 || toolCalls.size > 0 || reasoningParts.size > 0 || error) {
               debouncedUpdate();
             }
           } catch (parseError) {
@@ -311,7 +408,7 @@ export function useStreamProcessor<T extends BaseStreamingMessage = BaseStreamin
       // Finalize
       onUpdate(buildMessage(false));
     },
-    [debounceMs, toolProcessors, hiddenTools, hiddenToolTextIds]
+    [debounceMs, toolProcessors, hiddenTools, hiddenToolTextIds],
   );
 
   return { processStream };
