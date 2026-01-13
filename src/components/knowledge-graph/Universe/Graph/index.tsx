@@ -15,6 +15,7 @@ import { Cubes } from './Cubes'
 import { HighlightedNodesLayer } from './HighlightedNodes'
 import { MockNodesLayer } from './HighlightedNodes/MockNodesLayer'
 import { HtmlNodesLayer } from './HtmlNodesLayer'
+import { LayerHoverHighlight } from './LayerHoverHighlight'
 import { LayerLabels } from './LayerLabels'
 import { NodeDetailsPanel } from './UI'
 import { calculateRadius } from './utils/calculateGroupRadius'
@@ -479,6 +480,7 @@ export const Graph = () => {
       {isOnboarding && <RepositoryScene />}
       {graphStyle === 'sphere' && activeFilterTab === 'concepts' && <HtmlNodesLayer nodeTypes={['Feature']} enabled />}
       {graphStyle === 'split' ? <LayerLabels /> : null}
+      {graphStyle === 'split' && <LayerHoverHighlight />}
       <NodeDetailsPanel />
 
     </group>
