@@ -6,7 +6,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { validateWorkspaceAccess } from "@/services/workspace";
 import { getQuickAskPrefixMessages } from "@/lib/constants/prompt";
 import { askTools, listConcepts, createHasEndMarkerCondition, clueToolMsgs } from "@/lib/ai/askTools";
-import { streamText, ModelMessage, generateObject, UIMessage, convertToModelMessages } from "ai";
+import { streamText, ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { z } from "zod";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
@@ -165,43 +165,37 @@ export async function POST(request: NextRequest) {
     const clueMsgs = await clueToolMsgs(baseSwarmUrl, decryptedSwarmApiKey, lastMessageContent);
 
     // console.log("features:", features);
-    // Convert UIMessages from frontend to ModelMessages
-    // The frontend sends UIMessage[] format, but the AI SDK needs ModelMessage[]
-    let convertedMessages: ModelMessage[];
-    try {
-      // Log message format for debugging
-      console.log("📨 [quick-ask] Input messages format:", {
-        count: messages.length,
-        sample: messages.slice(0, 2).map((m: any) => ({
-          role: m.role,
-          hasId: "id" in m,
-          contentType: typeof m.content,
-          isArray: Array.isArray(m.content),
-          contentSample:
-            typeof m.content === "string"
-              ? m.content.slice(0, 50)
-              : Array.isArray(m.content)
-                ? m.content.slice(0, 2).map((c: any) => ({ type: c.type, hasText: !!c.text }))
-                : "unknown",
-        })),
-      });
+    // Normalize incoming messages to ModelMessage[] format
+    // Frontends send ModelMessage[] directly, but we normalize to be safe
+    // This is designed to NEVER throw - always produce valid messages
+    const convertedMessages: ModelMessage[] = messages
+      .map((m: any): ModelMessage | null => {
+        // Default to 'user' if role is missing or invalid
+        let role = m.role;
+        if (!role || !["user", "assistant", "system", "tool"].includes(role)) {
+          role = "user";
+        }
 
-      // Try to convert UIMessages to ModelMessages
-      convertedMessages = convertToModelMessages(messages as UIMessage[]);
-    } catch (conversionError) {
-      // If conversion fails, the messages might already be in ModelMessage format
-      // or in an unexpected format - try to use them directly
-      console.warn("⚠️ [quick-ask] Message conversion failed, using messages directly:", {
-        error: conversionError instanceof Error ? conversionError.message : String(conversionError),
-        messageRoles: messages.map((m: any) => m.role),
-      });
-      convertedMessages = messages as ModelMessage[];
-    }
+        // Handle different content formats - always produce something valid
+        let content = m.content;
+
+        // If content is undefined/null/empty, default based on role
+        if (content === undefined || content === null) {
+          if (role === "tool") {
+            // Skip tool messages with no content - they're invalid
+            return null;
+          }
+          content = "";
+        }
+
+        return { role, content } as ModelMessage;
+      })
+      .filter((m): m is ModelMessage => m !== null);
 
     // Construct messages array with system prompt, pre-filled concepts, and conversation history
     const rawMessages: ModelMessage[] = [
       ...getQuickAskPrefixMessages(features, repoUrl, clueMsgs),
-      // Conversation history (converted to proper ModelMessage format)
+      // Conversation history (normalized to proper ModelMessage format)
       ...convertedMessages,
     ];
 

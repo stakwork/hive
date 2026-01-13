@@ -8,6 +8,7 @@ import { useStreamProcessor } from "@/lib/streaming";
 import { learnToolProcessors, ASK_QUESTION_TOOL, type AskQuestionResponse } from "../lib/streaming-config";
 import type { LearnMessage } from "@/types/learn";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import type { ModelMessage } from "ai";
 
 interface LearnChatProps {
   workspaceSlug: string;
@@ -116,13 +117,73 @@ export function LearnChat({ workspaceSlug }: LearnChatProps) {
     hasReceivedContentRef.current = false;
 
     try {
+      // Convert LearnMessages to ModelMessages format for AI SDK
+      const modelMessages = conversationHistory.flatMap((m): ModelMessage[] => {
+        // Handle assistant messages with tool calls
+        if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+          const messages: ModelMessage[] = [];
+
+          // Tool calls message
+          const toolCallMessage: ModelMessage = {
+            role: "assistant",
+            content: m.toolCalls.map((tc) => ({
+              type: "tool-call" as const,
+              toolCallId: tc.id,
+              toolName: tc.toolName,
+              input: tc.input || {},
+            })),
+          };
+          messages.push(toolCallMessage);
+
+          // Tool results message (if any tool has output)
+          const toolResults = m.toolCalls.filter((tc) => tc.output !== undefined || tc.errorText !== undefined);
+          if (toolResults.length > 0) {
+            const toolResultMessage = {
+              role: "tool" as const,
+              content: toolResults.map((tc) => {
+                let wrappedOutput = tc.output;
+                if (tc.output && typeof tc.output === "object" && !("type" in tc.output)) {
+                  wrappedOutput = { type: "json", value: tc.output };
+                }
+                return {
+                  type: "tool-result" as const,
+                  toolCallId: tc.id,
+                  toolName: tc.toolName,
+                  output: wrappedOutput as any,
+                };
+              }),
+            } satisfies ModelMessage;
+            messages.push(toolResultMessage);
+          }
+
+          // Text content message (if any)
+          if (m.content) {
+            const textMessage: ModelMessage = {
+              role: "assistant",
+              content: m.content,
+            };
+            messages.push(textMessage);
+          }
+
+          return messages;
+        }
+
+        // Simple user or assistant message with just text
+        return [
+          {
+            role: m.role,
+            content: m.content,
+          },
+        ];
+      });
+
       const response = await fetch(`/api/ask/quick`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: conversationHistory,
+          messages: modelMessages,
           workspaceSlug,
         }),
       });
