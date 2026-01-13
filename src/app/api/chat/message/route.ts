@@ -9,6 +9,9 @@ import { getS3Service } from "@/services/s3";
 import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService = EncryptionService.getInstance();
 
 export const runtime = "nodejs";
 
@@ -145,6 +148,8 @@ export async function POST(request: NextRequest) {
       },
       select: {
         workspaceId: true,
+        podId: true,
+        agentPassword: true,
         workspace: {
           select: {
             ownerId: true,
@@ -294,6 +299,11 @@ export async function POST(request: NextRequest) {
         attachmentPaths.map((path) => getS3Service().generatePresignedDownloadUrl(path)),
       );
 
+      // Decrypt pod password if available
+      const podPassword = task.agentPassword
+        ? encryptionService.decryptField("agentPassword", task.agentPassword)
+        : null;
+
       stakworkData = await callStakworkAPI({
         taskId,
         message,
@@ -311,6 +321,8 @@ export async function POST(request: NextRequest) {
         baseBranch,
         history,
         webhook,
+        podId: task.podId,
+        podPassword,
       });
 
       if (stakworkData.success) {

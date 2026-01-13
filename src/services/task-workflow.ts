@@ -486,6 +486,8 @@ export async function callStakworkAPI(params: {
   history?: Record<string, unknown>[];
   autoMergePr?: boolean;
   webhook?: string;
+  podId?: string | null;
+  podPassword?: string | null;
 }) {
   const {
     taskId,
@@ -510,6 +512,8 @@ export async function callStakworkAPI(params: {
     history = [],
     autoMergePr,
     webhook,
+    podId = null,
+    podPassword = null,
   } = params;
 
   if (!config.STAKWORK_API_KEY || !config.STAKWORK_WORKFLOW_ID) {
@@ -557,6 +561,12 @@ export async function callStakworkAPI(params: {
   }
   if (featureContext !== undefined) {
     vars.featureContext = featureContext;
+  }
+  if (podId) {
+    vars.podId = podId;
+  }
+  if (podPassword) {
+    vars.podPassword = podPassword;
   }
 
   // Get workflow ID (replicating workflow selection logic)
