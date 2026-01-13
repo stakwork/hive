@@ -325,7 +325,7 @@ export default function TaskChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: `Loaded: ${taskTitle}`,
+          message: `Loaded: ${taskTitle}\nSelect a step on the right as a starting point.`,
           role: "ASSISTANT",
           artifacts: [
             {
@@ -358,7 +358,7 @@ export default function TaskChatPage() {
           })
         : createChatMessage({
             id: generateUniqueId(),
-            message: `Loaded: ${taskTitle}`,
+            message: `Loaded: ${taskTitle}\nSelect a step on the right as a starting point.`,
             role: ChatRole.ASSISTANT,
             status: ChatStatus.SENT,
             artifacts: [
