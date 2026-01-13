@@ -11,6 +11,11 @@ export type StreamEventType =
   | "tool-input-error"
   | "tool-output-available"
   | "tool-output-error"
+  | "tool-call"
+  | "tool-result"
+  | "tool-error"
+  | "start"
+  | "finish"
   | "error";
 
 export type ToolCallStatus =
@@ -33,7 +38,8 @@ export interface TextStartEvent extends BaseStreamEvent {
 export interface TextDeltaEvent extends BaseStreamEvent {
   type: "text-delta";
   id: string;
-  delta: string;
+  text?: string; // TextStreamPart format
+  delta?: string; // UIMessageChunk format
 }
 
 export interface ReasoningStartEvent extends BaseStreamEvent {
@@ -44,7 +50,8 @@ export interface ReasoningStartEvent extends BaseStreamEvent {
 export interface ReasoningDeltaEvent extends BaseStreamEvent {
   type: "reasoning-delta";
   id: string;
-  delta: string;
+  text?: string; // TextStreamPart format
+  delta?: string; // UIMessageChunk format
 }
 
 export interface ToolInputStartEvent extends BaseStreamEvent {
@@ -62,6 +69,7 @@ export interface ToolInputDeltaEvent extends BaseStreamEvent {
 export interface ToolInputAvailableEvent extends BaseStreamEvent {
   type: "tool-input-available";
   toolCallId: string;
+  toolName?: string; // Present in UIMessageChunk format
   input: unknown;
 }
 
@@ -89,6 +97,39 @@ export interface ErrorEvent extends BaseStreamEvent {
   errorText: string;
 }
 
+// AI SDK native tool events
+export interface ToolCallEvent extends BaseStreamEvent {
+  type: "tool-call";
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+}
+
+export interface ToolResultEvent extends BaseStreamEvent {
+  type: "tool-result";
+  toolCallId: string;
+  toolName: string;
+  output: unknown;
+}
+
+export interface ToolErrorEvent extends BaseStreamEvent {
+  type: "tool-error";
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+  error: string;
+}
+
+// AI SDK lifecycle events
+export interface StartEvent extends BaseStreamEvent {
+  type: "start";
+}
+
+export interface FinishEvent extends BaseStreamEvent {
+  type: "finish";
+  finishReason: string;
+}
+
 export type StreamEvent =
   | TextStartEvent
   | TextDeltaEvent
@@ -100,6 +141,11 @@ export type StreamEvent =
   | ToolInputErrorEvent
   | ToolOutputAvailableEvent
   | ToolOutputErrorEvent
+  | ToolCallEvent
+  | ToolResultEvent
+  | ToolErrorEvent
+  | StartEvent
+  | FinishEvent
   | ErrorEvent;
 
 // Generic streaming message structure
