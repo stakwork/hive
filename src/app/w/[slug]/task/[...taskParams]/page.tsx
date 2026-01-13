@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
   ChatMessage,
@@ -172,7 +171,6 @@ export default function TaskChatPage() {
       toast.error("Connection Error", { description: "Lost connection to chat server. Attempting to reconnect..." });
     }
     // toast in deps causes infinite re-render
-     
   }, [connectionError]);
 
   const loadTaskMessages = useCallback(async (taskId: string) => {
@@ -584,216 +582,228 @@ export default function TaskChatPage() {
     setPendingDebugAttachment(null); // Clear attachment after sending
   };
 
-  const sendMessage = async (
-    messageText: string,
-    options?: {
-      taskId?: string;
-      replyId?: string;
-      webhook?: string;
-      artifact?: Artifact;
-      podUrls?: { frontend: string; ide: string } | null;
-    },
-  ) => {
-    // Create artifacts array starting with any existing artifact
-    const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
+  const sendMessage = useCallback(
+    async (
+      messageText: string,
+      options?: {
+        taskId?: string;
+        replyId?: string;
+        webhook?: string;
+        artifact?: Artifact;
+        podUrls?: { frontend: string; ide: string } | null;
+      },
+    ) => {
+      // Create artifacts array starting with any existing artifact
+      const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
 
-    // Add BROWSER and IDE artifacts if podUrls are provided
-    if (options?.podUrls) {
-      artifacts.push(
-        createArtifact({
-          id: generateUniqueId(),
-          messageId: "",
-          type: ArtifactType.BROWSER,
-          content: {
-            url: options.podUrls.frontend,
-          },
-        }),
-        createArtifact({
-          id: generateUniqueId(),
-          messageId: "",
-          type: ArtifactType.IDE,
-          content: {
-            url: options.podUrls.ide,
-          },
-        }),
-      );
-    }
-
-    const newMessage: ChatMessage = createChatMessage({
-      id: generateUniqueId(),
-      message: messageText,
-      role: ChatRole.USER,
-      status: ChatStatus.SENDING,
-      replyId: options?.replyId,
-      artifacts,
-    });
-
-    setMessages((msgs) => [...msgs, newMessage]);
-    setIsLoading(true);
-    hasReceivedContentRef.current = false;
-
-    try {
-      // Use agent mode streaming
-      if (taskMode === "agent") {
-        // Mark user message as sent
-        setMessages((msgs) =>
-          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+      // Add BROWSER and IDE artifacts if podUrls are provided
+      if (options?.podUrls) {
+        artifacts.push(
+          createArtifact({
+            id: generateUniqueId(),
+            messageId: "",
+            type: ArtifactType.BROWSER,
+            content: {
+              url: options.podUrls.frontend,
+            },
+          }),
+          createArtifact({
+            id: generateUniqueId(),
+            messageId: "",
+            type: ArtifactType.IDE,
+            content: {
+              url: options.podUrls.ide,
+            },
+          }),
         );
+      }
 
-        // Prepare artifacts for backend (convert to serializable format)
-        const backendArtifacts = artifacts.map((artifact) => ({
-          type: artifact.type,
-          content: artifact.content,
-        }));
+      const newMessage: ChatMessage = createChatMessage({
+        id: generateUniqueId(),
+        message: messageText,
+        role: ChatRole.USER,
+        status: ChatStatus.SENDING,
+        replyId: options?.replyId,
+        artifacts,
+      });
 
-        const response = await fetch("/api/agent", {
+      setMessages((msgs) => [...msgs, newMessage]);
+      setIsLoading(true);
+      hasReceivedContentRef.current = false;
+
+      try {
+        // Agent mode: new direct streaming flow
+        if (taskMode === "agent") {
+          // Mark user message as sent in UI
+          setMessages((msgs) =>
+            msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
+          );
+
+          // Prepare artifacts for backend
+          const backendArtifacts = artifacts.map((artifact) => ({
+            type: artifact.type,
+            content: artifact.content,
+          }));
+
+          // 1. Call backend to create/refresh session
+          const sessionResponse = await fetch("/api/agent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              taskId: options?.taskId || currentTaskId,
+              message: messageText,
+              artifacts: backendArtifacts,
+            }),
+          });
+
+          if (!sessionResponse.ok) {
+            throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
+          }
+
+          const { streamToken, streamUrl, resume } = await sessionResponse.json();
+
+          // 2. Connect directly to remote server for streaming
+          const streamBody: Record<string, unknown> = { prompt: messageText };
+          if (resume) {
+            streamBody.resume = true;
+          }
+
+          const streamResponse = await fetch(`${streamUrl}?token=${encodeURIComponent(streamToken)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(streamBody),
+          });
+
+          if (!streamResponse.ok) {
+            throw new Error(`Stream failed: ${streamResponse.statusText}`);
+          }
+
+          // 3. Process stream using existing processor (now AI SDK native format)
+          const assistantMessageId = generateUniqueId();
+
+          await processStream(
+            streamResponse,
+            assistantMessageId,
+            (updatedMessage) => {
+              // Turn off loading as soon as we get the first content
+              if (!hasReceivedContentRef.current) {
+                hasReceivedContentRef.current = true;
+                setIsLoading(false);
+              }
+
+              // Update messages array
+              setMessages((prev) => {
+                const existingIndex = prev.findIndex((m) => m.id === assistantMessageId);
+                if (existingIndex >= 0) {
+                  const updated = [...prev];
+                  updated[existingIndex] = updatedMessage as unknown as ChatMessage;
+                  return updated;
+                }
+                return [...prev, updatedMessage as unknown as ChatMessage];
+              });
+            },
+            { role: "assistant" as const, timestamp: new Date() },
+          );
+
+          // 4. Check for diffs after agent completes
+          if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
+            try {
+              const diffResponse = await fetch("/api/agent/diff", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  workspaceId: effectiveWorkspaceId,
+                  taskId: options?.taskId || currentTaskId,
+                }),
+              });
+
+              if (diffResponse.ok) {
+                const diffResult = await diffResponse.json();
+                if (diffResult.success && diffResult.message && !diffResult.noDiffs) {
+                  setMessages((msgs) => [...msgs, diffResult.message]);
+                }
+              }
+            } catch (error) {
+              console.error("Error fetching diff:", error);
+            }
+          }
+
+          // Messages are persisted via webhook - no need to save here
+          return;
+        }
+
+        // Regular stakwork mode
+        const body: { [k: string]: unknown } = {
+          taskId: options?.taskId || currentTaskId,
+          message: messageText,
+          contextTags: [],
+          mode: taskMode,
+          ...(options?.replyId && { replyId: options.replyId }),
+          ...(options?.webhook && { webhook: options.webhook }),
+          ...(options?.artifact && { artifacts: [options.artifact] }),
+        };
+        const response = await fetch("/api/chat/message", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            taskId: options?.taskId || currentTaskId,
-            message: messageText,
-            workspaceSlug: slug,
-            // gooseUrl removed - will be fetched from database in backend
-            artifacts: backendArtifacts,
-          }),
+          body: JSON.stringify(body),
         });
 
         if (!response.ok) {
           throw new Error(`Failed to send message: ${response.statusText}`);
         }
 
-        // Process the streaming response
-        const assistantMessageId = generateUniqueId();
-
-        await processStream(
-          response,
-          assistantMessageId,
-          (updatedMessage) => {
-            // Turn off loading as soon as we get the first content
-            if (!hasReceivedContentRef.current) {
-              hasReceivedContentRef.current = true;
-              setIsLoading(false);
-            }
-
-            // Update messages array with AgentStreamingMessage
-            setMessages((prev) => {
-              const existingIndex = prev.findIndex((m) => m.id === assistantMessageId);
-              if (existingIndex >= 0) {
-                const updated = [...prev];
-                updated[existingIndex] = updatedMessage as unknown as ChatMessage;
-                return updated;
-              }
-              return [...prev, updatedMessage as unknown as ChatMessage];
-            });
-          },
-          // Additional fields specific to AgentStreamingMessage
-          {
-            role: "assistant" as const,
-            timestamp: new Date(),
-          },
-        );
-
-        // Check for diffs after agent completes (agent mode only)
-        if (effectiveWorkspaceId && (options?.taskId || currentTaskId)) {
-          try {
-            const diffResponse = await fetch("/api/agent/diff", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                workspaceId: effectiveWorkspaceId,
-                taskId: options?.taskId || currentTaskId,
-              }),
-            });
-
-            if (diffResponse.ok) {
-              const diffResult = await diffResponse.json();
-
-              // Only add message if diffs exist
-              if (diffResult.success && diffResult.message && !diffResult.noDiffs) {
-                setMessages((msgs) => [...msgs, diffResult.message]);
-              }
-            } else {
-              // Pod might have been released or doesn't exist anymore - just skip silently
-              console.log("Failed to fetch diff (pod may no longer exist):", diffResponse.status);
-            }
-          } catch (error) {
-            console.error("Error fetching diff:", error);
-            // Silent failure - don't interrupt user flow
-          }
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || "Failed to send message");
         }
 
-        // Note: Assistant message is saved by the backend via stream teeing (see /api/agent/route.ts)
-        return;
-      }
+        if (result.workflow?.project_id) {
+          console.log("Project ID:", result.workflow.project_id);
+          setProjectId(result.workflow.project_id);
+          setStakworkProjectId(result.workflow.project_id);
+          setIsChainVisible(true);
+          clearLogs();
 
-      // Regular stakwork mode
-      const body: { [k: string]: unknown } = {
-        taskId: options?.taskId || currentTaskId,
-        message: messageText,
-        contextTags: [],
-        mode: taskMode,
-        ...(options?.replyId && { replyId: options.replyId }),
-        ...(options?.webhook && { webhook: options.webhook }),
-        ...(options?.artifact && { artifacts: [options.artifact] }),
-      };
-      const response = await fetch("/api/chat/message", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
+          // Create a WORKFLOW artifact with the project_id
+          const workflowArtifact = createArtifact({
+            id: generateUniqueId(),
+            messageId: newMessage.id,
+            type: ArtifactType.WORKFLOW,
+            content: {
+              projectId: result.workflow.project_id.toString(),
+            },
+          });
 
-      if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.statusText}`);
-      }
+          // Add the workflow artifact to the last message
+          setMessages((msgs) =>
+            msgs.map((msg) =>
+              msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
+            ),
+          );
+        }
 
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Failed to send message");
-      }
-
-      if (result.workflow?.project_id) {
-        console.log("Project ID:", result.workflow.project_id);
-        setProjectId(result.workflow.project_id);
-        setStakworkProjectId(result.workflow.project_id);
-        setIsChainVisible(true);
-        clearLogs();
-
-        // Create a WORKFLOW artifact with the project_id
-        const workflowArtifact = createArtifact({
-          id: generateUniqueId(),
-          messageId: newMessage.id,
-          type: ArtifactType.WORKFLOW,
-          content: {
-            projectId: result.workflow.project_id.toString(),
-          },
-        });
-
-        // Add the workflow artifact to the last message
+        // Update the temporary message status instead of replacing entirely
+        // This prevents re-animation since React sees it as the same message
         setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === newMessage.id ? { ...msg, artifacts: [...(msg.artifacts || []), workflowArtifact] } : msg,
-          ),
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
         );
+      } catch (error) {
+        console.error("Error sending message:", error);
+
+        // Update message status to ERROR
+        setMessages((msgs) =>
+          msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)),
+        );
+
+        toast.error("Error", { description: "Failed to send message. Please try again." });
+      } finally {
+        setIsLoading(false);
       }
-
-      // Update the temporary message status instead of replacing entirely
-      // This prevents re-animation since React sees it as the same message
-      setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)));
-    } catch (error) {
-      console.error("Error sending message:", error);
-
-      // Update message status to ERROR
-      setMessages((msgs) => msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.ERROR } : msg)));
-
-      toast.error("Error", { description: "Failed to send message. Please try again." });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    [taskMode, currentTaskId, effectiveWorkspaceId, processStream, clearLogs],
+  );
 
   const handleArtifactAction = useCallback(
     async (messageId: string, action: Option, webhook: string) => {
