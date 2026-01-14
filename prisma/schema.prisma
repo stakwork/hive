@@ -95,6 +95,9 @@ model User {
   // Source control tokens
   sourceControlTokens SourceControlToken[]
 
+  // Shared conversations
+  sharedConversations SharedConversation[]
+
   @@index([createdAt])
   @@index([deleted])
   @@index([email])
@@ -233,6 +236,9 @@ model Workspace {
 
   // Screenshots
   screenshots Screenshot[]
+
+  // Shared conversations
+  sharedConversations SharedConversation[]
 
   // Node type ordering for graph visualization
   nodeTypeOrder Json @default("[{\"type\":\"Function\",\"value\":20},{\"type\":\"Feature\",\"value\":20},{\"type\":\"File\",\"value\":20},{\"type\":\"Endpoint\",\"value\":20},{\"type\":\"Person\",\"value\":20},{\"type\":\"Episode\",\"value\":20},{\"type\":\"Call\",\"value\":20},{\"type\":\"Message\",\"value\":20}]") @map("node_type_order")
@@ -964,5 +970,32 @@ model Screenshot {
   @@index([pageUrl])
   @@index([createdAt])
   @@map("screenshots")
+}
+
+// =============================================
+// SHARED CONVERSATIONS
+// =============================================
+
+model SharedConversation {
+  id              String   @id @default(cuid())
+  workspaceId     String   @map("workspace_id")
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Conversation metadata
+  title           String?  // Auto-generated from first user message (max 100 chars)
+  
+  // Conversation content (serialized JSON)
+  messages        Json     // Serialized Message[] array
+  provenanceData  Json?    @map("provenance_data") // Optional provenance information
+  followUpQuestions Json   @default("[]") @map("follow_up_questions") // Array of follow-up questions
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("shared_conversations")
 }
 
