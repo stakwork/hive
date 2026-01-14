@@ -7,6 +7,7 @@ interface Recommendation {
   description: string;
   impact?: string;
   priority: string;
+  createdAt?: string;
   janitorRun?: {
     id: string;
     janitorType: string;

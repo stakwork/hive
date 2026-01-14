@@ -113,12 +113,6 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // For E2E tests: set total = covered so it displays as 100%
-      if (data.e2e_tests && data.e2e_tests.covered !== undefined) {
-        data.e2e_tests.total = data.e2e_tests.covered;
-        data.e2e_tests.percent = data.e2e_tests.covered > 0 ? 100 : 0;
-      }
-
       return NextResponse.json(
         {
           success: true,
@@ -179,12 +173,6 @@ export async function GET(request: NextRequest) {
     }
 
     const data = apiResult.data as TestCoverageData;
-
-    // For E2E tests: set total = covered so it displays as 100%
-    if (data.e2e_tests && data.e2e_tests.covered !== undefined) {
-      data.e2e_tests.total = data.e2e_tests.covered;
-      data.e2e_tests.percent = data.e2e_tests.covered > 0 ? 100 : 0;
-    }
 
     return NextResponse.json(
       {

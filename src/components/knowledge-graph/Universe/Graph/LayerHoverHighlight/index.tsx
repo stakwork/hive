@@ -131,6 +131,8 @@ export const LayerHoverHighlight = () => {
     }
 
     const worldY = intersectPoint.current.y
+    const worldX = intersectPoint.current.x
+    const worldZ = intersectPoint.current.z
 
     // Find the closest layer to the cursor Y position
     let closestLayer: LayerInfo | null = null
@@ -157,6 +159,22 @@ export const LayerHoverHighlight = () => {
     // Calculate current bounds
     const currentBounds = calculateLayerBounds(simulation, closestLayer.nodeType)
     const boundsKey = `${Math.round(currentBounds.minX)}-${Math.round(currentBounds.maxX)}-${Math.round(currentBounds.minZ)}-${Math.round(currentBounds.maxZ)}`
+
+    // Check if the mouse is actually within the bounds of the nodes in this layer
+    const isWithinBounds = 
+      worldX >= currentBounds.minX && 
+      worldX <= currentBounds.maxX && 
+      worldZ >= currentBounds.minZ && 
+      worldZ <= currentBounds.maxZ
+
+    if (!isWithinBounds) {
+      if (hoveredLayer) {
+        setHoveredLayer(null)
+        setBounds(null)
+        lastBoundsRef.current = ''
+      }
+      return
+    }
 
     // Update layer if changed
     if (closestLayer.nodeType !== hoveredLayer?.nodeType) {

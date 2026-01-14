@@ -4,6 +4,9 @@ import { config } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService = EncryptionService.getInstance();
 
 /**
  * Create a task and immediately trigger Stakwork workflow
@@ -233,6 +236,7 @@ export async function startTaskWorkflow(params: {
       id: true,
       title: true,
       description: true,
+      branch: true,
       featureId: true,
       phaseId: true,
       sourceType: true,
@@ -379,9 +383,16 @@ export async function createChatMessageAndTriggerStakwork(params: {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":3355") : "";
 
-    // Get repository URL and branch from workspace repositories
+    // Get repository URL and branch
     const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
     const baseBranch = task.workspace.repositories?.[0]?.branch || null;
+    const repoName = task.workspace.repositories?.[0]?.name || null;
+    const taskBranch = task.branch || null;
+
+    // Decrypt pod password if available
+    const podPassword = task.agentPassword
+      ? encryptionService.decryptField("agentPassword", task.agentPassword)
+      : null;
 
     try {
       stakworkData = await callStakworkAPI({
@@ -404,6 +415,10 @@ export async function createChatMessageAndTriggerStakwork(params: {
         runTestSuite: task.runTestSuite,
         repoUrl,
         baseBranch,
+        branch: taskBranch,
+        repoName,
+        podId: task.podId,
+        podPassword,
         autoMergePr,
       });
 
@@ -483,9 +498,11 @@ export async function callStakworkAPI(params: {
   runTestSuite?: boolean;
   repoUrl?: string | null;
   baseBranch?: string | null;
+  branch?: string | null;
   history?: Record<string, unknown>[];
   autoMergePr?: boolean;
   webhook?: string;
+  repoName?: string | null;
   podId?: string | null;
   podPassword?: string | null;
 }) {
@@ -509,9 +526,11 @@ export async function callStakworkAPI(params: {
     runTestSuite = true,
     repoUrl = null,
     baseBranch = null,
+    branch = null,
     history = [],
     autoMergePr,
     webhook,
+    repoName = null,
     podId = null,
     podPassword = null,
   } = params;
@@ -549,6 +568,7 @@ export async function callStakworkAPI(params: {
     runTestSuite,
     repo_url: repoUrl,
     base_branch: baseBranch,
+    repo_name: repoName,
     history,
   };
 
@@ -568,12 +588,18 @@ export async function callStakworkAPI(params: {
   if (podPassword) {
     vars.podPassword = podPassword;
   }
+  if (branch) {
+    vars.branch = branch;
+  }
 
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
   let workflowId: string;
-  if (mode === "live") {
+  // Use task workflow for non-janitor tasks when configured
+  if (config.STAKWORK_TASK_WORKFLOW_ID && mode === "live" && taskSource !== "JANITOR") {
+    workflowId = config.STAKWORK_TASK_WORKFLOW_ID;
+  } else if (mode === "live") {
     workflowId = stakworkWorkflowIds[0];
   } else if (mode === "unit") {
     workflowId = stakworkWorkflowIds[2];

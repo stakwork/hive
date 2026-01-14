@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
       },
       select: {
         workspaceId: true,
+        branch: true,
         podId: true,
         agentPassword: true,
         workspace: {
@@ -174,6 +175,7 @@ export async function POST(request: NextRequest) {
               take: 1,
               orderBy: { createdAt: "desc" },
               select: {
+                name: true,
                 repositoryUrl: true,
                 branch: true,
               },
@@ -281,9 +283,11 @@ export async function POST(request: NextRequest) {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = transformSwarmUrlToRepo2Graph(swarm?.swarmUrl);
 
-    // Extract repository URL and branch from workspace repositories
+    // Extract repository URL, branch, and name from workspace repositories
     const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
     const baseBranch = task.workspace.repositories?.[0]?.branch || null;
+    const repoName = task.workspace.repositories?.[0]?.name || null;
+    const taskBranch = task.branch || null;
 
     let stakworkData = null;
 
@@ -319,10 +323,12 @@ export async function POST(request: NextRequest) {
         workspaceId: task.workspaceId,
         repoUrl,
         baseBranch,
-        history,
-        webhook,
+        branch: taskBranch,
+        repoName,
         podId: task.podId,
         podPassword,
+        history,
+        webhook,
       });
 
       if (stakworkData.success) {

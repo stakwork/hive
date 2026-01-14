@@ -64,21 +64,24 @@ export function TestCoverageStats() {
           type: 'Unit Tests',
           covered: data.unit_tests.covered || 0,
           total: data.unit_tests.total || 0,
-          color: 'text-foreground'
+          color: 'text-foreground',
+          displayType: 'percentage'
         } : null;
       case 'integrationTests':
         return data.integration_tests ? {
           type: 'Integration Tests',
           covered: data.integration_tests.covered || 0,
           total: data.integration_tests.total || 0,
-          color: 'text-foreground'
+          color: 'text-foreground',
+          displayType: 'percentage'
         } : null;
       case 'e2eTests':
         return data.e2e_tests ? {
           type: 'E2E Tests',
           covered: data.e2e_tests.covered || 0,
           total: data.e2e_tests.total || 0,
-          color: 'text-foreground'
+          color: 'text-foreground',
+          displayType: 'count-only'
         } : null;
       default:
         return null;
@@ -91,6 +94,7 @@ export function TestCoverageStats() {
   }
 
   const percentage = testData.total > 0 ? Math.round((testData.covered / testData.total) * 100) : 0;
+  const isCountOnly = testData.displayType === 'count-only';
 
   return (
     <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-3 shadow-sm min-w-[200px]">
@@ -98,22 +102,33 @@ export function TestCoverageStats() {
         <div className={`text-sm font-medium ${testData.color}`}>
           {testData.type}
         </div>
-        <div className="space-y-1">
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-muted-foreground">Coverage</span>
-            <span className="font-mono">{testData.covered}/{testData.total}</span>
+        {isCountOnly ? (
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Total Tests</span>
+              <span className="font-mono">{testData.covered} {testData.covered === 1 ? 'test' : 'tests'}</span>
+            </div>
           </div>
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-muted-foreground">Percentage</span>
-            <span className={`font-mono ${testData.color}`}>{percentage}%</span>
-          </div>
-        </div>
-        <div className="w-full bg-muted rounded-full h-2">
-          <div
-            className="h-2 rounded-full transition-all duration-300 bg-muted-foreground"
-            style={{ width: `${percentage}%` }}
-          />
-        </div>
+        ) : (
+          <>
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">Coverage</span>
+                <span className="font-mono">{testData.covered}/{testData.total}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">Percentage</span>
+                <span className={`font-mono ${testData.color}`}>{percentage}%</span>
+              </div>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2">
+              <div
+                className="h-2 rounded-full transition-all duration-300 bg-muted-foreground"
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
