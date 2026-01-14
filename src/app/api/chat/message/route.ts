@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
       },
       select: {
         workspaceId: true,
+        branch: true,
         podId: true,
         agentPassword: true,
         workspace: {
@@ -286,6 +287,7 @@ export async function POST(request: NextRequest) {
     const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
     const baseBranch = task.workspace.repositories?.[0]?.branch || null;
     const repoName = task.workspace.repositories?.[0]?.name || null;
+    const taskBranch = task.branch || null;
 
     let stakworkData = null;
 
@@ -321,6 +323,7 @@ export async function POST(request: NextRequest) {
         workspaceId: task.workspaceId,
         repoUrl,
         baseBranch,
+        branch: taskBranch,
         repoName,
         podId: task.podId,
         podPassword,

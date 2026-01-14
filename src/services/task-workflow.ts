@@ -236,6 +236,7 @@ export async function startTaskWorkflow(params: {
       id: true,
       title: true,
       description: true,
+      branch: true,
       featureId: true,
       phaseId: true,
       sourceType: true,
@@ -382,10 +383,11 @@ export async function createChatMessageAndTriggerStakwork(params: {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":3355") : "";
 
-    // Get repository URL and branch from workspace repositories
+    // Get repository URL and branch
     const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
     const baseBranch = task.workspace.repositories?.[0]?.branch || null;
     const repoName = task.workspace.repositories?.[0]?.name || null;
+    const taskBranch = task.branch || null;
 
     // Decrypt pod password if available
     const podPassword = task.agentPassword
@@ -413,6 +415,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
         runTestSuite: task.runTestSuite,
         repoUrl,
         baseBranch,
+        branch: taskBranch,
         repoName,
         podId: task.podId,
         podPassword,
@@ -495,6 +498,7 @@ export async function callStakworkAPI(params: {
   runTestSuite?: boolean;
   repoUrl?: string | null;
   baseBranch?: string | null;
+  branch?: string | null;
   history?: Record<string, unknown>[];
   autoMergePr?: boolean;
   webhook?: string;
@@ -522,6 +526,7 @@ export async function callStakworkAPI(params: {
     runTestSuite = true,
     repoUrl = null,
     baseBranch = null,
+    branch = null,
     history = [],
     autoMergePr,
     webhook,
@@ -582,6 +587,9 @@ export async function callStakworkAPI(params: {
   }
   if (podPassword) {
     vars.podPassword = podPassword;
+  }
+  if (branch) {
+    vars.branch = branch;
   }
 
   // Get workflow ID (replicating workflow selection logic)
