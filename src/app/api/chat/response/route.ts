@@ -11,6 +11,7 @@ import {
   type BrowserContent,
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { EncryptionService } from "@/lib/encryption";
 
 export const fetchCache = "force-no-store";
 
@@ -90,27 +91,43 @@ export async function POST(request: NextRequest) {
       })) as Artifact[],
     };
 
-    // Extract podId from IDE or Browser artifacts and store on task
+    // Extract podId and agentPassword from IDE or Browser artifacts and store on task
     if (taskId) {
-      const podIdArtifact = artifacts.find(
+      const podArtifact = artifacts.find(
         (a: ArtifactRequest) =>
           (a.type === ArtifactType.IDE || a.type === ArtifactType.BROWSER) &&
-          (a.content as IDEContent | BrowserContent | undefined)?.podId,
+          ((a.content as IDEContent | BrowserContent | undefined)?.podId ||
+            (a.content as IDEContent | BrowserContent | undefined)?.agentPassword),
       );
-      if (podIdArtifact) {
-        const podId = (podIdArtifact.content as IDEContent | BrowserContent)?.podId;
-        if (podId) {
+      if (podArtifact) {
+        const content = podArtifact.content as IDEContent | BrowserContent;
+        const podId = content?.podId;
+        const agentPassword = content?.agentPassword;
+
+        if (podId || agentPassword) {
           try {
+            const updateData: { podId?: string; agentPassword?: string } = {};
+
+            if (podId) {
+              updateData.podId = podId;
+            }
+
+            if (agentPassword) {
+              const encryptionService = EncryptionService.getInstance();
+              const encrypted = encryptionService.encryptField("agentPassword", agentPassword);
+              updateData.agentPassword = JSON.stringify(encrypted);
+            }
+
             const updatedTask = await db.task.update({
               where: { id: taskId },
-              data: { podId },
+              data: updateData,
               include: {
                 workspace: {
                   select: { slug: true },
                 },
               },
             });
-            console.log(`✅ Stored podId ${podId} from artifact for task ${taskId}`);
+            console.log(`✅ Stored podId=${podId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`);
 
             // Broadcast podId update to both channels for real-time UI updates
             const podUpdatePayload = {
@@ -145,7 +162,7 @@ export async function POST(request: NextRequest) {
               }
             }
           } catch (error) {
-            console.error("Failed to store podId from artifact:", error);
+            console.error("Failed to store podId/agentPassword from artifact:", error);
           }
         }
       }
