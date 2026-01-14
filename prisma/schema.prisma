@@ -813,6 +813,7 @@ model Feature {
   phases       Phase[]
   tasks        Task[]
   stakworkRuns StakworkRun[]
+  whiteboard   Whiteboard?
 
   deleted     Boolean          @default(false)
   deletedAt   DateTime?        @map("deleted_at")
@@ -981,6 +982,10 @@ model Whiteboard {
   name        String
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Optional link to feature
+  featureId   String?   @unique @map("feature_id")
+  feature     Feature?  @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   // Excalidraw data stored as JSON
   elements    Json      @default("[]")

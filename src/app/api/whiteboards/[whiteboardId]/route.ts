@@ -46,6 +46,7 @@ export async function GET(
       data: {
         id: whiteboard.id,
         name: whiteboard.name,
+        featureId: whiteboard.featureId,
         elements: whiteboard.elements,
         appState: whiteboard.appState,
         files: whiteboard.files,
@@ -98,13 +99,21 @@ export async function PATCH(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // Handle featureId linking/unlinking (null to unlink)
+    const updateData: Record<string, unknown> = {};
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.elements !== undefined) updateData.elements = body.elements;
+    if (body.appState !== undefined) updateData.appState = body.appState;
+    if (body.files !== undefined) updateData.files = body.files;
+    if ("featureId" in body) updateData.featureId = body.featureId;
+
     const updated = await db.whiteboard.update({
       where: { id: whiteboardId },
-      data: {
-        ...(body.name !== undefined && { name: body.name }),
-        ...(body.elements !== undefined && { elements: body.elements }),
-        ...(body.appState !== undefined && { appState: body.appState }),
-        ...(body.files !== undefined && { files: body.files }),
+      data: updateData,
+      include: {
+        feature: {
+          select: { id: true, title: true },
+        },
       },
     });
 

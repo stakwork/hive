@@ -18,6 +18,7 @@ import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { AITextareaSection } from "@/components/features/AITextareaSection";
 import { PersonasSection } from "@/components/features/PersonasSection";
 import { TicketsList } from "@/components/features/TicketsList";
+import { FeatureWhiteboardSection } from "@/components/features/FeatureWhiteboardSection";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -27,7 +28,7 @@ export default function FeatureDetailPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
-  const { slug: workspaceSlug } = useWorkspace();
+  const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
   const featureId = params.featureId as string;
 
   // Tab state management
@@ -507,6 +508,13 @@ export default function FeatureDetailPage() {
                 onChange={(value) => updateFeature({ architecture: value })}
                 onBlur={(value) => handleFieldBlur("architecture", value)}
                 initialDiagramUrl={feature.diagramUrl}
+              />
+
+              {/* Whiteboard Section */}
+              <FeatureWhiteboardSection
+                featureId={featureId}
+                workspaceId={workspaceId}
+                workspaceSlug={workspaceSlug}
               />
 
               {/* Navigation buttons */}

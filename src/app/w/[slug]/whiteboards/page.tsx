@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Loader2, PenLine } from "lucide-react";
+import { Plus, Trash2, Loader2, PenLine, Link2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import {
   Card,
@@ -26,6 +27,8 @@ import {
 interface WhiteboardItem {
   id: string;
   name: string;
+  featureId: string | null;
+  feature: { id: string; title: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -165,6 +168,19 @@ export default function WhiteboardsPage() {
                   <CardDescription className="text-xs">
                     Updated {formatDate(wb.updatedAt)}
                   </CardDescription>
+                  {wb.feature && (
+                    <Badge
+                      variant="secondary"
+                      className="text-xs mt-1 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/w/${slug}/plan/${wb.feature!.id}?tab=architecture`);
+                      }}
+                    >
+                      <Link2 className="w-3 h-3 mr-1" />
+                      {wb.feature.title}
+                    </Badge>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
