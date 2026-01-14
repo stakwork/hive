@@ -6,7 +6,6 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
-import { storePullRequest, type PullRequestPayload } from "@/lib/github/storePullRequest";
 
 //
 export async function POST(request: NextRequest) {
@@ -179,18 +178,6 @@ export async function POST(request: NextRequest) {
           workspaceId: repository.workspaceId,
           prNumber: payload.number,
         });
-
-        // Store PR data without failing the webhook if this fails
-        try {
-          await storePullRequest(payload as PullRequestPayload, repository.id, repository.workspaceId, githubPat);
-        } catch (error) {
-          console.error("[GithubWebhook] Failed to store PR, continuing", {
-            delivery,
-            workspaceId: repository.workspaceId,
-            prNumber: payload.number,
-            error,
-          });
-        }
       } else {
         console.log("[GithubWebhook] PR action not handled, skipping", {
           delivery,
