@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -128,7 +128,7 @@ function SidebarContent({
   user,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
-    // Auto-expand Protect if any child route is active
+    // Auto-expand parent sections if any child route is active
     const initialExpanded = new Set<string>();
     navigationItems.forEach((item) => {
       if (item.children && isParentActive(pathname, item.children)) {
@@ -137,6 +137,24 @@ function SidebarContent({
     });
     return initialExpanded;
   });
+
+  // Update expanded sections when pathname changes
+  useEffect(() => {
+    setExpandedSections((prev) => {
+      const newExpanded = new Set(prev);
+      navigationItems.forEach((item) => {
+        if (item.children) {
+          const shouldExpand = isParentActive(pathname, item.children);
+          if (shouldExpand) {
+            newExpanded.add(item.label);
+          }
+          // Note: We don't auto-collapse sections when navigating away
+          // to maintain user's manual expand/collapse preferences
+        }
+      });
+      return newExpanded;
+    });
+  }, [pathname, navigationItems]);
 
   const toggleSection = (label: string) => {
     setExpandedSections((prev) => {
