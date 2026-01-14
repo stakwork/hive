@@ -18,6 +18,7 @@ import {
   Settings,
   ShieldCheck,
   TestTube2,
+  Zap,
 } from "lucide-react";
 import { PiGraphFill } from "react-icons/pi";
 import { usePathname, useRouter } from "next/navigation";
@@ -244,8 +245,20 @@ function SidebarContent({
       </nav>
       {/* Spacer to push bottom content down */}
       <div className="flex-1" />
-      {/* Settings */}
-      <div className="p-4 pb-2">
+      {/* Bottom Menu Items */}
+      <div className="p-4 pb-2 space-y-1">
+        <Button
+          data-testid="speedread-button"
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => {
+            // Navigate directly to speedread without workspace prefix
+            window.location.href = "/speedread";
+          }}
+        >
+          <Zap className="w-4 h-4 mr-2" />
+          SpeedRead
+        </Button>
         <Button
           data-testid="settings-button"
           variant="ghost"
