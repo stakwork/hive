@@ -596,7 +596,10 @@ export async function callStakworkAPI(params: {
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
 
   let workflowId: string;
-  if (mode === "live") {
+  // Use task workflow for non-janitor tasks when configured
+  if (config.STAKWORK_TASK_WORKFLOW_ID && mode === "live" && taskSource !== "JANITOR") {
+    workflowId = config.STAKWORK_TASK_WORKFLOW_ID;
+  } else if (mode === "live") {
     workflowId = stakworkWorkflowIds[0];
   } else if (mode === "unit") {
     workflowId = stakworkWorkflowIds[2];
