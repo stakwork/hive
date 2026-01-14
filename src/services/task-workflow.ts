@@ -4,6 +4,9 @@ import { config } from "@/config/env";
 import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
+import { EncryptionService } from "@/lib/encryption";
+
+const encryptionService = EncryptionService.getInstance();
 
 /**
  * Create a task and immediately trigger Stakwork workflow
@@ -382,6 +385,12 @@ export async function createChatMessageAndTriggerStakwork(params: {
     // Get repository URL and branch from workspace repositories
     const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
     const baseBranch = task.workspace.repositories?.[0]?.branch || null;
+    const repoName = task.workspace.repositories?.[0]?.name || null;
+
+    // Decrypt pod password if available
+    const podPassword = task.agentPassword
+      ? encryptionService.decryptField("agentPassword", task.agentPassword)
+      : null;
 
     try {
       stakworkData = await callStakworkAPI({
@@ -404,6 +413,9 @@ export async function createChatMessageAndTriggerStakwork(params: {
         runTestSuite: task.runTestSuite,
         repoUrl,
         baseBranch,
+        repoName,
+        podId: task.podId,
+        podPassword,
         autoMergePr,
       });
 
@@ -486,6 +498,7 @@ export async function callStakworkAPI(params: {
   history?: Record<string, unknown>[];
   autoMergePr?: boolean;
   webhook?: string;
+  repoName?: string | null;
   podId?: string | null;
   podPassword?: string | null;
 }) {
@@ -512,6 +525,7 @@ export async function callStakworkAPI(params: {
     history = [],
     autoMergePr,
     webhook,
+    repoName = null,
     podId = null,
     podPassword = null,
   } = params;
@@ -549,6 +563,7 @@ export async function callStakworkAPI(params: {
     runTestSuite,
     repo_url: repoUrl,
     base_branch: baseBranch,
+    repo_name: repoName,
     history,
   };
 
