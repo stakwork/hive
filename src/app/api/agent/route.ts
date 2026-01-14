@@ -173,6 +173,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         sessionId: taskId, // taskId IS the sessionId
         webhookUrl,
+        apiKey: process.env.ANTHROPIC_API_KEY,
       }),
     });
 
