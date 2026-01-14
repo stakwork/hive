@@ -6,7 +6,6 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
-import { storePullRequest, type PullRequestPayload } from "@/lib/github/storePullRequest";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
@@ -178,51 +177,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const action = payload?.action;
       const merged = payload?.pull_request?.merged;
 
-      if (action === "closed" && merged === true) {
-        const baseBranch = payload?.pull_request?.base?.ref;
-        const isDefaultBranch = baseBranch === repository.branch;
-
-        console.log("[GithubWebhook] Processing merged PR", {
-          delivery,
-          workspaceId: repository.workspaceId,
-          prNumber: payload.number,
-          baseBranch,
-          repositoryBranch: repository.branch,
-          isDefaultBranch,
-        });
-
-        // Store PR data without failing the webhook if this fails
-        try {
-          await storePullRequest(payload as PullRequestPayload, repository.id, repository.workspaceId, githubPat);
-        } catch (error) {
-          console.error("[GithubWebhook] Failed to store PR, continuing", {
-            delivery,
-            workspaceId: repository.workspaceId,
-            prNumber: payload.number,
-            error,
-          });
-        }
-
-        // Trigger auto-learn if enabled and PR was merged to the default branch
-        if (isDefaultBranch) {
-          try {
-            await triggerAutoLearnIfEnabled(repository.workspaceId, repository.repositoryUrl, githubPat, delivery);
-          } catch (error) {
-            console.error("[GithubWebhook] Auto-learn trigger failed, continuing", {
-              delivery,
-              workspaceId: repository.workspaceId,
-              error,
-            });
-          }
-        }
-      } else {
-        console.log("[GithubWebhook] PR action not handled, skipping", {
-          delivery,
-          workspaceId: repository.workspaceId,
-          action,
-          merged,
-        });
-      }
+      console.log("[GithubWebhook] PR action not handled, skipping", {
+        delivery,
+        workspaceId: repository.workspaceId,
+        action,
+        merged,
+      });
 
       // For pull_request events, we don't trigger sync, so return here
       return NextResponse.json({ success: true }, { status: 202 });
@@ -237,6 +197,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: repository.workspaceId },
+      select: {
+        id: true,
+        name: true,
+        swarmUrl: true,
+        swarmApiKey: true,
+        autoLearnEnabled: true,
+      },
     });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
       console.error("[GithubWebhook] Swarm not found or misconfigured", {
@@ -319,6 +286,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       hasRequestId: !!apiResult.data?.request_id,
     });
 
+    // Trigger auto-learn if enabled (for push events to allowed branches)
+    try {
+      triggerAutoLearnIfEnabled({
+        workspaceId: repository.workspaceId,
+        repositoryUrl: repository.repositoryUrl,
+        githubPat,
+        delivery,
+        swarm: {
+          autoLearnEnabled: swarm.autoLearnEnabled,
+          swarmUrl: swarm.swarmUrl,
+        },
+        decryptedSwarmApiKey,
+      });
+    } catch (error) {
+      console.error("[GithubWebhook] Auto-learn trigger failed, continuing", {
+        delivery,
+        workspaceId: repository.workspaceId,
+        error,
+      });
+    }
+
     try {
       const reqId = apiResult.data?.request_id;
       if (reqId) {
@@ -355,41 +343,43 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
+interface AutoLearnParams {
+  workspaceId: string;
+  repositoryUrl: string;
+  githubPat: string | undefined;
+  delivery: string | null;
+  swarm: {
+    autoLearnEnabled: boolean | null;
+    swarmUrl: string | null;
+  };
+  decryptedSwarmApiKey: string;
+}
+
 /**
  * Triggers the gitree/process endpoint if autoLearnEnabled is true on the workspace swarm.
- * This is called when a PR is merged to main/master to automatically update the knowledge base.
+ * This is called on push events to allowed branches to automatically update the knowledge base.
  */
-async function triggerAutoLearnIfEnabled(
-  workspaceId: string,
-  repositoryUrl: string,
-  githubPat: string | undefined,
-  delivery: string | null,
-) {
-  // Get swarm with autoLearnEnabled flag
-  const swarm = await db.swarm.findUnique({
-    where: { workspaceId },
-    select: {
-      autoLearnEnabled: true,
-      swarmUrl: true,
-      swarmApiKey: true,
-    },
-  });
-
-  if (!swarm?.autoLearnEnabled) {
+function triggerAutoLearnIfEnabled({
+  workspaceId,
+  repositoryUrl,
+  githubPat,
+  delivery,
+  swarm,
+  decryptedSwarmApiKey,
+}: AutoLearnParams) {
+  if (!swarm.autoLearnEnabled) {
     console.log("[GithubWebhook] Auto-learn disabled, skipping", {
       delivery,
       workspaceId,
-      autoLearnEnabled: swarm?.autoLearnEnabled ?? false,
+      autoLearnEnabled: swarm.autoLearnEnabled ?? false,
     });
     return;
   }
 
-  if (!swarm.swarmUrl || !swarm.swarmApiKey) {
-    console.error("[GithubWebhook] Auto-learn enabled but swarm not fully configured", {
+  if (!swarm.swarmUrl) {
+    console.error("[GithubWebhook] Auto-learn enabled but swarm URL not configured", {
       delivery,
       workspaceId,
-      hasSwarmUrl: !!swarm.swarmUrl,
-      hasSwarmApiKey: !!swarm.swarmApiKey,
     });
     return;
   }
@@ -413,21 +403,6 @@ async function triggerAutoLearnIfEnabled(
       delivery,
       workspaceId,
       repositoryUrl,
-      error,
-    });
-    return;
-  }
-
-  // Decrypt swarm API key
-  const enc = EncryptionService.getInstance();
-  let decryptedSwarmApiKey: string;
-  try {
-    const parsed = typeof swarm.swarmApiKey === "string" ? JSON.parse(swarm.swarmApiKey) : swarm.swarmApiKey;
-    decryptedSwarmApiKey = enc.decryptField("swarmApiKey", parsed);
-  } catch (error) {
-    console.error("[GithubWebhook] Failed to decrypt swarm API key for auto-learn", {
-      delivery,
-      workspaceId,
       error,
     });
     return;
