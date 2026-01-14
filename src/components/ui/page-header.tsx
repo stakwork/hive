@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { LucideIcon } from "lucide-react";
 
 interface PageHeaderProps {
-  title: string;
+  title: ReactNode;
   description?: string;
   icon?: LucideIcon;
   iconClassName?: string;

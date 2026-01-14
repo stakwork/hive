@@ -234,6 +234,9 @@ model Workspace {
   // Screenshots
   screenshots Screenshot[]
 
+  // Whiteboards
+  whiteboards Whiteboard[]
+
   // Node type ordering for graph visualization
   nodeTypeOrder Json @default("[{\"type\":\"Function\",\"value\":20},{\"type\":\"Feature\",\"value\":20},{\"type\":\"File\",\"value\":20},{\"type\":\"Endpoint\",\"value\":20},{\"type\":\"Person\",\"value\":20},{\"type\":\"Episode\",\"value\":20},{\"type\":\"Call\",\"value\":20},{\"type\":\"Message\",\"value\":20}]") @map("node_type_order")
 
@@ -813,6 +816,7 @@ model Feature {
   phases       Phase[]
   tasks        Task[]
   stakworkRuns StakworkRun[]
+  whiteboard   Whiteboard?
 
   deleted     Boolean          @default(false)
   deletedAt   DateTime?        @map("deleted_at")
@@ -970,5 +974,32 @@ model Screenshot {
   @@index([pageUrl])
   @@index([createdAt])
   @@map("screenshots")
+}
+
+// =============================================
+// WHITEBOARDS
+// =============================================
+
+model Whiteboard {
+  id          String    @id @default(cuid())
+  name        String
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Optional link to feature
+  featureId   String?   @unique @map("feature_id")
+  feature     Feature?  @relation(fields: [featureId], references: [id], onDelete: SetNull)
+
+  // Excalidraw data stored as JSON
+  elements    Json      @default("[]")
+  appState    Json      @default("{}") @map("app_state")
+  files       Json      @default("{}")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@map("whiteboards")
 }
 
