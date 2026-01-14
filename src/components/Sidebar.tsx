@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Map,
   Menu,
+  PenLine,
   Phone,
   Server,
   Settings,
@@ -96,6 +97,7 @@ const baseNavigationItems: NavigationItem[] = [
     children: [
       { icon: CheckSquare, label: "Tasks", href: "/tasks" },
       { icon: Map, label: "Plan", href: "/plan" },
+      { icon: PenLine, label: "Whiteboards", href: "/whiteboards" },
     ],
   },
   {
