@@ -25,11 +25,13 @@ export interface CodeContent {
 export interface BrowserContent {
   url: string;
   podId?: string;
+  agentPassword?: string;
 }
 
 export interface IDEContent {
   url: string;
   podId?: string;
+  agentPassword?: string;
 }
 
 export interface GraphContent {
