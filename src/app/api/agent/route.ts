@@ -164,6 +164,8 @@ export async function POST(request: NextRequest) {
 
   try {
     console.log("[Agent]", isResume ? "Resuming" : "Creating", "session for taskId:", taskId);
+    console.log("[Agent] agentUrl:", agentUrl, "sessionUrl:", sessionUrl);
+    console.log("[Agent] task.agentUrl:", task.agentUrl, "CUSTOM_GOOSE_URL:", process.env.CUSTOM_GOOSE_URL);
 
     const sessionResponse = await fetch(sessionUrl, {
       method: "POST",

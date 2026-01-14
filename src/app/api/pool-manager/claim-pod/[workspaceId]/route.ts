@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { claimPodAndGetFrontend, updatePodRepositories, startGoose, checkGooseRunning, POD_PORTS } from "@/lib/pods";
+import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -128,7 +128,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
 
     // Get services from swarm
-    const services = workspace.swarm.services as Array<{ name: string; port: number; scripts?: Record<string, string> }> | null | undefined;
+    const services = workspace.swarm.services as
+      | Array<{ name: string; port: number; scripts?: Record<string, string> }>
+      | null
+      | undefined;
 
     // Only pass taskId as user_info in agent mode (goose=true)
     const userInfo = shouldIncludeGoose && taskId ? taskId : undefined;
@@ -136,7 +139,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const {
       frontend,
       workspace: podWorkspace,
-      processList,
     } = await claimPodAndGetFrontend(poolId as string, poolApiKeyPlain, services || undefined, userInfo);
 
     // If "latest" parameter is provided, update the pod repositories
@@ -164,38 +166,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const control = podWorkspace.portMappings[POD_PORTS.CONTROL] || null;
     const ide = podWorkspace.url || null;
 
-    // Only handle goose if requested via query parameter
-    let goose: string | null = null;
-    if (shouldIncludeGoose) {
-      // Check if goose service is already running by checking process list
-      const gooseIsRunning = processList ? checkGooseRunning(processList) : false;
-
-      if (gooseIsRunning) {
-        // Goose is always on the designated port
-        goose = podWorkspace.portMappings[POD_PORTS.GOOSE] || null;
-        if (goose) {
-          console.log(`✅ Goose service already running on port ${POD_PORTS.GOOSE}:`, goose);
-        }
-      }
-
-      // If goose service is not running, start it up via control port
-      if (!goose && control) {
-        // Get the first repository name (or default to "hive")
-        const repoName = workspace.repositories[0]?.repositoryUrl.split("/").pop()?.replace(".git", "") || "hive";
-
-        // Get Anthropic API key from environment
-        const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-
-        if (!anthropicApiKey) {
-          console.error("ANTHROPIC_API_KEY not found in environment");
-        } else {
-          goose = await startGoose(control, podWorkspace.password, repoName, anthropicApiKey);
-        }
-      }
-    }
+    console.log(">>> control", control);
 
     // If taskId is provided, store agent credentials and podId on the task
-    if (taskId && shouldIncludeGoose && goose) {
+    // Use control URL (staklink on port 15552) for agentUrl since /session endpoint is there
+    if (taskId && shouldIncludeGoose && control) {
       try {
         const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
 
@@ -203,7 +178,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           where: { id: taskId },
           data: {
             podId: podWorkspace.id,
-            agentUrl: goose,
+            agentUrl: control,
             agentPassword: JSON.stringify(encryptedPassword),
           },
         });
