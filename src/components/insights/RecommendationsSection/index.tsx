@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import { getPriorityConfig, getJanitorIcon } from "@/lib/constants/janitor";
+import { formatRelativeOrDate } from "@/lib/date-utils";
 import { JanitorType, Priority } from "@prisma/client";
 
 export function RecommendationsSection() {
@@ -119,6 +120,11 @@ export function RecommendationsSection() {
                     <h4 className="text-sm font-medium line-clamp-1" data-testid="recommendation-title">{recommendation.title}</h4>
                   </div>
                   <div className="flex items-center gap-2">
+                    {recommendation.createdAt && (
+                      <span className="text-xs text-muted-foreground" data-testid="recommendation-timestamp">
+                        {formatRelativeOrDate(recommendation.createdAt)}
+                      </span>
+                    )}
                     {!recommendation.janitorRun && (
                       <Badge className="gap-1 px-1.5 py-0.5 text-xs bg-purple-100 text-purple-800 border-purple-200" data-testid="recommendation-review-badge">
                         <User className="w-3 h-3" />
