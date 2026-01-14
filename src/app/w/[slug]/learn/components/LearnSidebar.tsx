@@ -226,7 +226,6 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
         <div className="flex items-center justify-between mb-3 py-2 px-3 bg-muted/30 rounded-lg">
           <div className="flex flex-col">
             <span className="text-xs font-medium text-foreground">Auto-learn on PR merge</span>
-            <span className="text-xs text-muted-foreground">Process when PRs merge to main</span>
           </div>
           <Switch checked={autoLearnEnabled} onCheckedChange={handleAutoLearnToggle} disabled={isLoadingConfig} />
         </div>
