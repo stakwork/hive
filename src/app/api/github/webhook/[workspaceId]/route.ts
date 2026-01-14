@@ -7,6 +7,7 @@ import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { storePullRequest, type PullRequestPayload } from "@/lib/github/storePullRequest";
+import { parseOwnerRepo } from "@/lib/ai/utils";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -178,20 +179,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const merged = payload?.pull_request?.merged;
 
       if (action === "closed" && merged === true) {
+        const baseBranch = payload?.pull_request?.base?.ref;
+        const isDefaultBranch = baseBranch === repository.branch;
+
         console.log("[GithubWebhook] Processing merged PR", {
           delivery,
           workspaceId: repository.workspaceId,
           prNumber: payload.number,
+          baseBranch,
+          repositoryBranch: repository.branch,
+          isDefaultBranch,
         });
 
         // Store PR data without failing the webhook if this fails
         try {
-          await storePullRequest(
-            payload as PullRequestPayload,
-            repository.id,
-            repository.workspaceId,
-            githubPat,
-          );
+          await storePullRequest(payload as PullRequestPayload, repository.id, repository.workspaceId, githubPat);
         } catch (error) {
           console.error("[GithubWebhook] Failed to store PR, continuing", {
             delivery,
@@ -199,6 +201,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             prNumber: payload.number,
             error,
           });
+        }
+
+        // Trigger auto-learn if enabled and PR was merged to the default branch
+        if (isDefaultBranch) {
+          try {
+            await triggerAutoLearnIfEnabled(repository.workspaceId, repository.repositoryUrl, githubPat, delivery);
+          } catch (error) {
+            console.error("[GithubWebhook] Auto-learn trigger failed, continuing", {
+              delivery,
+              workspaceId: repository.workspaceId,
+              error,
+            });
+          }
         }
       } else {
         console.log("[GithubWebhook] PR action not handled, skipping", {
@@ -338,4 +353,129 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error("[GithubWebhook] Unhandled error", { error });
     return NextResponse.json({ success: false }, { status: 500 });
   }
+}
+
+/**
+ * Triggers the gitree/process endpoint if autoLearnEnabled is true on the workspace swarm.
+ * This is called when a PR is merged to main/master to automatically update the knowledge base.
+ */
+async function triggerAutoLearnIfEnabled(
+  workspaceId: string,
+  repositoryUrl: string,
+  githubPat: string | undefined,
+  delivery: string | null,
+) {
+  // Get swarm with autoLearnEnabled flag
+  const swarm = await db.swarm.findUnique({
+    where: { workspaceId },
+    select: {
+      autoLearnEnabled: true,
+      swarmUrl: true,
+      swarmApiKey: true,
+    },
+  });
+
+  if (!swarm?.autoLearnEnabled) {
+    console.log("[GithubWebhook] Auto-learn disabled, skipping", {
+      delivery,
+      workspaceId,
+      autoLearnEnabled: swarm?.autoLearnEnabled ?? false,
+    });
+    return;
+  }
+
+  if (!swarm.swarmUrl || !swarm.swarmApiKey) {
+    console.error("[GithubWebhook] Auto-learn enabled but swarm not fully configured", {
+      delivery,
+      workspaceId,
+      hasSwarmUrl: !!swarm.swarmUrl,
+      hasSwarmApiKey: !!swarm.swarmApiKey,
+    });
+    return;
+  }
+
+  if (!githubPat) {
+    console.error("[GithubWebhook] Auto-learn enabled but no GitHub PAT available", {
+      delivery,
+      workspaceId,
+    });
+    return;
+  }
+
+  // Parse repository URL to get owner/repo
+  let owner: string, repo: string;
+  try {
+    const parsed = parseOwnerRepo(repositoryUrl);
+    owner = parsed.owner;
+    repo = parsed.repo;
+  } catch (error) {
+    console.error("[GithubWebhook] Failed to parse repository URL for auto-learn", {
+      delivery,
+      workspaceId,
+      repositoryUrl,
+      error,
+    });
+    return;
+  }
+
+  // Decrypt swarm API key
+  const enc = EncryptionService.getInstance();
+  let decryptedSwarmApiKey: string;
+  try {
+    const parsed = typeof swarm.swarmApiKey === "string" ? JSON.parse(swarm.swarmApiKey) : swarm.swarmApiKey;
+    decryptedSwarmApiKey = enc.decryptField("swarmApiKey", parsed);
+  } catch (error) {
+    console.error("[GithubWebhook] Failed to decrypt swarm API key for auto-learn", {
+      delivery,
+      workspaceId,
+      error,
+    });
+    return;
+  }
+
+  // Build swarm base URL
+  const swarmUrlObj = new URL(swarm.swarmUrl);
+  let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
+  if (swarm.swarmUrl.includes("localhost")) {
+    baseSwarmUrl = `http://localhost:3355`;
+  }
+
+  // Trigger gitree/process (fire and forget)
+  const gitreeUrl = `${baseSwarmUrl}/gitree/process?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&token=${encodeURIComponent(githubPat)}&summarize=true&link=true`;
+
+  console.log("[GithubWebhook] Triggering auto-learn gitree/process", {
+    delivery,
+    workspaceId,
+    owner,
+    repo,
+  });
+
+  fetch(gitreeUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": decryptedSwarmApiKey,
+    },
+  })
+    .then((response) => {
+      if (!response.ok) {
+        console.error("[GithubWebhook] Auto-learn gitree/process failed", {
+          delivery,
+          workspaceId,
+          status: response.status,
+        });
+      } else {
+        console.log("[GithubWebhook] Auto-learn gitree/process initiated successfully", {
+          delivery,
+          workspaceId,
+        });
+      }
+    })
+    .catch((error) => {
+      console.error("[GithubWebhook] Auto-learn gitree/process request failed", {
+        delivery,
+        workspaceId,
+        error,
+      });
+    });
 }

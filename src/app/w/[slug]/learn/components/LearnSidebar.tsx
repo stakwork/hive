@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Sprout, Box, ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { CreateFeatureModal } from "./CreateFeatureModal";
 import { formatRelativeOrDate } from "@/lib/date-utils";
 
@@ -26,6 +27,8 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
   const [lastProcessed, setLastProcessed] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [autoLearnEnabled, setAutoLearnEnabled] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 
   useEffect(() => {
     const fetchFeatures = async () => {
@@ -50,6 +53,25 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
     };
 
     fetchFeatures();
+  }, [workspaceSlug]);
+
+  useEffect(() => {
+    const fetchLearnConfig = async () => {
+      setIsLoadingConfig(true);
+      try {
+        const response = await fetch(`/api/workspaces/${encodeURIComponent(workspaceSlug)}/learn/config`);
+        if (response.ok) {
+          const data = await response.json();
+          setAutoLearnEnabled(data.config?.autoLearnEnabled ?? false);
+        }
+      } catch (error) {
+        console.error("Error fetching learn config:", error);
+      } finally {
+        setIsLoadingConfig(false);
+      }
+    };
+
+    fetchLearnConfig();
   }, [workspaceSlug]);
 
   const handleFeatureClickInternal = (featureId: string, featureName: string) => {
@@ -99,6 +121,29 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
       }
     } catch (error) {
       console.error("Error fetching features after creation:", error);
+    }
+  };
+
+  const handleAutoLearnToggle = async (checked: boolean) => {
+    // Optimistically update UI
+    setAutoLearnEnabled(checked);
+
+    try {
+      const response = await fetch(`/api/workspaces/${encodeURIComponent(workspaceSlug)}/learn/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoLearnEnabled: checked }),
+      });
+
+      if (!response.ok) {
+        // Revert on error
+        setAutoLearnEnabled(!checked);
+        console.error("Failed to update auto-learn setting");
+      }
+    } catch (error) {
+      // Revert on error
+      setAutoLearnEnabled(!checked);
+      console.error("Error updating auto-learn setting:", error);
     }
   };
 
@@ -171,10 +216,19 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
           <Sprout className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-medium text-muted-foreground">Process Repository</h3>
         </div>
-        <div className="mb-3">
-          <p className="text-xs text-muted-foreground">
-            {lastProcessed ? `Last processed: ${formatRelativeOrDate(lastProcessed)}` : "Never processed"}
-          </p>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs text-muted-foreground">
+              {lastProcessed ? `Last processed: ${formatRelativeOrDate(lastProcessed)}` : "Never processed"}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between mb-3 py-2 px-3 bg-muted/30 rounded-lg">
+          <div className="flex flex-col">
+            <span className="text-xs font-medium text-foreground">Auto-learn on PR merge</span>
+            <span className="text-xs text-muted-foreground">Process when PRs merge to main</span>
+          </div>
+          <Switch checked={autoLearnEnabled} onCheckedChange={handleAutoLearnToggle} disabled={isLoadingConfig} />
         </div>
         <div className="flex gap-2">
           <Button size="sm" onClick={handleSeedKnowledge} disabled={isSeeding || isProcessing} className="flex-1">
