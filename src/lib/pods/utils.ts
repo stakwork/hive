@@ -7,10 +7,10 @@ import { JlistProcess } from "@/types/pod-repair";
 const encryptionService = EncryptionService.getInstance();
 
 // Re-export constants for external use
-export { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
+export { POD_PORTS, PROCESS_NAMES } from "./constants";
 
 // Import for internal use
-import { POD_PORTS, PROCESS_NAMES, GOOSE_CONFIG } from "./constants";
+import { POD_PORTS, PROCESS_NAMES } from "./constants";
 
 // Get the Pool Manager base URL (already resolved for mock mode in env.ts)
 function getBaseUrl(): string {
@@ -381,15 +381,6 @@ export async function updatePodRepositories(
 }
 
 /**
- * Check if Goose service is running by checking the process list
- * Returns true if goose process is found, false otherwise
- */
-export function checkGooseRunning(processList: ProcessInfo[]): boolean {
-  const gooseProcess = processList.find((proc) => proc.name === PROCESS_NAMES.GOOSE);
-  return !!gooseProcess;
-}
-
-/**
  * Result of frontend availability check
  */
 export interface FrontendCheckResult {
@@ -442,72 +433,6 @@ export async function checkFrontendAvailable(
     return { available: response.ok, frontendUrl };
   } catch {
     return { available: false, frontendUrl, error: "Frontend URL not responding" };
-  }
-}
-
-/**
- * Start the Goose service via the control port
- * Returns the goose URL if startup succeeded, or null if startup failed
- */
-export async function startGoose(
-  controlPortUrl: string,
-  password: string,
-  repoName: string,
-  anthropicApiKey: string,
-  // portMappings: Record<string, string>,
-): Promise<string | null> {
-  console.log(`🚀 Starting Goose service via control port (${POD_PORTS.CONTROL})...`);
-
-  try {
-    // Start goose_web service via control port
-    const startGooseResponse = await fetch(`${controlPortUrl}/goose_web`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${password}`,
-      },
-      body: JSON.stringify({
-        repoName,
-        apiKey: anthropicApiKey,
-      }),
-    });
-
-    if (!startGooseResponse.ok) {
-      const errorText = await startGooseResponse.text();
-      console.error("Failed to start goose service:", startGooseResponse.status, errorText);
-      return null;
-    }
-
-    console.log("✅ Goose service start request sent successfully");
-
-    // Poll to check if goose process is running
-    for (let attempt = 1; attempt <= GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS; attempt++) {
-      console.log(`🔍 Polling for Goose process (attempt ${attempt}/${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS})...`);
-
-      await new Promise((resolve) => setTimeout(resolve, GOOSE_CONFIG.POLLING_INTERVAL_MS));
-
-      // Check if goose process is running
-      try {
-        const processList = await getProcessList(controlPortUrl, password);
-        if (checkGooseRunning(processList)) {
-          // Goose is always on the designated port - replace control port with goose port in controlPortUrl
-          const gooseUrl = controlPortUrl.replace(POD_PORTS.CONTROL, POD_PORTS.GOOSE);
-          console.log(
-            `✅ Goose service is now available on port ${POD_PORTS.GOOSE} after ${attempt} attempt(s):`,
-            gooseUrl,
-          );
-          return gooseUrl;
-        }
-      } catch (error) {
-        console.error(`Error checking process list on attempt ${attempt}:`, error);
-      }
-    }
-
-    console.warn(`⚠️ Goose service did not start after ${GOOSE_CONFIG.MAX_STARTUP_ATTEMPTS} attempts`);
-    return null;
-  } catch (error) {
-    console.error("Error starting goose service:", error);
-    return null;
   }
 }
 
