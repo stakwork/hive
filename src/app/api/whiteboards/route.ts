@@ -10,6 +10,54 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
+    const featureId = searchParams.get("featureId");
+
+    // If featureId is provided, get whiteboard by feature
+    if (featureId) {
+      const whiteboard = await db.whiteboard.findUnique({
+        where: { featureId },
+        include: {
+          workspace: {
+            select: {
+              ownerId: true,
+              members: {
+                where: { userId: userOrResponse.id },
+                select: { role: true },
+              },
+            },
+          },
+          feature: {
+            select: { id: true, title: true },
+          },
+        },
+      });
+
+      if (!whiteboard) {
+        return NextResponse.json({ success: true, data: null }, { status: 200 });
+      }
+
+      // Check access
+      const isOwner = whiteboard.workspace.ownerId === userOrResponse.id;
+      const isMember = whiteboard.workspace.members.length > 0;
+      if (!isOwner && !isMember) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: whiteboard.id,
+          name: whiteboard.name,
+          featureId: whiteboard.featureId,
+          feature: whiteboard.feature,
+          elements: whiteboard.elements,
+          appState: whiteboard.appState,
+          files: whiteboard.files,
+          createdAt: whiteboard.createdAt,
+          updatedAt: whiteboard.updatedAt,
+        },
+      });
+    }
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -40,6 +88,10 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         name: true,
+        featureId: true,
+        feature: {
+          select: { id: true, title: true },
+        },
         createdAt: true,
         updatedAt: true,
       },
@@ -59,7 +111,7 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { workspaceId, name, elements, appState, files } = body;
+    const { workspaceId, name, featureId, elements, appState, files } = body;
 
     if (!workspaceId || !name) {
       return NextResponse.json(
@@ -84,13 +136,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
+    // If featureId provided, verify feature exists and belongs to workspace
+    if (featureId) {
+      const feature = await db.feature.findFirst({
+        where: { id: featureId, workspaceId, deleted: false },
+      });
+      if (!feature) {
+        return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+      }
+    }
+
     const whiteboard = await db.whiteboard.create({
       data: {
         name,
         workspaceId,
+        featureId: featureId || null,
         elements: elements || [],
         appState: appState || {},
         files: files || {},
+      },
+      include: {
+        feature: {
+          select: { id: true, title: true },
+        },
       },
     });
 
