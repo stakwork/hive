@@ -1,0 +1,22 @@
+{
+  "name": "tom-test-hive",
+  "dockerComposeFile": "./docker-compose.yml",
+  "workspaceFolder": "/workspaces",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "git.autofetch": true,
+        "editor.formatOnSave": true,
+        "telemetry.telemetryLevel": "off",
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      },
+      "extensions": [
+        "stakwork.staklink",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
