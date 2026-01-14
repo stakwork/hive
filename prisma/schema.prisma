@@ -391,6 +391,9 @@ model Task {
   // Task mode (live, test, agent, etc.)
   mode String @default("live")
 
+  // Task-specific branch override (if set, takes precedence over repository branch)
+  branch String?
+
   // Build and test configuration
   runBuild     Boolean @default(true) @map("run_build")
   runTestSuite Boolean @default(true) @map("run_test_suite")
