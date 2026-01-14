@@ -472,7 +472,7 @@ describe("POST /api/github/webhook/ensure - Integration Tests", () => {
 
       await POST(request);
 
-      expect(mockGetGithubWebhookCallbackUrl).toHaveBeenCalledWith(request, "workspace-123");
+      expect(mockGetGithubWebhookCallbackUrl).toHaveBeenCalledWith("workspace-123", request);
       expect(mockInstance.ensureRepoWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
           callbackUrl: "https://app.example.com/api/github/webhook",
