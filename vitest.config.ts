@@ -24,7 +24,7 @@ export default defineConfig({
         : ["src/__tests__/unit/**/*.test.{ts,tsx}"],
     setupFiles:
       testSuite === "integration"
-        ? ["./src/__tests__/setup/integration.ts", 'dotenv/config']
+        ? ["./src/__tests__/setup/load-env.ts", "./src/__tests__/setup/integration.ts"]
         : testSuite === "api"
         ? ["./src/__tests__/setup/unit.ts", 'dotenv/config'] // API tests can use unit test setup
         : ["./src/__tests__/setup/unit.ts", 'dotenv/config'],
