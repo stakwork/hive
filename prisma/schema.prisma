@@ -305,6 +305,9 @@ model Swarm {
   // Swarm password (encrypted)
   swarmPassword String? @map("swarm_password")
 
+  // Auto-learn on PR merge (triggers gitree/process when PR merged to main/master)
+  autoLearnEnabled Boolean @default(false) @map("auto_learn_enabled")
+
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

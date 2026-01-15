@@ -6,7 +6,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
-import { storePullRequest, type PullRequestPayload } from "@/lib/github/storePullRequest";
+import { parseOwnerRepo } from "@/lib/ai/utils";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -177,37 +177,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const action = payload?.action;
       const merged = payload?.pull_request?.merged;
 
-      if (action === "closed" && merged === true) {
-        console.log("[GithubWebhook] Processing merged PR", {
-          delivery,
-          workspaceId: repository.workspaceId,
-          prNumber: payload.number,
-        });
-
-        // Store PR data without failing the webhook if this fails
-        try {
-          await storePullRequest(
-            payload as PullRequestPayload,
-            repository.id,
-            repository.workspaceId,
-            githubPat,
-          );
-        } catch (error) {
-          console.error("[GithubWebhook] Failed to store PR, continuing", {
-            delivery,
-            workspaceId: repository.workspaceId,
-            prNumber: payload.number,
-            error,
-          });
-        }
-      } else {
-        console.log("[GithubWebhook] PR action not handled, skipping", {
-          delivery,
-          workspaceId: repository.workspaceId,
-          action,
-          merged,
-        });
-      }
+      console.log("[GithubWebhook] PR action not handled, skipping", {
+        delivery,
+        workspaceId: repository.workspaceId,
+        action,
+        merged,
+      });
 
       // For pull_request events, we don't trigger sync, so return here
       return NextResponse.json({ success: true }, { status: 202 });
@@ -222,6 +197,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const swarm = await db.swarm.findUnique({
       where: { workspaceId: repository.workspaceId },
+      select: {
+        id: true,
+        name: true,
+        swarmUrl: true,
+        swarmApiKey: true,
+        autoLearnEnabled: true,
+      },
     });
     if (!swarm || !swarm.name || !swarm.swarmApiKey) {
       console.error("[GithubWebhook] Swarm not found or misconfigured", {
@@ -304,6 +286,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       hasRequestId: !!apiResult.data?.request_id,
     });
 
+    // Trigger auto-learn if enabled (for push events to allowed branches)
+    try {
+      triggerAutoLearnIfEnabled({
+        workspaceId: repository.workspaceId,
+        repositoryUrl: repository.repositoryUrl,
+        githubPat,
+        delivery,
+        swarm: {
+          autoLearnEnabled: swarm.autoLearnEnabled,
+          swarmUrl: swarm.swarmUrl,
+        },
+        decryptedSwarmApiKey,
+      });
+    } catch (error) {
+      console.error("[GithubWebhook] Auto-learn trigger failed, continuing", {
+        delivery,
+        workspaceId: repository.workspaceId,
+        error,
+      });
+    }
+
     try {
       const reqId = apiResult.data?.request_id;
       if (reqId) {
@@ -338,4 +341,116 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     console.error("[GithubWebhook] Unhandled error", { error });
     return NextResponse.json({ success: false }, { status: 500 });
   }
+}
+
+interface AutoLearnParams {
+  workspaceId: string;
+  repositoryUrl: string;
+  githubPat: string | undefined;
+  delivery: string | null;
+  swarm: {
+    autoLearnEnabled: boolean | null;
+    swarmUrl: string | null;
+  };
+  decryptedSwarmApiKey: string;
+}
+
+/**
+ * Triggers the gitree/process endpoint if autoLearnEnabled is true on the workspace swarm.
+ * This is called on push events to allowed branches to automatically update the knowledge base.
+ */
+function triggerAutoLearnIfEnabled({
+  workspaceId,
+  repositoryUrl,
+  githubPat,
+  delivery,
+  swarm,
+  decryptedSwarmApiKey,
+}: AutoLearnParams) {
+  if (!swarm.autoLearnEnabled) {
+    console.log("[GithubWebhook] Auto-learn disabled, skipping", {
+      delivery,
+      workspaceId,
+      autoLearnEnabled: swarm.autoLearnEnabled ?? false,
+    });
+    return;
+  }
+
+  if (!swarm.swarmUrl) {
+    console.error("[GithubWebhook] Auto-learn enabled but swarm URL not configured", {
+      delivery,
+      workspaceId,
+    });
+    return;
+  }
+
+  if (!githubPat) {
+    console.error("[GithubWebhook] Auto-learn enabled but no GitHub PAT available", {
+      delivery,
+      workspaceId,
+    });
+    return;
+  }
+
+  // Parse repository URL to get owner/repo
+  let owner: string, repo: string;
+  try {
+    const parsed = parseOwnerRepo(repositoryUrl);
+    owner = parsed.owner;
+    repo = parsed.repo;
+  } catch (error) {
+    console.error("[GithubWebhook] Failed to parse repository URL for auto-learn", {
+      delivery,
+      workspaceId,
+      repositoryUrl,
+      error,
+    });
+    return;
+  }
+
+  // Build swarm base URL
+  const swarmUrlObj = new URL(swarm.swarmUrl);
+  let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
+  if (swarm.swarmUrl.includes("localhost")) {
+    baseSwarmUrl = `http://localhost:3355`;
+  }
+
+  // Trigger gitree/process (fire and forget)
+  const gitreeUrl = `${baseSwarmUrl}/gitree/process?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&token=${encodeURIComponent(githubPat)}&summarize=true&link=true`;
+
+  console.log("[GithubWebhook] Triggering auto-learn gitree/process", {
+    delivery,
+    workspaceId,
+    owner,
+    repo,
+  });
+
+  fetch(gitreeUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-token": decryptedSwarmApiKey,
+    },
+  })
+    .then((response) => {
+      if (!response.ok) {
+        console.error("[GithubWebhook] Auto-learn gitree/process failed", {
+          delivery,
+          workspaceId,
+          status: response.status,
+        });
+      } else {
+        console.log("[GithubWebhook] Auto-learn gitree/process initiated successfully", {
+          delivery,
+          workspaceId,
+        });
+      }
+    })
+    .catch((error) => {
+      console.error("[GithubWebhook] Auto-learn gitree/process request failed", {
+        delivery,
+        workspaceId,
+        error,
+      });
+    });
 }

@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
 
     try {
       console.log(`[STAKGRAPH_INGEST] Setting up GitHub webhook for repository: ${finalRepo}`);
-      const callbackUrl = getGithubWebhookCallbackUrl(request);
+      const callbackUrl = getGithubWebhookCallbackUrl(repoWorkspaceId, request);
       const webhookService = new WebhookService(getServiceConfig("github"));
       console.log(`[STAKGRAPH_INGEST] GitHub webhook callback URL: ${callbackUrl}`);
 

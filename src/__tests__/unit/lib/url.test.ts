@@ -197,78 +197,6 @@ describe("URL Utilities", () => {
     });
   });
 
-  describe("getGithubWebhookCallbackUrl", () => {
-    test("should return GITHUB_WEBHOOK_URL when set", () => {
-      process.env.GITHUB_WEBHOOK_URL = "https://custom-webhook.example.com/github";
-
-      const result = getGithubWebhookCallbackUrl();
-
-      expect(result).toBe("https://custom-webhook.example.com/github");
-    });
-
-    test("should construct from getPublicBaseUrl when GITHUB_WEBHOOK_URL not set", () => {
-      process.env.NEXT_PUBLIC_APP_URL = "https://myapp.com";
-
-      const result = getGithubWebhookCallbackUrl();
-
-      expect(result).toBe("https://myapp.com/api/github/webhook");
-    });
-
-    test("should pass request to getPublicBaseUrl when constructing URL", () => {
-      const mockRequest = new NextRequest("http://localhost:3000/test", {
-        headers: {
-          host: "api.example.com",
-          "x-forwarded-proto": "https",
-        },
-      });
-
-      const result = getGithubWebhookCallbackUrl(mockRequest);
-
-      expect(result).toBe("https://api.example.com/api/github/webhook");
-    });
-
-    test("should prioritize GITHUB_WEBHOOK_URL over constructed URL", () => {
-      process.env.GITHUB_WEBHOOK_URL = "https://webhook.custom.com/gh";
-      process.env.NEXT_PUBLIC_APP_URL = "https://app.com";
-
-      const result = getGithubWebhookCallbackUrl();
-
-      expect(result).toBe("https://webhook.custom.com/gh");
-    });
-
-    test("should handle VERCEL_URL fallback when constructing", () => {
-      process.env.VERCEL_URL = "my-app.vercel.app";
-
-      const result = getGithubWebhookCallbackUrl();
-
-      expect(result).toBe("https://my-app.vercel.app/api/github/webhook");
-    });
-
-    test("should handle localhost fallback when constructing", () => {
-      const result = getGithubWebhookCallbackUrl();
-
-      expect(result).toBe("http://localhost:3000/api/github/webhook");
-    });
-
-    test("should handle empty GITHUB_WEBHOOK_URL", () => {
-      process.env.GITHUB_WEBHOOK_URL = "";
-      process.env.NEXT_PUBLIC_APP_URL = "https://app.com";
-
-      const result = getGithubWebhookCallbackUrl();
-
-      expect(result).toBe("https://app.com/api/github/webhook");
-    });
-
-    test("should handle whitespace-only GITHUB_WEBHOOK_URL", () => {
-      process.env.GITHUB_WEBHOOK_URL = "   ";
-      process.env.NEXT_PUBLIC_APP_URL = "https://app.com";
-
-      const result = getGithubWebhookCallbackUrl();
-
-      expect(result).toBe("   ");
-    });
-  });
-
   describe("getStakgraphWebhookCallbackUrl", () => {
     test("should return STAKGRAPH_WEBHOOK_URL when set", () => {
       process.env.STAKGRAPH_WEBHOOK_URL = "https://custom-webhook.example.com/stakgraph";
@@ -414,7 +342,6 @@ describe("URL Utilities", () => {
         });
 
         expect(getPublicBaseUrl(), `Test case ${index + 1} base URL`).toBe(expected.base);
-        expect(getGithubWebhookCallbackUrl(), `Test case ${index + 1} GitHub URL`).toBe(expected.github);
         expect(getStakgraphWebhookCallbackUrl(), `Test case ${index + 1} Stakgraph URL`).toBe(expected.stakgraph);
       });
     });

@@ -423,7 +423,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Only setup GitHub webhook when using session auth (not API token auth)
     if (!isApiTokenAuth && userId) {
       try {
-        const callbackUrl = getGithubWebhookCallbackUrl(request, workspace.id);
+        const callbackUrl = getGithubWebhookCallbackUrl(workspace.id, request);
         const webhookService = new WebhookService(getServiceConfig("github"));
 
         // Reuse primaryRepo from above if available

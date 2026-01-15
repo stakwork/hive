@@ -44,6 +44,7 @@ interface SaveOrUpdateSwarmParams {
   poolState?: PoolState;
   podState?: PodState;
   ingestRequestInProgress?: boolean;
+  autoLearnEnabled?: boolean;
 }
 
 export const select = {
@@ -74,6 +75,7 @@ export const select = {
   agentRequestId: true,
   agentStatus: true,
   ingestRequestInProgress: true,
+  autoLearnEnabled: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -112,6 +114,7 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
   if (params.containerFiles !== undefined) data.containerFiles = params.containerFiles;
   if (params.ingestRefId !== undefined) data.ingestRefId = params.ingestRefId;
   if (params.ingestRequestInProgress !== undefined) data.ingestRequestInProgress = params.ingestRequestInProgress;
+  if (params.autoLearnEnabled !== undefined) data.autoLearnEnabled = params.autoLearnEnabled;
   data.updatedAt = new Date();
 
   if (swarm) {
@@ -127,11 +130,11 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       instanceType: params.instanceType || "",
       environmentVariables: params.environmentVariables
         ? (encryptEnvVars(
-          params.environmentVariables as unknown as Array<{
-            name: string;
-            value: string;
-          }>,
-        ) as unknown)
+            params.environmentVariables as unknown as Array<{
+              name: string;
+              value: string;
+            }>,
+          ) as unknown)
         : [],
       status: params.status || SwarmStatus.PENDING,
       swarmUrl: params.swarmUrl || null,

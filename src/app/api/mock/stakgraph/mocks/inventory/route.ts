@@ -35,8 +35,7 @@ const mockServices = [
       "stakwork/hive/src/app/api/mock/github/oauth/access_token/route.ts",
       "stakwork/hive/src/lib/auth/nextauth.ts",
       "stakwork/hive/src/lib/github/userJourneys.ts",
-      "stakwork/hive/src/lib/github/pullRequestContent.ts",
-      "stakwork/hive/src/lib/github/storePullRequest.ts",
+      "stakwork/hive/src/lib/github/pullRequestContent.ts"
     ],
     file_count: 20,
     mocked: true,

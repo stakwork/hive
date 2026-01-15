@@ -12,7 +12,7 @@ export function getPublicBaseUrl(req?: NextRequest): string {
   return `${proto}://${host}`.replace(/\/$/, "");
 }
 
-export function getGithubWebhookCallbackUrl(req?: NextRequest, workspaceId?: string): string {
+export function getGithubWebhookCallbackUrl(workspaceId: string, req?: NextRequest, ): string {
   const full = process.env.GITHUB_WEBHOOK_URL;
   if (full) {
     // If custom URL is set and workspaceId is provided, append it
