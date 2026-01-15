@@ -40,12 +40,27 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
 };
 
 /**
+ * Validate if a string is valid hex-encoded encryption key (64 hex chars = 32 bytes)
+ */
+function isValidEncryptionKey(key: string | undefined): boolean {
+  return !!(key && /^[0-9a-fA-F]{64}$/.test(key));
+}
+
+/**
  * Ensure test environment variables are set with default values
- * Only sets values if not already defined in process.env
+ * Overrides invalid TOKEN_ENCRYPTION_KEY to prevent test failures
+ * 
+ * Note: Dev environments may have plain-text encryption keys that break tests.
+ * Tests require valid hex-encoded 32-byte keys (64 hex characters).
  */
 export function ensureTestEnv(): void {
   Object.entries(TEST_ENV_DEFAULTS).forEach(([key, value]) => {
-    if (!process.env[key]) {
+    // Special handling for TOKEN_ENCRYPTION_KEY: must be valid hex format
+    if (key === 'TOKEN_ENCRYPTION_KEY') {
+      if (!isValidEncryptionKey(process.env[key])) {
+        process.env[key] = value;
+      }
+    } else if (!process.env[key]) {
       process.env[key] = value;
     }
   });
