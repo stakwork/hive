@@ -70,9 +70,10 @@ Key features:
 Hierarchical structure: Users/Auth → Source Control → Workspaces → Tasks/Janitors/Features
 
 **Key Models**:
+- `Workspace`, `Swarm`
+- `Task`, `ChatMessage`
 - `Feature`, `Phase`, `UserStory` - Product planning hierarchy
 - `StakworkRun` - Tracks AI workflow executions (architecture, task generation, user stories, pod repair)
-- `Screenshot` - Test screenshot storage with S3 integration
 
 **Task Dual Status System**:
 - `status` (TaskStatus) - User/PM work tracking: TODO, IN_PROGRESS, DONE, CANCELLED, BLOCKED
