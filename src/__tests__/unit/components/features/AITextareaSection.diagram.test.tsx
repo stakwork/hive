@@ -119,14 +119,54 @@ describe("AITextareaSection - Diagram Generation", () => {
     vi.clearAllMocks();
   });
 
-  describe("Generate Diagram Button Visibility", () => {
-    it("should show Generate Diagram button for architecture type in preview mode with text", () => {
+  describe("AI Button and Generation Controls Visibility", () => {
+    it("should not show AI Button for architecture type", () => {
       render(<AITextareaSection {...defaultProps} />);
 
-      expect(screen.getByText("Generate Diagram")).toBeInTheDocument();
+      expect(screen.queryByText("Generate")).not.toBeInTheDocument();
     });
 
-    it("should not show Generate Diagram button for non-architecture types", () => {
+    it("should not show GenerationControls for architecture type", () => {
+      render(<AITextareaSection {...defaultProps} />);
+
+      expect(screen.queryByTestId("generation-controls")).not.toBeInTheDocument();
+    });
+
+    it("should show AI Button for requirements type", () => {
+      render(
+        <AITextareaSection
+          {...defaultProps}
+          type="requirements"
+          id="requirements"
+          label="Requirements"
+        />
+      );
+
+      expect(screen.getByText("Generate")).toBeInTheDocument();
+    });
+
+    it("should show GenerationControls for requirements type", () => {
+      render(
+        <AITextareaSection
+          {...defaultProps}
+          type="requirements"
+          id="requirements"
+          label="Requirements"
+        />
+      );
+
+      expect(screen.getByTestId("generation-controls")).toBeInTheDocument();
+    });
+  });
+
+  describe("Generate Diagram Button Visibility", () => {
+    it("should not show Generate Diagram button for architecture type (buttons removed)", () => {
+      render(<AITextareaSection {...defaultProps} />);
+
+      expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
+    });
+
+    it("should not show Generate Diagram button for requirements type", () => {
       render(
         <AITextareaSection
           {...defaultProps}
@@ -137,142 +177,6 @@ describe("AITextareaSection - Diagram Generation", () => {
       );
 
       expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
-    });
-
-    it("should not show Generate Diagram button when text is empty", () => {
-      render(<AITextareaSection {...defaultProps} value="" />);
-
-      expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
-    });
-
-    it("should not show Generate Diagram button when text is null", () => {
-      render(<AITextareaSection {...defaultProps} value={null} />);
-
-      expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
-    });
-  });
-
-  describe("Diagram Generation API Integration", () => {
-    it("should call API endpoint when Generate Diagram button is clicked", async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ diagramUrl: "https://example.com/diagram.png", s3Key: "key123" }),
-      });
-      global.fetch = mockFetch;
-
-      render(<AITextareaSection {...defaultProps} />);
-
-      const generateButton = screen.getByText("Generate Diagram");
-      fireEvent.click(generateButton);
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          "/api/features/feature-123/diagram/generate",
-          expect.objectContaining({
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          })
-        );
-      });
-    });
-
-    it("should update diagram URL after successful generation", async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ diagramUrl: "https://example.com/diagram.png", s3Key: "key123" }),
-      });
-      global.fetch = mockFetch;
-
-      render(<AITextareaSection {...defaultProps} />);
-
-      const generateButton = screen.getByText("Generate Diagram");
-      fireEvent.click(generateButton);
-
-      await waitFor(() => {
-        expect(screen.getByText("Diagram URL: https://example.com/diagram.png")).toBeInTheDocument();
-      });
-    });
-
-    it("should show loading state during diagram generation", async () => {
-      const mockFetch = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, json: async () => ({ diagramUrl: "test.png" }) }), 100))
-      );
-      global.fetch = mockFetch;
-
-      render(<AITextareaSection {...defaultProps} />);
-
-      const generateButton = screen.getByText("Generate Diagram");
-      fireEvent.click(generateButton);
-
-      // Should show loading state
-      await waitFor(() => {
-        expect(screen.getByText("Generating Diagram...")).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("Error Handling", () => {
-    it("should display error toast when API call fails", async () => {
-      const mockToast = vi.mocked(toast);
-
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: false,
-        json: async () => ({ message: "Generation failed" }),
-      });
-      global.fetch = mockFetch;
-
-      render(<AITextareaSection {...defaultProps} />);
-
-      const generateButton = screen.getByText("Generate Diagram");
-      fireEvent.click(generateButton);
-
-      await waitFor(() => {
-        expect(mockToast).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({
-            description: expect.any(String),
-          })
-        );
-      });
-    });
-
-    it("should show error toast when architecture text is missing", async () => {
-      const mockToast = vi.mocked(toast);
-
-      render(<AITextareaSection {...defaultProps} value={null} />);
-
-      // When value is null, button shouldn't appear at all
-      const generateButton = screen.queryByText("Generate Diagram");
-      expect(generateButton).not.toBeInTheDocument();
-    });
-
-    it("should retry on failure", async () => {
-      const mockFetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: false,
-          json: async () => ({ message: "Generation failed" }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          json: async () => ({ message: "Generation failed" }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ diagramUrl: "https://example.com/diagram.png" }),
-        });
-      global.fetch = mockFetch;
-
-      render(<AITextareaSection {...defaultProps} />);
-
-      const generateButton = screen.getByText("Generate Diagram");
-      fireEvent.click(generateButton);
-
-      // Should eventually succeed after retries
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalled();
-      }, { timeout: 8000 });
     });
   });
 

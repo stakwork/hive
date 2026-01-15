@@ -264,16 +264,16 @@ export function AITextareaSection({
             saved={saved}
           />
         </div>
-        <div className="flex items-center gap-2">
-          <AIButton<GeneratedContent>
-            endpoint={`/api/features/${featureId}/generate`}
-            params={{ type }}
-            onGenerated={handleGenerated}
-            onGeneratingChange={setQuickGenerating}
-            disabled={isLoadingState || showWorkflowBadge}
-            label="Generate"
-          />
-          {type === "architecture" && (
+        {type === "requirements" && (
+          <div className="flex items-center gap-2">
+            <AIButton<GeneratedContent>
+              endpoint={`/api/features/${featureId}/generate`}
+              params={{ type }}
+              onGenerated={handleGenerated}
+              onGeneratingChange={setQuickGenerating}
+              disabled={isLoadingState || showWorkflowBadge}
+              label="Generate"
+            />
             <GenerationControls
               onQuickGenerate={() => {}}
               onDeepThink={handleDeepThink}
@@ -283,12 +283,12 @@ export function AITextareaSection({
               isQuickGenerating={quickGenerating}
               disabled={false}
               showDeepThink={true}
-              showGenerateDiagram={mode === "preview" && !!value?.trim()}
+              showGenerateDiagram={false}
               onGenerateDiagram={handleGenerateDiagram}
               isGeneratingDiagram={isGeneratingDiagram}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
       {description && (
         <p className="text-sm text-muted-foreground">
