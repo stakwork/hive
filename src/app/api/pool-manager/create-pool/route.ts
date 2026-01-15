@@ -21,6 +21,28 @@ export const runtime = "nodejs";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
+function isPoolAlreadyExistsError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  const message = (error as { message?: unknown }).message;
+  const details = (error as { details?: unknown }).details;
+
+  const includesAlreadyExists = (value: unknown) =>
+    typeof value === "string" && value.toLowerCase().includes("already exists");
+
+  if (includesAlreadyExists(message)) return true;
+
+  if (typeof details === "string" && includesAlreadyExists(details)) {
+    return true;
+  }
+
+  if (details && typeof details === "object" && "error" in details) {
+    return includesAlreadyExists((details as { error?: unknown }).error);
+  }
+
+  return false;
+}
+
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries: number = 3,
@@ -33,6 +55,11 @@ async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
+      // Do not retry on non-retryable errors (e.g., pool already exists)
+      if (isPoolAlreadyExistsError(error)) {
+        throw error;
+      }
+
       if (i === retries) {
         throw error;
       }
@@ -254,6 +281,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error creating Pool Manager pool:", error);
     const { workspaceId } = body;
+
+    // Treat existing pools as idempotent success
+    if (isPoolAlreadyExistsError(error)) {
+      await saveOrUpdateSwarm({
+        swarmId: body.swarmId,
+        workspaceId,
+        poolName: body.swarmId,
+        poolState: 'COMPLETE',
+      });
+      return NextResponse.json(
+        { pool: { name: body.swarmId, status: "already_exists" } },
+        { status: 200 }
+      );
+    }
 
     saveOrUpdateSwarm({
       workspaceId,
