@@ -70,7 +70,8 @@ Key features:
 Hierarchical structure: Users/Auth → Source Control → Workspaces → Tasks/Janitors/Features
 
 **Key Models**:
-- `Workspace`, `Swarm`
+- `Workspace` - main tenant model
+- `Swarm`, `Repository` - external service where repository code is processed
 - `Task`, `ChatMessage`
 - `Feature`, `Phase`, `UserStory` - Product planning hierarchy
 - `StakworkRun` - Tracks AI workflow executions (architecture, task generation, user stories, pod repair)
