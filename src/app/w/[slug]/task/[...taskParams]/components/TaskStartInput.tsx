@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -60,6 +60,7 @@ export function TaskStartInput({
   const searchParams = useSearchParams();
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
+  const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
@@ -98,8 +99,8 @@ export function TaskStartInput({
   const workflowName = matchedWorkflow?.properties.workflow_name || null;
   const hasValidWorkflowId = workflowIdValue.trim().length > 0 && !isNaN(parseInt(workflowIdValue.trim(), 10));
   // Only show "not found" if workflows have been successfully loaded (array is not empty)
-  // This prevents showing "not found" when the fetch failed or returned no results
-  const workflowNotFound = hasValidWorkflowId && !matchedWorkflow && !isLoadingWorkflows && workflows.length > 0;
+  // and the user has interacted with the input field
+  const workflowNotFound = hasValidWorkflowId && !matchedWorkflow && !isLoadingWorkflows && workflows.length > 0 && hasInteractedWithWorkflowInput;
 
   useEffect(() => {
     if (transcript) {
@@ -173,6 +174,22 @@ export function TaskStartInput({
       localStorage.removeItem("prefill_workflow_id");
     }
   }, []);
+
+  // Reset interaction state when mode changes
+  useEffect(() => {
+    setHasInteractedWithWorkflowInput(false);
+  }, [isWorkflowMode]);
+
+  // Handle workflow input change
+  const handleWorkflowInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setWorkflowIdValue(e.target.value);
+    setHasInteractedWithWorkflowInput(true);
+  };
+
+  // Handle workflow input blur
+  const handleWorkflowInputBlur = () => {
+    setHasInteractedWithWorkflowInput(true);
+  };
 
   // Determine if submit button should be enabled
   const isSubmitDisabled = isWorkflowMode
@@ -285,7 +302,8 @@ export function TaskStartInput({
                   type="text"
                   placeholder="Enter workflow ID (e.g., 47607)"
                   value={workflowIdValue}
-                  onChange={(e) => setWorkflowIdValue(e.target.value)}
+                  onChange={handleWorkflowInputChange}
+                  onBlur={handleWorkflowInputBlur}
                   onKeyDown={handleWorkflowKeyDown}
                   className="text-lg h-12 bg-transparent border-0 focus:ring-0 focus-visible:ring-0 shadow-none"
                   autoFocus
