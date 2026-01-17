@@ -23,9 +23,10 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
+import { usePusherConnection, type TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
 import { toast } from "sonner";
 
@@ -105,6 +106,30 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   // Get all tickets from the default phase
   const tickets = defaultPhase?.tasks || [];
+
+  // Real-time task status updates via Pusher
+  const handleTaskStatusUpdate = (update: TaskTitleUpdateEvent & { status?: TaskStatus; workflowStatus?: WorkflowStatus }) => {
+    // Only update if this is a task in our current feature's phase
+    const taskExists = tickets.some(task => task.id === update.taskId);
+    if (!taskExists) return;
+
+    console.log('Received task status update:', update);
+
+    // Update the task with new status
+    if (update.status !== undefined || update.workflowStatus !== undefined) {
+      handleTaskUpdate(update.taskId, {
+        ...(update.status !== undefined && { status: update.status }),
+        ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus }),
+      });
+    }
+  };
+
+  // Subscribe to workspace channel for real-time task updates
+  usePusherConnection({
+    workspaceSlug: workspaceSlug || null,
+    enabled: !!workspaceSlug,
+    onTaskTitleUpdate: handleTaskStatusUpdate,
+  });
 
   // Auto-focus after ticket creation completes
   useEffect(() => {
