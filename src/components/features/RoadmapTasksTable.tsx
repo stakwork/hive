@@ -45,6 +45,7 @@ function SortableTableRow({
   onDependenciesUpdate,
   onDelete,
   onStartTask,
+  onViewTask,
 }: {
   task: TicketListItem;
   workspaceSlug: string;
@@ -57,6 +58,7 @@ function SortableTableRow({
   onDependenciesUpdate: (dependencyIds: string[]) => Promise<void>;
   onDelete: () => void;
   onStartTask: () => void;
+  onViewTask: () => void;
 }) {
   const {
     attributes,
@@ -138,6 +140,16 @@ function SortableTableRow({
                   icon: Play,
                   variant: "default" as const,
                   onClick: onStartTask,
+                },
+              ]
+              : []),
+            ...(task.status !== "TODO"
+              ? [
+                {
+                  label: "View Task",
+                  icon: ExternalLink,
+                  variant: "default" as const,
+                  onClick: onViewTask,
                 },
               ]
               : []),
@@ -245,6 +257,10 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
     }
   };
 
+  const handleViewTask = (taskId: string) => {
+    router.push(`/w/${workspaceSlug}/task/${taskId}`);
+  };
+
   if (tasks.length === 0) {
     return (
       <Empty className="h-[500px]">
@@ -292,6 +308,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
                     onDependenciesUpdate={async (dependsOnTaskIds) => handleUpdateTask(task.id, { dependsOnTaskIds })}
                     onDelete={() => handleDeleteTask(task.id)}
                     onStartTask={() => handleStartTask(task)}
+                    onViewTask={() => handleViewTask(task.id)}
                   />
                 ))}
             </SortableContext>
