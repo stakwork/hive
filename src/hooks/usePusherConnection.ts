@@ -29,6 +29,8 @@ export interface TaskTitleUpdateEvent {
   previousTitle?: string;
   archived?: boolean;
   podId?: string | null;
+  status?: string;
+  workflowStatus?: string;
   timestamp: Date;
 }
 

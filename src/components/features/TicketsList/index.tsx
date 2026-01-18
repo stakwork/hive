@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Table as TableIcon, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
+import { usePusherConnection, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
@@ -105,6 +106,45 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   // Get all tickets from the default phase
   const tickets = defaultPhase?.tasks || [];
+
+  // Handle real-time task updates from Pusher
+  const handleRealtimeTaskUpdate = useCallback(
+    (update: TaskTitleUpdateEvent) => {
+      if (!feature.phases) return;
+
+      const updatedPhases = feature.phases.map((phase) => {
+        return {
+          ...phase,
+          tasks: phase.tasks.map((task) => {
+            if (task.id === update.taskId) {
+              return {
+                ...task,
+                ...(update.newTitle !== undefined && { title: update.newTitle }),
+                ...(update.status !== undefined && { status: update.status as TaskStatus }),
+                ...(update.workflowStatus !== undefined && { workflowStatus: update.workflowStatus }),
+                ...('archived' in update && update.archived !== undefined && { archived: update.archived }),
+                ...('podId' in update && { podId: update.podId }),
+              };
+            }
+            return task;
+          }),
+        };
+      });
+
+      onUpdate({
+        ...feature,
+        phases: updatedPhases,
+      });
+    },
+    [feature, onUpdate]
+  );
+
+  // Subscribe to workspace-level Pusher updates for real-time task changes
+  usePusherConnection({
+    workspaceSlug,
+    enabled: !!workspaceSlug,
+    onTaskTitleUpdate: handleRealtimeTaskUpdate,
+  });
 
   // Auto-focus after ticket creation completes
   useEffect(() => {
