@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, forwardRef, useImperativeHandle, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -122,6 +122,7 @@ function FeatureRow({
 const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, FeaturesListProps>(
   function FeaturesList({ workspaceId }, ref) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { slug: workspaceSlug } = useWorkspace();
 
   // Fetch workspace members (no system assignees for features)
@@ -135,6 +136,18 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
+
+  // Read page from URL on mount
+  useEffect(() => {
+    const pageParam = searchParams?.get("page");
+    if (pageParam) {
+      const pageNum = parseInt(pageParam, 10);
+      if (!isNaN(pageNum) && pageNum > 0) {
+        setPage(pageNum);
+      }
+    }
+  }, []); // Only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // Filter and sort state with localStorage persistence
   const [statusFilters, setStatusFilters] = useState<string[]>(() => {
@@ -915,7 +928,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       onPriorityUpdate={handleUpdatePriority}
                       onAssigneeUpdate={handleUpdateAssignee}
                       onDelete={handleDeleteFeature}
-                      onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}`)}
+                      onClick={() => router.push(`/w/${workspaceSlug}/plan/${feature.id}?page=${page}`)}
                     />
                   ))
                 )}
