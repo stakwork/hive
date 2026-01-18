@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState } from "react";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { DependenciesCombobox } from "@/components/features/DependenciesCombobox";
 import { ActionMenu } from "@/components/ui/action-menu";
@@ -23,7 +24,6 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Priority, TaskStatus } from "@prisma/client";
 import { ExternalLink, GripVertical, Play, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 interface RoadmapTasksTableProps {
   phaseId: string;
@@ -58,6 +58,7 @@ function SortableTableRow({
   onDelete: () => void;
   onStartTask: () => void;
 }) {
+  const router = useRouter();
   const {
     attributes,
     listeners,
@@ -138,6 +139,16 @@ function SortableTableRow({
                   icon: Play,
                   variant: "default" as const,
                   onClick: onStartTask,
+                },
+              ]
+              : []),
+            ...(task.status !== "TODO"
+              ? [
+                {
+                  label: "View Task",
+                  icon: ExternalLink,
+                  variant: "default" as const,
+                  onClick: () => router.push(`/w/${workspaceSlug}/task/${task.id}`),
                 },
               ]
               : []),
