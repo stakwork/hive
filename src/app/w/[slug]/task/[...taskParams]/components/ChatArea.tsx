@@ -135,94 +135,85 @@ export function ChatArea({
       transition={{ duration: 0.2 }}
     >
       {/* Task Title Header */}
-      <AnimatePresence mode="wait">
-        {taskTitle && (
-          <motion.div
-            key="title-header"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="px-4 py-3 border-b bg-muted/20"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                {/* Back Button */}
-                <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
+      {taskTitle && (
+        <div className="px-4 py-3 border-b bg-muted/20">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {/* Back Button */}
+              <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
 
-                {/* Task Title */}
-                <AnimatePresence mode="wait">
-                  <motion.h2
-                    key={taskTitle} // This will trigger re-animation when title changes
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="text-lg font-semibold text-foreground truncate flex-1"
-                    title={taskTitle}
-                    data-testid="task-title"
-                  >
-                    {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
-                  </motion.h2>
-                </AnimatePresence>
-              </div>
-
-              {/* Preview Toggle Button (Mobile Only) */}
-              {showPreviewToggle && onTogglePreview && (
-                <Button
-                  variant={showPreview ? "default" : "ghost"}
-                  size="sm"
-                  onClick={onTogglePreview}
-                  className="flex-shrink-0"
-                  title={showPreview ? "Show Chat" : "Show Live Preview"}
+              {/* Task Title - with animation only when title changes */}
+              <AnimatePresence mode="wait">
+                <motion.h2
+                  key={taskTitle} // This will trigger re-animation when title changes
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="text-lg font-semibold text-foreground truncate flex-1"
+                  title={taskTitle}
+                  data-testid="task-title"
                 >
-                  <Monitor className="w-4 h-4" />
-                </Button>
-              )}
-
-              {/* Pod Indicator with Release */}
-              {podId && onReleasePod && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={onReleasePod}
-                        disabled={isReleasingPod}
-                        className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
-                      >
-                        <span className="relative w-4 h-4">
-                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" />
-                          <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
-                        </span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{isReleasingPod ? "Releasing pod..." : "Release pod"}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-
-              {/* Stakwork Project Link */}
-              {stakworkProjectId && (
-                <Link
-                  href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors flex-shrink-0"
-                >
-                  Workflow
-                  <ExternalLink className="w-3 h-3" />
-                </Link>
-              )}
+                  {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                </motion.h2>
+              </AnimatePresence>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+            {/* Preview Toggle Button (Mobile Only) */}
+            {showPreviewToggle && onTogglePreview && (
+              <Button
+                variant={showPreview ? "default" : "ghost"}
+                size="sm"
+                onClick={onTogglePreview}
+                className="flex-shrink-0"
+                title={showPreview ? "Show Chat" : "Show Live Preview"}
+              >
+                <Monitor className="w-4 h-4" />
+              </Button>
+            )}
+
+            {/* Pod Indicator with Release */}
+            {podId && onReleasePod && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={onReleasePod}
+                      disabled={isReleasingPod}
+                      className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
+                    >
+                      <span className="relative w-4 h-4">
+                        <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" />
+                        <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
+                      </span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{isReleasingPod ? "Releasing pod..." : "Release pod"}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {/* Stakwork Project Link - Outside AnimatePresence to prevent flickering */}
+            {stakworkProjectId && (
+              <Link
+                href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors flex-shrink-0"
+              >
+                Workflow
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div
