@@ -30,6 +30,15 @@ export default function FeatureDetailPage() {
   const searchParams = useSearchParams();
   const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
   const featureId = params.featureId as string;
+  
+  // Get the page parameter to preserve pagination when navigating back
+  const returnPage = searchParams.get("page") || "1";
+  
+  // Helper function to get the back navigation path
+  const getBackPath = () => {
+    const basePath = `/w/${workspaceSlug}/plan`;
+    return returnPage !== "1" ? `${basePath}?page=${returnPage}` : basePath;
+  };
 
   // Tab state management
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "overview");
@@ -230,7 +239,8 @@ export default function FeatureDetailPage() {
         throw new Error("Failed to delete feature");
       }
 
-      router.push(`/w/${workspaceSlug}/plan`);
+      // Navigate back to the list, preserving the page number
+      router.push(getBackPath());
     } catch (error) {
       console.error("Failed to delete feature:", error);
     }
@@ -266,7 +276,7 @@ export default function FeatureDetailPage() {
       <div className="space-y-6">
         {/* Header with back button */}
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/plan`)}>
+          <Button variant="ghost" size="sm" onClick={() => router.push(getBackPath())}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
@@ -347,7 +357,7 @@ export default function FeatureDetailPage() {
   if (error || !feature) {
     return (
       <div className="space-y-6">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/plan`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(getBackPath())}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
@@ -367,7 +377,7 @@ export default function FeatureDetailPage() {
     <div className="space-y-6">
       {/* Header with back button */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/w/${workspaceSlug}/plan`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(getBackPath())}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
