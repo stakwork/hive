@@ -11,7 +11,7 @@ export const ActionsToolbar = () => {
     }
 
     return (
-        <div className="absolute right-5 bottom-5 pointer-events-auto flex flex-col items-end" id="actions-toolbar">
+        <div className="absolute right-4 pointer-events-auto flex flex-col items-end" id="actions-toolbar" style={{ bottom: '16px' }}>
             <div className="flex flex-col gap-1">
                 <CameraRecenterControl />
             </div>

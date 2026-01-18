@@ -82,8 +82,8 @@ function DashboardInner() {
         <TestCoverageStats />
       </div>
 
-      {/* Bottom-left widget */}
-      <div className="absolute bottom-4 left-4 z-10">
+      {/* Bottom-left widget - aligned by bottom edge of content */}
+      <div className="absolute left-4 z-10 flex items-end" style={{ bottom: '16px' }}>
         <WorkspaceMembersPreview workspaceSlug={slug} />
       </div>
 
@@ -97,9 +97,9 @@ function DashboardInner() {
         />
       </div>
 
-      {/* Dashboard Chat - only show when onboarding is complete */}
+      {/* Dashboard Chat - only show when onboarding is complete, aligned by bottom edge of input */}
       {!isOnboarding && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-0" style={{ width: 'calc(100% - 340px)' }}>
+        <div className="absolute left-1/2 -translate-x-1/2 z-0 flex items-end" style={{ bottom: '16px', width: 'calc(100% - 340px)' }}>
           <DashboardChat />
         </div>
       )}
