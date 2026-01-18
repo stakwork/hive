@@ -146,7 +146,7 @@ export function ChatInput({
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className="relative flex justify-center items-center gap-2 w-full px-4 py-3"
+      className="relative flex justify-center items-center gap-2 w-full px-4 py-4"
     >
       {/* Drag overlay */}
       {isDragging && (
