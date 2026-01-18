@@ -8,7 +8,7 @@ import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import type { Artifact, ChatMessage, WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Monitor, Save, Server, ServerOff } from "lucide-react";
+import { ArrowLeft, Github, Monitor, Server, ServerOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AgentChatMessage } from "./AgentChatMessage";
@@ -196,17 +196,16 @@ export function AgentChatArea({
                 </TooltipProvider>
               )}
 
-              {/* Save Button */}
+              {/* Create PR Button */}
               {onCommit && (
                 <Button
-                  variant="outline"
                   size="sm"
                   onClick={onCommit}
                   disabled={isCommitting}
-                  className="flex-shrink-0 gap-1"
+                  className="flex-shrink-0 gap-1 bg-green-600 hover:bg-green-700 text-white"
                 >
-                  <Save className="w-3 h-3" />
-                  {isCommitting ? "Saving..." : "Save"}
+                  <Github className="w-3 h-3" />
+                  {isCommitting ? "Creating..." : "Create PR"}
                 </Button>
               )}
             </div>
