@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Lightbulb, Image as ImageIcon, X, Eye } from "lucide-react";
+import { Send, Lightbulb, Image as ImageIcon, X, Eye, Share2 } from "lucide-react";
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
@@ -16,6 +16,8 @@ interface ChatInputProps {
   showProvenanceToggle?: boolean;
   isProvenanceSidebarOpen?: boolean;
   onToggleProvenance?: () => void;
+  showShareButton?: boolean;
+  onShare?: () => void;
 }
 
 export function ChatInput({
@@ -30,6 +32,8 @@ export function ChatInput({
   showProvenanceToggle = false,
   isProvenanceSidebarOpen = false,
   onToggleProvenance,
+  showShareButton = false,
+  onShare,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -247,6 +251,19 @@ export function ChatInput({
           title={isProvenanceSidebarOpen ? "Hide sources" : "Show sources"}
         >
           <Eye className={`w-4 h-4 ${isProvenanceSidebarOpen ? "text-primary" : ""}`} />
+        </Button>
+      )}
+      {showShareButton && (
+        <Button
+          type="button"
+          onClick={onShare}
+          disabled={disabled}
+          variant="outline"
+          size="icon"
+          className="rounded-full h-10 w-10"
+          title="Share conversation"
+        >
+          <Share2 className="w-4 h-4" />
         </Button>
       )}
     </form>

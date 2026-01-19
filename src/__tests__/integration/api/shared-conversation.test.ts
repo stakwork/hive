@@ -618,8 +618,14 @@ describe("SharedConversation API Integration Tests", () => {
         expect(data).toHaveProperty("followUpQuestions");
         expect(data).toHaveProperty("createdAt");
         expect(data).toHaveProperty("updatedAt");
+        expect(data).toHaveProperty("createdBy");
 
         expect(data.provenanceData).toEqual(provenanceData);
+        expect(data.createdBy).toEqual({
+          id: testUser.id,
+          name: testUser.name,
+          email: testUser.email,
+        });
       });
 
       test("should handle null provenanceData correctly", async () => {

@@ -41,6 +41,7 @@ export function DashboardChat() {
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
   const [isProvenanceSidebarOpen, setIsProvenanceSidebarOpen] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { processStream } = useStreamProcessor();
@@ -504,6 +505,51 @@ export function DashboardChat() {
     }
   };
 
+  const handleShare = async () => {
+    if (!slug || messages.length === 0) return;
+
+    setIsSharing(true);
+
+    try {
+      // Generate title from first user message
+      const firstUserMessage = messages.find((m) => m.role === "user" && m.content.trim());
+      const title = firstUserMessage 
+        ? firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? "..." : "")
+        : "Shared Conversation";
+
+      const response = await fetch(`/api/workspaces/${slug}/chat/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          title,
+          followUpQuestions: followUpQuestions || [],
+          provenanceData: provenanceData || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to share conversation");
+      }
+
+      const data = await response.json();
+      const shareUrl = `${window.location.origin}${data.url}`;
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+
+      toast.success("Share link copied to clipboard!");
+    } catch (error) {
+      console.error("Error sharing conversation:", error);
+      toast.error("Failed to share conversation", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   // Only show assistant messages
   // const assistantMessages = messages.filter((m) => m.role === "assistant");
   // const hasAssistantMessages = assistantMessages.length > 0;
@@ -587,6 +633,8 @@ export function DashboardChat() {
           showProvenanceToggle={hasProvenanceFiles}
           isProvenanceSidebarOpen={isProvenanceSidebarOpen}
           onToggleProvenance={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
+          showShareButton={messages.length > 0}
+          onShare={handleShare}
         />
       </div>
 
