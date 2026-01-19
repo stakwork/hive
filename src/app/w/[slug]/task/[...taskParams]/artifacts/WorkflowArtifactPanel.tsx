@@ -8,6 +8,7 @@ import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PromptsPanel } from "@/components/prompts";
+import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 
 interface WorkflowArtifactPanelProps {
   artifacts: Artifact[];
@@ -18,7 +19,7 @@ interface WorkflowArtifactPanelProps {
 export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: WorkflowArtifactPanelProps) {
   const [clickedStep, setClickedStep] = useState<WorkflowTransition | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "prompts" | "stakwork">("editor");
+  const [activeDisplayTab, setActiveDisplayTab] = useState<"editor" | "changes" | "prompts" | "stakwork">("editor");
 
   const handleStepClick = useCallback((step: WorkflowTransition) => {
     setClickedStep(step);
@@ -47,9 +48,11 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   // Merge data from all workflow artifacts, always using the LATEST values
   // This supports multiple executions and publishes - always shows the most recent:
   // - workflowJson: Latest published workflow (for Editor tab)
+  // - originalWorkflowJson: Original workflow before changes (for Changes tab)
   // - projectId: Latest execution project (for Stakwork tab)
   const mergedContent = useMemo(() => {
     let workflowJson: string | undefined;
+    let originalWorkflowJson: string | undefined;
     let projectId: string | undefined;
     let workflowId: number | undefined;
     let workflowName: string | undefined;
@@ -59,16 +62,17 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     for (const artifact of artifacts) {
       const content = artifact.content as WorkflowContent;
       if (content?.workflowJson) workflowJson = content.workflowJson;
+      if (content?.originalWorkflowJson) originalWorkflowJson = content.originalWorkflowJson;
       if (content?.projectId) projectId = content.projectId;
       if (content?.workflowId) workflowId = content.workflowId;
       if (content?.workflowName) workflowName = content.workflowName;
       if (content?.workflowRefId) workflowRefId = content.workflowRefId;
     }
 
-    return { workflowJson, projectId, workflowId, workflowName, workflowRefId };
+    return { workflowJson, originalWorkflowJson, projectId, workflowId, workflowName, workflowRefId };
   }, [artifacts]);
 
-  const { workflowJson, projectId, workflowId } = mergedContent;
+  const { workflowJson, originalWorkflowJson, projectId, workflowId } = mergedContent;
 
   // Determine if we're in editor mode (workflowJson present)
   const isEditorMode = !!workflowJson;
@@ -132,15 +136,19 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
       );
     }
 
+    // Check if we have changes to show
+    const hasChanges = !!(originalWorkflowJson && workflowJson);
+
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
         <Tabs
           value={activeDisplayTab}
-          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "prompts" | "stakwork")}
+          onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork")}
           className="flex flex-col h-full"
         >
-          <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+          <TabsList className={`grid w-full flex-shrink-0 ${hasChanges ? "grid-cols-4" : "grid-cols-3"}`}>
             <TabsTrigger value="editor">Edit Steps</TabsTrigger>
+            {hasChanges && <TabsTrigger value="changes">Changes</TabsTrigger>}
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
             <TabsTrigger value="stakwork">Stak Run</TabsTrigger>
           </TabsList>
@@ -168,6 +176,15 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
               onSelect={handleStepSelectFromModal}
             />
           </TabsContent>
+
+          {hasChanges && (
+            <TabsContent value="changes" className="flex-1 overflow-hidden mt-0">
+              <WorkflowChangesPanel
+                originalJson={originalWorkflowJson || null}
+                updatedJson={workflowJson || null}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="prompts" className="flex-1 overflow-hidden mt-0">
             <PromptsPanel workflowId={workflowId} />
