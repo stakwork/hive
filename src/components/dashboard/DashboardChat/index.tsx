@@ -41,7 +41,7 @@ export function DashboardChat() {
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
   const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
   const [isProvenanceSidebarOpen, setIsProvenanceSidebarOpen] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
+  const [_isSharing, setIsSharing] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { processStream } = useStreamProcessor();

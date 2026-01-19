@@ -10,7 +10,7 @@ interface HtmlNodesLayerProps {
 
 export const HtmlNodesLayer = memo<HtmlNodesLayerProps>(({ nodeTypes, enabled = true }) => {
   const { simulation } = useSimulationStore((s) => s)
-  const nodesNormalized = useDataStore((s) => s.nodesNormalized)
+  const _nodesNormalized = useDataStore((s) => s.nodesNormalized)
 
   const simulationNodes = simulation?.nodes() || []
 

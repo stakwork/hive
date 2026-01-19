@@ -14,7 +14,6 @@ declare global {
 
 import {
   ReactFlow,
-  ControlButton,
   Background,
   BackgroundVariant,
   useNodesState,
@@ -205,7 +204,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   }, []);
 
   useEffect(() => {
-    const handlePublishWorkflow = (event: any) => {
+    const handlePublishWorkflow = (_event: any) => {
       // Create the request function for the queue
       const requestFn = () => {
         return axios.put(`/admin/workflows/${workflowId}/publish.json?workflow_version_id=${workflowVersionId}`);
@@ -921,7 +920,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     updateJSONSpecConnections(data.workflow_spec.connections);
   };
 
-  const exportSteps = (nodes_to_export: any[], node_type: string) => {
+  const _exportSteps = (nodes_to_export: any[], node_type: string) => {
     console.log("exporting nodes", nodes_to_export);
 
     const nodeIds = nodes_to_export.map((node: any) => node.id);
@@ -1127,7 +1126,7 @@ export default function App(workflowApp: WorkflowAppProps) {
     setNodeMenu(null);
   }, [setMenu, setNodeMenu]);
 
-  const handleImportSuccess = (responseData: any, contextData?: any) => {
+  const handleImportSuccess = (responseData: any, _contextData?: any) => {
     if (responseData.data.workflow_spec) {
       const newVersionId = responseData.data.workflow_version_id;
       if (newVersionId) {

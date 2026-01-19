@@ -134,7 +134,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [workspaceHasFeatures, setWorkspaceHasFeatures] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [_hasMore, setHasMore] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
 
   // Read page from URL on mount
@@ -146,8 +146,8 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
         setPage(pageNum);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // Filter and sort state with localStorage persistence
   const [statusFilters, setStatusFilters] = useState<string[]>(() => {

@@ -38,7 +38,7 @@ export default function DefenseInsightsPage() {
         fetchRecommendations(workspace.slug);
       }
     },
-    [workspace?.slug, toast, fetchRecommendations],
+    [workspace?.slug, fetchRecommendations],
   );
 
   // Set up workspace Pusher connection
