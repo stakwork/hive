@@ -13,7 +13,7 @@ import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
-import { UserStoriesSection } from "@/components/features/UserStoriesSection";
+import { UserStoriesAISection } from "@/components/features/UserStoriesAISection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
 import { AITextareaSection } from "@/components/features/AITextareaSection";
 import { PersonasSection } from "@/components/features/PersonasSection";
@@ -471,7 +471,7 @@ export default function FeatureDetailPage() {
               />
 
               {/* User Stories - Always visible */}
-              <UserStoriesSection
+              <UserStoriesAISection
                 featureId={featureId}
                 userStories={feature.userStories}
                 newStoryTitle={newStoryTitle}
