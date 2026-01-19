@@ -389,12 +389,14 @@ class NodeArray {
         const connections = this.parseConnections(step);
 
         if (step.name === "IfCondition" || step.name === "IfElseCondition") {
+          // Use display_name, display_id, or id as fallback for the condition label
+          const conditionLabel = step.display_name || step.display_id || step.id || '';
           const ifConditionNode = Nodes.ifConditionNode({
             show_only: this.show_only,
             id: step.id,
             uniqueId: step.unique_id,
             position: step.position || this.calcPosition(),
-            data: name,
+            data: conditionLabel,
             status: step.next_step ? "finished" : undefined,
             nextStep: step.next_step,
             result: this.getIfconResult(step),
