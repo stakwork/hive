@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import {
   ChatRole,
   ChatStatus,
@@ -9,6 +10,7 @@ import {
   type ChatMessage,
   type IDEContent,
   type BrowserContent,
+  type WorkflowContent,
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
@@ -39,6 +41,7 @@ export async function POST(request: NextRequest) {
       artifacts = [] as ArtifactRequest[],
     } = body;
 
+    let taskMode: string | undefined;
     if (taskId) {
       const task = await db.task.findFirst({
         where: {
@@ -50,6 +53,8 @@ export async function POST(request: NextRequest) {
       if (!task) {
         return NextResponse.json({ error: "Task not found" }, { status: 404 });
       }
+      // Access mode field (may not be in generated types if prisma generate hasn't been run)
+      taskMode = (task as unknown as { mode?: string }).mode;
     }
 
     const chatMessage = await db.chatMessage.create({
@@ -80,11 +85,140 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Check for WORKFLOW artifacts with workflowVersionId - fetch updated spec and compare with original
+    // This only applies to workflow_editor mode tasks
+    for (const dbArtifact of chatMessage.artifacts) {
+      if (dbArtifact.type === ArtifactType.WORKFLOW) {
+        const content = dbArtifact.content as WorkflowContent | null;
+        // If we have workflowVersionId and workflowId, fetch the updated workflow spec
+        if (content?.workflowVersionId && content?.workflowId) {
+          try {
+            // First, check if we need to preserve originalWorkflowJson from a previous artifact
+            // This only applies to workflow_editor mode
+            // Ignore incoming originalWorkflowJson if it's too short (likely invalid)
+            let originalWorkflowJson = content.originalWorkflowJson;
+            if (originalWorkflowJson && originalWorkflowJson.length < 100) {
+              originalWorkflowJson = undefined;
+            }
+
+            if (!originalWorkflowJson && taskId && taskMode === "workflow_editor") {
+              // Look for WORKFLOW artifacts in this task's history
+              const previousWorkflowArtifacts = await db.artifact.findMany({
+                where: {
+                  type: ArtifactType.WORKFLOW,
+                  message: {
+                    taskId: taskId,
+                  },
+                  id: {
+                    not: dbArtifact.id,
+                  },
+                },
+                orderBy: {
+                  createdAt: "asc",
+                },
+                select: {
+                  content: true,
+                },
+              });
+
+              // Filter to only artifacts for the SAME workflow
+              const sameWorkflowArtifacts = previousWorkflowArtifacts.filter((art) => {
+                const c = art.content as WorkflowContent | null;
+                return c?.workflowId === content.workflowId;
+              });
+
+              // Find the first artifact with a VALID originalWorkflowJson (must be > 100 chars)
+              for (const prevArtifact of sameWorkflowArtifacts) {
+                const prevContent = prevArtifact.content as WorkflowContent | null;
+                if (prevContent?.originalWorkflowJson && prevContent.originalWorkflowJson.length > 100) {
+                  originalWorkflowJson = prevContent.originalWorkflowJson;
+                  break;
+                }
+              }
+
+              // If still no originalWorkflowJson, use the workflowJson from the first artifact
+              if (!originalWorkflowJson) {
+                for (const prevArtifact of sameWorkflowArtifacts) {
+                  const prevContent = prevArtifact.content as WorkflowContent | null;
+                  if (prevContent?.workflowJson && prevContent.workflowJson.length > 100) {
+                    originalWorkflowJson = prevContent.workflowJson;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Fetch the workflow version from the graph API using workflowVersionId
+            const graphApiUrl = process.env.STAKWORK_JARVIS_URL;
+            const graphApiKey = process.env.STAKWORK_GRAPH_API_KEY;
+
+            if (!graphApiKey) {
+              console.error("STAKWORK_GRAPH_API_KEY not configured");
+              continue;
+            }
+
+            const workflowResponse = await fetch(`${graphApiUrl}/api/graph/search/attributes`, {
+              method: "POST",
+              headers: {
+                "x-api-token": graphApiKey,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                top_node_count: 10,
+                node_type: ["Workflow_version"],
+                include_properties: true,
+                limit: 1,
+                skip: 0,
+                search_filters: [
+                  {
+                    attribute: "workflow_version_id",
+                    value: content.workflowVersionId,
+                    comparator: "=",
+                  },
+                ],
+              }),
+            });
+
+            if (workflowResponse.ok) {
+              const workflowResult = await workflowResponse.json();
+              const workflowVersionNode = workflowResult.nodes?.[0] || workflowResult.data?.[0];
+              const updatedWorkflowJson =
+                workflowVersionNode?.properties?.workflow_json || workflowVersionNode?.workflow_json;
+
+              if (updatedWorkflowJson) {
+                const formattedUpdatedJson =
+                  typeof updatedWorkflowJson === "string" ? updatedWorkflowJson : JSON.stringify(updatedWorkflowJson);
+
+                // Update the artifact: set workflowJson to updated, preserve originalWorkflowJson if in workflow_editor mode
+                const updatedContent: WorkflowContent = {
+                  ...content,
+                  workflowJson: formattedUpdatedJson,
+                  ...(taskMode === "workflow_editor" && originalWorkflowJson ? { originalWorkflowJson } : {}),
+                };
+
+                await db.artifact.update({
+                  where: { id: dbArtifact.id },
+                  data: {
+                    content: updatedContent as unknown as Prisma.InputJsonValue,
+                  },
+                });
+
+                // Update the local artifact for the response
+                Object.assign(dbArtifact.content as WorkflowContent, updatedContent);
+              }
+            } else {
+              console.error("Failed to fetch workflow from Stakwork:", await workflowResponse.text());
+            }
+          } catch (fetchError) {
+            console.error("Error fetching workflow spec:", fetchError);
+          }
+        }
+      }
+    }
+
     const clientMessage: ChatMessage = {
       ...chatMessage,
-      contextTags: JSON.parse(
-        chatMessage.contextTags as string,
-      ) as ContextTag[],
+      contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
       artifacts: chatMessage.artifacts.map((artifact) => ({
         ...artifact,
         content: artifact.content as unknown,
@@ -127,7 +261,9 @@ export async function POST(request: NextRequest) {
                 },
               },
             });
-            console.log(`✅ Stored podId=${podId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`);
+            console.log(
+              `✅ Stored podId=${podId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`,
+            );
 
             // Broadcast podId update to both channels for real-time UI updates
             const podUpdatePayload = {
@@ -139,11 +275,7 @@ export async function POST(request: NextRequest) {
             // Send to task channel (for task detail page)
             try {
               const taskChannelName = getTaskChannelName(taskId);
-              await pusherServer.trigger(
-                taskChannelName,
-                PUSHER_EVENTS.TASK_TITLE_UPDATE,
-                podUpdatePayload,
-              );
+              await pusherServer.trigger(taskChannelName, PUSHER_EVENTS.TASK_TITLE_UPDATE, podUpdatePayload);
             } catch (pusherError) {
               console.error("Failed to broadcast podId update to task channel:", pusherError);
             }
@@ -171,14 +303,9 @@ export async function POST(request: NextRequest) {
     if (taskId) {
       try {
         const channelName = getTaskChannelName(taskId);
-
-        await pusherServer.trigger(
-          channelName,
-          PUSHER_EVENTS.NEW_MESSAGE,
-          chatMessage.id,
-        );
+        await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
       } catch (error) {
-        console.error("❌ Error broadcasting to Pusher:", error);
+        console.error("Error broadcasting to Pusher:", error);
       }
     }
 
@@ -191,9 +318,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("Error creating chat response:", error);
-    return NextResponse.json(
-      { error: "Failed to create chat response" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to create chat response" }, { status: 500 });
   }
 }
