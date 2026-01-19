@@ -48,13 +48,13 @@ const FEATURE_STATUS_CONFIG: Record<FeatureStatus, StatusConfig> = {
   },
   ERROR: {
     icon: <XCircle className="h-3 w-3" />,
-    label: "Cancelled",
+    label: "Error",
     className: "bg-red-50 text-red-700 border-red-200",
   },
   BLOCKED: {
-    icon: <XCircle className="h-3 w-3" />,
-    label: "Cancelled",
-    className: "bg-red-50 text-red-700 border-red-200",
+    icon: <AlertCircle className="h-3 w-3" />,
+    label: "Blocked",
+    className: "bg-orange-50 text-orange-700 border-orange-200",
   },
 
 };
