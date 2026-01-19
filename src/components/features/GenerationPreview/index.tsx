@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Check, X, Sparkles, Brain, ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import type { GenerationSource } from "@/hooks/useAIGeneration";
 
 interface GenerationPreviewProps {
@@ -44,7 +45,9 @@ export function GenerationPreview({
       <div className="p-4">
         <div className="flex items-start gap-3">
           <Icon className={`h-4 w-4 ${iconColor} flex-shrink-0 mt-1`} />
-          <div className="flex-1 text-sm whitespace-pre-wrap">{content}</div>
+          <div className="flex-1 text-sm">
+            <MarkdownRenderer size="compact">{content}</MarkdownRenderer>
+          </div>
         </div>
       </div>
 
