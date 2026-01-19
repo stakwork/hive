@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1", 10);
     const workflowId = searchParams.get("workflow_id");
     const includeUsages = searchParams.get("include_usages") === "true";
+    const name = searchParams.get("name");
 
     // Fetch prompts from Stakwork API
     let promptsUrl = `${config.STAKWORK_BASE_URL}/prompts?page=${page}`;
@@ -74,6 +75,9 @@ export async function GET(request: NextRequest) {
     }
     if (includeUsages) {
       promptsUrl += `&include_usages=true`;
+    }
+    if (name) {
+      promptsUrl += `&name=${encodeURIComponent(name)}`;
     }
 
     const response = await fetch(promptsUrl, {

@@ -840,6 +840,179 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       expect(fetchUrl).toContain("workflow_id=wf-123");
       expect(fetchUrl).toContain("include_usages=true");
     });
+
+    test("filters prompts by name parameter", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompts: [{ id: "p1", name: "Test Prompt" }],
+            total: 1,
+            size: 10,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts?name=test"
+      );
+
+      await GET(request);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("name=test"),
+        expect.any(Object)
+      );
+    });
+
+    test("URL encodes name parameter correctly", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompts: [],
+            total: 0,
+            size: 10,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts?name=test%20prompt"
+      );
+
+      await GET(request);
+
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      expect(fetchUrl).toContain("name=test%20prompt");
+    });
+
+    test("handles special characters in name parameter", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompts: [],
+            total: 0,
+            size: 10,
+          },
+        }),
+      } as Response);
+
+      const specialName = "test&prompt=special";
+      const request = new NextRequest(
+        `http://localhost:3000/api/workflow/prompts?name=${encodeURIComponent(specialName)}`
+      );
+
+      await GET(request);
+
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      expect(fetchUrl).toContain(`name=${encodeURIComponent(specialName)}`);
+    });
+
+    test("omits name parameter when not provided", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompts: [],
+            total: 0,
+            size: 10,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest("http://localhost:3000/api/workflow/prompts");
+
+      await GET(request);
+
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      expect(fetchUrl).not.toContain("name=");
+    });
+
+    test("handles empty name parameter", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompts: [],
+            total: 0,
+            size: 10,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts?name="
+      );
+
+      await GET(request);
+
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      // Empty name should not add the parameter to the URL
+      expect(fetchUrl).not.toContain("name=");
+    });
+
+    test("combines name with other query parameters", async () => {
+      mockGetServerSession.mockResolvedValueOnce({
+        user: { id: testUser.id, email: testUser.email },
+      } as any);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            prompts: [],
+            total: 0,
+            size: 10,
+          },
+        }),
+      } as Response);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/workflow/prompts?page=2&workflow_id=wf-123&include_usages=true&name=search"
+      );
+
+      await GET(request);
+
+      const fetchUrl = mockFetch.mock.calls[0][0] as string;
+      expect(fetchUrl).toContain("page=2");
+      expect(fetchUrl).toContain("workflow_id=wf-123");
+      expect(fetchUrl).toContain("include_usages=true");
+      expect(fetchUrl).toContain("name=search");
+    });
   });
 
   describe("Stakwork API Integration Tests", () => {
