@@ -137,7 +137,44 @@ export type DataType = "string" | "number" | "boolean" | "json" | "array" | "nul
 // CLARIFYING QUESTIONS TYPES
 // =============================================
 
-export type ClarifyingQuestionType = "text" | "single_choice" | "multiple_choice";
+export type ClarifyingQuestionType = 
+  | "text" 
+  | "single_choice" 
+  | "multiple_choice"
+  | "color_picker"
+  | "component_preview"
+  | "slider"
+  | "code_snippet";
+
+// Widget option interfaces for new question types
+export interface ColorOption {
+  value: string;
+  label: string;
+  preview?: string;
+}
+
+export interface ComponentOption {
+  id: string;
+  label: string;
+  previewUrl?: string;
+  code?: string;
+  description?: string;
+}
+
+export interface SliderOption {
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  defaultValue: number;
+}
+
+export interface CodeSnippetOption {
+  id: string;
+  label: string;
+  code: string;
+  language: string;
+}
 
 // =============================================
 // ARTIFACT TYPES (Visual elements for questions)
@@ -150,13 +187,63 @@ export interface QuestionArtifact {
   data: string | Record<string, unknown> | unknown[]; // string for mermaid, object for comparison_table, array for color_swatch
 }
 
-export interface ClarifyingQuestion {
+// Base question interface
+interface BaseClarifyingQuestion {
   question: string;
-  type: ClarifyingQuestionType;
-  options?: string[];
-  // Question-level artifact (e.g., diagrams, color swatches, comparison tables)
   questionArtifact?: QuestionArtifact;
 }
+
+// Discriminated union types for different question types
+interface TextQuestion extends BaseClarifyingQuestion {
+  type: "text";
+  options?: never;
+  widgetOptions?: never;
+}
+
+interface SingleChoiceQuestion extends BaseClarifyingQuestion {
+  type: "single_choice";
+  options: string[];
+  widgetOptions?: never;
+}
+
+interface MultipleChoiceQuestion extends BaseClarifyingQuestion {
+  type: "multiple_choice";
+  options: string[];
+  widgetOptions?: never;
+}
+
+interface ColorPickerQuestion extends BaseClarifyingQuestion {
+  type: "color_picker";
+  options?: never;
+  widgetOptions: ColorOption[];
+}
+
+interface ComponentPreviewQuestion extends BaseClarifyingQuestion {
+  type: "component_preview";
+  options?: never;
+  widgetOptions: ComponentOption[];
+}
+
+interface SliderQuestion extends BaseClarifyingQuestion {
+  type: "slider";
+  options?: never;
+  widgetOptions: SliderOption;
+}
+
+interface CodeSnippetQuestion extends BaseClarifyingQuestion {
+  type: "code_snippet";
+  options?: never;
+  widgetOptions: CodeSnippetOption[];
+}
+
+export type ClarifyingQuestion =
+  | TextQuestion
+  | SingleChoiceQuestion
+  | MultipleChoiceQuestion
+  | ColorPickerQuestion
+  | ComponentPreviewQuestion
+  | SliderQuestion
+  | CodeSnippetQuestion;
 
 export interface ClarifyingQuestionsResponse {
   tool_use: "ask_clarifying_questions";
