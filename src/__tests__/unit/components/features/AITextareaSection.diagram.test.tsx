@@ -120,10 +120,10 @@ describe("AITextareaSection - Diagram Generation", () => {
   });
 
   describe("Generate Diagram Button Visibility", () => {
-    it("should show Generate Diagram button for architecture type in preview mode with text", () => {
+    it("should NOT show Generate Diagram button for architecture type (removed as per requirements)", () => {
       render(<AITextareaSection {...defaultProps} />);
 
-      expect(screen.getByText("Generate Diagram")).toBeInTheDocument();
+      expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
     });
 
     it("should not show Generate Diagram button for non-architecture types", () => {
@@ -139,19 +139,24 @@ describe("AITextareaSection - Diagram Generation", () => {
       expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
     });
 
-    it("should not show Generate Diagram button when text is empty", () => {
+    it("should not show Generate Diagram button when architecture text is empty", () => {
       render(<AITextareaSection {...defaultProps} value="" />);
 
       expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
     });
 
-    it("should not show Generate Diagram button when text is null", () => {
+    it("should not show Generate Diagram button when architecture text is null", () => {
       render(<AITextareaSection {...defaultProps} value={null} />);
 
       expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
     });
   });
 
+  // Note: The following tests are commented out because the Generate Diagram button
+  // has been removed from the Architecture section UI as per requirements.
+  // The handleGenerateDiagram functionality still exists but is not accessible via UI.
+  
+  /* 
   describe("Diagram Generation API Integration", () => {
     it("should call API endpoint when Generate Diagram button is clicked", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
@@ -275,6 +280,7 @@ describe("AITextareaSection - Diagram Generation", () => {
       }, { timeout: 8000 });
     });
   });
+  */
 
   describe("DiagramViewer Integration", () => {
     it("should display DiagramViewer in preview mode for architecture type", () => {
