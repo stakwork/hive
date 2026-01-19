@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Pencil, Save, X, Share2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Copy, Check, Plus, Pencil, Save, X, Share2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/useDebounce";
 
 interface PromptUsage {
   workflow_id: number;
@@ -76,6 +77,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isEditing, setIsEditing] = useState(false);
   const [selectedUsages, setSelectedUsages] = useState<PromptUsage[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Debounced search query
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   // Form state for create/edit
   const [formName, setFormName] = useState("");
@@ -83,6 +88,14 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const [formDescription, setFormDescription] = useState("");
 
   const isFullpage = variant === "fullpage";
+
+  // Initialize search from URL on mount
+  useEffect(() => {
+    const nameParam = searchParams.get("name");
+    if (nameParam) {
+      setSearchQuery(nameParam);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update URL when selecting a prompt (only in fullpage mode)
   const updateUrlWithPrompt = useCallback((promptId: number | null) => {
@@ -98,13 +111,18 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     router.replace(newUrl, { scroll: false });
   }, [isFullpage, pathname, router, searchParams]);
 
-  const fetchPrompts = useCallback(async (pageNum: number) => {
+  const fetchPrompts = useCallback(async (pageNum: number, searchTerm?: string) => {
     setIsLoading(true);
     setError(null);
     try {
       let url = `/api/workflow/prompts?page=${pageNum}&include_usages=true`;
       if (workflowId) {
         url += `&workflow_id=${workflowId}`;
+      }
+      // Add search parameter if provided and not empty
+      const trimmedSearch = searchTerm?.trim();
+      if (trimmedSearch) {
+        url += `&name=${encodeURIComponent(trimmedSearch)}`;
       }
       const response = await fetch(url);
       if (!response.ok) {
@@ -147,9 +165,10 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
     }
   }, []);
 
+  // Fetch prompts when page or search changes
   useEffect(() => {
-    fetchPrompts(page);
-  }, [page, fetchPrompts]);
+    fetchPrompts(page, debouncedSearchQuery);
+  }, [page, debouncedSearchQuery, fetchPrompts]);
 
   // Check for prompt ID in URL on mount (only in fullpage mode)
   useEffect(() => {
@@ -164,6 +183,22 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       }
     }
   }, [isFullpage, searchParams, fetchPromptDetail]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setPage(1);
+    
+    // Update URL with search parameter
+    const params = new URLSearchParams(searchParams.toString());
+    if (value.trim()) {
+      params.set("name", value.trim());
+    } else {
+      params.delete("name");
+    }
+    params.delete("page"); // Remove page param when searching
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  };
 
   const handlePromptClick = (prompt: Prompt) => {
     setViewMode("detail");
@@ -616,6 +651,28 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
           <Plus className="h-4 w-4 mr-1" />
           Create
         </Button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="px-4 py-3 border-b flex-shrink-0">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search prompts by name..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => handleSearchChange("")}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
