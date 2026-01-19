@@ -37,6 +37,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+const hideScrollbarStyle: React.CSSProperties = {
+  scrollbarWidth: 'none', // Firefox
+  msOverflowStyle: 'none', // IE/Edge
+};
+
 function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data).filter(([, value]) => value !== null && value !== undefined);
 
@@ -46,19 +51,32 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="border rounded-md overflow-hidden">
-      <div className="grid grid-cols-[1fr_2fr] text-xs font-medium text-muted-foreground bg-muted px-3 py-2 border-b">
+      <style>{`
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
+      <div className="grid grid-cols-[minmax(80px,180px)_1fr] text-xs font-medium text-muted-foreground bg-muted px-3 py-2 border-b">
         <div>Name</div>
         <div>Value</div>
       </div>
       <div className="divide-y">
         {entries.map(([key, value]) => (
-          <div key={key} className="grid grid-cols-[1fr_2fr] text-sm">
-            <div className="px-3 py-2 font-medium bg-muted/30 border-r">{key}</div>
-            <div className="px-3 py-2 break-all">
+          <div key={key} className="grid grid-cols-[minmax(80px,180px)_1fr] text-sm">
+            <div
+              className="px-3 py-2 font-medium bg-muted/30 border-r overflow-x-auto max-h-20 hide-scrollbar"
+              style={hideScrollbarStyle}
+            >
+              <span className="whitespace-pre">{key}</span>
+            </div>
+            <div
+              className="px-3 py-2 overflow-x-auto max-h-40 hide-scrollbar"
+              style={hideScrollbarStyle}
+            >
               {typeof value === 'object' ? (
-                <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+                <pre className="text-xs whitespace-pre">{JSON.stringify(value, null, 2)}</pre>
               ) : (
-                <span className="whitespace-pre-wrap">{String(value)}</span>
+                <span className="whitespace-pre">{String(value)}</span>
               )}
             </div>
           </div>
@@ -77,8 +95,18 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
   const stepAttributes = (rawData.attributes as Record<string, unknown>) || step.step?.attributes || {};
   const stepVars = (stepAttributes.vars as Record<string, unknown>) || {};
 
+  // Get all other attributes excluding 'vars' for display
+  const otherAttributes = Object.fromEntries(
+    Object.entries(stepAttributes).filter(([key]) => key !== 'vars')
+  );
+
   // Get step id from top level
   const stepId = step.id || step.display_id;
+
+  // Check if we have any content to show
+  const hasVars = Object.keys(stepVars).length > 0;
+  const hasOtherAttributes = Object.keys(otherAttributes).length > 0;
+  const hasAnyContent = hasVars || hasOtherAttributes;
 
   return (
     <div
@@ -94,7 +122,10 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
             <span className={`p-2 rounded-md ${STEP_TYPE_COLORS[stepType]}`}>
               {STEP_TYPE_ICONS[stepType]}
             </span>
-            <div className="text-lg font-semibold">{step.display_name || step.name}</div>
+            <div>
+              <div className="text-lg font-semibold">{step.display_name || step.name}</div>
+              <div className="text-xs text-muted-foreground">{step.name}</div>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -106,23 +137,30 @@ export function StepDetailsModal({ step, isOpen, onClose, onSelect }: StepDetail
 
         {/* Content - scrollable */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Step Name */}
+          {/* Step Name/Alias */}
           {stepId && (
-            <Section title="Step Name">
+            <Section title="Step Alias">
               <code className="text-sm bg-muted px-2 py-1 rounded">{stepId}</code>
             </Section>
           )}
 
-          {/* Variables - only show vars */}
-          {Object.keys(stepVars).length > 0 && (
+          {/* Variables (for SetVar and other steps with vars) */}
+          {hasVars && (
             <Section title="Variables">
               <KeyValueTable data={stepVars} />
             </Section>
           )}
 
-          {/* Show message if no vars */}
-          {Object.keys(stepVars).length === 0 && (
-            <div className="text-muted-foreground text-sm">No variables configured for this step.</div>
+          {/* Other Attributes (prompt, statement, url, etc.) */}
+          {hasOtherAttributes && (
+            <Section title="Attributes">
+              <KeyValueTable data={otherAttributes} />
+            </Section>
+          )}
+
+          {/* Show message if no attributes */}
+          {!hasAnyContent && (
+            <div className="text-muted-foreground text-sm">No attributes configured for this step.</div>
           )}
         </div>
 
