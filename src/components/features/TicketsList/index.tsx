@@ -6,6 +6,7 @@ import { Plus, Table as TableIcon, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AIButton } from "@/components/ui/ai-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
@@ -23,6 +24,7 @@ import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
 import { usePusherConnection, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
+import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
 import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
@@ -74,6 +76,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   const [activeView, setActiveView] = useState<"table" | "graph">("table");
 
   // AI generation state
+  const [generating, setGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [acceptingTasks, setAcceptingTasks] = useState(false);
 
@@ -95,6 +98,8 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     type: "TASK_GENERATION",
     enabled: true,
   });
+
+  const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
 
   // Get the default phase (Phase 1)
   const defaultPhase = feature.phases?.[0];
@@ -232,19 +237,25 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   const handleDeepThink = async () => {
     try {
+      setInitiatingDeepThink(true);
       await aiGeneration.regenerate(false);
       await refetchStakworkRun();
     } catch (error) {
       console.error("Deep think failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
     }
   };
 
   const handleRetry = async () => {
     try {
+      setInitiatingDeepThink(true);
       await aiGeneration.regenerate(true);
       await refetchStakworkRun();
     } catch (error) {
       console.error("Retry failed:", error);
+    } finally {
+      setInitiatingDeepThink(false);
     }
   };
 
@@ -413,10 +424,37 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   return (
     <div className="space-y-2">
-      {/* Header with Tasks heading and Add Task button */}
+      {/* Header with Tasks heading, AI button, and Add Task button */}
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Tasks</Label>
         <div className="flex items-center gap-2">
+          {/* Quick Generate */}
+          <AIButton<GeneratedContent>
+            endpoint={`/api/features/${featureId}/generate`}
+            params={{ type: "tickets" }}
+            onGenerated={(results) => {
+              if (results.length > 0) {
+                aiGeneration.setContent(JSON.stringify(results[0]), "quick");
+                setGeneratedContent(results[0]);
+              }
+            }}
+            onGeneratingChange={setGenerating}
+            label="Generate"
+            disabled={initiatingDeepThink || latestRun?.status === "IN_PROGRESS"}
+          />
+
+          {/* Deep Research */}
+          <GenerationControls
+            onQuickGenerate={() => {}}
+            onDeepThink={handleDeepThink}
+            onRetry={handleRetry}
+            status={latestRun?.status}
+            isLoading={aiGeneration.isLoading || initiatingDeepThink}
+            isQuickGenerating={generating}
+            disabled={false}
+            showDeepThink={true}
+          />
+
           {!isCreatingTicket && (
             <Button onClick={() => setIsCreatingTicket(true)} size="sm">
               <Plus className="h-4 w-4 mr-2" />
