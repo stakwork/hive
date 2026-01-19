@@ -228,14 +228,15 @@ describe("AITextareaSection - Diagram Generation", () => {
       const generateButton = screen.getByText("Generate Diagram");
       fireEvent.click(generateButton);
 
+      // Wait for retries to complete (max 2 retries) before checking for error toast
       await waitFor(() => {
-        expect(mockToast).toHaveBeenCalledWith(
-          expect.any(String),
+        expect(mockToast.error).toHaveBeenCalledWith(
+          "Failed to generate diagram",
           expect.objectContaining({
             description: expect.any(String),
           })
         );
-      });
+      }, { timeout: 5000 }); // Allow time for retries
     });
 
     it("should show error toast when architecture text is missing", async () => {

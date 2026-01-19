@@ -22,6 +22,7 @@ import { isClarifyingQuestions, type ClarifyingQuestionsResponse } from "@/types
 import { Edit, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { SaveIndicator } from "./SaveIndicator";
+import type { StakworkRunType } from "@prisma/client";
 
 interface GeneratedContent {
   content: string;
@@ -43,6 +44,13 @@ interface AITextareaSectionProps {
   className?: string;
   initialDiagramUrl?: string | null;
 }
+
+/**
+ * Maps section type to StakworkRunType enum value
+ */
+const getStakworkType = (type: "requirements" | "architecture"): StakworkRunType => {
+  return type === "requirements" ? "REQUIREMENTS" : "ARCHITECTURE";
+};
 
 export function AITextareaSection({
   id,
@@ -68,16 +76,20 @@ export function AITextareaSection({
   const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
 
   const { workspace } = useWorkspace();
+  
+  // Map the section type to StakworkRunType
+  const stakworkType = getStakworkType(type);
+  
   const { latestRun, refetch } = useStakworkGeneration({
     featureId,
-    type: "ARCHITECTURE",
-    enabled: type === "architecture",
+    type: stakworkType,
+    enabled: true, // Enable for both requirements and architecture
   });
 
   const aiGeneration = useAIGeneration({
     featureId,
     workspaceId: workspace?.id || "",
-    type: "ARCHITECTURE",
+    type: stakworkType,
     displayName: type, // Pass the actual type for correct toast messages
     enabled: true, // Enable for both requirements and architecture (accept/reject for quick generation)
   });
@@ -273,7 +285,7 @@ export function AITextareaSection({
             disabled={isLoadingState || showWorkflowBadge}
             label="Generate"
           />
-          {type === "architecture" && (
+          {(type === "architecture" || type === "requirements") && (
             <GenerationControls
               onQuickGenerate={() => {}}
               onDeepThink={handleDeepThink}
@@ -283,7 +295,7 @@ export function AITextareaSection({
               isQuickGenerating={quickGenerating}
               disabled={false}
               showDeepThink={true}
-              showGenerateDiagram={mode === "preview" && !!value?.trim()}
+              showGenerateDiagram={type === "architecture" && mode === "preview" && !!value?.trim()}
               onGenerateDiagram={handleGenerateDiagram}
               isGeneratingDiagram={isGeneratingDiagram}
             />
@@ -310,7 +322,7 @@ export function AITextareaSection({
           source={aiGeneration.source || "quick"}
           onAccept={handleAccept}
           onReject={handleReject}
-          onProvideFeedback={type === "architecture" ? handleProvideFeedback : undefined}
+          onProvideFeedback={handleProvideFeedback}
           isLoading={aiGeneration.isLoading}
         />
       ) : (
