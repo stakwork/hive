@@ -1035,14 +1035,19 @@ export default function TaskChatPage() {
     workflowStatus === WorkflowStatus.HALTED ||
     workflowStatus === WorkflowStatus.FAILED ||
     workflowStatus === WorkflowStatus.ERROR;
-  const inputDisabled = isLoading || !isConnected || isTerminalState;
-  if (hasActiveChatForm) {
-    // TODO: rm this and only enable if ready below
-  }
-  // const inputDisabled =
-  //   isLoading ||
-  //   !isConnected ||
-  //   (started && messages.length > 0 && !hasActiveChatForm);
+
+  // Live mode: restrict input based on workflow state and pod availability
+  const liveModeSendAllowed =
+    !started || // Fresh task - can send to kick off
+    hasActiveChatForm || // FORM with chat option waiting for response
+    workflowStatus === WorkflowStatus.COMPLETED || // Workflow done, can continue
+    workflowStatus === WorkflowStatus.PENDING; // Not started yet
+
+  const inputDisabled =
+    isLoading ||
+    !isConnected ||
+    isTerminalState ||
+    (taskMode !== "agent" && (!podId || !liveModeSendAllowed));
 
   return (
     <AnimatePresence mode="wait">
