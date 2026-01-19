@@ -554,6 +554,12 @@ export default function TaskChatPage() {
           setWorkflowEditorWebhook(result.workflow.webhook);
         }
 
+        // Set project ID for the workflow link
+        if (result.workflow?.project_id) {
+          setProjectId(result.workflow.project_id.toString());
+          setStakworkProjectId(result.workflow.project_id);
+        }
+
         // Update message status
         setMessages((msgs) =>
           msgs.map((msg) => (msg.id === newMessage.id ? { ...msg, status: ChatStatus.SENT } : msg)),
@@ -1047,7 +1053,7 @@ export default function TaskChatPage() {
     isLoading ||
     !isConnected ||
     isTerminalState ||
-    (taskMode !== "agent" && (!podId || !liveModeSendAllowed));
+    (taskMode !== "agent" && taskMode !== "workflow_editor" && (!podId || !liveModeSendAllowed));
 
   return (
     <AnimatePresence mode="wait">
