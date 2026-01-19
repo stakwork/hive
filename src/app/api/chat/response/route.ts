@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import {
   ChatRole,
   ChatStatus,
@@ -13,7 +14,6 @@ import {
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
-import { config } from "@/config/env";
 
 export const fetchCache = "force-no-store";
 
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
                 await db.artifact.update({
                   where: { id: dbArtifact.id },
                   data: {
-                    content: updatedContent as Record<string, unknown>,
+                    content: updatedContent as unknown as Prisma.InputJsonValue,
                   },
                 });
 
