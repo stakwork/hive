@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
+import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   try {
@@ -93,13 +94,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     if (hasPullRequest) {
-      await db.task.update({
+      const updatedTask = await db.task.update({
         where: { id: taskId },
         data: {
           status: "DONE",
           workflowStatus: "COMPLETED",
         },
+        select: {
+          featureId: true,
+        },
       });
+
+      // Sync feature status if task belongs to a feature
+      if (updatedTask.featureId) {
+        try {
+          await updateFeatureStatusFromTasks(updatedTask.featureId);
+        } catch (error) {
+          console.error('Failed to sync feature status:', error);
+          // Don't fail the request if feature sync fails
+        }
+      }
     }
 
     return NextResponse.json(
