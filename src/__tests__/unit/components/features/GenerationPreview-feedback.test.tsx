@@ -2,7 +2,11 @@ import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import GenerationPreview from '@/components/features/GenerationPreview';
-import { prisma } from '@/lib/db';
+
+// Mock MarkdownRenderer to avoid theme detection dependency
+vi.mock('@/components/MarkdownRenderer', () => ({
+  MarkdownRenderer: ({ children }: { children: string }) => <div>{children}</div>,
+}));
 
 // Mock fetch for API calls
 global.fetch = vi.fn();

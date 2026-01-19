@@ -3,6 +3,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import GenerationPreview from '@/components/features/GenerationPreview';
 
+// Mock MarkdownRenderer to avoid theme detection dependency
+vi.mock('@/components/MarkdownRenderer', () => ({
+  MarkdownRenderer: ({ children }: { children: string }) => <div>{children}</div>,
+}));
+
 describe('GenerationPreview Component', () => {
   const defaultProps = {
     content: 'Generated content for testing',
