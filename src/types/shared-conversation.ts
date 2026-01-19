@@ -10,6 +10,11 @@ export interface SharedConversationData {
   followUpQuestions: unknown; // string[] format stored as JSON
   createdAt: string;
   updatedAt: string;
+  createdBy?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  };
 }
 
 export interface CreateSharedConversationRequest {

@@ -68,6 +68,13 @@ export async function GET(
         followUpQuestions: true,
         createdAt: true,
         updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
       },
     });
 
@@ -98,6 +105,11 @@ export async function GET(
       followUpQuestions: sharedConversation.followUpQuestions,
       createdAt: sharedConversation.createdAt.toISOString(),
       updatedAt: sharedConversation.updatedAt.toISOString(),
+      createdBy: {
+        id: sharedConversation.user.id,
+        name: sharedConversation.user.name,
+        email: sharedConversation.user.email,
+      },
     };
 
     return NextResponse.json(response, { status: 200 });
