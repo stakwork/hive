@@ -26,7 +26,17 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 vi.mock("@/config/env", () => ({
-  config: {},
+  config: {
+    USE_MOCKS: false,
+    MOCK_BASE: "http://localhost:3000",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://api.stakwork.com",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    SWARM_SUPER_ADMIN_URL: "https://app.superadmin.sphinx.chat",
+    GEMINI_API_BASE_URL: "https://generativelanguage.googleapis.com",
+    API_TIMEOUT: 20000,
+  },
 }));
 vi.mock("@/lib/auth/nextauth", () => ({
   authOptions: {},

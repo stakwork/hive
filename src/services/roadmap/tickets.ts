@@ -11,6 +11,7 @@ import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
+import { updateFeatureStatusFromTasks } from "./feature-status-sync";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
@@ -418,6 +419,16 @@ export async function updateTicket(
       },
     },
   });
+
+  // Sync feature status if task belongs to a feature and status/workflowStatus was changed
+  if (updatedTask.featureId && (data.status !== undefined || data.workflowStatus !== undefined)) {
+    try {
+      await updateFeatureStatusFromTasks(updatedTask.featureId);
+    } catch (error) {
+      console.error('Failed to sync feature status:', error);
+      // Don't fail the request if feature sync fails
+    }
+  }
 
   // Convert system assignee type to virtual user object
   if (updatedTask.systemAssigneeType) {

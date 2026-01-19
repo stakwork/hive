@@ -4,6 +4,7 @@ import { WorkflowStatus } from "@prisma/client";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { mapStakworkStatus } from "@/utils/conversions";
 import { StakworkStatusPayload } from "@/types";
+import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 export const fetchCache = "force-no-store";
 
@@ -137,7 +138,22 @@ export async function POST(request: NextRequest) {
     const updatedTask = await db.task.update({
       where: { id: finalTaskId },
       data: updateData,
+      select: {
+        workflowStartedAt: true,
+        workflowCompletedAt: true,
+        featureId: true,
+      },
     });
+
+    // Sync feature status if task belongs to a feature
+    if (updatedTask.featureId) {
+      try {
+        await updateFeatureStatusFromTasks(updatedTask.featureId);
+      } catch (error) {
+        console.error('Failed to sync feature status:', error);
+        // Don't fail the request if feature sync fails
+      }
+    }
 
     try {
       const channelName = getTaskChannelName(finalTaskId);

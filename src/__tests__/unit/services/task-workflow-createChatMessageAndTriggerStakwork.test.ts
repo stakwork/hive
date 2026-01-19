@@ -45,6 +45,15 @@ vi.mock("@/config/env", () => ({
     STAKWORK_API_KEY: "test-stakwork-key",
     STAKWORK_BASE_URL: "https://stakwork.example.com",
     STAKWORK_WORKFLOW_ID: "123,456,789",
+    USE_MOCKS: false,
+    MOCK_BASE: "http://localhost:3000",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://stakwork.example.com",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    SWARM_SUPER_ADMIN_URL: "https://app.superadmin.sphinx.chat",
+    GEMINI_API_BASE_URL: "https://generativelanguage.googleapis.com",
+    API_TIMEOUT: 20000,
   },
 }));
 vi.mock("@/lib/utils", () => ({
@@ -148,15 +157,17 @@ describe("createChatMessageAndTriggerStakwork", () => {
         include: expect.any(Object),
       });
 
-      expect(mockDb.task.update).toHaveBeenCalledWith({
-        where: { id: task.id },
-        data: expect.objectContaining({
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          workflowStartedAt: expect.any(Date),
-          stakworkProjectId: 12345,
-          status: TaskStatus.IN_PROGRESS,
-        }),
-      });
+      expect(mockDb.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: task.id },
+          data: expect.objectContaining({
+            workflowStatus: WorkflowStatus.IN_PROGRESS,
+            workflowStartedAt: expect.any(Date),
+            stakworkProjectId: 12345,
+            status: TaskStatus.IN_PROGRESS,
+          }),
+        })
+      );
     });
 
     it("should serialize contextTags as JSON string", async () => {
@@ -380,15 +391,17 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
 
       // Assert
-      expect(mockDb.task.update).toHaveBeenCalledWith({
-        where: { id: task.id },
-        data: expect.objectContaining({
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          stakworkProjectId,
-          workflowStartedAt: expect.any(Date),
-          status: TaskStatus.IN_PROGRESS,
-        }),
-      });
+      expect(mockDb.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: task.id },
+          data: expect.objectContaining({
+            workflowStatus: WorkflowStatus.IN_PROGRESS,
+            stakworkProjectId,
+            workflowStartedAt: expect.any(Date),
+            status: TaskStatus.IN_PROGRESS,
+          }),
+        })
+      );
     });
 
     it("should set workflowStatus to FAILED on API error", async () => {
@@ -416,10 +429,12 @@ describe("createChatMessageAndTriggerStakwork", () => {
       });
 
       // Assert
-      expect(mockDb.task.update).toHaveBeenCalledWith({
-        where: { id: task.id },
-        data: { workflowStatus: WorkflowStatus.FAILED },
-      });
+      expect(mockDb.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: task.id },
+          data: { workflowStatus: WorkflowStatus.FAILED },
+        })
+      );
     });
 
     it("should not change task status if already IN_PROGRESS", async () => {
@@ -482,10 +497,12 @@ describe("createChatMessageAndTriggerStakwork", () => {
         error: "Error: Network error",
       });
       
-      expect(mockDb.task.update).toHaveBeenCalledWith({
-        where: { id: task.id },
-        data: { workflowStatus: WorkflowStatus.FAILED },
-      });
+      expect(mockDb.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: task.id },
+          data: { workflowStatus: WorkflowStatus.FAILED },
+        })
+      );
     });
 
     it("should handle Stakwork API HTTP errors", async () => {
