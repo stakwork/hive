@@ -83,7 +83,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
       setError(error instanceof Error ? error.message : "Failed to start code ingestion");
       toast.error("Ingestion Error", { description: error instanceof Error ? error.message : "Failed to start code ingestion" });
     }
-  }, [workspaceId, swarmId, ingestRefId, toast, updateWorkspace, setIsOnboarding]);
+  }, [workspaceId, swarmId, ingestRefId, updateWorkspace, setIsOnboarding]);
 
   // Step 3: Create Stakwork customer
   const createStakworkCustomer = useCallback(async () => {
@@ -349,7 +349,7 @@ export function WorkspaceSetup({ repositoryUrl, onServicesStarted }: WorkspaceSe
     };
 
     setupServices();
-  }, [swarmId, containerFilesSetUp, workspaceId, repositoryUrl, updateWorkspace, toast, onServicesStarted]);
+  }, [swarmId, containerFilesSetUp, workspaceId, repositoryUrl, updateWorkspace, onServicesStarted]);
 
   // Show error state first, before checking completion
   if (error) {

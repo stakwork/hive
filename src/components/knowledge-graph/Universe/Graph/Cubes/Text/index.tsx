@@ -1,4 +1,3 @@
-import { Icons } from '@/components/Icons'
 import { useSchemaStore } from '@/stores/useSchemaStore'
 import { Billboard } from '@react-three/drei'
 import { NodeExtended } from '@Universe/types'
@@ -21,7 +20,7 @@ export const TextNode = memo(
     const nodeRef = useRef<Mesh | null>(null)
     const backgroundRef = useRef<Group | null>(null)
 
-    const { normalizedSchemasByType, getNodeKeysByType } = useSchemaStore((s) => s)
+    const { normalizedSchemasByType: _normalizedSchemasByType, getNodeKeysByType } = useSchemaStore((s) => s)
     const keyProperty = getNodeKeysByType(node.node_type) || ''
 
     const sanitizedNodeName =
