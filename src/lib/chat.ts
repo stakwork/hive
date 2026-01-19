@@ -89,6 +89,7 @@ export interface WorkflowContent {
   workflowId?: number; // Workflow ID from graph
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
+  workflowVersionId?: number; // Version ID to fetch updated spec from Stakwork
 }
 
 export interface PublishWorkflowContent {

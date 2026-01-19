@@ -9,9 +9,11 @@ import {
   type ChatMessage,
   type IDEContent,
   type BrowserContent,
+  type WorkflowContent,
 } from "@/lib/chat";
 import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
+import { config } from "@/config/env";
 
 export const fetchCache = "force-no-store";
 
@@ -79,6 +81,59 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Check for WORKFLOW artifacts with workflowVersionId but no workflowJson
+    // If found, fetch the updated workflow spec from Stakwork
+    for (const dbArtifact of chatMessage.artifacts) {
+      if (dbArtifact.type === ArtifactType.WORKFLOW) {
+        const content = dbArtifact.content as WorkflowContent | null;
+        if (content?.workflowVersionId && content?.workflowId && !content?.workflowJson) {
+          try {
+            // Fetch the updated workflow definition from Stakwork
+            const workflowUrl = `${config.STAKWORK_BASE_URL}/workflows/${content.workflowId}/`;
+            console.log("Fetching updated workflow from:", workflowUrl);
+
+            const workflowResponse = await fetch(workflowUrl, {
+              method: "GET",
+              headers: {
+                Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+            });
+
+            if (workflowResponse.ok) {
+              const workflowResult = await workflowResponse.json();
+              const updatedWorkflowJson =
+                workflowResult.data?.workflow?.workflow_json ||
+                workflowResult.data?.spec ||
+                workflowResult.data?.workflow_json ||
+                workflowResult.workflow_json;
+
+              if (updatedWorkflowJson) {
+                // Update the artifact with the fetched workflowJson
+                await db.artifact.update({
+                  where: { id: dbArtifact.id },
+                  data: {
+                    content: {
+                      ...content,
+                      workflowJson: updatedWorkflowJson,
+                    },
+                  },
+                });
+                console.log(`✅ Updated WORKFLOW artifact ${dbArtifact.id} with fetched workflowJson`);
+
+                // Update the local artifact for the response
+                (dbArtifact.content as WorkflowContent).workflowJson = updatedWorkflowJson as string;
+              }
+            } else {
+              console.error("Failed to fetch workflow from Stakwork:", await workflowResponse.text());
+            }
+          } catch (fetchError) {
+            console.error("Error fetching workflow spec:", fetchError);
+          }
+        }
+      }
+    }
 
     const clientMessage: ChatMessage = {
       ...chatMessage,
