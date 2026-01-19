@@ -10,6 +10,7 @@ import { getBaseUrl } from "@/lib/utils";
 import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
 import { EncryptionService } from "@/lib/encryption";
+import { buildFeatureContext } from "@/services/task-coordinator";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -151,6 +152,8 @@ export async function POST(request: NextRequest) {
         branch: true,
         podId: true,
         agentPassword: true,
+        featureId: true,
+        phaseId: true,
         workspace: {
           select: {
             ownerId: true,
@@ -308,6 +311,17 @@ export async function POST(request: NextRequest) {
         ? encryptionService.decryptField("agentPassword", task.agentPassword)
         : null;
 
+      // Build feature context if task is linked to a feature and phase
+      let featureContext;
+      if (task.featureId && task.phaseId) {
+        try {
+          featureContext = await buildFeatureContext(task.featureId, task.phaseId);
+        } catch (error) {
+          console.error("Error building feature context:", error);
+          // Continue without feature context if it fails
+        }
+      }
+
       stakworkData = await callStakworkAPI({
         taskId,
         message,
@@ -320,6 +334,7 @@ export async function POST(request: NextRequest) {
         repo2GraphUrl,
         attachments: attachmentUrls,
         mode,
+        featureContext,
         workspaceId: task.workspaceId,
         repoUrl,
         baseBranch,
