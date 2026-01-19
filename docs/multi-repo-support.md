@@ -157,97 +157,150 @@ export async function getPrimaryRepository(workspaceId: string) { ... }
 
 ### 3. Stakgraph Ingestion Changes
 
+**Key Discovery:** The stakgraph service already supports multiple repositories via **comma-separated URLs** in the `repo_url` parameter. This simplifies the implementation significantly.
+
 **File:** `/src/services/swarm/stakgraph-actions.ts`
 
-#### Current Implementation
+#### Current Implementation (line 63-88)
 
 ```typescript
 export async function triggerIngestAsync(
   swarmName: string,
   apiKey: string,
-  repoUrl: string,  // SINGLE repo
+  repoUrl: string,  // Currently single repo, but stakgraph accepts comma-separated
   creds: { username: string; pat: string },
   callbackUrl?: string,
   useLsp: boolean = false,
-)
+) {
+  const data: Record<string, string | boolean> = {
+    repo_url: repoUrl,  // Can be "url1,url2,url3"
+    username: creds.username,
+    pat: creds.pat,
+    use_lsp: useLsp,
+    realtime: true,
+  };
+  // ...
+}
 ```
 
 #### Multi-Repo Implementation
 
-```typescript
-// Option A: New function for multi-repo (recommended)
-export async function triggerMultiRepoIngest(
-  swarmName: string,
-  apiKey: string,
-  repositories: Array<{ url: string; branch: string; id: string }>,
-  creds: { username: string; pat: string },
-  callbackUrl?: string,
-  useLsp: boolean = false,
-): Promise<Array<{ repositoryId: string; requestId: string; status: 'queued' | 'error' }>> {
-  const results = [];
-  
-  for (const repo of repositories) {
-    const result = await triggerIngestAsync(
-      swarmName,
-      apiKey,
-      repo.url,
-      creds,
-      callbackUrl ? `${callbackUrl}?repositoryId=${repo.id}` : undefined,
-      useLsp,
-    );
-    
-    results.push({
-      repositoryId: repo.id,
-      requestId: result.data?.request_id || '',
-      status: result.ok ? 'queued' : 'error',
-    });
-  }
-  
-  return results;
-}
+No changes needed to `triggerIngestAsync` - it already passes `repo_url` through. The change is in how we call it:
 
-// Option B: If stakgraph service supports batch ingestion
-export async function triggerBatchIngestAsync(
-  swarmName: string,
-  apiKey: string,
-  repositories: Array<{ url: string; branch: string }>,
-  creds: { username: string; pat: string },
-  callbackUrl?: string,
-) {
-  const stakgraphUrl = getStakgraphUrl(swarmName);
-  return swarmApiRequest({
-    swarmUrl: stakgraphUrl,
-    endpoint: "/ingest_batch_async",  // Requires stakgraph service support
-    method: "POST",
-    apiKey,
-    data: {
-      repositories,
-      username: creds.username,
-      pat: creds.pat,
-      callback_url: callbackUrl,
-    },
-  });
+```typescript
+// Helper to build comma-separated repo URLs
+export function buildMultiRepoUrl(repositories: Array<{ repositoryUrl: string }>): string {
+  return repositories.map(r => r.repositoryUrl).join(',');
 }
 ```
 
 **File:** `/src/app/api/swarm/stakgraph/ingest/route.ts`
 
+#### Current Implementation (lines 78-84)
+
 ```typescript
-// Add optional repositoryId parameter
+const primaryRepo = await getPrimaryRepository(repoWorkspaceId);
+const finalRepo = primaryRepo?.repositoryUrl;  // Single URL
+```
+
+#### Multi-Repo Implementation
+
+```typescript
+// Option 1: Ingest all repos (default behavior change)
+const repositories = await db.repository.findMany({
+  where: { workspaceId: repoWorkspaceId },
+  orderBy: { createdAt: 'asc' },
+});
+const repoUrls = repositories.map(r => r.repositoryUrl).join(',');
+
+// Option 2: Support optional repositoryId param for single-repo ingest
 const { useLsp, workspaceId, repositoryId } = body;
 
-// If repositoryId provided, ingest single repo
-// Otherwise, ingest all repositories in workspace
+let repoUrls: string;
 if (repositoryId) {
+  // Ingest specific repo only
   const repo = await db.repository.findUnique({
     where: { id: repositoryId, workspaceId },
   });
-  // Ingest single repo
+  repoUrls = repo?.repositoryUrl || '';
 } else {
-  const repositories = await getAllRepositories(workspaceId);
-  // Ingest all repos
+  // Ingest all repositories (comma-separated)
+  const repositories = await db.repository.findMany({
+    where: { workspaceId },
+    orderBy: { createdAt: 'asc' },
+  });
+  repoUrls = repositories.map(r => r.repositoryUrl).join(',');
+}
+
+// Then pass to triggerIngestAsync
+const apiResult = await triggerIngestAsync(
+  swarmVanityAddress,
+  decryptedApiKey,
+  repoUrls,  // Now comma-separated: "url1,url2,url3"
+  { username, pat },
+  stakgraphCallbackUrl,
+  use_lsp,
+);
+```
+
+#### Status Tracking Consideration
+
+With comma-separated repos, we get a single `request_id` for all repos. Options:
+1. **Single status for all** - Track one `ingestRefId` on Swarm (current behavior, simplest)
+2. **Per-repo status** - Parse callback to update individual Repository statuses based on which URLs completed
+
+---
+
+### 3b. Stakgraph Sync Changes (Single Repo Only)
+
+**Important:** Unlike ingest, sync does NOT support comma-separated URLs. This is fine because sync is triggered per-repo via GitHub webhooks.
+
+**File:** `/src/app/api/swarm/stakgraph/sync/route.ts`
+
+#### Current Implementation (lines 38-39)
+
+```typescript
+const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
+const repositoryUrl = primaryRepo?.repositoryUrl;
+```
+
+#### Multi-Repo Implementation
+
+For the sync API endpoint, we need to accept a `repositoryId` parameter to specify which repo to sync:
+
+```typescript
+const { workspaceId, swarmId, repositoryId } = body;
+
+let repositoryUrl: string | undefined;
+
+if (repositoryId) {
+  // Sync specific repo
+  const repo = await db.repository.findUnique({
+    where: { id: repositoryId, workspaceId: swarm.workspaceId },
+  });
+  repositoryUrl = repo?.repositoryUrl;
+} else {
+  // Fallback to primary (backward compatible)
+  const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
+  repositoryUrl = primaryRepo?.repositoryUrl;
 }
 ```
+
+**File:** `/src/app/api/github/webhook/[workspaceId]/route.ts`
+
+The webhook handler already receives the repo URL from the GitHub event payload, so it naturally handles multi-repo:
+
+```typescript
+// Line 272 - already uses the specific repo from the webhook event
+const apiResult: AsyncSyncResult = await triggerAsyncSync(
+  swarm.name,
+  swarm.swarmApiKey,
+  repositoryUrl,  // From GitHub webhook payload - already repo-specific
+  // ...
+);
+```
+
+**No UI needed for sync** - it's triggered automatically by GitHub webhooks when code is pushed to any tracked repo.
 
 ---
 
@@ -472,8 +525,8 @@ Already supports multiple repositories in UI. Backend operations need to use all
 
 | API | Current | Multi-Repo Change |
 |-----|---------|-------------------|
-| `POST /api/swarm/stakgraph/ingest` | Single repo | Add optional `repositoryId` param; without it, ingest all |
-| `POST /api/swarm/stakgraph/sync` | Single repo | Add optional `repositoryId` param |
+| `POST /api/swarm/stakgraph/ingest` | Single repo via `getPrimaryRepository()` | Build comma-separated `repo_url` from all repos; optionally accept `repositoryId` to ingest single repo |
+| `POST /api/swarm/stakgraph/sync` | Single repo via `getPrimaryRepository()` | Add optional `repositoryId` param (sync only supports single repo - no comma-separated URLs) |
 | `GET /api/workspaces/[slug]/stakgraph` | Returns settings | Include per-repo ingestion status |
 | `POST /api/pool-manager/create-pool` | Single repo | Add `additional_repositories` array |
 | `POST /api/tasks` | Optional `repositoryId` | Ensure UI allows selecting repo |
@@ -485,16 +538,21 @@ Already supports multiple repositories in UI. Backend operations need to use all
 
 ### 1. Stakgraph Microservice (port 7799)
 
-**Questions to verify:**
-- Does `/ingest_async` support being called multiple times for different repos?
-- Does the graph database support multi-repo code graphs?
-- How are cross-repo relationships (imports, dependencies) handled?
-- Is there a batch ingest endpoint?
+**✅ Ingest:** Supports multi-repo via comma-separated URLs in `repo_url` parameter.
 
-**Required stakgraph changes (if not supported):**
-- Add `/ingest_batch_async` endpoint
-- Support multi-repo graph queries
-- Handle cross-repo code context
+**⚠️ Sync:** Does NOT support multiple repos - only single `repo_url`. This is important because:
+- Sync is triggered automatically via GitHub webhooks when code is pushed
+- Each webhook event is for a specific repo, so this is naturally single-repo
+- For multi-repo workspaces, we need to ensure the webhook identifies which repo changed and syncs only that one
+
+**Remaining questions:**
+- How are cross-repo relationships (imports, dependencies) handled in the graph?
+- Does the ingest callback return status for each repo individually or all together?
+- How does querying work across multiple ingested repos?
+
+**Stakgraph service changes:**
+- Ingest: No changes needed - just pass comma-separated URLs
+- Sync: No changes needed - naturally single-repo per webhook event
 
 ### 2. Pool Manager Service
 
@@ -624,7 +682,8 @@ ALTER TABLE janitor_runs ADD COLUMN repository_id VARCHAR(255) REFERENCES reposi
 
 ## Open Questions
 
-1. **Stakgraph service:** Does it already support multi-repo, or does the external service need updates?
+1. ~~**Stakgraph service:** Does it already support multi-repo, or does the external service need updates?~~
+   **ANSWERED:** Yes, stakgraph supports multi-repo via comma-separated URLs in `repo_url` parameter.
 
 2. **Pool Manager service:** Does it support cloning multiple repos, or does it need updates?
 
