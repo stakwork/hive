@@ -68,6 +68,17 @@ export const selectors = {
     saveButton: '[data-testid="workspace-settings-save-button"]',
   },
 
+  vercelIntegration: {
+    card: '[data-testid="vercel-integration-card"]',
+    apiTokenInput: '[data-testid="vercel-api-token-input"]',
+    teamIdInput: '[data-testid="vercel-team-id-input"]',
+    webhookUrlInput: '[data-testid="vercel-webhook-url-input"]',
+    webhookUrlCopyButton: '[data-testid="vercel-webhook-url-copy-button"]',
+    setupInstructions: '[data-testid="vercel-setup-instructions"]',
+    saveButton: '[data-testid="vercel-integration-save-button"]',
+    loading: '[data-testid="vercel-integration-loading"]',
+  },
+
   workspaceDeletion: {
     card: '[data-testid="delete-workspace-card"]',
     deleteButton: '[data-testid="delete-workspace-button"]',

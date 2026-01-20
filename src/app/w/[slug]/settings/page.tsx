@@ -2,6 +2,7 @@ import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { VMConfigSection } from "@/components/pool-status";
 import { RerunIngest } from "@/components/RerunIngest";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
+import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
 import { PageHeader } from "@/components/ui/page-header";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
@@ -54,6 +55,8 @@ export default async function SettingsPage({
           />
 
           <NodeTypeOrderSettings />
+
+          <VercelIntegrationSettings />
 
           {workspace.userRole === "OWNER" && (
             <DeleteWorkspace
