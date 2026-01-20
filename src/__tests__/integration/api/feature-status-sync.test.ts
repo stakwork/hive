@@ -12,7 +12,7 @@ import {
   expectSuccess,
   generateUniqueId,
 } from "@/__tests__/support/helpers";
-import { cleanDatabase } from "@/__tests__/support/fixtures/database";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
 
 // Mock NextAuth
 vi.mock("next-auth/next", () => ({
@@ -38,7 +38,7 @@ vi.mock("@/lib/pusher", () => ({
 
 describe("Feature Status Sync Integration Tests", () => {
   beforeEach(async () => {
-    await cleanDatabase();
+    await resetDatabase();
   });
 
   /**
