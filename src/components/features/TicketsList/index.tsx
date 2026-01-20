@@ -6,7 +6,6 @@ import { Plus, Table as TableIcon, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AIButton } from "@/components/ui/ai-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
@@ -76,7 +75,6 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   const [activeView, setActiveView] = useState<"table" | "graph">("table");
 
   // AI generation state
-  const [generating, setGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [acceptingTasks, setAcceptingTasks] = useState(false);
 
@@ -428,21 +426,6 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Tasks</Label>
         <div className="flex items-center gap-2">
-          {/* Quick Generate */}
-          <AIButton<GeneratedContent>
-            endpoint={`/api/features/${featureId}/generate`}
-            params={{ type: "tickets" }}
-            onGenerated={(results) => {
-              if (results.length > 0) {
-                aiGeneration.setContent(JSON.stringify(results[0]), "quick");
-                setGeneratedContent(results[0]);
-              }
-            }}
-            onGeneratingChange={setGenerating}
-            label="Generate"
-            disabled={initiatingDeepThink || latestRun?.status === "IN_PROGRESS"}
-          />
-
           {/* Deep Research */}
           <GenerationControls
             onQuickGenerate={() => {}}
@@ -450,7 +433,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
             onRetry={handleRetry}
             status={latestRun?.status}
             isLoading={aiGeneration.isLoading || initiatingDeepThink}
-            isQuickGenerating={generating}
+            isQuickGenerating={false}
             disabled={false}
             showDeepThink={true}
           />
