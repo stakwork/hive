@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth/next";
 import { redirect, notFound } from "next/navigation";
 import { ChatMessage } from "@/components/dashboard/DashboardChat/ChatMessage";
 import { ToolCallIndicator } from "@/components/dashboard/DashboardChat/ToolCallIndicator";
+import { db } from "@/lib/db";
+import { SharedConversationData } from "@/types/shared-conversation";
 
 interface Message {
   id: string;
@@ -27,26 +29,102 @@ interface SharedConversationPageProps {
   }>;
 }
 
-async function getSharedConversation(slug: string, shareId: string, sessionToken?: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  
-  if (sessionToken) {
-    headers["Cookie"] = `next-auth.session-token=${sessionToken}`;
-  }
+async function getSharedConversation(
+  slug: string, 
+  shareId: string, 
+  userId: string
+): Promise<{ data?: SharedConversationData; error?: string; status: number }> {
+  try {
+    // Find workspace
+    const workspace = await db.workspace.findFirst({
+      where: {
+        slug,
+        deleted: false,
+      },
+      select: {
+        id: true,
+        ownerId: true,
+      },
+    });
 
-  const response = await fetch(
-    `${baseUrl}/api/workspaces/${slug}/chat/shared/${shareId}`,
-    {
-      headers,
-      cache: "no-store",
+    if (!workspace) {
+      return { error: "Workspace not found", status: 404 };
     }
-  );
 
-  return response;
+    // Check if user is a workspace member (owner or explicit member)
+    const isOwner = workspace.ownerId === userId;
+    const isMember = isOwner || await db.workspaceMember.findFirst({
+      where: {
+        workspaceId: workspace.id,
+        userId,
+        leftAt: null,
+      },
+    });
+
+    if (!isMember) {
+      return { 
+        error: "Access denied. You must be a workspace member to view shared conversations.", 
+        status: 403 
+      };
+    }
+
+    // Fetch the shared conversation
+    const sharedConversation = await db.sharedConversation.findUnique({
+      where: {
+        id: shareId,
+      },
+      select: {
+        id: true,
+        workspaceId: true,
+        userId: true,
+        title: true,
+        messages: true,
+        provenanceData: true,
+        followUpQuestions: true,
+        createdAt: true,
+        updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!sharedConversation) {
+      return { error: "Shared conversation not found", status: 404 };
+    }
+
+    // Verify the shared conversation belongs to the workspace
+    if (sharedConversation.workspaceId !== workspace.id) {
+      return { error: "Shared conversation not found", status: 404 };
+    }
+
+    // Return the conversation data
+    const data: SharedConversationData = {
+      id: sharedConversation.id,
+      workspaceId: sharedConversation.workspaceId,
+      userId: sharedConversation.userId,
+      title: sharedConversation.title,
+      messages: sharedConversation.messages,
+      provenanceData: sharedConversation.provenanceData,
+      followUpQuestions: sharedConversation.followUpQuestions,
+      createdAt: sharedConversation.createdAt.toISOString(),
+      updatedAt: sharedConversation.updatedAt.toISOString(),
+      createdBy: {
+        id: sharedConversation.user.id,
+        name: sharedConversation.user.name,
+        email: sharedConversation.user.email,
+      },
+    };
+
+    return { data, status: 200 };
+  } catch (error) {
+    console.error("Failed to fetch shared conversation:", error);
+    return { error: "Failed to fetch shared conversation", status: 500 };
+  }
 }
 
 export default async function SharedConversationPage({ params }: SharedConversationPageProps) {
@@ -57,17 +135,22 @@ export default async function SharedConversationPage({ params }: SharedConversat
     redirect("/auth/signin");
   }
 
+  const userId = (session.user as { id?: string }).id;
+  if (!userId) {
+    redirect("/auth/signin");
+  }
+
   const { slug, shareId } = await params;
 
   try {
-    // Fetch shared conversation from API
-    const response = await getSharedConversation(slug, shareId);
+    // Fetch shared conversation directly from database
+    const result = await getSharedConversation(slug, shareId, userId);
 
-    if (response.status === 404) {
+    if (result.status === 404) {
       notFound();
     }
 
-    if (response.status === 403) {
+    if (result.status === 403) {
       return (
         <div className="flex items-center justify-center min-h-screen p-4">
           <div className="max-w-md w-full bg-background border border-border rounded-lg p-8 text-center">
@@ -83,11 +166,11 @@ export default async function SharedConversationPage({ params }: SharedConversat
       );
     }
 
-    if (!response.ok) {
-      throw new Error("Failed to load shared conversation");
+    if (!result.data) {
+      throw new Error(result.error || "Failed to load shared conversation");
     }
 
-    const data = await response.json();
+    const data = result.data;
 
     // Parse messages from JSON
     const messages: Message[] = (data.messages as any[]).map((msg: any) => ({
