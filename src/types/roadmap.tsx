@@ -573,6 +573,7 @@ export interface UpdateRoadmapTaskRequest {
   title?: string;
   description?: string;
   status?: import("@prisma/client").TaskStatus;
+  workflowStatus?: import("@prisma/client").WorkflowStatus;
   priority?: import("@prisma/client").Priority;
   order?: number;
   phaseId?: string | null;
