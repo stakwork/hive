@@ -7,7 +7,6 @@ import { GenerationControls } from "@/components/features/GenerationControls";
 import { GenerationPreview } from "@/components/features/GenerationPreview";
 import { DeepResearchProgress } from "@/components/features/DeepResearchProgress";
 import { DiagramViewer } from "@/components/features/DiagramViewer";
-import { AIButton } from "@/components/ui/ai-button";
 import { Button } from "@/components/ui/button";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { Label } from "@/components/ui/label";
@@ -23,10 +22,6 @@ import { Edit, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { SaveIndicator } from "./SaveIndicator";
 import type { StakworkRunType } from "@prisma/client";
-
-interface GeneratedContent {
-  content: string;
-}
 
 interface AITextareaSectionProps {
   id: string;
@@ -69,7 +64,6 @@ export function AITextareaSection({
   initialDiagramUrl = null,
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [quickGenerating, setQuickGenerating] = useState(false);
   const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
   const [mode, setMode] = useState<"edit" | "preview">(value ? "preview" : "edit");
   const [diagramUrl, setDiagramUrl] = useState<string | null>(initialDiagramUrl);
@@ -134,12 +128,6 @@ export function AITextareaSection({
 
   const handleProvideFeedback = async (feedback: string) => {
     await aiGeneration.provideFeedback(feedback);
-  };
-
-  const handleGenerated = (results: GeneratedContent[]) => {
-    if (results.length > 0) {
-      aiGeneration.setContent(results[0].content, "quick");
-    }
   };
 
   const handleDeepThink = async () => {
@@ -236,18 +224,6 @@ export function AITextareaSection({
     }
   };
 
-  const isErrorState = latestRun?.status &&
-    ["FAILED", "ERROR", "HALTED"].includes(latestRun.status);
-
-  const isLoadingState = initiatingDeepThink || (latestRun?.status &&
-    ["PENDING", "IN_PROGRESS"].includes(latestRun.status));
-
-  const showWorkflowBadge = !!(
-    latestRun &&
-    !latestRun.decision &&
-    isErrorState
-  );
-
   // Detect if the content is clarifying questions from StakWork
   const parsedContent = useMemo(() => {
     if (!aiGeneration.content) return null;
@@ -277,22 +253,14 @@ export function AITextareaSection({
           />
         </div>
         <div className="flex items-center gap-2">
-          <AIButton<GeneratedContent>
-            endpoint={`/api/features/${featureId}/generate`}
-            params={{ type }}
-            onGenerated={handleGenerated}
-            onGeneratingChange={setQuickGenerating}
-            disabled={isLoadingState || showWorkflowBadge}
-            label="Generate"
-          />
           {(type === "architecture" || type === "requirements") && (
             <GenerationControls
               onQuickGenerate={() => {}}
               onDeepThink={handleDeepThink}
               onRetry={handleRetry}
               status={latestRun?.status}
-              isLoading={aiGeneration.isLoading}
-              isQuickGenerating={quickGenerating}
+              isLoading={aiGeneration.isLoading || initiatingDeepThink}
+              isQuickGenerating={false}
               disabled={false}
               showDeepThink={true}
               showGenerateDiagram={type === "architecture" && mode === "preview" && !!value?.trim()}
