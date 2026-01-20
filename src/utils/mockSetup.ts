@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
+  PodState,
   PoolState,
   RepositoryStatus,
   SourceControlOrgType,
@@ -180,6 +181,7 @@ export async function ensureMockWorkspaceForUser(
         agentStatus: null,
         containerFilesSetUp: true, // Enable for E2E tests to show dashboard immediately
         poolState: PoolState.COMPLETE, // Skip "Launch Pods" step for mock users
+        podState: PodState.COMPLETED, // Skip "Validating..." message for mock users
         poolName: "mock-pool",
         poolApiKey: encryptedPoolApiKey, // Mock pool API key for Pool Manager mock
       },
