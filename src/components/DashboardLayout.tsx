@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "./GlobalSearch";
+import { WorkspaceFaviconUpdater } from "./WorkspaceFaviconUpdater";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -70,6 +71,9 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col">
+      {/* Update browser favicon to match workspace logo */}
+      <WorkspaceFaviconUpdater />
+      
       <Sidebar user={user} />
       <GlobalSearch />
 
