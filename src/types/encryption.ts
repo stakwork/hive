@@ -29,7 +29,8 @@ export type EncryptableField =
   | "source_control_token"
   | "source_control_refresh_token"
   | "agentPassword"
-  | "agentWebhookSecret";
+  | "agentWebhookSecret"
+  | "vercelApiToken";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";
