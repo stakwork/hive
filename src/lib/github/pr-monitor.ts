@@ -164,7 +164,13 @@ async function fetchCIStatus(
       ? "No checks configured"
       : `${passedChecks}/${totalChecks} passed${pendingChecks > 0 ? ` (${pendingChecks} pending)` : ""}`;
 
-  return { status, summary, failedChecks };
+  // Limit failedChecks to first 10 to avoid storing too much data
+  const limitedFailedChecks = failedChecks.slice(0, 10);
+  if (failedChecks.length > 10) {
+    limitedFailedChecks.push(`... and ${failedChecks.length - 10} more`);
+  }
+
+  return { status, summary, failedChecks: limitedFailedChecks };
 }
 
 /**
@@ -315,9 +321,15 @@ export async function notifyPRStatusChange(
 }
 
 /**
- * Find all open PR artifacts that need monitoring
+ * Find open PR artifacts that need monitoring
+ *
+ * Uses raw SQL for efficient JSON filtering to avoid loading all PR artifacts.
+ * Only fetches PRs where:
+ * - status is not DONE or CANCELLED (open PRs)
+ * - resolution status is not "in_progress" or "gave_up"
+ * - task is not deleted/archived
  */
-export async function findOpenPRArtifacts(): Promise<
+export async function findOpenPRArtifacts(limit: number = 50): Promise<
   Array<{
     artifactId: string;
     taskId: string;
@@ -328,82 +340,51 @@ export async function findOpenPRArtifacts(): Promise<
     progress: PullRequestProgress | undefined;
   }>
 > {
-  // Find all PULL_REQUEST artifacts where status is not DONE or CANCELLED
-  const artifacts = await db.artifact.findMany({
-    where: {
-      type: "PULL_REQUEST",
-      message: {
-        task: {
-          deleted: false,
-          archived: false,
-        },
-      },
-    },
-    select: {
-      id: true,
-      content: true,
-      message: {
-        select: {
-          taskId: true,
-          task: {
-            select: {
-              id: true,
-              podId: true,
-              workspaceId: true,
-              workspace: {
-                select: {
-                  ownerId: true,
-                  sourceControlOrg: {
-                    select: {
-                      githubLogin: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
+  // Use raw query for efficient JSON filtering at the database level
+  // This avoids loading potentially 100k+ artifacts into memory
+  const artifacts = await db.$queryRaw<
+    Array<{
+      id: string;
+      content: PullRequestContent;
+      taskId: string;
+      podId: string | null;
+      workspaceId: string;
+      ownerId: string;
+    }>
+  >`
+    SELECT 
+      a.id,
+      a.content,
+      t.id as "taskId",
+      t."podId",
+      t."workspaceId",
+      w."ownerId"
+    FROM "Artifact" a
+    JOIN "ChatMessage" m ON a."messageId" = m.id
+    JOIN "Task" t ON m."taskId" = t.id
+    JOIN "Workspace" w ON t."workspaceId" = w.id
+    WHERE a.type = 'PULL_REQUEST'
+      AND t.deleted = false
+      AND t.archived = false
+      AND a.content->>'url' IS NOT NULL
+      AND (a.content->>'status' IS NULL OR a.content->>'status' NOT IN ('DONE', 'CANCELLED'))
+      AND (
+        a.content->'progress'->'resolution'->>'status' IS NULL 
+        OR a.content->'progress'->'resolution'->>'status' NOT IN ('in_progress', 'gave_up')
+      )
+    ORDER BY a."createdAt" DESC
+    LIMIT ${limit}
+  `;
 
-  const openPRs: Array<{
-    artifactId: string;
-    taskId: string;
-    prUrl: string;
-    workspaceId: string;
-    ownerId: string;
-    podId: string | null;
-    progress: PullRequestProgress | undefined;
-  }> = [];
-
-  for (const artifact of artifacts) {
-    const content = artifact.content as PullRequestContent | null;
-    if (!content?.url) continue;
-
-    // Skip if already merged or closed
-    if (content.status === "DONE" || content.status === "CANCELLED") continue;
-
-    // Skip if resolution is in progress or gave up
-    if (content.progress?.resolution?.status === "in_progress" || content.progress?.resolution?.status === "gave_up") {
-      continue;
-    }
-
-    const task = artifact.message?.task;
-    if (!task) continue;
-
-    openPRs.push({
-      artifactId: artifact.id,
-      taskId: task.id,
-      prUrl: content.url,
-      workspaceId: task.workspaceId,
-      ownerId: task.workspace.ownerId,
-      podId: task.podId,
-      progress: content.progress,
-    });
-  }
-
-  return openPRs;
+  return artifacts.map((artifact) => ({
+    artifactId: artifact.id,
+    taskId: artifact.taskId,
+    prUrl: artifact.content.url,
+    workspaceId: artifact.workspaceId,
+    ownerId: artifact.ownerId,
+    podId: artifact.podId,
+    progress: artifact.content.progress,
+  }));
 }
 
 /**
@@ -473,16 +454,15 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
     notified: 0,
   };
 
-  const openPRs = await findOpenPRArtifacts();
+  // Query is already limited at the DB level for efficiency
+  const openPRs = await findOpenPRArtifacts(maxPRs);
   log.info("Found open PRs to check", {
     count: openPRs.length,
+    maxPRs,
     prUrls: openPRs.slice(0, 5).map((p) => p.prUrl), // Log first 5 URLs for debugging
   });
 
-  // Limit to maxPRs
-  const prsToCheck = openPRs.slice(0, maxPRs);
-
-  for (const pr of prsToCheck) {
+  for (const pr of openPRs) {
     try {
       // Parse to get owner for auth
       const parsed = parsePRUrl(pr.prUrl);
@@ -574,8 +554,8 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         // Update artifact
         await updatePRArtifactProgress(pr.artifactId, progress);
 
-        // Notify via Pusher
-        log.info("Notifying PR status change via Pusher", {
+        // Notify via Pusher and create chat message
+        log.info("Notifying PR status change", {
           taskId: pr.taskId,
           prNumber: result.prNumber,
           state: result.state,
@@ -597,6 +577,7 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
             repo: `${result.owner}/${result.repo}`,
             prompt: fixPrompt.substring(0, 200) + "...",
           });
+          // TODO:
           // Uncomment below to enable agent auto-fix:
           // const triggerResult = await triggerAgentFix(pr.taskId, fixPrompt);
           // if (triggerResult.success) {
