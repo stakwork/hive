@@ -252,7 +252,7 @@ describe("Feature Status Sync Integration Tests", () => {
         params: Promise.resolve({ taskId: task2.id }),
       });
 
-      expectSuccess(response);
+      expectSuccess(response, 201);
 
       // Verify task2 was auto-completed
       const updatedTask = await db.task.findUnique({
@@ -318,7 +318,7 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       // Should succeed without attempting feature sync
-      expectSuccess(response);
+      expectSuccess(response, 201);
     });
   });
 
