@@ -4,7 +4,7 @@ import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { PoolManagerService } from "@/services/pool-manager";
 import { getServiceConfig } from "@/config/services";
-import { ServiceConfig } from "@/types";
+import { ServiceConfig, RepositoryConfig } from "@/types";
 import { DevContainerFile, getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 
 const encryptionService = EncryptionService.getInstance();
@@ -112,6 +112,21 @@ export async function syncPoolManagerSettings(
     // Get primary repo branch
     const primaryRepo = await getPrimaryRepository(workspaceId);
 
+    // Get all repositories for multi-repo support
+    const allRepositories = await db.repository.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Build repositories config for multi-repo support (only if more than 1 repo)
+    const repositoriesConfig: RepositoryConfig[] | undefined =
+      allRepositories.length > 1
+        ? allRepositories.map((repo) => ({
+            url: repo.repositoryUrl,
+            branch: repo.branch || "",
+          }))
+        : undefined;
+
     // Call Pool Manager update API
     await poolManager.updatePoolData(
       swarmId,
@@ -123,7 +138,8 @@ export async function syncPoolManagerSettings(
       poolMemory || undefined,
       githubCreds?.token || "",
       githubCreds?.username || "",
-      primaryRepo?.branch || ""
+      primaryRepo?.branch || "",
+      repositoriesConfig
     );
 
     console.log(
