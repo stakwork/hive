@@ -1,9 +1,9 @@
+import React, { ReactElement } from 'react'
 import BubbleChartIcon from '@/components/Icons/BubbleChartIcon'
 import GrainIcon from '@/components/Icons/GrainIcon'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { GraphStyle, useGraphStore } from '@/stores/useStores'
-import { ReactElement } from 'react'
 
 type VisibleGraphStyle = 'split' | 'sphere' // | 'force'
 
@@ -38,7 +38,7 @@ export const GraphViewControl = () => {
       value={graphStyle}
       onValueChange={changeGraphType}
       variant="outline"
-      size="default"
+      size="lg"
       className="gap-0 bg-background rounded-md"
     >
       {styleOrder.map((style) => (
@@ -47,7 +47,7 @@ export const GraphViewControl = () => {
             <ToggleGroupItem
               value={style}
               aria-label={graphStyleLabels[style]}
-              className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground px-5"
+              className="data-[state=on]:bg-accent data-[state=on]:text-accent-foreground px-3"
             >
               <span className="text-xl flex items-center justify-center">
                 {IconsMapper[style]}

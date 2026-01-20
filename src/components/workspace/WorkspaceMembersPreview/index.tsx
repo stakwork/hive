@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
@@ -58,7 +58,10 @@ export function WorkspaceMembersPreview({
   };
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm transition-all duration-300 max-h-[120px] overflow-y-auto ${loading ? 'opacity-0' : 'opacity-100'}`}>
+    <div 
+      data-testid="workspace-members-preview"
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card/95 backdrop-blur-sm transition-all duration-300 max-h-[120px] overflow-y-auto ${loading ? 'opacity-0' : 'opacity-100'}`}
+    >
       {/* Avatar list */}
       <div className="flex items-center gap-2 flex-wrap">
         {displayMembers.map((member, index) => {
