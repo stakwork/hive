@@ -368,14 +368,20 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
     JOIN chat_messages m ON a.message_id = m.id
     JOIN tasks t ON m.task_id = t.id
     JOIN workspaces w ON t.workspace_id = w.id
-    WHERE a.type = 'PULL_REQUEST'
+    WHERE 
+      -- Indexed filters first (fast)
+      a.type = 'PULL_REQUEST'
       AND t.deleted = false
       AND t.archived = false
+      -- Simple JSON checks (moderate)
       AND a.content->>'url' IS NOT NULL
-      AND (a.content->>'status' IS NULL OR a.content->>'status' NOT IN ('DONE', 'CANCELLED'))
+      AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
+      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') NOT IN ('in_progress', 'gave_up')
+      -- Cooldown logic for healthy PRs (only re-check after 1 hour)
       AND (
-        a.content->'progress'->'resolution'->>'status' IS NULL 
-        OR a.content->'progress'->'resolution'->>'status' NOT IN ('in_progress', 'gave_up')
+        COALESCE(a.content->'progress'->>'state', '') != 'healthy'
+        OR a.content->'progress'->>'lastCheckedAt' IS NULL
+        OR (a.content->'progress'->>'lastCheckedAt')::timestamptz < NOW() - INTERVAL '1 hour'
       )
     ORDER BY a.created_at DESC
     LIMIT ${limit}
