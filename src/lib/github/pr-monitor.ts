@@ -41,6 +41,7 @@ interface GitHubPRData {
 }
 
 interface GitHubCheckRun {
+  id: number;
   name: string;
   status: "queued" | "in_progress" | "completed";
   conclusion: string | null;
@@ -69,6 +70,7 @@ export interface PRCheckResult {
   problemDetails?: string;
   conflictFiles?: string[];
   failedChecks?: string[];
+  failedCheckLogs?: Record<string, string>;
   prState: "open" | "closed";
   merged: boolean;
 }
@@ -104,6 +106,47 @@ async function fetchPRStatus(octokit: Octokit, owner: string, repo: string, prNu
 }
 
 /**
+ * Fetch the last N lines of logs for a failed GitHub Actions job
+ */
+async function fetchJobLogs(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  jobId: number,
+  lastLines: number = 100,
+): Promise<string | null> {
+  try {
+    // This returns a redirect to a temporary URL with the logs
+    const response = await octokit.actions.downloadJobLogsForWorkflowRun({
+      owner,
+      repo,
+      job_id: jobId,
+    });
+
+    // The response.url contains the redirect URL, response.data is the log content
+    const logContent = response.data as unknown as string;
+
+    if (!logContent || typeof logContent !== "string") {
+      return null;
+    }
+
+    // Get the last N lines
+    const lines = logContent.split("\n");
+    const lastLinesContent = lines.slice(-lastLines).join("\n");
+
+    // Truncate if still too long (max 10KB per check to avoid bloating the DB)
+    if (lastLinesContent.length > 10240) {
+      return "...(truncated)\n" + lastLinesContent.slice(-10240);
+    }
+
+    return lastLinesContent;
+  } catch (error) {
+    log.warn("Failed to fetch job logs", { owner, repo, jobId, error: String(error) });
+    return null;
+  }
+}
+
+/**
  * Fetch CI check status for a PR
  */
 async function fetchCIStatus(
@@ -111,7 +154,12 @@ async function fetchCIStatus(
   owner: string,
   repo: string,
   ref: string,
-): Promise<{ status: PullRequestProgress["ciStatus"]; summary: string; failedChecks: string[] }> {
+): Promise<{
+  status: PullRequestProgress["ciStatus"];
+  summary: string;
+  failedChecks: string[];
+  failedCheckLogs: Record<string, string>;
+}> {
   // Fetch both check runs (GitHub Actions) and commit statuses (legacy CI)
   const [checkRuns, combinedStatus] = await Promise.all([
     octokit.checks.listForRef({ owner, repo, ref }).then((r) => r.data),
@@ -119,6 +167,7 @@ async function fetchCIStatus(
   ]);
 
   const failedChecks: string[] = [];
+  const failedCheckIds: Array<{ name: string; id: number }> = [];
   let totalChecks = 0;
   let passedChecks = 0;
   let pendingChecks = 0;
@@ -132,6 +181,7 @@ async function fetchCIStatus(
       passedChecks++;
     } else if (check.conclusion === "failure" || check.conclusion === "timed_out") {
       failedChecks.push(check.name);
+      failedCheckIds.push({ name: check.name, id: check.id });
     }
   }
 
@@ -144,6 +194,7 @@ async function fetchCIStatus(
       passedChecks++;
     } else if (status.state === "failure" || status.state === "error") {
       failedChecks.push(status.context);
+      // Legacy statuses don't have downloadable logs
     }
   }
 
@@ -170,7 +221,20 @@ async function fetchCIStatus(
     limitedFailedChecks.push(`... and ${failedChecks.length - 10} more`);
   }
 
-  return { status, summary, failedChecks: limitedFailedChecks };
+  // Fetch logs for failed checks (limit to first 3 to avoid rate limits and slow responses)
+  const failedCheckLogs: Record<string, string> = {};
+  const checksToFetchLogs = failedCheckIds.slice(0, 3);
+
+  await Promise.all(
+    checksToFetchLogs.map(async ({ name, id }) => {
+      const logs = await fetchJobLogs(octokit, owner, repo, id);
+      if (logs) {
+        failedCheckLogs[name] = logs;
+      }
+    }),
+  );
+
+  return { status, summary, failedChecks: limitedFailedChecks, failedCheckLogs };
 }
 
 /**
@@ -249,6 +313,7 @@ export async function checkPR(
       problemDetails,
       conflictFiles,
       failedChecks: ciResult.failedChecks.length > 0 ? ciResult.failedChecks : undefined,
+      failedCheckLogs: Object.keys(ciResult.failedCheckLogs).length > 0 ? ciResult.failedCheckLogs : undefined,
       prState: prData.state,
       merged: prData.merged,
     };
@@ -425,16 +490,26 @@ ${result.problemDetails || ""}`;
   }
 
   if (result.state === "ci_failure") {
-    return `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
+    let prompt = `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
 
 Failed checks: ${result.failedChecks?.join(", ") || "unknown"}
 
 Please:
-1. Review the CI failure logs
+1. Review the CI failure logs below
 2. Fix the issues causing the failures
 3. Push the fixes
 
 ${result.problemDetails || ""}`;
+
+    // Append log excerpts if available
+    if (result.failedCheckLogs && Object.keys(result.failedCheckLogs).length > 0) {
+      prompt += "\n\n--- CI Failure Logs ---\n";
+      for (const [checkName, logs] of Object.entries(result.failedCheckLogs)) {
+        prompt += `\n### ${checkName}\n\`\`\`\n${logs}\n\`\`\`\n`;
+      }
+    }
+
+    return prompt;
   }
 
   return `Please check the status of pull request #${result.prNumber} in ${result.owner}/${result.repo}.`;
@@ -539,6 +614,7 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         problemDetails: result.problemDetails,
         conflictFiles: result.conflictFiles,
         failedChecks: result.failedChecks,
+        failedCheckLogs: result.failedCheckLogs,
       };
 
       // Check if state changed and requires action
