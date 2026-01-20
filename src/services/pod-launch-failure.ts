@@ -336,6 +336,7 @@ async function triggerLaunchFailureRepair(
     const stakworkPayload = {
       name: `pod-launch-failure-${workspaceSlug}-${Date.now()}`,
       workflow_id: parseInt(workflowId, 10),
+      webhook_url: webhookUrl,
       workflow_params: {
         set_var: {
           attributes: {
