@@ -58,7 +58,7 @@ export function WorkspaceMembersPreview({
   };
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm transition-all duration-300 max-h-[120px] overflow-y-auto ${loading ? 'opacity-0' : 'opacity-100'}`}>
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card/95 backdrop-blur-sm transition-all duration-300 max-h-[120px] max-w-[280px] overflow-y-auto ${loading ? 'opacity-0' : 'opacity-100'}`} data-testid="workspace-members-preview">
       {/* Avatar list */}
       <div className="flex items-center gap-2 flex-wrap">
         {displayMembers.map((member, index) => {

@@ -17,6 +17,7 @@ import { logStoreInstances } from "@/stores/createStoreFactory";
 import { FilterTab } from "@/stores/graphStore.types";
 import { StoreProvider } from "@/stores/StoreProvider";
 import { useDataStore, useGraphStore } from "@/stores/useStores";
+import { useEffect, useRef, useState } from "react";
 
 export function Dashboard() {
   const { id } = useWorkspace();
@@ -38,6 +39,11 @@ function DashboardInner() {
   const setActiveFilterTab = useGraphStore((s) => s.setActiveFilterTab);
   const isOnboarding = useDataStore((s) => s.isOnboarding);
 
+  // Refs for measuring element widths
+  const leftElementRef = useRef<HTMLDivElement>(null);
+  const rightElementRef = useRef<HTMLDivElement>(null);
+  const [chatWidth, setChatWidth] = useState<number>(0);
+
   useGraphPolling({
     enabled: !isOnboarding && activeFilterTab === 'all',
     interval: 5000
@@ -52,6 +58,34 @@ function DashboardInner() {
   const handleFilterChange = (value: FilterTab) => {
     setActiveFilterTab(value);
   };
+
+  // Calculate dynamic width for DashboardChat
+  useEffect(() => {
+    const calculateWidth = () => {
+      const viewportWidth = window.innerWidth;
+      const leftWidth = leftElementRef.current?.getBoundingClientRect().width || 0;
+      const rightWidth = rightElementRef.current?.getBoundingClientRect().width || 0;
+      
+      // Account for: left padding (16px) + right padding (16px) + margins between elements (32px total)
+      const horizontalSpacing = 16 + 16 + 16 + 16; // left-4 + right-4 + gap between elements
+      const calculatedWidth = viewportWidth - leftWidth - rightWidth - horizontalSpacing;
+      
+      // Ensure minimum width and don't exceed viewport
+      const finalWidth = Math.max(300, Math.min(calculatedWidth, viewportWidth - 100));
+      setChatWidth(finalWidth);
+    };
+
+    // Calculate on mount and when dependencies change
+    calculateWidth();
+
+    // Recalculate on window resize
+    window.addEventListener('resize', calculateWidth);
+    
+    // Cleanup listener on unmount
+    return () => {
+      window.removeEventListener('resize', calculateWidth);
+    };
+  }, [isOnboarding]); // Recalculate when onboarding state changes
 
   const hasNodes = (dataInitial?.nodes && dataInitial.nodes.length > 0) || (repositoryNodes.length > 0);
   const isCentered = !hasNodes && !isOnboarding;
@@ -83,8 +117,21 @@ function DashboardInner() {
       </div>
 
       {/* Bottom-left widget */}
-      <div className="absolute bottom-4 left-4 z-10">
+      <div ref={leftElementRef} className="absolute bottom-4 left-4 z-10">
         <WorkspaceMembersPreview workspaceSlug={slug} />
+      </div>
+
+      {/* Bottom-right widget (ActionsToolbar rendered inside GraphComponent) */}
+      <div ref={rightElementRef} className="absolute bottom-4 right-4 z-10 pointer-events-none" id="actions-toolbar-measure">
+        {/* This invisible div measures the space taken by ActionsToolbar */}
+        <div className="flex flex-col items-end">
+          <div className="flex flex-col gap-1">
+            <div className="w-10 h-10" /> {/* CameraRecenterControl placeholder */}
+          </div>
+          <div className="flex items-center flex-row mt-4">
+            <div className="w-[120px] h-10" /> {/* GraphViewControl placeholder */}
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0">
@@ -98,8 +145,8 @@ function DashboardInner() {
       </div>
 
       {/* Dashboard Chat - only show when onboarding is complete */}
-      {!isOnboarding && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-0" style={{ width: 'calc(100% - 340px)' }}>
+      {!isOnboarding && chatWidth > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-0" style={{ width: `${chatWidth}px` }}>
           <DashboardChat />
         </div>
       )}
