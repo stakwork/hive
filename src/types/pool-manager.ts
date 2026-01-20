@@ -31,7 +31,7 @@ export interface CreateUserRequest {
 // }
 // Use authentication_token in the call to CreatePool under Authorization: Bearer ${authentication_token}
 
-//Example payload
+// Single repo example payload (existing):
 // {
 //   "pool_name": "my-pool-name",
 //   "minimum_vms": 1,
@@ -47,11 +47,34 @@ export interface CreateUserRequest {
 //       }
 //   ]
 // }
+//
+// Multi-repo example payload (new):
+// {
+//   "pool_name": "my-pool-name",
+//   "minimum_vms": 1,
+//   "repo_name": "https://github.com/org/repo1.git",
+//   "branch_name": "main",
+//   "repositories": [
+//     {"url": "https://github.com/org/repo1.git", "branch": "main"},
+//     {"url": "https://github.com/org/repo2.git", "branch": "develop"},
+//     {"url": "https://github.com/org/repo3.git", "branch": ""}
+//   ],
+//   "github_pat": "ghp_xxx",
+//   "github_username": "gonzaloaune",
+//   "env_vars": []
+// }
+
+export interface RepositoryConfig {
+  url: string;
+  branch: string;
+}
+
 export interface CreatePoolRequest {
   pool_name: string;
   minimum_vms: number;
   repo_name: string;
   branch_name: string;
+  repositories?: RepositoryConfig[]; // Optional multi-repo support (backward compatible)
   github_pat: string;
   github_username: string;
   env_vars: EnvironmentVariable[]; //Key value pair of name and value

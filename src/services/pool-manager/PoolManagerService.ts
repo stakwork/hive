@@ -1,5 +1,6 @@
 import { BaseServiceClass } from "@/lib/base-service";
 import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse, StaklinkStartResponse } from "@/types";
+import { RepositoryConfig } from "@/types/pool-manager";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
 import { createUserApi, createPoolApi, deletePoolApi, deleteUserApi } from "@/services/pool-manager/api/pool";
@@ -25,6 +26,7 @@ interface IPoolManagerService {
     github_pat: string,
     github_username: string,
     branch_name: string,
+    repositories?: RepositoryConfig[],
   ) => Promise<void>;
   getPoolStatus: (poolId: string, poolApiKey: string) => Promise<PoolStatusResponse>;
   getPoolWorkspaces: (poolId: string, poolApiKey: string) => Promise<PoolWorkspacesResponse>;
@@ -70,6 +72,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
     github_pat: string,
     github_username: string,
     branch_name: string,
+    repositories?: RepositoryConfig[],
   ): Promise<void> {
     return updatePoolDataApi(
       poolName,
@@ -82,6 +85,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
       github_pat,
       github_username,
       branch_name,
+      repositories,
     );
   }
 
