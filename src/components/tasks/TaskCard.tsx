@@ -199,7 +199,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         )}
 
         {/* PR Status Badge */}
-        {task.prArtifact && task.prArtifact.content && (
+        {task.prArtifact && task.prArtifact.content && task.prArtifact.content.url && (
           <PRStatusBadge
             url={task.prArtifact.content.url}
             status={task.prArtifact.content.status}

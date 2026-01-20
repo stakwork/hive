@@ -1043,7 +1043,8 @@ export default function TaskChatPage() {
     .reverse()
     .find((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
   const prUrl = prArtifact?.artifacts?.find((a) => a.type === "PULL_REQUEST")?.content as PullRequestContent | undefined;
-  const prLink = prUrl?.url || null;
+  // Only set prLink if url exists and is a non-empty string
+  const prLink = prUrl?.url && typeof prUrl.url === "string" && prUrl.url.trim() ? prUrl.url : null;
 
   const isTerminalState =
     workflowStatus === WorkflowStatus.HALTED ||

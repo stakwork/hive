@@ -76,7 +76,14 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
 
       {/* Render PULL_REQUEST artifacts */}
       {chatMessage?.artifacts
-        ?.filter((a) => a.type === "PULL_REQUEST")
+        ?.filter((a) => {
+          // Only render PULL_REQUEST artifacts with valid URLs
+          if (a.type === "PULL_REQUEST" && a.content) {
+            const content = a.content as { url?: string };
+            return content.url && typeof content.url === "string" && content.url.trim();
+          }
+          return false;
+        })
         .map((artifact) => (
           <div key={artifact.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
             <div className="max-w-md w-full">
