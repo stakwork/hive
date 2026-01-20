@@ -11,6 +11,7 @@ import {
   createPostRequest,
   expectSuccess,
   generateUniqueId,
+  getMockedSession,
 } from "@/__tests__/support/helpers";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
 
@@ -127,7 +128,7 @@ describe("Feature Status Sync Integration Tests", () => {
   describe("PATCH /api/tasks/[taskId] - Task Status Update", () => {
     test("should sync feature status to IN_PROGRESS when task status changes to IN_PROGRESS", async () => {
       const { user, workspace, feature, task1 } = await createFeatureWithTasks();
-      createAuthenticatedSession(user);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Update task1 from TODO to IN_PROGRESS
       const request = createPatchRequest(`/api/tasks/${task1.id}`, {
@@ -150,7 +151,7 @@ describe("Feature Status Sync Integration Tests", () => {
 
     test("should sync feature status to COMPLETED when all tasks are DONE", async () => {
       const { user, workspace, feature, task1, task2 } = await createFeatureWithTasks();
-      createAuthenticatedSession(user);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Update task1 to DONE
       await db.task.update({
@@ -205,7 +206,7 @@ describe("Feature Status Sync Integration Tests", () => {
         },
       });
 
-      createAuthenticatedSession(user);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createPatchRequest(`/api/tasks/${task.id}`, {
         status: TaskStatus.IN_PROGRESS,
@@ -223,7 +224,7 @@ describe("Feature Status Sync Integration Tests", () => {
   describe("POST /api/tasks/[taskId]/messages/save - PR Artifact Auto-Complete", () => {
     test("should sync feature status when PR artifact completes task", async () => {
       const { user, workspace, feature, task1, task2 } = await createFeatureWithTasks();
-      createAuthenticatedSession(user);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Update task1 to DONE first
       await db.task.update({
@@ -295,7 +296,7 @@ describe("Feature Status Sync Integration Tests", () => {
         },
       });
 
-      createAuthenticatedSession(user);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       const request = createPostRequest(`/api/tasks/${task.id}/messages/save`, {
         message: "Created pull request",
@@ -497,7 +498,7 @@ describe("Feature Status Sync Integration Tests", () => {
   describe("Error Handling", () => {
     test("should not fail main operation if feature sync fails", async () => {
       const { user, workspace, feature, task1 } = await createFeatureWithTasks();
-      createAuthenticatedSession(user);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Delete the feature to cause sync to fail
       await db.feature.delete({
@@ -571,7 +572,7 @@ describe("Feature Status Sync Integration Tests", () => {
         data: { status: TaskStatus.BLOCKED },
       });
 
-      createAuthenticatedSession(user);
+      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Update task2 to trigger sync
       const request = createPatchRequest(`/api/tasks/${task2.id}`, {
