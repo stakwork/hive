@@ -410,6 +410,9 @@ model Task {
   // Task-specific branch override (if set, takes precedence over repository branch)
   branch String?
 
+  // Task completion summary (markdown-formatted report from workflows/agents)
+  summary String? @map("summary")
+
   // Build and test configuration
   runBuild     Boolean @default(true) @map("run_build")
   runTestSuite Boolean @default(true) @map("run_test_suite")
