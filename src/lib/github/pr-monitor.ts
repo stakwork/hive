@@ -342,27 +342,32 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
 > {
   // Use raw query for efficient JSON filtering at the database level
   // This avoids loading potentially 100k+ artifacts into memory
+  // Table/column mappings from schema.prisma:
+  //   artifacts (message_id, created_at)
+  //   chat_messages (task_id)
+  //   tasks (workspace_id, pod_id)
+  //   workspaces (owner_id)
   const artifacts = await db.$queryRaw<
     Array<{
       id: string;
       content: PullRequestContent;
-      taskId: string;
-      podId: string | null;
-      workspaceId: string;
-      ownerId: string;
+      task_id: string;
+      pod_id: string | null;
+      workspace_id: string;
+      owner_id: string;
     }>
   >`
     SELECT 
       a.id,
       a.content,
-      t.id as "taskId",
-      t."podId",
-      t."workspaceId",
-      w."ownerId"
-    FROM "Artifact" a
-    JOIN "ChatMessage" m ON a."messageId" = m.id
-    JOIN "Task" t ON m."taskId" = t.id
-    JOIN "Workspace" w ON t."workspaceId" = w.id
+      t.id as task_id,
+      t.pod_id,
+      t.workspace_id,
+      w.owner_id
+    FROM artifacts a
+    JOIN chat_messages m ON a.message_id = m.id
+    JOIN tasks t ON m.task_id = t.id
+    JOIN workspaces w ON t.workspace_id = w.id
     WHERE a.type = 'PULL_REQUEST'
       AND t.deleted = false
       AND t.archived = false
@@ -372,17 +377,17 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
         a.content->'progress'->'resolution'->>'status' IS NULL 
         OR a.content->'progress'->'resolution'->>'status' NOT IN ('in_progress', 'gave_up')
       )
-    ORDER BY a."createdAt" DESC
+    ORDER BY a.created_at DESC
     LIMIT ${limit}
   `;
 
   return artifacts.map((artifact) => ({
     artifactId: artifact.id,
-    taskId: artifact.taskId,
+    taskId: artifact.task_id,
     prUrl: artifact.content.url,
-    workspaceId: artifact.workspaceId,
-    ownerId: artifact.ownerId,
-    podId: artifact.podId,
+    workspaceId: artifact.workspace_id,
+    ownerId: artifact.owner_id,
+    podId: artifact.pod_id,
     progress: artifact.content.progress,
   }));
 }
