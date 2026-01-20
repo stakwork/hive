@@ -102,10 +102,39 @@ export interface PublishWorkflowContent {
   workflowVersionId?: number; // Version ID returned from publish API
 }
 
+// PR monitoring resolution tracking
+export interface PullRequestResolution {
+  status: "notified" | "in_progress" | "resolved" | "gave_up";
+  attempts: number;
+  lastAttemptAt?: string;
+  lastError?: string;
+}
+
+// PR monitoring progress tracking
+export interface PullRequestProgress {
+  // Current state (what the cron updates)
+  state: "healthy" | "conflict" | "ci_failure" | "checking";
+  lastCheckedAt: string;
+
+  // GitHub data
+  mergeable?: boolean | null;
+  ciStatus?: "pending" | "success" | "failure";
+  ciSummary?: string; // "5/5 passed" or "build: failed"
+
+  // Problem details (when state !== "healthy")
+  problemDetails?: string;
+  conflictFiles?: string[]; // If conflict
+  failedChecks?: string[]; // If CI failure
+
+  // Agent resolution tracking
+  resolution?: PullRequestResolution;
+}
+
 export interface PullRequestContent {
   repo: string;
   url: string;
   status: string;
+  progress?: PullRequestProgress;
 }
 
 export type Action = "create" | "rewrite" | "modify" | "delete";

@@ -278,6 +278,7 @@ describe("pusher.ts", () => {
         STAKWORK_RUN_DECISION: "stakwork-run-decision",
         HIGHLIGHT_NODES: "highlight-nodes",
         PROVENANCE_DATA: "provenance-data",
+        PR_STATUS_CHANGE: "pr-status-change",
       });
     });
 
