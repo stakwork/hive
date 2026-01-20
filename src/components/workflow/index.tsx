@@ -5,6 +5,7 @@ import RequestQueue from "./RequestQueue";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { WorkflowTransition as WorkflowTransitionType } from "@/types/stakwork/workflow";
+import { deepEqual } from "@/lib/utils/deepEqual";
 
 declare global {
   interface Window {
@@ -93,6 +94,9 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   // Store transitions for step click lookup
   const transitionsRef = useRef<Record<string, WorkflowTransitionType>>({});
+  
+  // Track previous workflow data to detect actual changes
+  const previousWorkflowDataRef = useRef<{ transitions: any; connections: any } | null>(null);
 
   // Helper to show toast messages (replaces window.showFlashMessage)
   const showFlashMessage = useCallback((message: string, type: "success" | "info" | "error") => {
@@ -230,7 +234,7 @@ export default function App(workflowApp: WorkflowAppProps) {
           }
 
           showFlashMessage("Workflow Published", "success");
-          updateDiagram(data.workflow_diagram);
+          updateDiagram(data.workflow_diagram, true); // User-initiated action
           updateWorkflowVersionId(response);
         })
         .catch((error) => {
@@ -279,7 +283,7 @@ export default function App(workflowApp: WorkflowAppProps) {
               }
 
               showFlashMessage("Step copied", "info");
-              updateDiagram(data.workflow_diagram);
+              updateDiagram(data.workflow_diagram, true); // User-initiated action
               debouncedUpdateWorkflowVersion(response);
             })
             .catch((error) => {
@@ -514,8 +518,21 @@ export default function App(workflowApp: WorkflowAppProps) {
     setUpdateConnections(false);
   }, [workflowVersionId, updateConnections, edges]);
 
-  const updateDiagram = (data: any) => {
+  const updateDiagram = (data: any, userInitiated: boolean = false) => {
     // console.log("data", data)
+    
+    // Check if workflow data has actually changed using deep comparison
+    const hasDataChanged = !deepEqual(previousWorkflowDataRef.current, { 
+      transitions: data.transitions,
+      connections: data.connections 
+    });
+    
+    // Update ref with current data
+    previousWorkflowDataRef.current = {
+      transitions: data.transitions,
+      connections: data.connections
+    };
+    
     // Store transitions for step click lookup
     transitionsRef.current = data.transitions || {};
 
@@ -681,7 +698,16 @@ export default function App(workflowApp: WorkflowAppProps) {
       }
     }
 
-    document.startViewTransition(function () {
+    // Only use view transition if:
+    // 1. The API is supported
+    // 2. Data has actually changed (prevents flickering on no-op polling updates)
+    // 3. It's user-initiated OR there are structural changes
+    const shouldUseTransition = 
+      typeof (document as any).startViewTransition === 'function' && 
+      hasDataChanged &&
+      userInitiated;
+
+    const updateView = () => {
       setNodes(myNodes);
       setEdges(myEdges.flat());
 
@@ -710,7 +736,13 @@ export default function App(workflowApp: WorkflowAppProps) {
           }
         }
       }
-    });
+    };
+
+    if (shouldUseTransition) {
+      (document as any).startViewTransition(updateView);
+    } else {
+      updateView();
+    }
   };
 
   const updateJSONSpecConnections = (connections: any) => {
