@@ -474,7 +474,10 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
   };
 
   const openPRs = await findOpenPRArtifacts();
-  log.info("Found open PRs to check", { count: openPRs.length });
+  log.info("Found open PRs to check", {
+    count: openPRs.length,
+    prUrls: openPRs.slice(0, 5).map((p) => p.prUrl), // Log first 5 URLs for debugging
+  });
 
   // Limit to maxPRs
   const prsToCheck = openPRs.slice(0, maxPRs);
@@ -507,6 +510,18 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
       }
 
       stats.checked++;
+
+      log.info("PR check result", {
+        taskId: pr.taskId,
+        prNumber: result.prNumber,
+        repo: `${result.owner}/${result.repo}`,
+        state: result.state,
+        mergeable: result.mergeable,
+        ciStatus: result.ciStatus,
+        ciSummary: result.ciSummary,
+        prState: result.prState,
+        merged: result.merged,
+      });
 
       // Handle closed/merged PRs
       if (result.prState === "closed") {
@@ -560,27 +575,33 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         await updatePRArtifactProgress(pr.artifactId, progress);
 
         // Notify via Pusher
+        log.info("Notifying PR status change via Pusher", {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          state: result.state,
+          problemDetails: result.problemDetails,
+          hasPod: !!pr.podId,
+        });
         await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
         stats.notified++;
 
-        // If pod is available and this is a new problem, trigger the agent
+        // If pod is available and this is a new problem, would trigger the agent
+        // TODO: Uncomment when ready to enable auto-fix
         if (pr.podId && stateChanged) {
           const fixPrompt = buildFixPrompt(result);
-          const triggerResult = await triggerAgentFix(pr.taskId, fixPrompt);
-
-          if (triggerResult.success) {
-            log.info("Triggered agent to fix PR issue", {
-              taskId: pr.taskId,
-              podId: pr.podId,
-              state: result.state,
-            });
-            stats.agentTriggered++;
-          } else {
-            log.warn("Failed to trigger agent", {
-              taskId: pr.taskId,
-              error: triggerResult.error,
-            });
-          }
+          log.info("WOULD TRIGGER AGENT (disabled)", {
+            taskId: pr.taskId,
+            podId: pr.podId,
+            state: result.state,
+            prNumber: result.prNumber,
+            repo: `${result.owner}/${result.repo}`,
+            prompt: fixPrompt.substring(0, 200) + "...",
+          });
+          // Uncomment below to enable agent auto-fix:
+          // const triggerResult = await triggerAgentFix(pr.taskId, fixPrompt);
+          // if (triggerResult.success) {
+          //   stats.agentTriggered++;
+          // }
         }
       } else {
         stats.healthy++;
