@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
-import { formatRelativeOrDate, formatFeatureDate } from "@/lib/date-utils";
+import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
+import { formatRelativeOrDate, formatFeatureDate, isRelativeFormat } from "@/lib/date-utils";
 
 describe("date-utils", () => {
   beforeEach(() => {
@@ -109,6 +109,91 @@ describe("date-utils", () => {
       expect(formatFeatureDate(date2023)).toBe("Mar 20, 2023");
       expect(formatFeatureDate(date2024)).toBe("Mar 20, 2024");
       expect(formatFeatureDate(date2025)).toBe("Mar 20, 2025");
+    });
+  });
+
+  describe("isRelativeFormat", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test("returns true for dates within 1 minute", () => {
+      const date = new Date("2025-12-02T11:59:30.000Z"); // 30 seconds ago
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns true for dates within 1 hour", () => {
+      const date = new Date("2025-12-02T11:30:00.000Z"); // 30 minutes ago
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns true for dates within 24 hours", () => {
+      const date = new Date("2025-12-01T13:00:00.000Z"); // 23 hours ago
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns true for dates within 47 hours", () => {
+      const date = new Date("2025-11-30T13:00:00.000Z"); // 47 hours ago
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns true for dates exactly at 48 hours boundary (just under)", () => {
+      const date = new Date("2025-11-30T12:00:00.001Z"); // 47:59:59.999 hours ago
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns true for dates exactly at 48 hours", () => {
+      const date = new Date("2025-11-30T12:00:00.000Z"); // Exactly 48 hours ago
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns false for dates beyond 48 hours", () => {
+      const date = new Date("2025-11-30T11:59:59.999Z"); // Just over 48 hours ago
+      expect(isRelativeFormat(date)).toBe(false);
+    });
+
+    test("returns false for dates 3 days ago", () => {
+      const date = new Date("2025-11-29T12:00:00.000Z"); // 3 days ago
+      expect(isRelativeFormat(date)).toBe(false);
+    });
+
+    test("returns false for old dates", () => {
+      const date = new Date("2024-01-15T12:00:00.000Z");
+      expect(isRelativeFormat(date)).toBe(false);
+    });
+
+    test("accepts ISO string input", () => {
+      const dateString = "2025-12-02T11:00:00.000Z"; // 1 hour ago
+      expect(isRelativeFormat(dateString)).toBe(true);
+    });
+
+    test("accepts Date object input", () => {
+      const date = new Date("2025-12-02T11:00:00.000Z"); // 1 hour ago
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns true for current time", () => {
+      const date = new Date("2025-12-02T12:00:00.000Z"); // Exactly now
+      expect(isRelativeFormat(date)).toBe(true);
+    });
+
+    test("returns false for future dates", () => {
+      const date = new Date("2025-12-03T12:00:00.000Z"); // 1 day in the future
+      expect(isRelativeFormat(date)).toBe(false);
+    });
+
+    test("handles timezone differences correctly", () => {
+      // Mock system time in UTC
+      vi.setSystemTime(new Date("2025-12-02T12:00:00.000Z"));
+      
+      // Create date in different timezone representation but same UTC time
+      const date1 = new Date("2025-12-02T11:00:00.000Z"); // 1 hour ago
+      const date2 = new Date("2025-11-30T13:00:00.000Z"); // 47 hours ago
+      const date3 = new Date("2025-11-30T11:59:00.000Z"); // ~48 hours ago
+      
+      expect(isRelativeFormat(date1)).toBe(true);
+      expect(isRelativeFormat(date2)).toBe(true);
+      expect(isRelativeFormat(date3)).toBe(false);
     });
   });
 });
