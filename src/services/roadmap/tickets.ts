@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
 import type {
   CreateRoadmapTaskRequest,
   UpdateRoadmapTaskRequest,
@@ -269,6 +269,11 @@ export async function updateTicket(
   if (data.status !== undefined) {
     validateEnum(data.status, TaskStatus, "status");
     updateData.status = data.status;
+  }
+
+  if (data.workflowStatus !== undefined) {
+    validateEnum(data.workflowStatus, WorkflowStatus, "workflowStatus");
+    updateData.workflowStatus = data.workflowStatus;
   }
 
   if (data.priority !== undefined) {

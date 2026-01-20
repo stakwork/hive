@@ -7,7 +7,7 @@ import { POST as POST_STAKWORK_WEBHOOK } from "@/app/api/stakwork/webhook/route"
 import { updateTicket } from "@/services/roadmap/tickets";
 import {
   createAuthenticatedSession,
-  createPatchRequest,
+  createAuthenticatedPatchRequest,
   createPostRequest,
   expectSuccess,
   generateUniqueId,
@@ -66,7 +66,7 @@ describe("Feature Status Sync Integration Tests", () => {
         title: "Test Feature",
         brief: "Test Brief",
         workspaceId: workspace.id,
-        status: FeatureStatus.TODO,
+        status: FeatureStatus.BACKLOG,
         priority: Priority.MEDIUM,
         createdById: user.id,
         updatedById: user.id,
@@ -127,13 +127,14 @@ describe("Feature Status Sync Integration Tests", () => {
 
   describe("PATCH /api/tasks/[taskId] - Task Status Update", () => {
     test("should sync feature status to IN_PROGRESS when task status changes to IN_PROGRESS", async () => {
-      const { user, workspace, feature, task1 } = await createFeatureWithTasks();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      const { user, feature, task1 } = await createFeatureWithTasks();
 
       // Update task1 from TODO to IN_PROGRESS
-      const request = createPatchRequest(`/api/tasks/${task1.id}`, {
-        status: TaskStatus.IN_PROGRESS,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/tasks/${task1.id}`,
+        { status: TaskStatus.IN_PROGRESS },
+        { id: user.id, email: user.email!, name: user.name || "Test User" }
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: task1.id }),
@@ -150,8 +151,7 @@ describe("Feature Status Sync Integration Tests", () => {
     });
 
     test("should sync feature status to COMPLETED when all tasks are DONE", async () => {
-      const { user, workspace, feature, task1, task2 } = await createFeatureWithTasks();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      const { user, feature, task1, task2 } = await createFeatureWithTasks();
 
       // Update task1 to DONE
       await db.task.update({
@@ -160,10 +160,11 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       // Update task2 from IN_PROGRESS to DONE
-      const request = createPatchRequest(`/api/tasks/${task2.id}`, {
-        status: TaskStatus.DONE,
-        workflowStatus: WorkflowStatus.COMPLETED,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/tasks/${task2.id}`,
+        { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
+        { id: user.id, email: user.email!, name: user.name || "Test User" }
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: task2.id }),
@@ -206,11 +207,11 @@ describe("Feature Status Sync Integration Tests", () => {
         },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPatchRequest(`/api/tasks/${task.id}`, {
-        status: TaskStatus.IN_PROGRESS,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/tasks/${task.id}`,
+        { status: TaskStatus.IN_PROGRESS },
+        { id: user.id, email: user.email!, name: user.name || "Test User" }
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: task.id }),
@@ -335,7 +336,7 @@ describe("Feature Status Sync Integration Tests", () => {
       const request = createPostRequest(
         `/api/stakwork/webhook?task_id=${task2.id}`,
         {
-          project_status: "complete",
+          project_status: "completed",
         }
       );
 
@@ -420,7 +421,7 @@ describe("Feature Status Sync Integration Tests", () => {
       const request = createPostRequest(
         `/api/stakwork/webhook?task_id=${task.id}`,
         {
-          project_status: "complete",
+          project_status: "completed",
         }
       );
 
@@ -451,7 +452,7 @@ describe("Feature Status Sync Integration Tests", () => {
     });
 
     test("should sync feature status when all tasks are completed", async () => {
-      const { user, workspace, feature, task1, task2, task3 } = await createFeatureWithTasks();
+      const { user, feature, task1, task2 } = await createFeatureWithTasks();
 
       // Update task1 to DONE
       await db.task.update({
@@ -459,9 +460,10 @@ describe("Feature Status Sync Integration Tests", () => {
         data: { status: TaskStatus.DONE, workflowStatus: WorkflowStatus.COMPLETED },
       });
 
-      // Update task2 from IN_PROGRESS to DONE
+      // Update task2 from IN_PROGRESS to DONE with COMPLETED workflow
       const updatedTask = await updateTicket(task2.id, user.id, {
         status: TaskStatus.DONE,
+        workflowStatus: WorkflowStatus.COMPLETED,
       });
 
       expect(updatedTask.status).toBe(TaskStatus.DONE);
@@ -497,8 +499,7 @@ describe("Feature Status Sync Integration Tests", () => {
 
   describe("Error Handling", () => {
     test("should not fail main operation if feature sync fails", async () => {
-      const { user, workspace, feature, task1 } = await createFeatureWithTasks();
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
+      const { user, feature, task1 } = await createFeatureWithTasks();
 
       // Delete the feature to cause sync to fail
       await db.feature.delete({
@@ -506,9 +507,11 @@ describe("Feature Status Sync Integration Tests", () => {
       });
 
       // Update task should still succeed even if feature sync fails
-      const request = createPatchRequest(`/api/tasks/${task1.id}`, {
-        status: TaskStatus.IN_PROGRESS,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/tasks/${task1.id}`,
+        { status: TaskStatus.IN_PROGRESS },
+        { id: user.id, email: user.email!, name: user.name || "Test User" }
+      );
 
       const response = await PATCH(request, {
         params: Promise.resolve({ taskId: task1.id }),
@@ -548,7 +551,7 @@ describe("Feature Status Sync Integration Tests", () => {
           title: "Empty Feature",
           brief: "Feature with no tasks",
           workspaceId: workspace.id,
-          status: FeatureStatus.TODO,
+          status: FeatureStatus.BACKLOG,
           priority: Priority.MEDIUM,
           createdById: user.id,
           updatedById: user.id,
@@ -560,11 +563,11 @@ describe("Feature Status Sync Integration Tests", () => {
         where: { id: feature.id },
       });
 
-      expect(unchangedFeature?.status).toBe(FeatureStatus.TODO);
+      expect(unchangedFeature?.status).toBe(FeatureStatus.BACKLOG);
     });
 
     test("should handle mixed task statuses correctly", async () => {
-      const { user, workspace, feature, task1, task2, task3 } = await createFeatureWithTasks();
+      const { user, feature, task1, task2 } = await createFeatureWithTasks();
 
       // Set one task to BLOCKED
       await db.task.update({
@@ -572,12 +575,12 @@ describe("Feature Status Sync Integration Tests", () => {
         data: { status: TaskStatus.BLOCKED },
       });
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
       // Update task2 to trigger sync
-      const request = createPatchRequest(`/api/tasks/${task2.id}`, {
-        status: TaskStatus.IN_PROGRESS,
-      });
+      const request = createAuthenticatedPatchRequest(
+        `/api/tasks/${task2.id}`,
+        { status: TaskStatus.IN_PROGRESS },
+        { id: user.id, email: user.email!, name: user.name || "Test User" }
+      );
 
       await PATCH(request, {
         params: Promise.resolve({ taskId: task2.id }),
