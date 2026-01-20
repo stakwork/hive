@@ -20,6 +20,8 @@ export const FEATURE_STATUS_LABELS: Record<FeatureStatus, string> = {
   IN_PROGRESS: "In Progress",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
+  BLOCKED: "Blocked",
+  ERROR: "Error",
 };
 
 // Feature status colors for badges
@@ -29,6 +31,8 @@ export const FEATURE_STATUS_COLORS: Record<FeatureStatus, string> = {
   IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-200",
   COMPLETED: "bg-green-50 text-green-700 border-green-200",
   CANCELLED: "bg-red-50 text-red-700 border-red-200",
+  BLOCKED: "bg-orange-50 text-orange-700 border-orange-200",
+  ERROR: "bg-red-50 text-red-700 border-red-200",
 };
 
 // Kanban columns configuration for feature board

@@ -860,6 +860,8 @@ enum FeatureStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+  ERROR
+  BLOCKED
 }
 
 enum FeaturePriority {

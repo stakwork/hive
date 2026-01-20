@@ -204,11 +204,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: name" }, { status: 400 });
     }
 
-    const repository = await db.repository.findFirst({
+    // Get all repositories for this workspace to support multi-repo
+    const repositories = await db.repository.findMany({
       where: {
         workspaceId: swarm.workspaceId,
       },
     });
+
+    // Use first repository as primary (for backward compatibility)
+    const primaryRepository = repositories[0];
 
     const poolManager = poolManagerService();
     poolManager.updateApiKey(encryptionService.decryptField("poolApiKey", poolApiKey));
@@ -255,12 +259,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Build repositories array for multi-repo support
+    const repositoriesConfig = repositories.length > 1
+      ? repositories.map(repo => ({
+          url: repo.repositoryUrl,
+          branch: repo.branch || "",
+        }))
+      : undefined;
+
     const pool = await withRetry(
       () => poolManager.createPool({
         pool_name: swarm.id,
         minimum_vms: 2,
-        repo_name: repository?.repositoryUrl || "",
-        branch_name: repository?.branch || "",
+        repo_name: primaryRepository?.repositoryUrl || "",
+        branch_name: primaryRepository?.branch || "",
+        repositories: repositoriesConfig,
         github_pat: github_pat?.token || "",
         github_username: github_pat?.username || "",
         env_vars: envVars,

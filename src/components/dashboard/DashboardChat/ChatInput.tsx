@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Send, Lightbulb, Image as ImageIcon, X, Eye, Share2 } from "lucide-react";
 
@@ -37,9 +37,23 @@ export function ChatInput({
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows] = useState(1);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+
+  // Auto-adjust textarea height based on content
+  useEffect(() => {
+    if (!input) {
+      setRows(1);
+      return;
+    }
+
+    // Count newlines in the text
+    const lineCount = (input.match(/\n/g) || []).length + 1;
+    // Set rows to lineCount + 1 (one empty row below)
+    setRows(Math.max(1, lineCount + 1));
+  }, [input]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,10 +68,12 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
+      // Regular Enter submits the form
       e.preventDefault();
       handleSubmit(e);
     }
+    // Shift+Enter allows default behavior (new line)
   };
 
   const convertToBase64 = (file: File): Promise<string> => {
@@ -206,15 +222,15 @@ export function ChatInput({
       </div>
 
       <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px]">
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
           placeholder="Ask me about your codebase..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          className={`w-full px-4 py-3 pr-12 rounded-full bg-background/5 border border-border/20 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all ${
+          rows={rows}
+          className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/5 border border-border/20 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
             disabled ? "opacity-50 cursor-not-allowed" : ""
           }`}
         />
@@ -222,7 +238,7 @@ export function ChatInput({
           type="submit"
           size="icon"
           disabled={!input.trim() || disabled}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full"
+          className="absolute right-1.5 bottom-1.5 h-8 w-8 rounded-full"
         >
           <Send className="w-4 h-4" />
         </Button>

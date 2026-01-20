@@ -3,10 +3,20 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Artifact, PullRequestContent } from "@/lib/chat";
-import { GitPullRequest, GitMerge, GitPullRequestClosed, ExternalLink } from "lucide-react";
+import {
+  GitPullRequest,
+  GitMerge,
+  GitPullRequestClosed,
+  ExternalLink,
+  AlertTriangle,
+  XCircle,
+  Loader2,
+  CheckCircle,
+} from "lucide-react";
 
 export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
   const content = artifact.content as PullRequestContent;
+  const progress = content.progress;
 
   const handleOpenPR = () => {
     window.open(content.url, "_blank");
@@ -49,7 +59,90 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
     }
   };
 
+  // Get progress indicator config
+  const getProgressConfig = () => {
+    if (!progress) return null;
+
+    switch (progress.state) {
+      case "conflict":
+        return {
+          icon: AlertTriangle,
+          color: "text-amber-500",
+          bgColor: "bg-amber-500/10",
+          label: "Merge Conflict",
+          description: progress.problemDetails || "Has merge conflicts",
+        };
+      case "ci_failure":
+        return {
+          icon: XCircle,
+          color: "text-red-500",
+          bgColor: "bg-red-500/10",
+          label: "CI Failed",
+          description: progress.ciSummary || progress.problemDetails || "CI checks failed",
+        };
+      case "checking":
+        return {
+          icon: Loader2,
+          color: "text-blue-500",
+          bgColor: "bg-blue-500/10",
+          label: "Checking",
+          description: "Checking merge status...",
+          animate: true,
+        };
+      case "healthy":
+        if (progress.ciStatus === "pending") {
+          return {
+            icon: Loader2,
+            color: "text-blue-500",
+            bgColor: "bg-blue-500/10",
+            label: "CI Running",
+            description: progress.ciSummary || "CI checks in progress",
+            animate: true,
+          };
+        }
+        if (progress.ciStatus === "success") {
+          return {
+            icon: CheckCircle,
+            color: "text-green-500",
+            bgColor: "bg-green-500/10",
+            label: "Ready",
+            description: progress.ciSummary || "All checks passed",
+          };
+        }
+        return null;
+      default:
+        return null;
+    }
+  };
+
+  // Get resolution status indicator
+  const getResolutionConfig = () => {
+    if (!progress?.resolution) return null;
+
+    switch (progress.resolution.status) {
+      case "in_progress":
+        return {
+          label: "Agent fixing...",
+          color: "text-blue-500",
+        };
+      case "resolved":
+        return {
+          label: "Fixed",
+          color: "text-green-500",
+        };
+      case "gave_up":
+        return {
+          label: "Manual fix needed",
+          color: "text-amber-500",
+        };
+      default:
+        return null;
+    }
+  };
+
   const config = getStatusConfig();
+  const progressConfig = getProgressConfig();
+  const resolutionConfig = getResolutionConfig();
   const IconComponent = config.icon;
 
   return (
@@ -77,6 +170,26 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
             </Button>
           </div>
         </div>
+
+        {/* Progress indicator row */}
+        {progressConfig && (
+          <div className={`mt-3 pt-3 border-t border-border/50`}>
+            <div className="flex items-center gap-2">
+              <div className={`p-1 rounded ${progressConfig.bgColor}`}>
+                <progressConfig.icon
+                  className={`w-4 h-4 ${progressConfig.color} ${progressConfig.animate ? "animate-spin" : ""}`}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={`text-xs font-medium ${progressConfig.color}`}>{progressConfig.label}</div>
+                <div className="text-xs text-muted-foreground truncate">{progressConfig.description}</div>
+              </div>
+              {resolutionConfig && (
+                <div className={`text-xs font-medium ${resolutionConfig.color}`}>{resolutionConfig.label}</div>
+              )}
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

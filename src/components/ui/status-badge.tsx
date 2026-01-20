@@ -1,16 +1,16 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import {
-  Inbox,
-  Calendar,
-  Loader2,
-  CheckCircle,
-  XCircle,
-  Circle,
-  AlertCircle
-} from "lucide-react";
 import type { FeatureStatus, PhaseStatus, TaskStatus } from "@prisma/client";
+import {
+  AlertCircle,
+  Calendar,
+  CheckCircle,
+  Circle,
+  Inbox,
+  Loader2,
+  XCircle
+} from "lucide-react";
 
 type StatusType = "feature" | "phase" | "task";
 
@@ -46,6 +46,17 @@ const FEATURE_STATUS_CONFIG: Record<FeatureStatus, StatusConfig> = {
     label: "Cancelled",
     className: "bg-red-50 text-red-700 border-red-200",
   },
+  ERROR: {
+    icon: <XCircle className="h-3 w-3" />,
+    label: "Error",
+    className: "bg-red-50 text-red-700 border-red-200",
+  },
+  BLOCKED: {
+    icon: <AlertCircle className="h-3 w-3" />,
+    label: "Blocked",
+    className: "bg-orange-50 text-orange-700 border-orange-200",
+  },
+
 };
 
 const PHASE_STATUS_CONFIG: Record<PhaseStatus, StatusConfig> = {

@@ -1036,6 +1036,14 @@ export default function TaskChatPage() {
 
   const hasNonFormArtifacts = artifactsWithoutOldDiffs.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
   const browserArtifact = artifactsWithoutOldDiffs.find((a) => a.type === "BROWSER");
+  
+  // Extract PR URL from PULL_REQUEST artifacts (get the first one if multiple exist)
+  const prArtifact = messages
+    .slice()
+    .reverse()
+    .find((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
+  const prUrl = prArtifact?.artifacts?.find((a) => a.type === "PULL_REQUEST")?.content as PullRequestContent | undefined;
+  const prLink = prUrl?.url || null;
 
   const isTerminalState =
     workflowStatus === WorkflowStatus.HALTED ||
@@ -1121,6 +1129,7 @@ export default function TaskChatPage() {
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
+                    prUrl={prLink}
                   />
                 )}
               </div>
@@ -1145,6 +1154,7 @@ export default function TaskChatPage() {
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
+                      prUrl={prLink}
                     />
                   </div>
                 </ResizablePanel>
@@ -1180,6 +1190,7 @@ export default function TaskChatPage() {
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
+                prUrl={prLink}
               />
             </div>
           ) : hasNonFormArtifacts ? (
