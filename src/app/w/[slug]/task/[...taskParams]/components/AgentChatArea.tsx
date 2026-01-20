@@ -34,6 +34,7 @@ interface AgentChatAreaProps {
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
+  prUrl?: string | null;
 }
 
 export function AgentChatArea({
@@ -56,6 +57,7 @@ export function AgentChatArea({
   podId,
   onReleasePod,
   isReleasingPod = false,
+  prUrl = null,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -196,17 +198,28 @@ export function AgentChatArea({
                 </TooltipProvider>
               )}
 
-              {/* Create PR Button */}
+              {/* Create PR / Open PR Button */}
               {onCommit && (
-                <Button
-                  size="sm"
-                  onClick={onCommit}
-                  disabled={isCommitting}
-                  className="flex-shrink-0 gap-1 bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <Github className="w-3 h-3" />
-                  {isCommitting ? "Creating..." : "Create PR"}
-                </Button>
+                prUrl ? (
+                  <Button
+                    size="sm"
+                    onClick={() => window.open(prUrl, '_blank')}
+                    className="flex-shrink-0 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Github className="w-3 h-3" />
+                    Open PR
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={onCommit}
+                    disabled={isCommitting}
+                    className="flex-shrink-0 gap-1 bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <Github className="w-3 h-3" />
+                    {isCommitting ? "Creating..." : "Create PR"}
+                  </Button>
+                )
               )}
             </div>
           </motion.div>
