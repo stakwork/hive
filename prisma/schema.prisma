@@ -217,6 +217,10 @@ model Workspace {
   // Stakwork credentials
   stakworkApiKey String? @map("stakwork_api_key")
 
+  // Vercel integration
+  vercelApiToken String? @map("vercel_api_token") // Encrypted Vercel API token
+  vercelTeamId   String? @map("vercel_team_id")   // Vercel team ID (optional)
+
   // Janitor configuration
   janitorConfig JanitorConfig?
   janitorRecommendations JanitorRecommendation[]

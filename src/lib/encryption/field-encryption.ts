@@ -67,6 +67,7 @@ export class FieldEncryptionService {
       "source_control_refresh_token",
       "agentPassword",
       "agentWebhookSecret",
+      "vercelApiToken",
     ];
 
     return encryptableFields.includes(fieldName as EncryptableField);
