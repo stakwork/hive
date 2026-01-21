@@ -132,46 +132,99 @@ export async function createJanitorRun(
   // Allow multiple manual runs - concurrent check removed for manual triggers
   // This will be replaced by cron scheduling in the future
 
-  // First create the database record without stakwork project ID
-  let janitorRun = await db.janitorRun.create({
-    data: {
-      janitorConfigId: config.id,
-      janitorType,
-      triggeredBy,
-      status: "PENDING",
-      metadata: {
-        triggeredByUserId: userId,
-        workspaceId,
-      }
-    },
-    include: {
-      janitorConfig: {
+  // Get all repositories for this workspace to create per-repo janitor runs
+  const repositories = await db.repository.findMany({
+    where: { workspaceId },
+    select: {
+      id: true,
+      repositoryUrl: true,
+      branch: true,
+      ignoreDirs: true,
+      name: true,
+    }
+  });
+
+  if (repositories.length === 0) {
+    throw new Error(`No repositories found for workspace: ${workspaceSlug}`);
+  }
+
+  // Create janitor runs for each repository (Option A: per-repository analysis)
+  const janitorRuns = await Promise.all(
+    repositories.map(repo =>
+      db.janitorRun.create({
+        data: {
+          janitorConfigId: config.id,
+          janitorType,
+          triggeredBy,
+          status: "PENDING",
+          repositoryId: repo.id,
+          metadata: {
+            triggeredByUserId: userId,
+            workspaceId,
+            repositoryId: repo.id,
+            repositoryUrl: repo.repositoryUrl,
+          }
+        },
         include: {
-          workspace: {
+          janitorConfig: {
             include: {
-              swarm: {
-                select: {
-                  swarmUrl: true,
-                  swarmSecretAlias: true,
-                  poolName: true,
-                  name: true,
-                  id: true,
-                }
-              },
-              repositories: {
-                select: {
-                  id: true,
-                  repositoryUrl: true,
-                  branch: true,
-                  ignoreDirs: true,
+              workspace: {
+                include: {
+                  swarm: {
+                    select: {
+                      swarmUrl: true,
+                      swarmSecretAlias: true,
+                      poolName: true,
+                      name: true,
+                      id: true,
+                    }
+                  },
                 }
               }
             }
+          },
+          repository: {
+            select: {
+              id: true,
+              repositoryUrl: true,
+              branch: true,
+              ignoreDirs: true,
+              name: true,
+            }
           }
         }
-      }
-    }
-  });
+      })
+    )
+  );
+
+  // Process each janitor run
+  const results = await Promise.allSettled(
+    janitorRuns.map(janitorRun => processJanitorRun(janitorRun, userId, workspaceSlug))
+  );
+
+  // Return summary of created runs
+  return {
+    totalRuns: janitorRuns.length,
+    runs: janitorRuns.map((run, index) => ({
+      id: run.id,
+      repositoryId: run.repositoryId,
+      repositoryUrl: run.repository?.repositoryUrl,
+      status: results[index].status === 'fulfilled' ? 'started' : 'failed',
+      error: results[index].status === 'rejected' ? (results[index] as PromiseRejectedResult).reason?.message : undefined,
+    }))
+  };
+}
+
+/**
+ * Process a single janitor run - extracted for multi-repo support
+ */
+async function processJanitorRun(
+  janitorRun: any,
+  userId: string,
+  workspaceSlug: string
+) {
+  const janitorType = janitorRun.janitorType;
+  const workspaceId = janitorRun.metadata.workspaceId;
 
   try {
     // Check if Stakwork is configured for janitors
@@ -206,13 +259,14 @@ export async function createJanitorRun(
       console.warn(`[Janitor] No GitHub credentials found for userId: ${credentialUserId}, workspaceSlug: ${workspaceSlug}`);
     }
 
-    // Get repository data from first repository
-    const repository = janitorRun.janitorConfig.workspace.repositories[0];
+    // Get repository data from the janitor run's assigned repository
+    const repository = janitorRun.repository;
     const repositoryUrl = repository?.repositoryUrl || null;
     const ignoreDirs = repository?.ignoreDirs || null;
+    const baseBranch = repository?.branch || null;
 
     if (!repositoryUrl) {
-      console.warn(`[Janitor] No repository linked to workspace: ${workspaceSlug}`);
+      throw new Error(`[Janitor] No repository linked to janitor run: ${janitorRun.id}`);
     }
 
     // Prepare variables - include janitorType, webhookUrl, swarmUrl, swarmSecretAlias, ignoreDirs, and GitHub context
@@ -223,6 +277,8 @@ export async function createJanitorRun(
       swarmSecretAlias: swarmSecretAlias,
       workspaceId: workspaceId,
       repositoryUrl: repositoryUrl,
+      repo_url: repositoryUrl,  // Also include underscore version for consistency
+      base_branch: baseBranch,
       ignoreDirs: ignoreDirs,
       username: githubCreds?.username || null,
       pat: githubCreds?.token || null,

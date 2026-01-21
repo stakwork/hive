@@ -70,6 +70,7 @@ describe("Janitor Service", () => {
       },
       repository: {
         findFirst: vi.fn(),
+        findMany: vi.fn(),
       },
     });
 
@@ -265,7 +266,7 @@ describe("Janitor Service", () => {
     test("should create janitor run successfully", async () => {
       const mockConfig = janitorMocks.createMockConfig({ unitTestsEnabled: true });
       const mockRun = janitorMocks.createMockRunWithConfig(
-        { status: "RUNNING", stakworkProjectId: 12345 },
+        { status: "PENDING", stakworkProjectId: null, repositoryId: "repo-1" },
         { unitTestsEnabled: true }
       );
       const mockValidation = {
@@ -276,16 +277,32 @@ describe("Janitor Service", () => {
         workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
       };
 
+      // Mock repository data
+      const mockRepositories = [
+        {
+          id: "repo-1",
+          repositoryUrl: "https://github.com/test/repo",
+          branch: "main",
+          ignoreDirs: "node_modules,dist",
+          name: "test-repo",
+        }
+      ];
+
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create)
-        .mockResolvedValueOnce({
-          ...mockRun,
-          status: "PENDING",
-          stakworkProjectId: null,
-        } as any)
-        .mockResolvedValueOnce(mockRun as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
+      vi.mocked(db.repository.findMany).mockResolvedValue(mockRepositories as any);
+      vi.mocked(db.janitorRun.create).mockResolvedValue({
+        ...mockRun,
+        id: mockRun.id,
+        repositoryId: "repo-1",
+        repository: mockRepositories[0],
+      } as any);
+      vi.mocked(db.janitorRun.update).mockResolvedValue({
+        ...mockRun,
+        repositoryId: "repo-1",
+        status: "RUNNING",
+        stakworkProjectId: 12345,
+      } as any);
 
       // Mock stakwork service
       const mockStakworkRequest = vi.fn().mockResolvedValue({
@@ -301,16 +318,18 @@ describe("Janitor Service", () => {
       expect(db.janitorConfig.findUnique).toHaveBeenCalledWith({
         where: { workspaceId: "ws-1" },
       });
-      expect(db.janitorRun.create).toHaveBeenCalled();
-      expect(db.janitorRun.update).toHaveBeenCalledWith({
-        where: { id: mockRun.id },
-        data: {
-          stakworkProjectId: 12345,
-          status: "RUNNING",
-          startedAt: expect.any(Date),
-        },
-        include: expect.any(Object),
+      expect(db.repository.findMany).toHaveBeenCalledWith({
+        where: { workspaceId: "ws-1" },
+        select: expect.objectContaining({
+          id: true,
+          repositoryUrl: true,
+          branch: true,
+          ignoreDirs: true,
+          name: true,
+        }),
       });
+      expect(db.janitorRun.create).toHaveBeenCalled();
+      expect(db.janitorRun.update).toHaveBeenCalled();
       
       // Verify ignoreDirs is included in the Stakwork payload
       expect(mockStakworkRequest).toHaveBeenCalledWith(
@@ -328,14 +347,17 @@ describe("Janitor Service", () => {
         })
       );
       
-      expect(result.status).toBe("RUNNING");
-      expect(result.stakworkProjectId).toBe(12345);
+      // New return structure
+      expect(result.totalRuns).toBe(1);
+      expect(result.runs).toHaveLength(1);
+      expect(result.runs[0].repositoryId).toBe("repo-1");
+      expect(result.runs[0].status).toBe("started");
     });
 
     test("should create MOCK_GENERATION janitor run successfully", async () => {
       const mockConfig = janitorMocks.createMockConfig({ mockGenerationEnabled: true });
       const mockRun = janitorMocks.createMockRunWithConfig(
-        { status: "RUNNING", stakworkProjectId: 12345, janitorType: "MOCK_GENERATION" },
+        { status: "PENDING", stakworkProjectId: null, repositoryId: "repo-1", janitorType: "MOCK_GENERATION" },
         { mockGenerationEnabled: true }
       );
       const mockValidation = {
@@ -346,16 +368,29 @@ describe("Janitor Service", () => {
         workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
       };
 
+      // Mock repository data
+      const mockRepositories = [
+        {
+          id: "repo-1",
+          repositoryUrl: "https://github.com/test/repo",
+          branch: "main",
+          ignoreDirs: "node_modules,dist",
+          name: "test-repo",
+        }
+      ];
+
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create)
-        .mockResolvedValueOnce({
-          ...mockRun,
-          status: "PENDING",
-          stakworkProjectId: null,
-        } as any)
-        .mockResolvedValueOnce(mockRun as any);
-      vi.mocked(db.janitorRun.update).mockResolvedValue(mockRun as any);
+      vi.mocked(db.repository.findMany).mockResolvedValue(mockRepositories as any);
+      vi.mocked(db.janitorRun.create).mockResolvedValue({
+        ...mockRun,
+        repository: mockRepositories[0],
+      } as any);
+      vi.mocked(db.janitorRun.update).mockResolvedValue({
+        ...mockRun,
+        status: "RUNNING",
+        stakworkProjectId: 12345,
+      } as any);
 
       const mockStakworkRequest = vi.fn().mockResolvedValue({
         data: { project_id: 12345 },
@@ -366,8 +401,8 @@ describe("Janitor Service", () => {
 
       const result = await createJanitorRun("test-workspace", "user-1", "MOCK_GENERATION");
 
-      expect(result.status).toBe("RUNNING");
-      expect(result.stakworkProjectId).toBe(12345);
+      expect(result.totalRuns).toBe(1);
+      expect(result.runs).toHaveLength(1);
       expect(mockStakworkRequest).toHaveBeenCalledWith(
         "/projects",
         expect.objectContaining({
@@ -438,7 +473,7 @@ describe("Janitor Service", () => {
 
     test("should handle Stakwork integration failure", async () => {
       const mockConfig = janitorMocks.createMockConfig({ unitTestsEnabled: true });
-      const mockRun = janitorMocks.createMockRunWithConfig({}, { unitTestsEnabled: true });
+      const mockRun = janitorMocks.createMockRunWithConfig({ repositoryId: "repo-1" }, { unitTestsEnabled: true });
       const mockValidation = {
         hasAccess: true,
         canRead: true,
@@ -447,9 +482,24 @@ describe("Janitor Service", () => {
         workspace: { id: "ws-1", name: "Test", slug: "test", ownerId: "owner-1", description: null, createdAt: TEST_DATE_ISO, updatedAt: TEST_DATE_ISO },
       };
 
+      // Mock repository data
+      const mockRepositories = [
+        {
+          id: "repo-1",
+          repositoryUrl: "https://github.com/test/repo",
+          branch: "main",
+          ignoreDirs: "node_modules,dist",
+          name: "test-repo",
+        }
+      ];
+
       mockedValidateWorkspaceAccess.mockResolvedValue(mockValidation);
       janitorMockSetup.mockConfigExists(mockedDb, mockConfig);
-      vi.mocked(db.janitorRun.create).mockResolvedValue(mockRun as any);
+      vi.mocked(db.repository.findMany).mockResolvedValue(mockRepositories as any);
+      vi.mocked(db.janitorRun.create).mockResolvedValue({
+        ...mockRun,
+        repository: mockRepositories[0],
+      } as any);
       vi.mocked(db.janitorRun.update).mockResolvedValue({} as any);
 
       // Mock stakwork service failure
@@ -457,18 +507,13 @@ describe("Janitor Service", () => {
         stakworkRequest: vi.fn().mockRejectedValue(new Error("Stakwork API error")),
       } as any);
 
-      await expect(
-        createJanitorRun("test-workspace", "user-1", "UNIT_TESTS")
-      ).rejects.toThrow("Failed to start janitor run: Stakwork API error");
+      const result = await createJanitorRun("test-workspace", "user-1", "UNIT_TESTS");
 
-      expect(db.janitorRun.update).toHaveBeenCalledWith({
-        where: { id: mockRun.id },
-        data: {
-          status: "FAILED",
-          completedAt: expect.any(Date),
-          error: expect.stringContaining("Stakwork API error"),
-        },
-      });
+      // The function now returns a summary with all runs (even failed ones)
+      expect(result.totalRuns).toBe(1);
+      expect(result.runs).toHaveLength(1);
+      expect(result.runs[0].status).toBe("failed");
+      expect(result.runs[0].error).toContain("Stakwork API error");
     });
   });
 

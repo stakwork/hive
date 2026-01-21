@@ -384,10 +384,14 @@ export async function createChatMessageAndTriggerStakwork(params: {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":3355") : "";
 
-    // Get repository URL and branch
-    const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
-    const baseBranch = task.workspace.repositories?.[0]?.branch || null;
-    const repoName = task.workspace.repositories?.[0]?.name || null;
+    // Get repository URL and branch - use task-specific repository if set, otherwise fallback to primary
+    const taskRepository = task.repository;
+    const primaryRepository = task.workspace.repositories?.[0];
+    const selectedRepository = taskRepository || primaryRepository;
+    
+    const repoUrl = selectedRepository?.repositoryUrl || null;
+    const baseBranch = selectedRepository?.branch || null;
+    const repoName = selectedRepository?.name || null;
     const taskBranch = task.branch || null;
 
     // Decrypt pod password if available
