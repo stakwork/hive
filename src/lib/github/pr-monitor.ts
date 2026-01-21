@@ -5,7 +5,9 @@
  * When issues are detected, it can:
  * 1. Update the PR artifact's progress state
  * 2. Notify the user via Pusher
- * 3. Trigger the agent to fix the issue (if pod is available)
+ * 3. Trigger a fix based on task mode:
+ *    - "agent" mode: Direct connection to agent server for streaming fixes
+ *    - "live" mode: Stakwork workflow for automated fixes
  */
 
 import { Octokit } from "@octokit/rest";
@@ -15,6 +17,7 @@ import { getUserAppTokens } from "@/lib/githubApp";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
+import { sendMessageToStakwork } from "@/services/task-workflow";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 
 const LOG_PREFIX = "[PRMonitor]";
@@ -652,11 +655,11 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
         stats.notified++;
 
-        // If pod is available and this is a new problem, would trigger the agent
-        // TODO: Uncomment when ready to enable auto-fix
+        // If pod is available and this is a new problem, trigger an automatic fix
+        // The triggerFix function auto-detects whether to use agent mode or live mode
         if (pr.podId && stateChanged) {
           const fixPrompt = buildFixPrompt(result);
-          log.info("WOULD TRIGGER AGENT (disabled)", {
+          log.info("WOULD TRIGGER FIX (disabled)", {
             taskId: pr.taskId,
             podId: pr.podId,
             state: result.state,
@@ -664,12 +667,12 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
             repo: `${result.owner}/${result.repo}`,
             prompt: fixPrompt.substring(0, 200) + "...",
           });
-          // TODO:
-          // Uncomment below to enable agent auto-fix:
-          // const triggerResult = await triggerAgentFix(pr.taskId, fixPrompt);
-          // if (triggerResult.success) {
-          //   stats.agentTriggered++;
-          // }
+
+          // auto-fix (supports both agent and live modes):
+          const triggerResult = await triggerFix(pr.taskId, fixPrompt);
+          if (triggerResult.success) {
+            stats.agentTriggered++;
+          }
         }
       } else {
         stats.healthy++;
@@ -698,16 +701,22 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
 }
 
 /**
- * Trigger the agent to fix a PR issue (server-side, no streaming)
+ * Trigger the agent to fix a PR issue in "agent" mode (server-side, no streaming)
  *
- * This function:
+ * This function is for tasks with mode="agent":
  * 1. Saves a system message explaining the issue
- * 2. Creates/refreshes an agent session
+ * 2. Creates/refreshes an agent session with the remote agent server
  * 3. Sends the fix prompt to the agent (fire-and-forget)
  *
  * The agent's response will be persisted via the webhook callback.
+ *
+ * @param taskId - The task ID (must be in "agent" mode)
+ * @param prompt - The fix prompt describing the issue and resolution steps
  */
-export async function triggerAgentFix(taskId: string, prompt: string): Promise<{ success: boolean; error?: string }> {
+export async function triggerAgentModeFix(
+  taskId: string,
+  prompt: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Load task
     const task = await db.task.findUnique({
@@ -817,10 +826,106 @@ export async function triggerAgentFix(taskId: string, prompt: string): Promise<{
       log.error("Error initiating agent stream", { taskId, error: String(error) });
     });
 
-    log.info("Triggered agent fix", { taskId });
+    log.info("Triggered agent mode fix", { taskId });
     return { success: true };
   } catch (error) {
-    log.error("Error triggering agent fix", { taskId, error: String(error) });
+    log.error("Error triggering agent mode fix", { taskId, error: String(error) });
     return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Trigger a fix for a PR issue in "live" mode via Stakwork workflow
+ *
+ * This function is for tasks with mode="live":
+ * 1. Looks up the workspace owner for authentication
+ * 2. Sends the fix prompt to Stakwork workflow
+ *
+ * The response will be delivered via Stakwork webhook callback.
+ *
+ * @param taskId - The task ID (must be in "live" mode)
+ * @param prompt - The fix prompt describing the issue and resolution steps
+ */
+export async function triggerLiveModeFix(
+  taskId: string,
+  prompt: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. Load task to get workspace owner
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: {
+        mode: true,
+        workspace: {
+          select: {
+            ownerId: true,
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      return { success: false, error: "Task not found" };
+    }
+
+    if (task.mode !== "live") {
+      return { success: false, error: "Task is not in live mode" };
+    }
+
+    const userId = task.workspace.ownerId;
+
+    // 2. Create the fix message with PR monitor context
+    const message = `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`;
+
+    // 3. Send message to Stakwork workflow
+    const result = await sendMessageToStakwork({
+      taskId,
+      message,
+      userId,
+      generateChatTitle: false,
+    });
+
+    if (!result.stakworkData?.success) {
+      log.error("Failed to trigger Stakwork workflow", {
+        taskId,
+        error: result.stakworkData?.error,
+      });
+      return { success: false, error: "Failed to trigger Stakwork workflow" };
+    }
+
+    log.info("Triggered live mode fix", { taskId, projectId: result.stakworkData.data?.project_id });
+    return { success: true };
+  } catch (error) {
+    log.error("Error triggering live mode fix", { taskId, error: String(error) });
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Trigger a fix for a PR issue based on the task's mode
+ *
+ * This is a convenience wrapper that automatically selects the correct
+ * fix function based on the task's mode setting.
+ *
+ * @param taskId - The task ID
+ * @param prompt - The fix prompt describing the issue and resolution steps
+ */
+export async function triggerFix(taskId: string, prompt: string): Promise<{ success: boolean; error?: string }> {
+  // Load task to determine mode
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: { mode: true },
+  });
+
+  if (!task) {
+    return { success: false, error: "Task not found" };
+  }
+
+  if (task.mode === "agent") {
+    return triggerAgentModeFix(taskId, prompt);
+  } else if (task.mode === "live") {
+    return triggerLiveModeFix(taskId, prompt);
+  } else {
+    return { success: false, error: `Unsupported task mode: ${task.mode}` };
   }
 }
