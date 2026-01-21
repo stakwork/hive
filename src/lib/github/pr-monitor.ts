@@ -24,7 +24,7 @@ const LOG_PREFIX = "[PRMonitor]";
 const encryptionService = EncryptionService.getInstance();
 
 // Retry limits to prevent infinite loops
-const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "3", 10);
+const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "6", 10);
 const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
 
 // Simple console logging helpers
