@@ -1,7 +1,7 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getRepository } from "@/lib/helpers/repository";
 import { swarmApiRequestAuth } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm, ServiceConfig } from "@/services/swarm/db";
 import { fetchStakgraphServices } from "@/services/swarm/stakgraph-services";
@@ -25,10 +25,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
     const swarmId = searchParams.get("swarmId");
+    const repositoryId = searchParams.get("repositoryId");
     const repo_url_param = searchParams.get("repo_url");
 
     console.log("workspaceId", workspaceId);
     console.log("swarmId", swarmId);
+    console.log("repositoryId", repositoryId);
     console.log("repo_url_param", repo_url_param);
 
     if (!workspaceId && !swarmId) {
@@ -102,8 +104,14 @@ export async function GET(request: NextRequest) {
 
     const githubProfile = await getGithubUsernameAndPAT(session.user.id, workspace.slug);
 
-    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
-    const repo_url = repo_url_param || primaryRepo?.repositoryUrl;
+    // Get repository (by ID if provided, otherwise primary)
+    const targetRepo = await getRepository(swarm.workspaceId, repositoryId);
+    
+    if (!targetRepo && repositoryId) {
+      return NextResponse.json({ success: false, message: "Repository not found or does not belong to workspace" }, { status: 404 });
+    }
+
+    const repo_url = repo_url_param || targetRepo?.repositoryUrl;
 
     let responseData: { services: ServiceConfig[] } | undefined;
     let environmentVariables: Array<{ name: string; value: string }> | undefined;

@@ -89,3 +89,58 @@ export async function getAllRepositories(workspaceId: string): Promise<Repositor
     branch: repo.branch,
   }));
 }
+
+/**
+ * Get a specific repository by ID and validate it belongs to the workspace
+ */
+export async function getRepositoryById(
+  repositoryId: string,
+  workspaceId: string
+): Promise<RepositoryInfo | null> {
+  const repository = await db.repository.findFirst({
+    where: {
+      id: repositoryId,
+      workspaceId: workspaceId,
+    },
+    select: {
+      id: true,
+      repositoryUrl: true,
+      ignoreDirs: true,
+      unitGlob: true,
+      integrationGlob: true,
+      e2eGlob: true,
+      name: true,
+      description: true,
+      branch: true,
+    },
+  });
+
+  if (!repository) {
+    return null;
+  }
+
+  return {
+    id: repository.id,
+    repositoryUrl: repository.repositoryUrl,
+    ignoreDirs: repository.ignoreDirs,
+    unitGlob: repository.unitGlob,
+    integrationGlob: repository.integrationGlob,
+    e2eGlob: repository.e2eGlob,
+    name: repository.name,
+    description: repository.description,
+    branch: repository.branch,
+  };
+}
+
+/**
+ * Get repository (by ID if provided, otherwise primary) and validate workspace access
+ */
+export async function getRepository(
+  workspaceId: string,
+  repositoryId?: string | null
+): Promise<RepositoryInfo | null> {
+  if (repositoryId) {
+    return getRepositoryById(repositoryId, workspaceId);
+  }
+  return getPrimaryRepository(workspaceId);
+}

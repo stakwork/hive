@@ -2,7 +2,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { parseEnv } from "@/lib/env-parser";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getRepository } from "@/lib/helpers/repository";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { pollAgentProgress } from "@/services/swarm/stakgraph-services";
 import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUtils";
@@ -158,8 +158,9 @@ export async function GET(request: NextRequest) {
                   fileCount: Object.keys(agentFiles).length,
                 });
 
-                const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
-                const repo_url = primaryRepo?.repositoryUrl;
+                // Get primary repository for this workspace
+                const targetRepo = await getRepository(swarm.workspaceId);
+                const repo_url = targetRepo?.repositoryUrl;
 
                 if (!repo_url) {
                   console.error("[agent-stream] No repository URL found", {

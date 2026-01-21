@@ -4,7 +4,7 @@ import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { EncryptionService } from "@/lib/encryption";
 import { convertGlobsToRegex } from "@/lib/utils/glob";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getRepository } from "@/lib/helpers/repository";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import type { CoverageNodeConcise, CoverageNodesResponse, UncoveredNodeType, NodesResponse } from "@/types/stakgraph";
@@ -189,6 +189,7 @@ export async function GET(request: NextRequest) {
     const { searchParams, hostname } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId") || searchParams.get("id");
     const swarmId = searchParams.get("swarmId");
+    const repositoryId = searchParams.get("repositoryId");
     const ignoreDirsParam = searchParams.get("ignoreDirs") || searchParams.get("ignore_dirs");
     const repoParam = searchParams.get("repo");
     const unitGlobParam = searchParams.get("unitGlob");
@@ -204,41 +205,50 @@ export async function GET(request: NextRequest) {
     let finalIntegrationGlob = integrationGlobParam;
     let finalE2eGlob = e2eGlobParam;
 
+    // Get repository configuration (by ID if provided, otherwise primary)
     if (workspaceId && !swarmId) {
-      const primaryRepo = await getPrimaryRepository(workspaceId);
-      if (primaryRepo) {
+      const targetRepo = await getRepository(workspaceId, repositoryId);
+      
+      if (!targetRepo && repositoryId) {
+        return NextResponse.json(
+          { success: false, message: "Repository not found or does not belong to workspace" },
+          { status: 404 }
+        );
+      }
+
+      if (targetRepo) {
         if (!ignoreDirsParam) {
-          finalIgnoreDirs = primaryRepo.ignoreDirs || "";
-        } else if (ignoreDirsParam !== primaryRepo.ignoreDirs) {
+          finalIgnoreDirs = targetRepo.ignoreDirs || "";
+        } else if (ignoreDirsParam !== targetRepo.ignoreDirs) {
           await db.repository.update({
-            where: { id: primaryRepo.id },
+            where: { id: targetRepo.id },
             data: { ignoreDirs: ignoreDirsParam },
           });
         }
 
         if (!unitGlobParam) {
-          finalUnitGlob = primaryRepo.unitGlob || "";
-        } else if (unitGlobParam !== primaryRepo.unitGlob) {
+          finalUnitGlob = targetRepo.unitGlob || "";
+        } else if (unitGlobParam !== targetRepo.unitGlob) {
           await db.repository.update({
-            where: { id: primaryRepo.id },
+            where: { id: targetRepo.id },
             data: { unitGlob: unitGlobParam },
           });
         }
 
         if (!integrationGlobParam) {
-          finalIntegrationGlob = primaryRepo.integrationGlob || "";
-        } else if (integrationGlobParam !== primaryRepo.integrationGlob) {
+          finalIntegrationGlob = targetRepo.integrationGlob || "";
+        } else if (integrationGlobParam !== targetRepo.integrationGlob) {
           await db.repository.update({
-            where: { id: primaryRepo.id },
+            where: { id: targetRepo.id },
             data: { integrationGlob: integrationGlobParam },
           });
         }
 
         if (!e2eGlobParam) {
-          finalE2eGlob = primaryRepo.e2eGlob || "";
-        } else if (e2eGlobParam !== primaryRepo.e2eGlob) {
+          finalE2eGlob = targetRepo.e2eGlob || "";
+        } else if (e2eGlobParam !== targetRepo.e2eGlob) {
           await db.repository.update({
-            where: { id: primaryRepo.id },
+            where: { id: targetRepo.id },
             data: { e2eGlob: e2eGlobParam },
           });
         }
