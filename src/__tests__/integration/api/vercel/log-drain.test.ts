@@ -2,17 +2,15 @@ import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
 import { POST } from "@/app/api/vercel/log-drain/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import {
-  generateUniqueId,
-  generateUniqueSlug,
-} from "@/__tests__/support/helpers";
+import { generateUniqueId, generateUniqueSlug } from "@/__tests__/support/helpers";
+import { NextRequest } from "next/server";
 
 /**
  * Integration Tests for POST /api/vercel/log-drain
- * 
+ *
  * Tests Vercel log drain webhook endpoint including:
- * - Verification request handling
- * - Per-workspace authentication
+ * - Verification request handling (per-workspace secret)
+ * - Per-workspace authentication via vercelWebhookSecret
  * - NDJSON payload parsing
  * - Path matching and highlighting
  */
@@ -31,42 +29,50 @@ vi.mock("@/lib/pusher", () => ({
 // Mock fetch for swarm gitree endpoint
 global.fetch = vi.fn();
 
-const { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } = await import(
-  "@/lib/pusher"
-);
+const { pusherServer } = await import("@/lib/pusher");
 const mockedPusherServer = vi.mocked(pusherServer);
 const mockedFetch = vi.mocked(global.fetch);
 
-describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
+describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
   // Initialize encryption service for test environment
-  EncryptionService.getInstance();
-  const webhookUrl = "http://localhost:3000/api/vercel/logs";
-  const validApiKey = "test-vercel-webhook-api-key";
-  const verifySecret = "test-vercel-verify-secret";
+  const encryptionService = EncryptionService.getInstance();
+  const baseWebhookUrl = "http://localhost:3000/api/vercel/log-drain";
+  const webhookSecret = "test-workspace-webhook-secret";
 
-  // Helper to create request with proper Content-Length header
-  function createRequest(body?: string, headers: Record<string, string> = {}) {
+  // Helper to create webhook URL with projectId
+  function getWebhookUrl(projectId: string) {
+    return `${baseWebhookUrl}?projectId=${encodeURIComponent(projectId)}`;
+  }
+
+  // Helper to create NextRequest with proper Content-Length header
+  function createRequest(projectId: string, body?: string, headers: Record<string, string> = {}): NextRequest {
     const requestHeaders: Record<string, string> = { ...headers };
-    
+
     if (body) {
       requestHeaders["Content-Length"] = body.length.toString();
     } else {
       requestHeaders["Content-Length"] = "0";
     }
-    
-    return new Request(webhookUrl, {
+
+    return new NextRequest(getWebhookUrl(projectId), {
       method: "POST",
       headers: requestHeaders,
       body,
     });
   }
 
-  // Helper to create test workspace with swarm
-  async function createTestWorkspace(vercelProjectId?: string) {
-    const encryptionService = EncryptionService.getInstance();
-    const encryptedApiKey = JSON.stringify(
-      encryptionService.encryptField("swarmApiKey", "test-swarm-api-key")
-    );
+  // Helper to create test workspace with swarm and webhook secret
+  async function createTestWorkspace(options?: {
+    vercelProjectId?: string;
+    withWebhookSecret?: boolean;
+    withSwarm?: boolean;
+  }) {
+    const { vercelProjectId = `prj_${generateUniqueId()}`, withWebhookSecret = true, withSwarm = true } = options || {};
+
+    const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-swarm-api-key"));
+    const encryptedWebhookSecret = withWebhookSecret
+      ? JSON.stringify(encryptionService.encryptField("vercelWebhookSecret", webhookSecret))
+      : null;
 
     return await db.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -82,7 +88,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
           name: `Test Workspace ${generateUniqueId()}`,
           slug: generateUniqueSlug("test-workspace"),
           ownerId: user.id,
-          vercelProjectId: vercelProjectId || `prj_${generateUniqueId()}`,
+          vercelProjectId,
+          vercelWebhookSecret: encryptedWebhookSecret,
         },
       });
 
@@ -94,15 +101,18 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         },
       });
 
-      const swarm = await tx.swarm.create({
-        data: {
-          workspaceId: workspace.id,
-          name: `swarm-${generateUniqueId()}.example.com`,
-          swarmUrl: "https://test-swarm.example.com/api",
-          swarmApiKey: encryptedApiKey,
-          status: "ACTIVE",
-        },
-      });
+      let swarm = null;
+      if (withSwarm) {
+        swarm = await tx.swarm.create({
+          data: {
+            workspaceId: workspace.id,
+            name: `swarm-${generateUniqueId()}.example.com`,
+            swarmUrl: "https://test-swarm.example.com/api",
+            swarmApiKey: encryptedApiKey,
+            status: "ACTIVE",
+          },
+        });
+      }
 
       return { user, workspace, swarm };
     });
@@ -110,9 +120,6 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.VERCEL_WEBHOOK_API_KEY = validApiKey;
-    process.env.VERCEL_WEBHOOK_SECRET = verifySecret;
-    
     // Default mock for fetch (gitree endpoint)
     mockedFetch.mockResolvedValue({
       ok: true,
@@ -124,100 +131,85 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
     vi.clearAllMocks();
   });
 
-  describe("Verification Requests", () => {
-    test("should return 200 with x-vercel-verify header for verification request", async () => {
-      const request = new Request(webhookUrl, {
+  describe("Request Validation", () => {
+    test("should return 400 when projectId query parameter is missing", async () => {
+      const request = new NextRequest(baseWebhookUrl, {
         method: "POST",
         headers: {
-          "content-length": "0",
-          "x-api-key": validApiKey,
+          "Content-Length": "0",
         },
       });
 
       const response = await POST(request);
+      const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("x-vercel-verify")).toBe(verifySecret);
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("projectId query parameter required");
     });
 
-    test("should return 500 when VERCEL_WEBHOOK_SECRET not configured", async () => {
-      delete process.env.VERCEL_WEBHOOK_SECRET;
+    test("should return 404 when workspace not found for projectId", async () => {
+      const request = createRequest("prj_nonexistent");
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "content-length": "0",
-          "x-api-key": validApiKey,
-        },
-      });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error).toBe("Workspace not found for this project");
+    });
+  });
+
+  describe("Verification Requests", () => {
+    test("should return 200 with x-vercel-verify header for verification request", async () => {
+      const { workspace } = await createTestWorkspace();
+      const request = createRequest(workspace.vercelProjectId!);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-vercel-verify")).toBe(webhookSecret);
+    });
+
+    test("should return 500 when workspace has no webhook secret configured", async () => {
+      const { workspace } = await createTestWorkspace({ withWebhookSecret: false });
+      const request = createRequest(workspace.vercelProjectId!);
 
       const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(500);
-      expect(data.error).toBe("Server configuration error");
+      expect(data.error).toBe("Webhook secret not configured for this workspace");
     });
   });
 
   describe("Authentication", () => {
-    test("should return 401 when x-api-key header is missing", async () => {
+    test("should return 401 when workspace has no webhook secret for data requests", async () => {
+      const { workspace } = await createTestWorkspace({ withWebhookSecret: false });
       const body = JSON.stringify({ id: "log-1", message: "test" });
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": body.length.toString(),
-        },
-        body,
-      });
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(401);
-      expect(data.error).toBe("Unauthorized");
-    });
-
-    test("should return 401 when x-api-key is invalid", async () => {
-      const body = JSON.stringify({ id: "log-1", message: "test" });
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": "invalid-key",
-          "Content-Length": body.length.toString(),
-        },
-        body,
-      });
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe("Unauthorized");
+      expect(data.error).toBe("Webhook secret not configured");
     });
   });
 
   describe("NDJSON Parsing", () => {
     test("should parse single NDJSON log entry", async () => {
+      const { workspace } = await createTestWorkspace();
+
       const logEntry = {
         id: "log-1",
         message: "GET /api/health 200",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: "prj-test",
+        projectId: workspace.vercelProjectId,
         path: "/api/health",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-          "Content-Length": body.length.toString(),
-        },
-        body,
-      });
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -228,31 +220,25 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
     });
 
     test("should parse multiple NDJSON log entries", async () => {
+      const { workspace } = await createTestWorkspace();
+
       const log1 = {
         id: "log-1",
         message: "test 1",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: "prj-test",
+        projectId: workspace.vercelProjectId,
       };
       const log2 = {
         id: "log-2",
         message: "test 2",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: "prj-test",
+        projectId: workspace.vercelProjectId,
       };
 
       const ndjsonBody = `${JSON.stringify(log1)}\n${JSON.stringify(log2)}`;
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-          "Content-Length": ndjsonBody.length.toString(),
-        },
-        body: ndjsonBody,
-      });
+      const request = createRequest(workspace.vercelProjectId!, ndjsonBody);
 
       const response = await POST(request);
       const data = await response.json();
@@ -262,17 +248,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
     });
 
     test("should handle malformed JSON entries gracefully", async () => {
+      const { workspace } = await createTestWorkspace();
+
       const log1 = { id: "log-1", message: "valid", timestamp: Date.now(), source: "lambda" as const };
       const ndjsonBody = `${JSON.stringify(log1)}\n{invalid json}\n${JSON.stringify(log1)}`;
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-          "Content-Length": ndjsonBody.length.toString(),
-        },
-        body: ndjsonBody,
-      });
+      const request = createRequest(workspace.vercelProjectId!, ndjsonBody);
 
       const response = await POST(request);
       const data = await response.json();
@@ -282,17 +262,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
     });
 
     test("should handle empty lines in NDJSON", async () => {
+      const { workspace } = await createTestWorkspace();
+
       const log1 = { id: "log-1", message: "test", timestamp: Date.now(), source: "lambda" as const };
       const ndjsonBody = `${JSON.stringify(log1)}\n\n\n${JSON.stringify(log1)}\n`;
-
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-          "Content-Length": ndjsonBody.length.toString(),
-        },
-        body: ndjsonBody,
-      });
+      const request = createRequest(workspace.vercelProjectId!, ndjsonBody);
 
       const response = await POST(request);
       const data = await response.json();
@@ -302,15 +276,10 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
     });
 
     test("should return 400 when no valid entries found", async () => {
+      const { workspace } = await createTestWorkspace();
+
       const body = "{invalid}\n{also invalid}";
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-          "Content-Length": body.length.toString(),
-        },
-        body,
-      });
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -353,14 +322,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         path: "/api/health",
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -376,7 +339,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
           nodeIds: ["endpoint-1"],
           workspaceId: workspace.slug,
           title: "Vercel Request",
-        })
+        }),
       );
     });
 
@@ -411,14 +374,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         path: "/api/users/123",
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -470,14 +427,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         },
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -498,14 +449,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         // No path field
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -516,24 +461,20 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
       expect(pusherServer.trigger).not.toHaveBeenCalled();
     });
 
-    test("should skip entries without projectId", async () => {
+    test("should skip entries without projectId in log entry", async () => {
+      const { workspace } = await createTestWorkspace();
+
       const logEntry = {
         id: "log-1",
         message: "test",
         timestamp: Date.now(),
         source: "lambda" as const,
         path: "/api/health",
-        // No projectId
+        // No projectId in the log entry (but URL has projectId)
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -542,24 +483,20 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
       expect(data.highlighted).toBe(0);
     });
 
-    test("should skip entries for unmapped projects", async () => {
+    test("should skip entries for unmapped projects in log entry", async () => {
+      const { workspace } = await createTestWorkspace();
+
       const logEntry = {
         id: "log-1",
         message: "test",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: "prj-unmapped",
+        projectId: "prj-different", // Different from URL projectId
         path: "/api/health",
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -599,14 +536,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         path: "/api/unknown",
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -617,7 +548,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
   });
 
   describe("Workspace Filtering", () => {
-    test("should filter out soft-deleted workspaces", async () => {
+    test("should return 404 for soft-deleted workspaces", async () => {
       const { workspace } = await createTestWorkspace();
 
       // Soft delete workspace
@@ -635,20 +566,14 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         path: "/api/health",
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.highlighted).toBe(0);
+      expect(response.status).toBe(404);
+      expect(data.error).toBe("Workspace not found for this project");
     });
   });
 
@@ -667,14 +592,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         path: "/api/health",
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -706,9 +625,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         }),
       } as Response);
 
-      mockedPusherServer.trigger.mockRejectedValueOnce(
-        new Error("Pusher error")
-      );
+      mockedPusherServer.trigger.mockRejectedValueOnce(new Error("Pusher error"));
 
       const logEntry = {
         id: "log-1",
@@ -719,14 +636,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/logs", () => {
         path: "/api/health",
       };
 
-      const request = new Request(webhookUrl, {
-        method: "POST",
-        headers: {
-          "x-api-key": validApiKey,
-                  "Content-Length": JSON.stringify(logEntry).length.toString(),
-        },
-        body: JSON.stringify(logEntry),
-      });
+      const body = JSON.stringify(logEntry);
+      const request = createRequest(workspace.vercelProjectId!, body);
 
       const response = await POST(request);
       const data = await response.json();
