@@ -3,14 +3,11 @@ import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { validateFeatureAccess } from "@/services/roadmap/utils";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 import { db } from "@/lib/db";
+import { SystemAssigneeType } from "@prisma/client";
 
 interface AssignAllResponse {
   success: boolean;
   count: number;
-  assignee?: {
-    name: string | null;
-    email: string | null;
-  } | null;
 }
 
 export async function POST(
@@ -28,18 +25,11 @@ export async function POST(
     // Step 2: Validate feature access
     await validateFeatureAccess(featureId, userOrResponse.id);
 
-    // Step 3: Fetch feature with assigneeId and first phase
+    // Step 3: Fetch feature with first phase
     const feature = await db.feature.findUnique({
       where: { id: featureId },
       select: {
         id: true,
-        assigneeId: true,
-        assignee: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
         phases: {
           orderBy: { order: "asc" },
           take: 1,
@@ -85,13 +75,12 @@ export async function POST(
         {
           success: true,
           count: 0,
-          assignee: feature.assignee,
         },
         { status: 200 }
       );
     }
 
-    // Step 7: Bulk update tasks with feature's assigneeId
+    // Step 7: Bulk update tasks to assign to Task Coordinator
     const result = await db.task.updateMany({
       where: {
         id: {
@@ -99,8 +88,8 @@ export async function POST(
         },
       },
       data: {
-        assigneeId: feature.assigneeId,
-        systemAssigneeType: null, // Clear system assignee type
+        assigneeId: null, // Clear regular assignee
+        systemAssigneeType: SystemAssigneeType.TASK_COORDINATOR,
       },
     });
 
@@ -112,7 +101,6 @@ export async function POST(
       {
         success: true,
         count: result.count,
-        assignee: feature.assignee,
       },
       { status: 200 }
     );
