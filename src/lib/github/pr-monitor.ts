@@ -23,6 +23,10 @@ import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 const LOG_PREFIX = "[PRMonitor]";
 const encryptionService = EncryptionService.getInstance();
 
+// Retry limits to prevent infinite loops
+const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "3", 10);
+const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
+
 // Simple console logging helpers
 const log = {
   info: (msg: string, data?: Record<string, unknown>) =>
@@ -48,6 +52,21 @@ interface GitHubCheckRun {
   name: string;
   status: "queued" | "in_progress" | "completed";
   conclusion: string | null;
+}
+
+interface GitHubJobStep {
+  name: string;
+  status: "queued" | "in_progress" | "completed";
+  conclusion: string | null;
+  number: number;
+}
+
+interface GitHubJobDetails {
+  id: number;
+  name: string;
+  status: "queued" | "in_progress" | "completed";
+  conclusion: string | null;
+  steps: GitHubJobStep[];
 }
 
 interface GitHubCombinedStatus {
@@ -109,40 +128,178 @@ async function fetchPRStatus(octokit: Octokit, owner: string, repo: string, prNu
 }
 
 /**
- * Fetch the last N lines of logs for a failed GitHub Actions job
+ * Fetch job details including steps from GitHub API
  */
-async function fetchJobLogs(
+async function fetchJobDetails(
   octokit: Octokit,
   owner: string,
   repo: string,
   jobId: number,
-  lastLines: number = 100,
-): Promise<string | null> {
+): Promise<GitHubJobDetails | null> {
   try {
-    // This returns a redirect to a temporary URL with the logs
+    const { data } = await octokit.actions.getJobForWorkflowRun({
+      owner,
+      repo,
+      job_id: jobId,
+    });
+    return data as unknown as GitHubJobDetails;
+  } catch (error) {
+    log.warn("Failed to fetch job details", { owner, repo, jobId, error: String(error) });
+    return null;
+  }
+}
+
+/**
+ * Extract logs for a specific step from the full job logs.
+ *
+ * GitHub Actions logs have step markers in the format:
+ * "2024-01-15T10:30:00.0000000Z ##[group]Step Name"
+ * Each step section ends when the next step begins or at EOF.
+ */
+function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string): string | null {
+  const lines = fullLogs.split("\n");
+
+  // GitHub Actions log format: each line starts with timestamp, step markers use ##[group]
+  // Steps are numbered, and we can identify them by the pattern or by step name
+  // Format: "TIMESTAMP ##[group]STEP_NAME" starts a step
+  // Format: "TIMESTAMP ##[endgroup]" ends a step section
+
+  let inTargetStep = false;
+  let stepLines: string[] = [];
+  let foundStep = false;
+
+  // Pattern to match step group markers - the step name follows ##[group]
+  const groupPattern = /##\[group\]/;
+  const endGroupPattern = /##\[endgroup\]/;
+
+  for (const line of lines) {
+    if (groupPattern.test(line)) {
+      // Check if this is our target step by name (more reliable than number)
+      const isTargetStep = line.includes(stepName) || line.includes(`Step ${stepNumber}`);
+
+      if (inTargetStep) {
+        // We were in the target step and hit a new step, we're done
+        break;
+      }
+
+      if (isTargetStep) {
+        inTargetStep = true;
+        foundStep = true;
+        stepLines.push(line);
+      }
+    } else if (endGroupPattern.test(line) && inTargetStep) {
+      // End of the target step's group section, but continue collecting
+      // as there may be more output after the group ends
+      stepLines.push(line);
+    } else if (inTargetStep) {
+      stepLines.push(line);
+    }
+  }
+
+  // If we didn't find the step by name matching, fall back to extracting
+  // the last portion of logs which usually contains the error
+  if (!foundStep) {
+    // Fallback: search for error patterns and extract surrounding context
+    const errorPatterns = [/error:/i, /failed:/i, /Error:/i, /FAILED/i, /exception/i, /##\[error\]/];
+    const errorLineIndices: number[] = [];
+
+    lines.forEach((line, idx) => {
+      if (errorPatterns.some((pattern) => pattern.test(line))) {
+        errorLineIndices.push(idx);
+      }
+    });
+
+    if (errorLineIndices.length > 0) {
+      // Get context around the first error (20 lines before, 30 lines after)
+      const firstErrorIdx = errorLineIndices[0];
+      const startIdx = Math.max(0, firstErrorIdx - 20);
+      const endIdx = Math.min(lines.length, firstErrorIdx + 30);
+      stepLines = lines.slice(startIdx, endIdx);
+      if (startIdx > 0) {
+        stepLines.unshift("...(earlier output truncated)");
+      }
+    }
+  }
+
+  if (stepLines.length === 0) {
+    return null;
+  }
+
+  return stepLines.join("\n");
+}
+
+/**
+ * Fetch logs for failed steps in a GitHub Actions job.
+ *
+ * This function:
+ * 1. Fetches job details to identify which steps failed
+ * 2. Downloads the full job logs
+ * 3. Extracts only the logs for failed steps
+ */
+async function fetchFailedStepLogs(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  jobId: number,
+): Promise<{ failedSteps: string[]; logs: string } | null> {
+  try {
+    // 1. Fetch job details to get step information
+    const jobDetails = await fetchJobDetails(octokit, owner, repo, jobId);
+    if (!jobDetails) {
+      return null;
+    }
+
+    // 2. Find failed steps
+    const failedSteps = jobDetails.steps.filter(
+      (step) => step.conclusion === "failure" || step.conclusion === "timed_out",
+    );
+
+    if (failedSteps.length === 0) {
+      log.info("No failed steps found in job", { jobId, jobName: jobDetails.name });
+      return null;
+    }
+
+    // 3. Download full job logs
     const response = await octokit.actions.downloadJobLogsForWorkflowRun({
       owner,
       repo,
       job_id: jobId,
     });
 
-    // The response.url contains the redirect URL, response.data is the log content
-    const logContent = response.data as unknown as string;
-
-    if (!logContent || typeof logContent !== "string") {
+    const fullLogs = response.data as unknown as string;
+    if (!fullLogs || typeof fullLogs !== "string") {
       return null;
     }
 
-    // Get the last N lines
-    const lines = logContent.split("\n");
-    const lastLinesContent = lines.slice(-lastLines).join("\n");
-
-    // Truncate if still too long (max 10KB per check to avoid bloating the DB)
-    if (lastLinesContent.length > 10240) {
-      return "...(truncated)\n" + lastLinesContent.slice(-10240);
+    // 4. Extract logs for each failed step
+    const stepLogSections: string[] = [];
+    for (const step of failedSteps) {
+      const stepLogs = extractStepLogs(fullLogs, step.number, step.name);
+      if (stepLogs) {
+        stepLogSections.push(`### Failed Step: ${step.name}\n${stepLogs}`);
+      }
     }
 
-    return lastLinesContent;
+    // If we couldn't extract specific step logs, fall back to last N lines
+    let combinedLogs: string;
+    if (stepLogSections.length === 0) {
+      const lines = fullLogs.split("\n");
+      combinedLogs = lines.slice(-100).join("\n");
+      log.info("Falling back to last 100 lines of logs", { jobId });
+    } else {
+      combinedLogs = stepLogSections.join("\n\n");
+    }
+
+    // Truncate if too long (max 15KB per job to avoid bloating the DB)
+    const maxLogSize = 15360;
+    if (combinedLogs.length > maxLogSize) {
+      combinedLogs = "...(truncated)\n" + combinedLogs.slice(-maxLogSize);
+    }
+
+    return {
+      failedSteps: failedSteps.map((s) => s.name),
+      logs: combinedLogs,
+    };
   } catch (error) {
     log.warn("Failed to fetch job logs", { owner, repo, jobId, error: String(error) });
     return null;
@@ -230,9 +387,11 @@ async function fetchCIStatus(
 
   await Promise.all(
     checksToFetchLogs.map(async ({ name, id }) => {
-      const logs = await fetchJobLogs(octokit, owner, repo, id);
-      if (logs) {
-        failedCheckLogs[name] = logs;
+      const result = await fetchFailedStepLogs(octokit, owner, repo, id);
+      if (result?.logs) {
+        // Include failed step names in the log header for context
+        const stepInfo = result.failedSteps.length > 0 ? `Failed steps: ${result.failedSteps.join(", ")}\n\n` : "";
+        failedCheckLogs[name] = stepInfo + result.logs;
       }
     }),
   );
@@ -633,11 +792,29 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
           stats.ciFailures++;
         }
 
-        // Initialize resolution tracking if this is a new problem
-        if (stateChanged || !pr.progress?.resolution) {
+        const currentAttempts = pr.progress?.resolution?.attempts || 0;
+        const lastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
+        const cooldownElapsed = !lastAttemptAt || Date.now() - new Date(lastAttemptAt).getTime() > PR_FIX_COOLDOWN_MS;
+
+        // Check if we've exceeded max attempts
+        if (currentAttempts >= PR_FIX_MAX_ATTEMPTS) {
+          progress.resolution = {
+            status: "gave_up",
+            attempts: currentAttempts,
+            lastAttemptAt: lastAttemptAt,
+            lastError: `Max fix attempts (${PR_FIX_MAX_ATTEMPTS}) exceeded`,
+          };
+          log.warn("PR fix max attempts exceeded", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            attempts: currentAttempts,
+            maxAttempts: PR_FIX_MAX_ATTEMPTS,
+          });
+        } else if (stateChanged || !pr.progress?.resolution) {
+          // Initialize/update resolution tracking for new problem
           progress.resolution = {
             status: pr.podId ? "in_progress" : "notified",
-            attempts: (pr.progress?.resolution?.attempts || 0) + 1,
+            attempts: currentAttempts + 1,
             lastAttemptAt: new Date().toISOString(),
           };
         }
@@ -658,22 +835,33 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
 
         // If pod is available and this is a new problem, trigger an automatic fix
         // The triggerFix function auto-detects whether to use agent mode or live mode
-        if (pr.podId && stateChanged) {
+        // Only trigger if: not gave_up, state changed, and cooldown elapsed
+        const shouldTriggerFix =
+          pr.podId && stateChanged && cooldownElapsed && progress.resolution?.status !== "gave_up";
+
+        if (shouldTriggerFix) {
           const fixPrompt = buildFixPrompt(result);
-          log.info("WOULD TRIGGER FIX (disabled)", {
+          log.info("Triggering PR fix", {
             taskId: pr.taskId,
             podId: pr.podId,
             state: result.state,
             prNumber: result.prNumber,
             repo: `${result.owner}/${result.repo}`,
-            prompt: fixPrompt.substring(0, 200) + "...",
+            attempt: progress.resolution?.attempts,
+            maxAttempts: PR_FIX_MAX_ATTEMPTS,
           });
 
-          // auto-fix (supports both agent and live modes):
           const triggerResult = await triggerFix(pr.taskId, fixPrompt);
           if (triggerResult.success) {
             stats.agentTriggered++;
           }
+        } else if (pr.podId && stateChanged && !cooldownElapsed) {
+          log.info("Skipping PR fix due to cooldown", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            lastAttemptAt,
+            cooldownMs: PR_FIX_COOLDOWN_MS,
+          });
         }
       } else {
         stats.healthy++;
