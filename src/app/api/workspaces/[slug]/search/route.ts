@@ -69,6 +69,7 @@ export async function GET(
           OR: [
             { title: { contains: searchQuery, mode: "insensitive" } },
             { description: { contains: searchQuery, mode: "insensitive" } },
+            { branch: { contains: searchQuery, mode: "insensitive" } },
           ],
         },
         select: {
@@ -79,6 +80,7 @@ export async function GET(
           priority: true,
           featureId: true,
           stakworkProjectId: true,
+          branch: true,
           createdAt: true,
           updatedAt: true,
           assignee: {
@@ -198,6 +200,7 @@ export async function GET(
           assignee: task.assignee,
           featureTitle: task.feature?.title,
           stakworkProjectId: task.stakworkProjectId,
+          branch: task.branch,
           createdAt: task.createdAt.toISOString(),
           updatedAt: task.updatedAt.toISOString(),
         },
