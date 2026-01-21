@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
-import { POST } from "@/app/api/vercel/logs/route";
+import { POST } from "@/app/api/vercel/log-drain/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import {
@@ -8,11 +8,11 @@ import {
 } from "@/__tests__/support/helpers";
 
 /**
- * Integration Tests for POST /api/vercel/logs
+ * Integration Tests for POST /api/vercel/log-drain
  * 
  * Tests Vercel log drain webhook endpoint including:
  * - Verification request handling
- * - API key authentication
+ * - Per-workspace authentication
  * - NDJSON payload parsing
  * - Path matching and highlighting
  */
