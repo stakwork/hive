@@ -138,6 +138,10 @@ export default function TaskChatPage() {
 
   const handleWorkflowStatusUpdate = useCallback((update: WorkflowStatusUpdate) => {
     setWorkflowStatus(update.workflowStatus);
+    // Hide processing indicator when workflow finishes
+    if (update.workflowStatus === WorkflowStatus.COMPLETED) {
+      setIsChainVisible(false);
+    }
   }, []);
 
   const handleTaskTitleUpdate = useCallback(
