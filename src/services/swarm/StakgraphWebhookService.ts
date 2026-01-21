@@ -49,14 +49,16 @@ export class StakgraphWebhookService {
         requestId: request_id,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
+        repositoryId: swarm.repositoryId,
       });
 
-      await updateStakgraphStatus(swarm, payload);
+      await updateStakgraphStatus(swarm, payload, swarm.repositoryId);
 
       console.log("[StakgraphWebhookService] Status updated", {
         requestId: request_id,
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
+        repositoryId: swarm.repositoryId,
         status: payload.status,
       });
 
@@ -81,7 +83,83 @@ export class StakgraphWebhookService {
   ): Promise<{
     id: string;
     workspaceId: string;
+    repositoryId?: string;
   } | null> {
+    // Try to find by repository first (more specific), then fall back to swarm
+    const repository = await db.repository.findFirst({
+      where: { stakgraphRequestId: requestId },
+      select: {
+        id: true,
+        workspaceId: true,
+        workspace: {
+          select: {
+            swarm: {
+              select: {
+                id: true,
+                swarmApiKey: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (repository?.workspace?.swarm) {
+      console.log("[StakgraphWebhookService] Found by repository request ID", {
+        requestId,
+        repositoryId: repository.id,
+        workspaceId: repository.workspaceId,
+      });
+
+      const swarm = repository.workspace.swarm;
+      if (!swarm.swarmApiKey) {
+        console.error("[StakgraphWebhookService] Swarm missing API key", {
+          requestId,
+          repositoryId: repository.id,
+          workspaceId: repository.workspaceId,
+        });
+        return null;
+      }
+
+      let secret: string;
+      try {
+        secret = this.encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
+      } catch (error) {
+        console.error("[StakgraphWebhookService] Failed to decrypt API key", {
+          requestId,
+          repositoryId: repository.id,
+          workspaceId: repository.workspaceId,
+          error,
+        });
+        return null;
+      }
+
+      const sigHeader = signature.startsWith("sha256=") ? signature.slice(7) : signature;
+      const expected = computeHmacSha256Hex(secret, rawBody);
+
+      if (!timingSafeEqual(expected, sigHeader)) {
+        console.error("[StakgraphWebhookService] Signature mismatch", {
+          requestId,
+          repositoryId: repository.id,
+          workspaceId: repository.workspaceId,
+        });
+        return null;
+      }
+
+      console.log("[StakgraphWebhookService] Signature verified (repository)", {
+        requestId,
+        repositoryId: repository.id,
+        workspaceId: repository.workspaceId,
+      });
+
+      return {
+        id: swarm.id,
+        workspaceId: repository.workspaceId,
+        repositoryId: repository.id,
+      };
+    }
+
+    // Fallback: Try swarm lookup (for backward compatibility)
     const swarm = await db.swarm.findFirst({
       where: { ingestRefId: requestId },
       select: {

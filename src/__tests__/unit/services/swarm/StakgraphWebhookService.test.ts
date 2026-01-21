@@ -14,6 +14,9 @@ vi.mock("@/lib/db", () => ({
     swarm: {
       findFirst: vi.fn(),
     },
+    repository: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -29,6 +32,7 @@ vi.mock("@/lib/encryption", () => ({
 
 const mockedUpdateStakgraphStatus = vi.mocked(updateStakgraphStatus);
 const mockedDbSwarm = vi.mocked(db.swarm);
+const mockedDbRepository = vi.mocked(db.repository);
 const mockedComputeHmac = vi.mocked(computeHmacSha256Hex);
 const mockedTimingSafeEqual = vi.mocked(timingSafeEqual);
 
@@ -62,6 +66,9 @@ describe("StakgraphWebhookService", () => {
     const signature = "sha256=valid-signature";
 
     test("should process webhook successfully", async () => {
+      // Mock repository lookup to return null (fall back to swarm lookup)
+      mockedDbRepository.findFirst.mockResolvedValueOnce(null);
+      
       mockedDbSwarm.findFirst.mockResolvedValueOnce({
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
@@ -81,7 +88,14 @@ describe("StakgraphWebhookService", () => {
       const result = await service.processWebhook(signature, rawBody, validPayload, "header-123");
 
       expect(result).toEqual({ success: true, status: 200 });
-      expect(mockedUpdateStakgraphStatus).toHaveBeenCalledWith(mockSwarm, validPayload);
+      expect(mockedUpdateStakgraphStatus).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: mockSwarm.id,
+          workspaceId: mockSwarm.workspaceId,
+        }),
+        validPayload,
+        undefined // No repositoryId when using swarm fallback
+      );
     });
 
     test("should return error for missing request_id", async () => {
@@ -98,6 +112,9 @@ describe("StakgraphWebhookService", () => {
     });
 
     test("should return error for invalid signature", async () => {
+      // Mock repository lookup to return null (fall back to swarm lookup)
+      mockedDbRepository.findFirst.mockResolvedValueOnce(null);
+      
       mockedDbSwarm.findFirst.mockResolvedValueOnce({
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,
@@ -124,6 +141,9 @@ describe("StakgraphWebhookService", () => {
     });
 
     test("should return error for missing swarm", async () => {
+      // Mock repository lookup to return null
+      mockedDbRepository.findFirst.mockResolvedValueOnce(null);
+      // Mock swarm lookup to also return null
       mockedDbSwarm.findFirst.mockResolvedValueOnce(null);
 
       const result = await service.processWebhook(signature, rawBody, validPayload, "header-123");
@@ -137,6 +157,9 @@ describe("StakgraphWebhookService", () => {
     });
 
     test("should handle updateStakgraphStatus errors", async () => {
+      // Mock repository lookup to return null (fall back to swarm lookup)
+      mockedDbRepository.findFirst.mockResolvedValueOnce(null);
+      
       mockedDbSwarm.findFirst.mockResolvedValueOnce({
         id: mockSwarm.id,
         workspaceId: mockSwarm.workspaceId,

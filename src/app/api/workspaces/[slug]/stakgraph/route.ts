@@ -420,33 +420,49 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
-    // Only setup GitHub webhook when using session auth (not API token auth)
+    // Only setup GitHub webhooks when using session auth (not API token auth)
     if (!isApiTokenAuth && userId) {
       try {
         const callbackUrl = getGithubWebhookCallbackUrl(workspace.id, request);
         const webhookService = new WebhookService(getServiceConfig("github"));
 
-        // Reuse primaryRepo from above if available
-        if (primaryRepo) {
-          const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
-            userId,
-            workspaceId: workspace.id,
-            repositoryUrl: primaryRepo.repositoryUrl,
-            callbackUrl,
-            repositoryName: primaryRepo.name,
-          });
+        // Get ALL repositories for this workspace
+        const allRepositories = await db.repository.findMany({
+          where: { workspaceId: workspace.id },
+          select: {
+            id: true,
+            repositoryUrl: true,
+            branch: true,
+            name: true,
+          },
+        });
 
-          console.log("=====> GitHub defaultBranch:", defaultBranch, "Current branch:", primaryRepo.branch);
-          if (defaultBranch && defaultBranch !== primaryRepo.branch) {
-            console.log("=====> Updating primary repository branch to:", defaultBranch);
-            await db.repository.update({
-              where: { id: primaryRepo.id },
-              data: { branch: defaultBranch },
+        // Setup webhooks for ALL repositories
+        for (const repo of allRepositories) {
+          try {
+            const { defaultBranch } = await webhookService.setupRepositoryWithWebhook({
+              userId,
+              workspaceId: workspace.id,
+              repositoryUrl: repo.repositoryUrl,
+              callbackUrl,
+              repositoryName: repo.name,
             });
+
+            console.log(`=====> GitHub defaultBranch for ${repo.name}:`, defaultBranch, "Current branch:", repo.branch);
+            if (defaultBranch && defaultBranch !== repo.branch) {
+              console.log(`=====> Updating repository ${repo.name} branch to:`, defaultBranch);
+              await db.repository.update({
+                where: { id: repo.id },
+                data: { branch: defaultBranch },
+              });
+            }
+          } catch (repoErr) {
+            console.error(`Failed to setup webhook for repository ${repo.name}:`, repoErr);
+            // Continue with other repositories even if one fails
           }
         }
       } catch (err) {
-        console.error("Failed to setup repository with webhook:", err);
+        console.error("Failed to setup repositories with webhooks:", err);
       }
     }
 
