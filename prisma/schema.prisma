@@ -324,6 +324,9 @@ model Swarm {
   workspaceId String    @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  // One-to-many relationship with environment variables
+  environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
+
   @@index([swarmId])
   @@map("swarms")
 }
@@ -1036,5 +1039,28 @@ model Whiteboard {
   @@index([workspaceId])
   @@index([createdAt])
   @@map("whiteboards")
+}
+
+// =============================================
+// ENVIRONMENT VARIABLES
+// =============================================
+
+model EnvironmentVariable {
+  id          String   @id @default(cuid())
+  swarmId     String   @map("swarm_id")
+  swarm       Swarm    @relation("SwarmEnvironmentVariables", fields: [swarmId], references: [id], onDelete: Cascade)
+  
+  // Service scope (empty string for global, service name for service-specific)
+  serviceName String?  @map("service_name")
+  
+  name        String
+  value       String   // Encrypted value
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([swarmId, serviceName, name])
+  @@index([swarmId])
+  @@map("environment_variables")
 }
 

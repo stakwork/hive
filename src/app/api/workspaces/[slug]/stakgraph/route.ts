@@ -1,7 +1,7 @@
 import { getServiceConfig } from "@/config/services";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { decryptEnvVars } from "@/lib/encryption";
+import { decryptEnvVars, encryptEnvVars } from "@/lib/encryption";
 import { getGithubWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
 import { syncPoolManagerSettings } from "@/services/pool-manager/sync";
@@ -228,6 +228,74 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+/**
+ * Migrates environment variables from Swarm.environmentVariables JSON field to EnvironmentVariable table
+ * Uses empty string for serviceName to indicate global scope
+ * @param swarmId - The swarm ID to migrate env vars for
+ * @param environmentVariables - Array of env vars from the JSON field or incoming request
+ * @returns Promise<void>
+ */
+async function migrateEnvironmentVariablesToTable(
+  swarmId: string,
+  environmentVariables: Array<{ name: string; value: string }> | undefined
+): Promise<void> {
+  if (!environmentVariables || environmentVariables.length === 0) {
+    return;
+  }
+
+  // Check if migration already done - if new table has records for this swarm, skip migration
+  const existingCount = await db.environmentVariable.count({
+    where: { swarmId },
+  });
+
+  if (existingCount > 0) {
+    // Already migrated or using new table - just update records
+    // Delete existing records for this swarm with global scope (empty serviceName)
+    await db.environmentVariable.deleteMany({
+      where: {
+        swarmId,
+        serviceName: '',
+      },
+    });
+
+    // Encrypt and insert new env vars as global (serviceName='')
+    const encrypted = encryptEnvVars(environmentVariables);
+    await db.environmentVariable.createMany({
+      data: encrypted.map((ev) => ({
+        swarmId,
+        serviceName: '', // Empty string indicates global scope
+        name: ev.name,
+        value: JSON.stringify(ev.value), // Store encrypted data as JSON string
+      })),
+    });
+
+    // Clear the old JSON field
+    await db.swarm.update({
+      where: { id: swarmId },
+      data: { environmentVariables: [] },
+    });
+    
+    return;
+  }
+
+  // First time migration - insert encrypted env vars
+  const encrypted = encryptEnvVars(environmentVariables);
+  await db.environmentVariable.createMany({
+    data: encrypted.map((ev) => ({
+      swarmId,
+      serviceName: '', // Empty string indicates global scope
+      name: ev.name,
+      value: JSON.stringify(ev.value), // Store encrypted data as JSON string
+    })),
+  });
+
+  // Clear the old JSON field after successful migration
+  await db.swarm.update({
+    where: { id: swarmId },
+    data: { environmentVariables: [] },
+  });
+}
+
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   console.log("PUT request received");
 
@@ -412,6 +480,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         },
         { status: 404 },
       );
+    }
+
+    // Migrate environment variables from JSON field to new table
+    if (settings.environmentVariables) {
+      await migrateEnvironmentVariablesToTable(swarm.id, settings.environmentVariables);
     }
 
     let swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
