@@ -88,6 +88,7 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
     });
 
     return {
+      user,
       repository,
       workspace,
       swarm,
@@ -113,6 +114,30 @@ interface GitHubPushPayload {
 }
 
 /**
+ * GitHub webhook pull request event payload structure
+ */
+interface GitHubPullRequestPayload {
+  action: string;
+  pull_request: {
+    html_url: string;
+    merged: boolean;
+    number: number;
+    title: string;
+    head: {
+      ref: string;
+    };
+    base: {
+      ref: string;
+    };
+  };
+  repository: {
+    html_url: string;
+    full_name: string;
+    default_branch: string;
+  };
+}
+
+/**
  * Creates a valid GitHub push event payload
  */
 export function createGitHubPushPayload(
@@ -133,6 +158,38 @@ export function createGitHubPushPayload(
         message: "Test commit",
       },
     ],
+  };
+}
+
+/**
+ * Creates a valid GitHub pull request event payload
+ */
+export function createGitHubPullRequestPayload(
+  action: string = "closed",
+  merged: boolean = true,
+  prUrl: string = "https://github.com/test-owner/test-repo/pull/123",
+  repositoryUrl: string = "https://github.com/test-owner/test-repo",
+  fullName: string = "test-owner/test-repo"
+): GitHubPullRequestPayload {
+  return {
+    action,
+    pull_request: {
+      html_url: prUrl,
+      merged,
+      number: 123,
+      title: "Test PR",
+      head: {
+        ref: "feature-branch",
+      },
+      base: {
+        ref: "main",
+      },
+    },
+    repository: {
+      html_url: repositoryUrl,
+      full_name: fullName,
+      default_branch: "main",
+    },
   };
 }
 
