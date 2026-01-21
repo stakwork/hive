@@ -3,7 +3,7 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getPrimaryRepository, getAllRepositories } from "@/lib/helpers/repository";
 import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Invalid request body" }, { status: 400 });
     }
 
-    const { useLsp } = body;
+    const { useLsp, repositoryId } = body;
     workspaceId = body.workspaceId;
-    console.log(`[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, useLsp: ${useLsp}, user: ${session.user.id}`);
+    console.log(`[STAKGRAPH_INGEST] Request params - workspaceId: ${workspaceId}, repositoryId: ${repositoryId || 'all'}, useLsp: ${useLsp}, user: ${session.user.id}`);
 
     if (!workspaceId) {
       console.log(`[STAKGRAPH_INGEST] No workspaceId provided`);
@@ -75,21 +75,46 @@ export async function POST(request: NextRequest) {
     const repoWorkspaceId = workspaceId || swarm.workspaceId;
     console.log(`[STAKGRAPH_INGEST] Using workspace ID: ${repoWorkspaceId}`);
 
-    console.log(`[STAKGRAPH_INGEST] Looking up primary repository for workspace: ${repoWorkspaceId}`);
-    const primaryRepo = await getPrimaryRepository(repoWorkspaceId);
-    const finalRepo = primaryRepo?.repositoryUrl;
+    // Determine repositories to ingest based on repositoryId parameter
+    let repositoriesToIngest: Array<{ id: string; repositoryUrl: string }>;
+    let finalRepoUrls: string;
 
-    if (!finalRepo) {
-      console.log(`[STAKGRAPH_INGEST] No repository URL found for workspace: ${repoWorkspaceId}`);
-      return NextResponse.json({ success: false, message: "No repository URL found" }, { status: 400 });
+    if (repositoryId) {
+      // Single repository ingestion
+      console.log(`[STAKGRAPH_INGEST] Single repository mode - repositoryId: ${repositoryId}`);
+      const repository = await db.repository.findUnique({
+        where: { id: repositoryId },
+        select: { id: true, repositoryUrl: true, workspaceId: true },
+      });
+
+      if (!repository) {
+        console.log(`[STAKGRAPH_INGEST] Repository not found with ID: ${repositoryId}`);
+        return NextResponse.json({ success: false, message: "Repository not found" }, { status: 404 });
+      }
+
+      if (repository.workspaceId !== repoWorkspaceId) {
+        console.log(`[STAKGRAPH_INGEST] Repository workspace mismatch - expected: ${repoWorkspaceId}, got: ${repository.workspaceId}`);
+        return NextResponse.json({ success: false, message: "Repository does not belong to this workspace" }, { status: 400 });
+      }
+
+      repositoriesToIngest = [repository];
+      finalRepoUrls = repository.repositoryUrl;
+    } else {
+      // Multi-repository ingestion
+      console.log(`[STAKGRAPH_INGEST] Multi-repository mode - fetching all repositories for workspace: ${repoWorkspaceId}`);
+      const allRepositories = await getAllRepositories(repoWorkspaceId);
+
+      if (allRepositories.length === 0) {
+        console.log(`[STAKGRAPH_INGEST] No repositories found for workspace: ${repoWorkspaceId}`);
+        return NextResponse.json({ success: false, message: "No repositories found for this workspace" }, { status: 400 });
+      }
+
+      repositoriesToIngest = allRepositories.map(repo => ({ id: repo.id, repositoryUrl: repo.repositoryUrl }));
+      finalRepoUrls = allRepositories.map(repo => repo.repositoryUrl).join(',');
+      console.log(`[STAKGRAPH_INGEST] Found ${allRepositories.length} repositories to ingest`);
     }
 
-    if (!repoWorkspaceId) {
-      console.log(`[STAKGRAPH_INGEST] No repository workspace ID found`);
-      return NextResponse.json({ success: false, message: "No repository workspace ID found" }, { status: 400 });
-    }
-
-    console.log(`[STAKGRAPH_INGEST] Repository details - URL: ${finalRepo}, workspace: ${repoWorkspaceId}`);
+    console.log(`[STAKGRAPH_INGEST] Repository URLs to ingest: ${finalRepoUrls}`);
 
     // Check if ingest request is already in progress
     if (swarm.ingestRequestInProgress) {
@@ -108,17 +133,21 @@ export async function POST(request: NextRequest) {
     });
     console.log(`[STAKGRAPH_INGEST] Ingest request marked as in progress`);
 
-    // Update repository status to PENDING
-    console.log(`[STAKGRAPH_INGEST] Updating repository status to PENDING`);
-    await db.repository.update({
-      where: {
-        repositoryUrl_workspaceId: {
-          repositoryUrl: finalRepo,
-          workspaceId: repoWorkspaceId
-        }
-      },
-      data: { status: RepositoryStatus.PENDING }
-    });
+    // Update all repositories being ingested to PENDING status
+    console.log(`[STAKGRAPH_INGEST] Updating ${repositoriesToIngest.length} repository/repositories status to PENDING`);
+    await Promise.all(
+      repositoriesToIngest.map(repo =>
+        db.repository.update({
+          where: {
+            repositoryUrl_workspaceId: {
+              repositoryUrl: repo.repositoryUrl,
+              workspaceId: repoWorkspaceId
+            }
+          },
+          data: { status: RepositoryStatus.PENDING }
+        })
+      )
+    );
     console.log(`[STAKGRAPH_INGEST] Repository status updated to PENDING`);
 
     // Get workspace info to get the slug
@@ -148,7 +177,7 @@ export async function POST(request: NextRequest) {
     console.log(`[STAKGRAPH_INGEST] GitHub credentials found - username: ${username}, token length: ${pat.length}`);
 
     const use_lsp = useLsp === "true" || useLsp === true;
-    console.log(`[STAKGRAPH_INGEST] Starting ingest trigger - use_lsp: ${use_lsp}, swarm: ${swarm.name}, repo: ${finalRepo}`);
+    console.log(`[STAKGRAPH_INGEST] Starting ingest trigger - use_lsp: ${use_lsp}, swarm: ${swarm.name}, repos: ${finalRepoUrls}`);
 
     const swarmVanityAddress = getSwarmVanityAddress(swarm.name);
     const decryptedApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey);
@@ -160,7 +189,7 @@ export async function POST(request: NextRequest) {
     const apiResult = await triggerIngestAsync(
       swarmVanityAddress,
       decryptedApiKey,
-      finalRepo,
+      finalRepoUrls,
       { username, pat },
       stakgraphCallbackUrl,
       use_lsp,
@@ -184,20 +213,25 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      console.log(`[STAKGRAPH_INGEST] Setting up GitHub webhook for repository: ${finalRepo}`);
+      // Set up GitHub webhooks for all repositories being ingested
+      console.log(`[STAKGRAPH_INGEST] Setting up GitHub webhooks for ${repositoriesToIngest.length} repository/repositories`);
       const callbackUrl = getGithubWebhookCallbackUrl(repoWorkspaceId, request);
       const webhookService = new WebhookService(getServiceConfig("github"));
       console.log(`[STAKGRAPH_INGEST] GitHub webhook callback URL: ${callbackUrl}`);
 
-      await webhookService.ensureRepoWebhook({
-        userId: session.user.id,
-        workspaceId: repoWorkspaceId,
-        repositoryUrl: finalRepo,
-        callbackUrl,
-      });
-      console.log(`[STAKGRAPH_INGEST] GitHub webhook setup completed successfully`);
+      await Promise.all(
+        repositoriesToIngest.map(repo =>
+          webhookService.ensureRepoWebhook({
+            userId: session.user.id,
+            workspaceId: repoWorkspaceId,
+            repositoryUrl: repo.repositoryUrl,
+            callbackUrl,
+          })
+        )
+      );
+      console.log(`[STAKGRAPH_INGEST] GitHub webhook setup completed successfully for all repositories`);
     } catch (error) {
-      console.error(`[STAKGRAPH_INGEST] Error ensuring repo webhook: ${error}`);
+      console.error(`[STAKGRAPH_INGEST] Error ensuring repo webhooks: ${error}`);
     }
 
     if (apiResult?.data && typeof apiResult.data === "object" && "request_id" in apiResult.data) {

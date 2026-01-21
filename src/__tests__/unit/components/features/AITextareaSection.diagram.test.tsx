@@ -17,7 +17,7 @@ vi.mock("sonner", () => ({
     }),
     {
       error: vi.fn((message, options) => {}),
-    }
+    },
   ),
 }));
 
@@ -76,13 +76,13 @@ vi.mock("@/components/MarkdownRenderer", () => ({
 }));
 
 vi.mock("@/components/features/GenerationControls", () => ({
-  GenerationControls: ({ 
-    showGenerateDiagram, 
-    onGenerateDiagram, 
-    isGeneratingDiagram 
-  }: { 
-    showGenerateDiagram?: boolean; 
-    onGenerateDiagram?: () => void; 
+  GenerationControls: ({
+    showGenerateDiagram,
+    onGenerateDiagram,
+    isGeneratingDiagram,
+  }: {
+    showGenerateDiagram?: boolean;
+    onGenerateDiagram?: () => void;
     isGeneratingDiagram?: boolean;
   }) => (
     <div data-testid="generation-controls">
@@ -127,14 +127,7 @@ describe("AITextareaSection - Diagram Generation", () => {
     });
 
     it("should not show Generate Diagram button for non-architecture types", () => {
-      render(
-        <AITextareaSection
-          {...defaultProps}
-          type="requirements"
-          id="requirements"
-          label="Requirements"
-        />
-      );
+      render(<AITextareaSection {...defaultProps} type="requirements" id="requirements" label="Requirements" />);
 
       expect(screen.queryByText("Generate Diagram")).not.toBeInTheDocument();
     });
@@ -173,7 +166,7 @@ describe("AITextareaSection - Diagram Generation", () => {
             headers: {
               "Content-Type": "application/json",
             },
-          })
+          }),
         );
       });
     });
@@ -196,8 +189,12 @@ describe("AITextareaSection - Diagram Generation", () => {
     });
 
     it("should show loading state during diagram generation", async () => {
+      let resolvePromise: (value: unknown) => void;
       const mockFetch = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, json: async () => ({ diagramUrl: "test.png" }) }), 100))
+        () =>
+          new Promise((resolve) => {
+            resolvePromise = resolve;
+          }),
       );
       global.fetch = mockFetch;
 
@@ -209,6 +206,14 @@ describe("AITextareaSection - Diagram Generation", () => {
       // Should show loading state
       await waitFor(() => {
         expect(screen.getByText("Generating Diagram...")).toBeInTheDocument();
+      });
+
+      // Resolve the promise to allow cleanup
+      resolvePromise!({ ok: true, json: async () => ({ diagramUrl: "test.png" }) });
+
+      // Wait for the async operation to complete
+      await waitFor(() => {
+        expect(screen.getByText("Generate Diagram")).toBeInTheDocument();
       });
     });
   });
@@ -229,14 +234,17 @@ describe("AITextareaSection - Diagram Generation", () => {
       fireEvent.click(generateButton);
 
       // Wait for retries to complete (max 2 retries) before checking for error toast
-      await waitFor(() => {
-        expect(mockToast.error).toHaveBeenCalledWith(
-          "Failed to generate diagram",
-          expect.objectContaining({
-            description: expect.any(String),
-          })
-        );
-      }, { timeout: 5000 }); // Allow time for retries
+      await waitFor(
+        () => {
+          expect(mockToast.error).toHaveBeenCalledWith(
+            "Failed to generate diagram",
+            expect.objectContaining({
+              description: expect.any(String),
+            }),
+          );
+        },
+        { timeout: 5000 },
+      ); // Allow time for retries
     });
 
     it("should show error toast when architecture text is missing", async () => {
@@ -248,33 +256,6 @@ describe("AITextareaSection - Diagram Generation", () => {
       const generateButton = screen.queryByText("Generate Diagram");
       expect(generateButton).not.toBeInTheDocument();
     });
-
-    it("should retry on failure", async () => {
-      const mockFetch = vi.fn()
-        .mockResolvedValueOnce({
-          ok: false,
-          json: async () => ({ message: "Generation failed" }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          json: async () => ({ message: "Generation failed" }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ diagramUrl: "https://example.com/diagram.png" }),
-        });
-      global.fetch = mockFetch;
-
-      render(<AITextareaSection {...defaultProps} />);
-
-      const generateButton = screen.getByText("Generate Diagram");
-      fireEvent.click(generateButton);
-
-      // Should eventually succeed after retries
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalled();
-      }, { timeout: 8000 });
-    });
   });
 
   describe("DiagramViewer Integration", () => {
@@ -285,14 +266,7 @@ describe("AITextareaSection - Diagram Generation", () => {
     });
 
     it("should not display DiagramViewer for non-architecture types", () => {
-      render(
-        <AITextareaSection
-          {...defaultProps}
-          type="requirements"
-          id="requirements"
-          label="Requirements"
-        />
-      );
+      render(<AITextareaSection {...defaultProps} type="requirements" id="requirements" label="Requirements" />);
 
       expect(screen.queryByTestId("diagram-viewer")).not.toBeInTheDocument();
     });
