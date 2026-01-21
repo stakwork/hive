@@ -113,33 +113,19 @@ function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string)
     }
   }
 
-  // If we didn't find the step by name matching, fall back to extracting
-  // the last portion of logs which usually contains the error
+  // If we didn't find the step by name, use all lines
   if (!foundStep) {
-    // Fallback: search for error patterns and extract surrounding context
-    const errorPatterns = [/error:/i, /failed:/i, /Error:/i, /FAILED/i, /exception/i, /##\[error\]/];
-    const errorLineIndices: number[] = [];
-
-    lines.forEach((line, idx) => {
-      if (errorPatterns.some((pattern) => pattern.test(line))) {
-        errorLineIndices.push(idx);
-      }
-    });
-
-    if (errorLineIndices.length > 0) {
-      // Get context around the first error (20 lines before, 30 lines after)
-      const firstErrorIdx = errorLineIndices[0];
-      const startIdx = Math.max(0, firstErrorIdx - 20);
-      const endIdx = Math.min(lines.length, firstErrorIdx + 30);
-      stepLines = lines.slice(startIdx, endIdx);
-      if (startIdx > 0) {
-        stepLines.unshift("...(earlier output truncated)");
-      }
-    }
+    stepLines = lines;
   }
 
   if (stepLines.length === 0) {
     return null;
+  }
+
+  // Always return the LAST portion of the logs - errors are at the end
+  const maxLines = 100;
+  if (stepLines.length > maxLines) {
+    return "...(earlier output truncated)\n" + stepLines.slice(-maxLines).join("\n");
   }
 
   return stepLines.join("\n");
