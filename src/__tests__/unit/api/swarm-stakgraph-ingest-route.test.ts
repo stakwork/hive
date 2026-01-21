@@ -54,7 +54,7 @@ vi.mock("@/lib/url", () => ({
 
 import { db } from "@/lib/db";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getPrimaryRepository, getAllRepositories } from "@/lib/helpers/repository";
 import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
@@ -73,6 +73,7 @@ const mockSwarm = {
   updatedAt: new Date(),
   poolApiKey: null,
   poolState: "NOT_STARTED" as const,
+  podState: "COMPLETED" as const,
   poolName: null,
   poolCpu: null,
   poolMemory: null,
@@ -86,7 +87,8 @@ const mockSwarm = {
   agentStatus: null,
   swarmPassword: null,
   instanceType: "XL",
-  ec2Id: null
+  ec2Id: null,
+  autoLearnEnabled: false,
 };
 const mockWorkspace = {
   id: "workspace-123",
@@ -104,7 +106,8 @@ const mockWorkspace = {
   stakworkApiKey: null,
   repositoryDraft: null,
   logoUrl: null,
-  logoKey: null
+  logoKey: null,
+  nodeTypeOrder: null,
 };
 const mockRepository = {
   id: "repo-123",
@@ -123,9 +126,21 @@ const mockRepository = {
   ignoreDirs: "",
   unitGlob: "",
   integrationGlob: "",
-  e2eGlob: ""
+  e2eGlob: "",
 };
 const mockGithubProfile = { username: "user", token: "token" };
+
+const mockRepositoryInfo = {
+  id: "repo-123",
+  repositoryUrl: "https://github.com/user/repo",
+  ignoreDirs: "",
+  unitGlob: "",
+  integrationGlob: "",
+  e2eGlob: "",
+  name: "test-repo",
+  description: null,
+  branch: "main",
+};
 
 describe("POST /api/swarm/stakgraph/ingest", () => {
   beforeEach(() => {
@@ -133,7 +148,8 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
     vi.mocked(getServerSession).mockResolvedValue(mockSession);
     vi.mocked(db.swarm.findUnique).mockResolvedValue(mockSwarm);
     vi.mocked(db.swarm.update).mockResolvedValue(mockSwarm);
-    vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepository);
+    vi.mocked(getPrimaryRepository).mockResolvedValue(mockRepositoryInfo);
+    vi.mocked(getAllRepositories).mockResolvedValue([mockRepositoryInfo]);
     vi.mocked(db.repository.update).mockResolvedValue(mockRepository);
     vi.mocked(db.workspace.findUnique).mockResolvedValue(mockWorkspace);
     vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(mockGithubProfile);
@@ -146,7 +162,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -156,13 +172,9 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   test("should return 404 when swarm not found", async () => {
     vi.mocked(db.swarm.findUnique).mockResolvedValue(null);
 
-    // Ensure all other mocks have default behavior for this test
-    vi.mocked(getPrimaryRepository).mockResolvedValue(null);
-    vi.mocked(getGithubUsernameAndPAT).mockResolvedValue(null);
-
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -174,7 +186,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -184,12 +196,12 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   test("should return 409 when ingest request already in progress", async () => {
     vi.mocked(db.swarm.findUnique).mockResolvedValue({
       ...mockSwarm,
-      ingestRequestInProgress: true
+      ingestRequestInProgress: true,
     });
 
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -203,7 +215,7 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
   test("should successfully trigger ingest", async () => {
     const request = new NextRequest("http://localhost/api/swarm/stakgraph/ingest", {
       method: "POST",
-      body: JSON.stringify({ workspaceId: "workspace-123" })
+      body: JSON.stringify({ workspaceId: "workspace-123" }),
     });
 
     const response = await POST(request);
@@ -216,10 +228,10 @@ describe("POST /api/swarm/stakgraph/ingest", () => {
       where: {
         repositoryUrl_workspaceId: {
           repositoryUrl: mockRepository.repositoryUrl,
-          workspaceId: mockSwarm.workspaceId
-        }
+          workspaceId: mockSwarm.workspaceId,
+        },
       },
-      data: { status: RepositoryStatus.PENDING }
+      data: { status: RepositoryStatus.PENDING },
     });
 
     // Verify saveOrUpdateSwarm is called to set and reset the flag

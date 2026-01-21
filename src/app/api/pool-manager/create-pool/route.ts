@@ -288,6 +288,7 @@ export async function POST(request: NextRequest) {
       workspaceId,
       poolName: swarmId,
       poolState: 'COMPLETE',
+      podState: 'NOT_STARTED',
     });
 
     return NextResponse.json({ pool }, { status: 201 });
@@ -302,6 +303,7 @@ export async function POST(request: NextRequest) {
         workspaceId,
         poolName: body.swarmId,
         poolState: 'COMPLETE',
+        podState: 'NOT_STARTED',
       });
       return NextResponse.json(
         { pool: { name: body.swarmId, status: "already_exists" } },

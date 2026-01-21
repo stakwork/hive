@@ -22,6 +22,7 @@ export interface SearchResultMetadata {
   } | null;
   featureTitle?: string; // For roadmap tasks and phases
   stakworkProjectId?: number | null; // For tasks - used to determine navigation
+  branch?: string | null; // For tasks - git branch name
   createdAt?: string;
   updatedAt?: string;
 }

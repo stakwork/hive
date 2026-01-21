@@ -217,6 +217,10 @@ model Workspace {
   // Stakwork credentials
   stakworkApiKey String? @map("stakwork_api_key")
 
+  // Vercel integration
+  vercelApiToken String? @map("vercel_api_token") // Encrypted Vercel API token
+  vercelTeamId   String? @map("vercel_team_id")   // Vercel team ID (optional)
+
   // Janitor configuration
   janitorConfig JanitorConfig?
   janitorRecommendations JanitorRecommendation[]
@@ -405,6 +409,9 @@ model Task {
 
   // Task-specific branch override (if set, takes precedence over repository branch)
   branch String?
+
+  // Task completion summary (markdown-formatted report from workflows/agents)
+  summary String? @map("summary")
 
   // Build and test configuration
   runBuild     Boolean @default(true) @map("run_build")

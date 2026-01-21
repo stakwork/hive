@@ -5,7 +5,9 @@
  * When issues are detected, it can:
  * 1. Update the PR artifact's progress state
  * 2. Notify the user via Pusher
- * 3. Trigger the agent to fix the issue (if pod is available)
+ * 3. Trigger a fix based on task mode:
+ *    - "agent" mode: Direct connection to agent server for streaming fixes
+ *    - "live" mode: Stakwork workflow for automated fixes
  */
 
 import { Octokit } from "@octokit/rest";
@@ -15,6 +17,7 @@ import { getUserAppTokens } from "@/lib/githubApp";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
+import { sendMessageToStakwork } from "@/services/task-workflow";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 
 const LOG_PREFIX = "[PRMonitor]";
@@ -41,6 +44,7 @@ interface GitHubPRData {
 }
 
 interface GitHubCheckRun {
+  id: number;
   name: string;
   status: "queued" | "in_progress" | "completed";
   conclusion: string | null;
@@ -69,6 +73,7 @@ export interface PRCheckResult {
   problemDetails?: string;
   conflictFiles?: string[];
   failedChecks?: string[];
+  failedCheckLogs?: Record<string, string>;
   prState: "open" | "closed";
   merged: boolean;
 }
@@ -104,6 +109,47 @@ async function fetchPRStatus(octokit: Octokit, owner: string, repo: string, prNu
 }
 
 /**
+ * Fetch the last N lines of logs for a failed GitHub Actions job
+ */
+async function fetchJobLogs(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  jobId: number,
+  lastLines: number = 100,
+): Promise<string | null> {
+  try {
+    // This returns a redirect to a temporary URL with the logs
+    const response = await octokit.actions.downloadJobLogsForWorkflowRun({
+      owner,
+      repo,
+      job_id: jobId,
+    });
+
+    // The response.url contains the redirect URL, response.data is the log content
+    const logContent = response.data as unknown as string;
+
+    if (!logContent || typeof logContent !== "string") {
+      return null;
+    }
+
+    // Get the last N lines
+    const lines = logContent.split("\n");
+    const lastLinesContent = lines.slice(-lastLines).join("\n");
+
+    // Truncate if still too long (max 10KB per check to avoid bloating the DB)
+    if (lastLinesContent.length > 10240) {
+      return "...(truncated)\n" + lastLinesContent.slice(-10240);
+    }
+
+    return lastLinesContent;
+  } catch (error) {
+    log.warn("Failed to fetch job logs", { owner, repo, jobId, error: String(error) });
+    return null;
+  }
+}
+
+/**
  * Fetch CI check status for a PR
  */
 async function fetchCIStatus(
@@ -111,7 +157,12 @@ async function fetchCIStatus(
   owner: string,
   repo: string,
   ref: string,
-): Promise<{ status: PullRequestProgress["ciStatus"]; summary: string; failedChecks: string[] }> {
+): Promise<{
+  status: PullRequestProgress["ciStatus"];
+  summary: string;
+  failedChecks: string[];
+  failedCheckLogs: Record<string, string>;
+}> {
   // Fetch both check runs (GitHub Actions) and commit statuses (legacy CI)
   const [checkRuns, combinedStatus] = await Promise.all([
     octokit.checks.listForRef({ owner, repo, ref }).then((r) => r.data),
@@ -119,6 +170,7 @@ async function fetchCIStatus(
   ]);
 
   const failedChecks: string[] = [];
+  const failedCheckIds: Array<{ name: string; id: number }> = [];
   let totalChecks = 0;
   let passedChecks = 0;
   let pendingChecks = 0;
@@ -132,6 +184,7 @@ async function fetchCIStatus(
       passedChecks++;
     } else if (check.conclusion === "failure" || check.conclusion === "timed_out") {
       failedChecks.push(check.name);
+      failedCheckIds.push({ name: check.name, id: check.id });
     }
   }
 
@@ -144,6 +197,7 @@ async function fetchCIStatus(
       passedChecks++;
     } else if (status.state === "failure" || status.state === "error") {
       failedChecks.push(status.context);
+      // Legacy statuses don't have downloadable logs
     }
   }
 
@@ -170,7 +224,20 @@ async function fetchCIStatus(
     limitedFailedChecks.push(`... and ${failedChecks.length - 10} more`);
   }
 
-  return { status, summary, failedChecks: limitedFailedChecks };
+  // Fetch logs for failed checks (limit to first 3 to avoid rate limits and slow responses)
+  const failedCheckLogs: Record<string, string> = {};
+  const checksToFetchLogs = failedCheckIds.slice(0, 3);
+
+  await Promise.all(
+    checksToFetchLogs.map(async ({ name, id }) => {
+      const logs = await fetchJobLogs(octokit, owner, repo, id);
+      if (logs) {
+        failedCheckLogs[name] = logs;
+      }
+    }),
+  );
+
+  return { status, summary, failedChecks: limitedFailedChecks, failedCheckLogs };
 }
 
 /**
@@ -249,6 +316,7 @@ export async function checkPR(
       problemDetails,
       conflictFiles,
       failedChecks: ciResult.failedChecks.length > 0 ? ciResult.failedChecks : undefined,
+      failedCheckLogs: Object.keys(ciResult.failedCheckLogs).length > 0 ? ciResult.failedCheckLogs : undefined,
       prState: prData.state,
       merged: prData.merged,
     };
@@ -425,16 +493,26 @@ ${result.problemDetails || ""}`;
   }
 
   if (result.state === "ci_failure") {
-    return `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
+    let prompt = `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
 
 Failed checks: ${result.failedChecks?.join(", ") || "unknown"}
 
 Please:
-1. Review the CI failure logs
+1. Review the CI failure logs below
 2. Fix the issues causing the failures
 3. Push the fixes
 
 ${result.problemDetails || ""}`;
+
+    // Append log excerpts if available
+    if (result.failedCheckLogs && Object.keys(result.failedCheckLogs).length > 0) {
+      prompt += "\n\n--- CI Failure Logs ---\n";
+      for (const [checkName, logs] of Object.entries(result.failedCheckLogs)) {
+        prompt += `\n### ${checkName}\n\`\`\`\n${logs}\n\`\`\`\n`;
+      }
+    }
+
+    return prompt;
   }
 
   return `Please check the status of pull request #${result.prNumber} in ${result.owner}/${result.repo}.`;
@@ -539,6 +617,7 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         problemDetails: result.problemDetails,
         conflictFiles: result.conflictFiles,
         failedChecks: result.failedChecks,
+        failedCheckLogs: result.failedCheckLogs,
       };
 
       // Check if state changed and requires action
@@ -576,11 +655,11 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
         stats.notified++;
 
-        // If pod is available and this is a new problem, would trigger the agent
-        // TODO: Uncomment when ready to enable auto-fix
+        // If pod is available and this is a new problem, trigger an automatic fix
+        // The triggerFix function auto-detects whether to use agent mode or live mode
         if (pr.podId && stateChanged) {
           const fixPrompt = buildFixPrompt(result);
-          log.info("WOULD TRIGGER AGENT (disabled)", {
+          log.info("WOULD TRIGGER FIX (disabled)", {
             taskId: pr.taskId,
             podId: pr.podId,
             state: result.state,
@@ -588,12 +667,12 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
             repo: `${result.owner}/${result.repo}`,
             prompt: fixPrompt.substring(0, 200) + "...",
           });
-          // TODO:
-          // Uncomment below to enable agent auto-fix:
-          // const triggerResult = await triggerAgentFix(pr.taskId, fixPrompt);
-          // if (triggerResult.success) {
-          //   stats.agentTriggered++;
-          // }
+
+          // auto-fix (supports both agent and live modes):
+          const triggerResult = await triggerFix(pr.taskId, fixPrompt);
+          if (triggerResult.success) {
+            stats.agentTriggered++;
+          }
         }
       } else {
         stats.healthy++;
@@ -622,16 +701,22 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
 }
 
 /**
- * Trigger the agent to fix a PR issue (server-side, no streaming)
+ * Trigger the agent to fix a PR issue in "agent" mode (server-side, no streaming)
  *
- * This function:
+ * This function is for tasks with mode="agent":
  * 1. Saves a system message explaining the issue
- * 2. Creates/refreshes an agent session
+ * 2. Creates/refreshes an agent session with the remote agent server
  * 3. Sends the fix prompt to the agent (fire-and-forget)
  *
  * The agent's response will be persisted via the webhook callback.
+ *
+ * @param taskId - The task ID (must be in "agent" mode)
+ * @param prompt - The fix prompt describing the issue and resolution steps
  */
-export async function triggerAgentFix(taskId: string, prompt: string): Promise<{ success: boolean; error?: string }> {
+export async function triggerAgentModeFix(
+  taskId: string,
+  prompt: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Load task
     const task = await db.task.findUnique({
@@ -741,10 +826,106 @@ export async function triggerAgentFix(taskId: string, prompt: string): Promise<{
       log.error("Error initiating agent stream", { taskId, error: String(error) });
     });
 
-    log.info("Triggered agent fix", { taskId });
+    log.info("Triggered agent mode fix", { taskId });
     return { success: true };
   } catch (error) {
-    log.error("Error triggering agent fix", { taskId, error: String(error) });
+    log.error("Error triggering agent mode fix", { taskId, error: String(error) });
     return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Trigger a fix for a PR issue in "live" mode via Stakwork workflow
+ *
+ * This function is for tasks with mode="live":
+ * 1. Looks up the workspace owner for authentication
+ * 2. Sends the fix prompt to Stakwork workflow
+ *
+ * The response will be delivered via Stakwork webhook callback.
+ *
+ * @param taskId - The task ID (must be in "live" mode)
+ * @param prompt - The fix prompt describing the issue and resolution steps
+ */
+export async function triggerLiveModeFix(
+  taskId: string,
+  prompt: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. Load task to get workspace owner
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: {
+        mode: true,
+        workspace: {
+          select: {
+            ownerId: true,
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      return { success: false, error: "Task not found" };
+    }
+
+    if (task.mode !== "live") {
+      return { success: false, error: "Task is not in live mode" };
+    }
+
+    const userId = task.workspace.ownerId;
+
+    // 2. Create the fix message with PR monitor context
+    const message = `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`;
+
+    // 3. Send message to Stakwork workflow
+    const result = await sendMessageToStakwork({
+      taskId,
+      message,
+      userId,
+      generateChatTitle: false,
+    });
+
+    if (!result.stakworkData?.success) {
+      log.error("Failed to trigger Stakwork workflow", {
+        taskId,
+        error: result.stakworkData?.error,
+      });
+      return { success: false, error: "Failed to trigger Stakwork workflow" };
+    }
+
+    log.info("Triggered live mode fix", { taskId, projectId: result.stakworkData.data?.project_id });
+    return { success: true };
+  } catch (error) {
+    log.error("Error triggering live mode fix", { taskId, error: String(error) });
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Trigger a fix for a PR issue based on the task's mode
+ *
+ * This is a convenience wrapper that automatically selects the correct
+ * fix function based on the task's mode setting.
+ *
+ * @param taskId - The task ID
+ * @param prompt - The fix prompt describing the issue and resolution steps
+ */
+export async function triggerFix(taskId: string, prompt: string): Promise<{ success: boolean; error?: string }> {
+  // Load task to determine mode
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: { mode: true },
+  });
+
+  if (!task) {
+    return { success: false, error: "Task not found" };
+  }
+
+  if (task.mode === "agent") {
+    return triggerAgentModeFix(taskId, prompt);
+  } else if (task.mode === "live") {
+    return triggerLiveModeFix(taskId, prompt);
+  } else {
+    return { success: false, error: `Unsupported task mode: ${task.mode}` };
   }
 }

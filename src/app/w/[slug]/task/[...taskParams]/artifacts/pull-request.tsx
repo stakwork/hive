@@ -171,8 +171,8 @@ export function PullRequestArtifact({ artifact }: { artifact: Artifact }) {
           </div>
         </div>
 
-        {/* Progress indicator row */}
-        {progressConfig && (
+        {/* Progress indicator row - hide when merged or closed */}
+        {progressConfig && content.status !== "DONE" && content.status !== "CANCELLED" && (
           <div className={`mt-3 pt-3 border-t border-border/50`}>
             <div className="flex items-center gap-2">
               <div className={`p-1 rounded ${progressConfig.bgColor}`}>

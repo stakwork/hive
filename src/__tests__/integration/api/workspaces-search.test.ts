@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET } from "@/app/api/workspaces/[slug]/search/route";
 import { db } from "@/lib/db";
-import { FeatureStatus, FeaturePriority, TaskStatus, Priority, TaskStatus, PhaseStatus } from "@prisma/client";
+import { FeatureStatus, FeaturePriority, TaskStatus, Priority, PhaseStatus } from "@prisma/client";
 import {
   createTestUser,
   createTestWorkspace,
@@ -410,6 +410,75 @@ describe("Workspace Search API - Integration Tests", () => {
       expect(data.data.tasks).toHaveLength(0);
       expect(data.data.features).toHaveLength(0);
       expect(data.data.phases).toHaveLength(0);
+    });
+
+    test("searches tasks by branch name", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        slug: "test-workspace",
+      });
+
+      // Create task with branch field
+      const taskWithBranch = await db.task.create({
+        data: {
+          title: "Implement feature X",
+          description: "Add new feature",
+          branch: "feature/test-branch-search",
+          workspaceId: workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          priority: Priority.HIGH,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      // Create task without branch
+      await db.task.create({
+        data: {
+          title: "Other task",
+          description: "Different implementation",
+          workspaceId: workspace.id,
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      // Test partial match on branch name
+      const request = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/test-workspace/search?q=branch-search`,
+        user
+      );
+
+      const response = await GET(request, {
+        params: Promise.resolve({ slug: "test-workspace" }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.data.tasks).toHaveLength(1);
+      expect(data.data.tasks[0]).toMatchObject({
+        id: taskWithBranch.id,
+        title: "Implement feature X",
+        metadata: {
+          branch: "feature/test-branch-search",
+          status: TaskStatus.IN_PROGRESS,
+          priority: Priority.HIGH,
+        },
+      });
+
+      // Test case-insensitive matching
+      const uppercaseRequest = createAuthenticatedGetRequest(
+        `http://localhost:3000/api/workspaces/test-workspace/search?q=BRANCH`,
+        user
+      );
+
+      const uppercaseResponse = await GET(uppercaseRequest, {
+        params: Promise.resolve({ slug: "test-workspace" }),
+      });
+
+      const uppercaseData = await expectSuccess(uppercaseResponse, 200);
+      expect(uppercaseData.data.tasks).toHaveLength(1);
+      expect(uppercaseData.data.tasks[0].id).toBe(taskWithBranch.id);
     });
   });
 });
