@@ -19,9 +19,14 @@ import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
+import { fetchCIStatus } from "./pr-ci";
 
 const LOG_PREFIX = "[PRMonitor]";
 const encryptionService = EncryptionService.getInstance();
+
+// Retry limits to prevent infinite loops
+const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "6", 10);
+const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
 
 // Simple console logging helpers
 const log = {
@@ -41,22 +46,6 @@ interface GitHubPRData {
   mergeable_state: string;
   head: { ref: string; sha: string };
   base: { ref: string };
-}
-
-interface GitHubCheckRun {
-  id: number;
-  name: string;
-  status: "queued" | "in_progress" | "completed";
-  conclusion: string | null;
-}
-
-interface GitHubCombinedStatus {
-  state: "pending" | "success" | "failure" | "error";
-  statuses: Array<{
-    context: string;
-    state: string;
-    description: string | null;
-  }>;
 }
 
 // Result of checking a single PR
@@ -108,137 +97,6 @@ async function fetchPRStatus(octokit: Octokit, owner: string, repo: string, prNu
   return data as GitHubPRData;
 }
 
-/**
- * Fetch the last N lines of logs for a failed GitHub Actions job
- */
-async function fetchJobLogs(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  jobId: number,
-  lastLines: number = 100,
-): Promise<string | null> {
-  try {
-    // This returns a redirect to a temporary URL with the logs
-    const response = await octokit.actions.downloadJobLogsForWorkflowRun({
-      owner,
-      repo,
-      job_id: jobId,
-    });
-
-    // The response.url contains the redirect URL, response.data is the log content
-    const logContent = response.data as unknown as string;
-
-    if (!logContent || typeof logContent !== "string") {
-      return null;
-    }
-
-    // Get the last N lines
-    const lines = logContent.split("\n");
-    const lastLinesContent = lines.slice(-lastLines).join("\n");
-
-    // Truncate if still too long (max 10KB per check to avoid bloating the DB)
-    if (lastLinesContent.length > 10240) {
-      return "...(truncated)\n" + lastLinesContent.slice(-10240);
-    }
-
-    return lastLinesContent;
-  } catch (error) {
-    log.warn("Failed to fetch job logs", { owner, repo, jobId, error: String(error) });
-    return null;
-  }
-}
-
-/**
- * Fetch CI check status for a PR
- */
-async function fetchCIStatus(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  ref: string,
-): Promise<{
-  status: PullRequestProgress["ciStatus"];
-  summary: string;
-  failedChecks: string[];
-  failedCheckLogs: Record<string, string>;
-}> {
-  // Fetch both check runs (GitHub Actions) and commit statuses (legacy CI)
-  const [checkRuns, combinedStatus] = await Promise.all([
-    octokit.checks.listForRef({ owner, repo, ref }).then((r) => r.data),
-    octokit.repos.getCombinedStatusForRef({ owner, repo, ref }).then((r) => r.data as GitHubCombinedStatus),
-  ]);
-
-  const failedChecks: string[] = [];
-  const failedCheckIds: Array<{ name: string; id: number }> = [];
-  let totalChecks = 0;
-  let passedChecks = 0;
-  let pendingChecks = 0;
-
-  // Process check runs (GitHub Actions)
-  for (const check of checkRuns.check_runs as GitHubCheckRun[]) {
-    totalChecks++;
-    if (check.status !== "completed") {
-      pendingChecks++;
-    } else if (check.conclusion === "success" || check.conclusion === "skipped") {
-      passedChecks++;
-    } else if (check.conclusion === "failure" || check.conclusion === "timed_out") {
-      failedChecks.push(check.name);
-      failedCheckIds.push({ name: check.name, id: check.id });
-    }
-  }
-
-  // Process legacy commit statuses
-  for (const status of combinedStatus.statuses) {
-    totalChecks++;
-    if (status.state === "pending") {
-      pendingChecks++;
-    } else if (status.state === "success") {
-      passedChecks++;
-    } else if (status.state === "failure" || status.state === "error") {
-      failedChecks.push(status.context);
-      // Legacy statuses don't have downloadable logs
-    }
-  }
-
-  // Determine overall status
-  let status: PullRequestProgress["ciStatus"];
-  if (totalChecks === 0) {
-    status = "success"; // No checks configured
-  } else if (failedChecks.length > 0) {
-    status = "failure";
-  } else if (pendingChecks > 0) {
-    status = "pending";
-  } else {
-    status = "success";
-  }
-
-  const summary =
-    totalChecks === 0
-      ? "No checks configured"
-      : `${passedChecks}/${totalChecks} passed${pendingChecks > 0 ? ` (${pendingChecks} pending)` : ""}`;
-
-  // Limit failedChecks to first 10 to avoid storing too much data
-  const limitedFailedChecks = failedChecks.slice(0, 10);
-  if (failedChecks.length > 10) {
-    limitedFailedChecks.push(`... and ${failedChecks.length - 10} more`);
-  }
-
-  // Fetch logs for failed checks (limit to first 3 to avoid rate limits and slow responses)
-  const failedCheckLogs: Record<string, string> = {};
-  const checksToFetchLogs = failedCheckIds.slice(0, 3);
-
-  await Promise.all(
-    checksToFetchLogs.map(async ({ name, id }) => {
-      const logs = await fetchJobLogs(octokit, owner, repo, id);
-      if (logs) {
-        failedCheckLogs[name] = logs;
-      }
-    }),
-  );
-
-  return { status, summary, failedChecks: limitedFailedChecks, failedCheckLogs };
-}
 
 /**
  * Check a single PR and return its current state
@@ -633,11 +491,29 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
           stats.ciFailures++;
         }
 
-        // Initialize resolution tracking if this is a new problem
-        if (stateChanged || !pr.progress?.resolution) {
+        const currentAttempts = pr.progress?.resolution?.attempts || 0;
+        const lastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
+        const cooldownElapsed = !lastAttemptAt || Date.now() - new Date(lastAttemptAt).getTime() > PR_FIX_COOLDOWN_MS;
+
+        // Check if we've exceeded max attempts
+        if (currentAttempts >= PR_FIX_MAX_ATTEMPTS) {
+          progress.resolution = {
+            status: "gave_up",
+            attempts: currentAttempts,
+            lastAttemptAt: lastAttemptAt,
+            lastError: `Max fix attempts (${PR_FIX_MAX_ATTEMPTS}) exceeded`,
+          };
+          log.warn("PR fix max attempts exceeded", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            attempts: currentAttempts,
+            maxAttempts: PR_FIX_MAX_ATTEMPTS,
+          });
+        } else if (stateChanged || !pr.progress?.resolution) {
+          // Initialize/update resolution tracking for new problem
           progress.resolution = {
             status: pr.podId ? "in_progress" : "notified",
-            attempts: (pr.progress?.resolution?.attempts || 0) + 1,
+            attempts: currentAttempts + 1,
             lastAttemptAt: new Date().toISOString(),
           };
         }
@@ -658,22 +534,33 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
 
         // If pod is available and this is a new problem, trigger an automatic fix
         // The triggerFix function auto-detects whether to use agent mode or live mode
-        if (pr.podId && stateChanged) {
+        // Only trigger if: not gave_up, state changed, and cooldown elapsed
+        const shouldTriggerFix =
+          pr.podId && stateChanged && cooldownElapsed && progress.resolution?.status !== "gave_up";
+
+        if (shouldTriggerFix) {
           const fixPrompt = buildFixPrompt(result);
-          log.info("WOULD TRIGGER FIX (disabled)", {
+          log.info("Triggering PR fix", {
             taskId: pr.taskId,
             podId: pr.podId,
             state: result.state,
             prNumber: result.prNumber,
             repo: `${result.owner}/${result.repo}`,
-            prompt: fixPrompt.substring(0, 200) + "...",
+            attempt: progress.resolution?.attempts,
+            maxAttempts: PR_FIX_MAX_ATTEMPTS,
           });
 
-          // auto-fix (supports both agent and live modes):
           const triggerResult = await triggerFix(pr.taskId, fixPrompt);
           if (triggerResult.success) {
             stats.agentTriggered++;
           }
+        } else if (pr.podId && stateChanged && !cooldownElapsed) {
+          log.info("Skipping PR fix due to cooldown", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            lastAttemptAt,
+            cooldownMs: PR_FIX_COOLDOWN_MS,
+          });
         }
       } else {
         stats.healthy++;
