@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 
-export async function getPrimaryRepository(workspaceId: string): Promise<{
+export type RepositoryInfo = {
   id: string;
   repositoryUrl: string;
   ignoreDirs: string | null;
@@ -10,7 +10,9 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
   name: string;
   description: string | null;
   branch: string;
-} | null> {
+};
+
+export async function getPrimaryRepository(workspaceId: string): Promise<RepositoryInfo | null> {
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
     include: {
@@ -48,4 +50,42 @@ export async function getPrimaryRepository(workspaceId: string): Promise<{
     description: primaryRepo.description,
     branch: primaryRepo.branch,
   };
+}
+
+export async function getAllRepositories(workspaceId: string): Promise<RepositoryInfo[]> {
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    include: {
+      repositories: {
+        select: {
+          id: true,
+          repositoryUrl: true,
+          ignoreDirs: true,
+          unitGlob: true,
+          integrationGlob: true,
+          e2eGlob: true,
+          name: true,
+          description: true,
+          branch: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (!workspace) {
+    return [];
+  }
+
+  return workspace.repositories.map((repo) => ({
+    id: repo.id,
+    repositoryUrl: repo.repositoryUrl,
+    ignoreDirs: repo.ignoreDirs,
+    unitGlob: repo.unitGlob,
+    integrationGlob: repo.integrationGlob,
+    e2eGlob: repo.e2eGlob,
+    name: repo.name,
+    description: repo.description,
+    branch: repo.branch,
+  }));
 }
