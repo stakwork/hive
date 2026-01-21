@@ -13,6 +13,8 @@ import { toast } from "sonner";
 interface VercelIntegrationData {
   vercelApiToken: string | null;
   vercelTeamId: string | null;
+  vercelProjectId: string | null;
+  vercelWebhookSecret: string | null;
   webhookUrl: string;
 }
 
@@ -23,16 +25,21 @@ export function VercelIntegrationSettings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Form state
   const [vercelApiToken, setVercelApiToken] = useState("");
   const [vercelTeamId, setVercelTeamId] = useState("");
+  const [vercelProjectId, setVercelProjectId] = useState("");
+  const [vercelWebhookSecret, setVercelWebhookSecret] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
 
   // Track original values to detect changes
   const [originalToken, setOriginalToken] = useState("");
   const [originalTeamId, setOriginalTeamId] = useState("");
+  const [originalProjectId, setOriginalProjectId] = useState("");
+  const [originalWebhookSecret, setOriginalWebhookSecret] = useState("");
 
   // Fetch current settings on mount
   useEffect(() => {
@@ -55,11 +62,15 @@ export function VercelIntegrationSettings() {
 
         setVercelApiToken(data.vercelApiToken || "");
         setVercelTeamId(data.vercelTeamId || "");
+        setVercelProjectId(data.vercelProjectId || "");
+        setVercelWebhookSecret(data.vercelWebhookSecret || "");
         setWebhookUrl(data.webhookUrl || "");
 
         // Store original values
         setOriginalToken(data.vercelApiToken || "");
         setOriginalTeamId(data.vercelTeamId || "");
+        setOriginalProjectId(data.vercelProjectId || "");
+        setOriginalWebhookSecret(data.vercelWebhookSecret || "");
       } catch (error) {
         console.error("Error fetching Vercel integration settings:", error);
         toast.error("Failed to load Vercel integration settings");
@@ -96,6 +107,8 @@ export function VercelIntegrationSettings() {
         body: JSON.stringify({
           vercelApiToken: vercelApiToken || null,
           vercelTeamId: vercelTeamId || null,
+          vercelProjectId: vercelProjectId || null,
+          vercelWebhookSecret: vercelWebhookSecret || null,
         }),
       });
 
@@ -107,6 +120,8 @@ export function VercelIntegrationSettings() {
       // Update original values after successful save
       setOriginalToken(vercelApiToken);
       setOriginalTeamId(vercelTeamId);
+      setOriginalProjectId(vercelProjectId);
+      setOriginalWebhookSecret(vercelWebhookSecret);
 
       toast.success("Vercel integration settings saved successfully");
     } catch (error) {
@@ -115,10 +130,14 @@ export function VercelIntegrationSettings() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [workspace?.slug, vercelApiToken, vercelTeamId]);
+  }, [workspace?.slug, vercelApiToken, vercelTeamId, vercelProjectId, vercelWebhookSecret]);
 
   // Check if there are changes to save
-  const hasChanges = vercelApiToken !== originalToken || vercelTeamId !== originalTeamId;
+  const hasChanges =
+    vercelApiToken !== originalToken ||
+    vercelTeamId !== originalTeamId ||
+    vercelProjectId !== originalProjectId ||
+    vercelWebhookSecret !== originalWebhookSecret;
 
   if (!workspace) return null;
 
@@ -140,7 +159,7 @@ export function VercelIntegrationSettings() {
           <>
             {/* Vercel API Token */}
             <div className="space-y-2">
-              <Label htmlFor="vercel-api-token">Vercel API Token</Label>
+              <Label htmlFor="vercel-api-token">Vercel API Token (optional)</Label>
               <div className="relative">
                 <Input
                   id="vercel-api-token"
@@ -160,7 +179,7 @@ export function VercelIntegrationSettings() {
                 </button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Create a token at{" "}
+                Optional. For future Vercel API integrations. Create a token at{" "}
                 <a
                   href="https://vercel.com/account/tokens"
                   target="_blank"
@@ -184,6 +203,48 @@ export function VercelIntegrationSettings() {
               />
               <p className="text-sm text-muted-foreground">
                 Required if using a team account. Find it in your team settings.
+              </p>
+            </div>
+
+            {/* Vercel Project ID */}
+            <div className="space-y-2">
+              <Label htmlFor="vercel-project-id">Vercel Project ID</Label>
+              <Input
+                id="vercel-project-id"
+                type="text"
+                value={vercelProjectId}
+                onChange={(e) => setVercelProjectId(e.target.value)}
+                placeholder="prj_xxxxx"
+              />
+              <p className="text-sm text-muted-foreground">
+                Required for log drain integration. Find it in your Vercel project settings under General → Project ID.
+              </p>
+            </div>
+
+            {/* Vercel Webhook Secret */}
+            <div className="space-y-2">
+              <Label htmlFor="vercel-webhook-secret">Log Drain Webhook Secret</Label>
+              <div className="relative">
+                <Input
+                  id="vercel-webhook-secret"
+                  type={showWebhookSecret ? "text" : "password"}
+                  value={vercelWebhookSecret}
+                  onChange={(e) => setVercelWebhookSecret(e.target.value)}
+                  placeholder="Enter a secret for webhook verification"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowWebhookSecret(!showWebhookSecret)}
+                  tabIndex={-1}
+                >
+                  {showWebhookSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                A secret string used to verify webhook requests from Vercel. Use the same value when configuring the log
+                drain in Vercel.
               </p>
             </div>
 
@@ -214,10 +275,12 @@ export function VercelIntegrationSettings() {
             <div className="rounded-lg border bg-muted/50 p-4">
               <h4 className="font-medium mb-2">Setup Instructions</h4>
               <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Copy the webhook URL above</li>
-                <li>Go to your Vercel project settings → Integrations → Log Drains</li>
-                <li>Add a new log drain with the webhook URL</li>
-                <li>Select the log types you want to receive</li>
+                <li>Enter your Vercel Project ID above (found in project settings → General)</li>
+                <li>Create a webhook secret (any random string) and enter it above</li>
+                <li>Save these settings, then copy the generated webhook URL</li>
+                <li>Go to your Vercel project settings → Log Drains</li>
+                <li>Add a new log drain with the webhook URL and the same secret</li>
+                <li>Select &quot;JSON&quot; format and the log sources you want to receive</li>
               </ol>
             </div>
 

@@ -61,16 +61,13 @@ export function convertPathToPattern(requestPath: string): string[] {
 /**
  * Matches a request path to an endpoint node from the graph
  * Returns the matched node or null if no match found
- * 
+ *
  * Matching strategy:
  * 1. Try exact match first
  * 2. Try pattern matches (converting dynamic segments)
  * 3. Check both node.name and node.properties.path
  */
-export function matchPathToEndpoint(
-  requestPath: string,
-  endpointNodes: NodeFull[]
-): NodeFull | null {
+export function matchPathToEndpoint(requestPath: string, endpointNodes: NodeFull[]): NodeFull | null {
   // Normalize request path (remove trailing slash, ensure leading slash)
   const normalizedPath = requestPath.startsWith("/")
     ? requestPath.replace(/\/$/, "")
@@ -100,10 +97,7 @@ export function matchPathToEndpoint(
       }
 
       // Also try case-insensitive match for robustness
-      if (
-        nodePath?.toLowerCase() === pattern.toLowerCase() ||
-        nodeName?.toLowerCase() === pattern.toLowerCase()
-      ) {
+      if (nodePath?.toLowerCase() === pattern.toLowerCase() || nodeName?.toLowerCase() === pattern.toLowerCase()) {
         return node;
       }
     }
