@@ -297,7 +297,7 @@ describe("callStakwork Function Unit Tests", () => {
       const request = TestHelpers.createMockRequest(TestDataFactory.createRequestBody());
       const response = await POST(request);
 
-      expect(response.status).toBe(200); // Message is created
+      expect(response.status).toBe(201); // Message is created
       const data = await response.json();
       expect(data.success).toBe(true);
       // Should call mock API when Stakwork config is missing
