@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Table as TableIcon, Network } from "lucide-react";
+import { Plus, Table as TableIcon, Network, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,6 +77,9 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   // AI generation state
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [acceptingTasks, setAcceptingTasks] = useState(false);
+
+  // Bulk assign state
+  const [assigningTasks, setAssigningTasks] = useState(false);
 
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -378,6 +381,51 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     setGeneratedContent(null);
   };
 
+  const handleBulkAssignTasks = async () => {
+    if (assigningTasks) return;
+
+    setAssigningTasks(true);
+    try {
+      const response = await fetch(`/api/features/${featureId}/tasks/assign-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to assign tasks");
+      }
+
+      // Handle success cases
+      if (result.count === 0) {
+        toast.info("All tasks already assigned");
+      } else if (result.assignee) {
+        const assigneeName = result.assignee.name || result.assignee.email;
+        toast.success(`All tasks assigned to ${assigneeName}`, {
+          description: `${result.count} task${result.count > 1 ? "s" : ""} updated`,
+        });
+      } else {
+        toast.info("No feature assignee set", {
+          description: `${result.count} task${result.count > 1 ? "s" : ""} cleared`,
+        });
+      }
+
+      // Refresh feature data
+      const featureResponse = await fetch(`/api/features/${featureId}`);
+      const featureResult = await featureResponse.json();
+      if (featureResult.success) {
+        onUpdate(featureResult.data);
+      }
+    } catch (error) {
+      console.error("Failed to bulk assign tasks:", error);
+      const message = error instanceof Error ? error.message : "Failed to assign tasks";
+      toast.error(message);
+    } finally {
+      setAssigningTasks(false);
+    }
+  };
+
   if (!defaultPhase) {
     return (
       <Empty>
@@ -437,6 +485,28 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
             disabled={false}
             showDeepThink={true}
           />
+
+          {/* Start Button - Bulk assign all unassigned tasks */}
+          {!isCreatingTicket && tickets.length > 0 && (
+            <Button
+              onClick={handleBulkAssignTasks}
+              size="sm"
+              variant="outline"
+              disabled={assigningTasks}
+            >
+              {assigningTasks ? (
+                <>
+                  <Spinner className="h-4 w-4 mr-2" />
+                  Assigning...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  Start
+                </>
+              )}
+            </Button>
+          )}
 
           {!isCreatingTicket && (
             <Button onClick={() => setIsCreatingTicket(true)} size="sm">
