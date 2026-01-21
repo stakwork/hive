@@ -108,6 +108,9 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   // Get all tickets from the default phase
   const tickets = defaultPhase?.tasks || [];
 
+  // Filter for unassigned tasks (Start button visibility)
+  const unassignedTasks = tickets.filter((task) => !task.assignee);
+
   // Handle real-time task updates from Pusher
   const handleRealtimeTaskUpdate = useCallback(
     (update: TaskTitleUpdateEvent) => {
@@ -469,20 +472,8 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Tasks</Label>
         <div className="flex items-center gap-2">
-          {/* Deep Research */}
-          <GenerationControls
-            onQuickGenerate={() => {}}
-            onDeepThink={handleDeepThink}
-            onRetry={handleRetry}
-            status={latestRun?.status}
-            isLoading={aiGeneration.isLoading || initiatingDeepThink}
-            isQuickGenerating={false}
-            disabled={false}
-            showDeepThink={true}
-          />
-
           {/* Start Button - Bulk assign all unassigned tasks */}
-          {!isCreatingTicket && tickets.length > 0 && (
+          {!isCreatingTicket && unassignedTasks.length > 0 && (
             <Button
               onClick={handleBulkAssignTasks}
               size="sm"
@@ -502,6 +493,18 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
               )}
             </Button>
           )}
+
+          {/* Deep Research */}
+          <GenerationControls
+            onQuickGenerate={() => {}}
+            onDeepThink={handleDeepThink}
+            onRetry={handleRetry}
+            status={latestRun?.status}
+            isLoading={aiGeneration.isLoading || initiatingDeepThink}
+            isQuickGenerating={false}
+            disabled={false}
+            showDeepThink={true}
+          />
 
           {!isCreatingTicket && (
             <Button onClick={() => setIsCreatingTicket(true)} size="sm">
@@ -589,7 +592,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
         </div>
       )}
 
-      {/* View Toggle - Only show when there are tasks */}
+      {/* View Toggle */}
       {tickets.length > 0 && (
         <div className="flex justify-start">
           <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
