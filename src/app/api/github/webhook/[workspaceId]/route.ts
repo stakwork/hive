@@ -4,9 +4,11 @@ import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
-import { RepositoryStatus } from "@prisma/client";
+import { RepositoryStatus, Prisma } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { parseOwnerRepo } from "@/lib/ai/utils";
+import { releaseTaskPod } from "@/lib/pods/utils";
+import type { PullRequestContent } from "@/lib/chat";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -176,6 +178,115 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } else if (event === "pull_request") {
       const action = payload?.action;
       const merged = payload?.pull_request?.merged;
+      const prUrl = payload?.pull_request?.html_url;
+
+      // Check if PR was merged (closed + merged=true)
+      if (action === "closed" && merged === true && prUrl) {
+        console.log("[GithubWebhook] PR merged - checking for pod release", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          prUrl,
+        });
+
+        try {
+          // Query database for tasks with matching PR artifact
+          const tasks = await db.$queryRaw<
+            Array<{
+              task_id: string;
+              pod_id: string | null;
+              workspace_id: string;
+            }>
+          >(
+            Prisma.sql`
+              SELECT t.id as task_id, t.pod_id, t.workspace_id
+              FROM artifacts a
+              JOIN chat_messages m ON a.message_id = m.id
+              JOIN tasks t ON m.task_id = t.id
+              WHERE a.type = 'PULL_REQUEST'
+                AND a.content->>'url' = ${prUrl}
+                AND t.deleted = false
+                AND t.archived = false
+                AND t.pod_id IS NOT NULL
+            `,
+          );
+
+          if (tasks.length === 0) {
+            console.log("[GithubWebhook] PR merged - no tasks with pods found", {
+              delivery,
+              prUrl,
+            });
+            return NextResponse.json({ success: true }, { status: 202 });
+          }
+
+          if (tasks.length > 1) {
+            console.warn("[GithubWebhook] PR merged - multiple tasks with pods found, manual resolution needed", {
+              delivery,
+              prUrl,
+              taskIds: tasks.map((t) => t.task_id),
+            });
+            return NextResponse.json({ success: true }, { status: 202 });
+          }
+
+          // Exactly one task found - attempt pod release
+          const task = tasks[0];
+          console.log("[GithubWebhook] PR merged - releasing pod for task", {
+            delivery,
+            prUrl,
+            taskId: task.task_id,
+            podId: task.pod_id,
+          });
+
+          const result = await releaseTaskPod({
+            taskId: task.task_id,
+            podId: task.pod_id!,
+            workspaceId: task.workspace_id,
+            verifyOwnership: true,
+            clearTaskFields: true,
+            newWorkflowStatus: null, // Don't change workflow status - PR merged but task may not be complete
+          });
+
+          if (result.success) {
+            if (result.reassigned) {
+              console.log("[GithubWebhook] PR merged - pod release: pod was reassigned", {
+                delivery,
+                prUrl,
+                taskId: task.task_id,
+                podId: task.pod_id,
+              });
+            } else if (result.podDropped) {
+              console.log("[GithubWebhook] PR merged - pod release: success", {
+                delivery,
+                prUrl,
+                taskId: task.task_id,
+                podId: task.pod_id,
+              });
+            } else {
+              console.log("[GithubWebhook] PR merged - pod release: partial success (task cleared)", {
+                delivery,
+                prUrl,
+                taskId: task.task_id,
+                taskCleared: result.taskCleared,
+              });
+            }
+            return NextResponse.json({ success: true }, { status: result.podDropped ? 200 : 202 });
+          } else {
+            console.error("[GithubWebhook] PR merged - pod release: failed", {
+              delivery,
+              prUrl,
+              taskId: task.task_id,
+              error: result.error,
+            });
+            return NextResponse.json({ success: true }, { status: 202 });
+          }
+        } catch (error) {
+          console.error("[GithubWebhook] PR merged - pod release error", {
+            delivery,
+            prUrl,
+            error,
+          });
+          return NextResponse.json({ success: true }, { status: 202 });
+        }
+      }
 
       console.log("[GithubWebhook] PR action not handled, skipping", {
         delivery,

@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
 import { POST } from '@/app/api/github/webhook/[workspaceId]/route';
-import { RepositoryStatus } from '@prisma/client';
+import { RepositoryStatus, ArtifactType, TaskStatus, WorkflowStatus } from '@prisma/client';
 import {
   createWebhookTestScenario,
   createGitHubPushPayload,
+  createGitHubPullRequestPayload,
   computeValidWebhookSignature,
   createWebhookRequest,
 } from '@/__tests__/support/factories/github-webhook.factory';
@@ -12,6 +13,8 @@ import { db } from '@/lib/db';
 import { triggerAsyncSync } from '@/services/swarm/stakgraph-actions';
 import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
 import { pusherServer } from '@/lib/pusher';
+import { releaseTaskPod } from '@/lib/pods/utils';
+import { generateUniqueId } from '@/__tests__/support/helpers';
 
 // Mock external services
 vi.mock('@/services/swarm/stakgraph-actions');
@@ -21,6 +24,13 @@ vi.mock('@/lib/pusher', () => ({
     trigger: vi.fn(),
   },
 }));
+vi.mock('@/lib/pods/utils', async () => {
+  const actual = await vi.importActual('@/lib/pods/utils');
+  return {
+    ...actual,
+    releaseTaskPod: vi.fn(),
+  };
+});
 
 // Type for test setup (inline since it's not exported from fixture)
 type TestRepositorySetup = Awaited<ReturnType<typeof createTestRepository>>;
