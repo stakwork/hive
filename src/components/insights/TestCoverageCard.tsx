@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricDisplay } from "@/components/ui/metric-display";
-import { MetricDisplayCountOnly } from "@/components/ui/metric-display-count-only";
 import { TestTube, FunctionSquare, Globe, Target, Shield } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -46,7 +45,7 @@ export function TestCoverageCard() {
 
       if (result.success && result.data) {
         setData(result.data);
-        
+
         if (!hasInitializedIgnoreDirs.current && result.ignoreDirs !== undefined) {
           setIgnoreDirs(result.ignoreDirs);
           hasInitializedIgnoreDirs.current = true;
@@ -164,9 +163,7 @@ export function TestCoverageCard() {
                   total={data.unit_tests.total_lines || 0}
                 />
               ) : (
-                <div className="text-xs text-muted-foreground py-2">
-                  Line coverage data not available
-                </div>
+                <div className="text-xs text-muted-foreground py-2">Line coverage data not available</div>
               )}
             </div>
           )}
@@ -196,10 +193,11 @@ export function TestCoverageCard() {
                 <span className="text-sm font-medium">End to End Tests</span>
               </div>
 
-              <MetricDisplayCountOnly
+              <MetricDisplay
                 label="Total Tests"
-                count={data.e2e_tests.covered || 0}
-                icon={null}
+                percent={100}
+                covered={data.e2e_tests.total_tests || 0}
+                total={data.e2e_tests.total_tests || 0}
               />
             </div>
           )}
