@@ -9,6 +9,5 @@ export {
   findOpenPRArtifacts,
   getOctokitForWorkspace,
   buildFixPrompt,
-  triggerAgentFix,
   type PRCheckResult,
 } from "./pr-monitor";
