@@ -400,14 +400,9 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       // Handle success cases
       if (result.count === 0) {
         toast.info("All tasks already assigned");
-      } else if (result.assignee) {
-        const assigneeName = result.assignee.name || result.assignee.email;
-        toast.success(`All tasks assigned to ${assigneeName}`, {
-          description: `${result.count} task${result.count > 1 ? "s" : ""} updated`,
-        });
       } else {
-        toast.info("No feature assignee set", {
-          description: `${result.count} task${result.count > 1 ? "s" : ""} cleared`,
+        toast.success("All tasks assigned to Task Coordinator", {
+          description: `${result.count} task${result.count > 1 ? "s" : ""} will be processed automatically`,
         });
       }
 
