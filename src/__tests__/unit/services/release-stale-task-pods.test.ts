@@ -44,6 +44,7 @@ describe("releaseStaleTaskPods", () => {
         podId: "pod-1",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
       },
       {
         id: "task-2",
@@ -53,6 +54,7 @@ describe("releaseStaleTaskPods", () => {
         podId: "pod-2",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
       },
     ];
 
@@ -85,6 +87,16 @@ describe("releaseStaleTaskPods", () => {
         podId: true,
         status: true,
         workflowStatus: true,
+        chatMessages: {
+          select: {
+            artifacts: {
+              where: { type: "PULL_REQUEST" },
+              select: {
+                content: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -126,6 +138,7 @@ describe("releaseStaleTaskPods", () => {
         podId: "pod-1",
         status: "DONE",
         workflowStatus: "COMPLETED",
+        chatMessages: [],
       },
       {
         id: "task-2",
@@ -135,6 +148,7 @@ describe("releaseStaleTaskPods", () => {
         podId: "pod-2",
         status: "DONE",
         workflowStatus: "FAILED",
+        chatMessages: [],
       },
     ];
 
@@ -202,6 +216,7 @@ describe("releaseStaleTaskPods", () => {
         podId: "pod-1",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
       },
       {
         id: "task-2",
@@ -211,6 +226,7 @@ describe("releaseStaleTaskPods", () => {
         podId: "pod-2",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
       },
     ];
 
@@ -291,6 +307,7 @@ describe("releaseStaleTaskPods", () => {
         podId: null, // No pod
         status: "IN_PROGRESS",
         workflowStatus: "PENDING",
+        chatMessages: [],
       },
     ];
 
@@ -364,6 +381,7 @@ describe("releaseStaleTaskPods", () => {
         podId: "pod-1",
         status: "IN_PROGRESS",
         workflowStatus: "IN_PROGRESS",
+        chatMessages: [],
       },
     ];
 
@@ -406,6 +424,134 @@ describe("releaseStaleTaskPods", () => {
     expect(threshold.getTime()).toBe(expectedThreshold.getTime());
 
     vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  test("should not halt tasks with open PRs but should still release pods", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const twentyFiveHoursAgo = new Date(now);
+    twentyFiveHoursAgo.setHours(twentyFiveHoursAgo.getHours() - 25);
+
+    const staleTasks = [
+      {
+        id: "task-1",
+        title: "Task with open PR",
+        workspaceId: "workspace-1",
+        updatedAt: twentyFiveHoursAgo,
+        podId: "pod-1",
+        status: "IN_PROGRESS",
+        workflowStatus: "IN_PROGRESS",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                content: { status: "OPEN", url: "https://github.com/org/repo/pull/1" },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: "task-2",
+        title: "Task with merged PR",
+        workspaceId: "workspace-1",
+        updatedAt: twentyFiveHoursAgo,
+        podId: "pod-2",
+        status: "IN_PROGRESS",
+        workflowStatus: "IN_PROGRESS",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                content: { status: "DONE", url: "https://github.com/org/repo/pull/2" },
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+    vi.mocked(mockReleaseTaskPod).mockResolvedValue({
+      success: true,
+      podDropped: true,
+      taskCleared: true,
+    });
+
+    const result = await releaseStaleTaskPods();
+
+    // Verify releaseTaskPod was called for both tasks
+    expect(mockReleaseTaskPod).toHaveBeenCalledTimes(2);
+
+    // Task with open PR: pod released, but newWorkflowStatus is null (not halted)
+    expect(mockReleaseTaskPod).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task-1",
+        newWorkflowStatus: null,
+      })
+    );
+
+    // Task with merged PR: pod released and halted
+    expect(mockReleaseTaskPod).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task-2",
+        newWorkflowStatus: "HALTED",
+      })
+    );
+
+    // Verify result - only 1 task halted (the one with merged PR)
+    expect(result.success).toBe(true);
+    expect(result.podsReleased).toBe(2);
+    expect(result.tasksHalted).toBe(1);
+
+    vi.useRealTimers();
+  });
+
+  test("should not halt tasks with open PRs even without pods", async () => {
+    const now = new Date("2024-10-24T12:00:00Z");
+    vi.setSystemTime(now);
+
+    const twentyFiveHoursAgo = new Date(now);
+    twentyFiveHoursAgo.setHours(twentyFiveHoursAgo.getHours() - 25);
+
+    const staleTasks = [
+      {
+        id: "task-1",
+        title: "Task with open PR but no pod",
+        workspaceId: "workspace-1",
+        updatedAt: twentyFiveHoursAgo,
+        podId: null,
+        status: "IN_PROGRESS",
+        workflowStatus: "IN_PROGRESS",
+        chatMessages: [
+          {
+            artifacts: [
+              {
+                content: { status: "OPEN", url: "https://github.com/org/repo/pull/1" },
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    vi.mocked(mockDb.task.findMany).mockResolvedValue(staleTasks as any);
+
+    const result = await releaseStaleTaskPods();
+
+    // Should NOT call releaseTaskPod (no pod to release)
+    expect(mockReleaseTaskPod).not.toHaveBeenCalled();
+
+    // Should NOT call haltTask (has open PR)
+    expect(mockDb.task.update).not.toHaveBeenCalled();
+
+    // Verify result - no pods released, no tasks halted
+    expect(result.success).toBe(true);
+    expect(result.podsReleased).toBe(0);
+    expect(result.tasksHalted).toBe(0);
+
     vi.useRealTimers();
   });
 });

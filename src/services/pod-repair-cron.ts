@@ -333,6 +333,7 @@ async function triggerPodRepair(
     const stakworkPayload = {
       name: `pod-repair-${workspaceSlug}-${Date.now()}`,
       workflow_id: parseInt(workflowId, 10),
+      webhook_url: webhookUrl,
       workflow_params: {
         set_var: {
           attributes: {

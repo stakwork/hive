@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Table as TableIcon, Network } from "lucide-react";
+import { Plus, Table as TableIcon, Network, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,6 +78,9 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [acceptingTasks, setAcceptingTasks] = useState(false);
 
+  // Bulk assign state
+  const [assigningTasks, setAssigningTasks] = useState(false);
+
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,6 +107,9 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
 
   // Get all tickets from the default phase
   const tickets = defaultPhase?.tasks || [];
+
+  // Filter for unassigned tasks (Start button visibility)
+  const unassignedTasks = tickets.filter((task) => !task.assignee);
 
   // Handle real-time task updates from Pusher
   const handleRealtimeTaskUpdate = useCallback(
@@ -378,6 +384,46 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     setGeneratedContent(null);
   };
 
+  const handleBulkAssignTasks = async () => {
+    if (assigningTasks) return;
+
+    setAssigningTasks(true);
+    try {
+      const response = await fetch(`/api/features/${featureId}/tasks/assign-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to assign tasks");
+      }
+
+      // Handle success cases
+      if (result.count === 0) {
+        toast.info("All tasks already assigned");
+      } else {
+        toast.info("Tasks queued for coordinator", {
+          description: "Processing begins when a machine is available",
+        });
+      }
+
+      // Refresh feature data
+      const featureResponse = await fetch(`/api/features/${featureId}`);
+      const featureResult = await featureResponse.json();
+      if (featureResult.success) {
+        onUpdate(featureResult.data);
+      }
+    } catch (error) {
+      console.error("Failed to bulk assign tasks:", error);
+      const message = error instanceof Error ? error.message : "Failed to assign tasks";
+      toast.error(message);
+    } finally {
+      setAssigningTasks(false);
+    }
+  };
+
   if (!defaultPhase) {
     return (
       <Empty>
@@ -426,6 +472,28 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Tasks</Label>
         <div className="flex items-center gap-2">
+          {/* Start Button - Bulk assign all unassigned tasks */}
+          {!isCreatingTicket && unassignedTasks.length > 0 && (
+            <Button
+              onClick={handleBulkAssignTasks}
+              size="sm"
+              variant="outline"
+              disabled={assigningTasks}
+            >
+              {assigningTasks ? (
+                <>
+                  <Spinner className="h-4 w-4 mr-2" />
+                  Assigning...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2 text-green-600" />
+                  Start
+                </>
+              )}
+            </Button>
+          )}
+
           {/* Deep Research */}
           <GenerationControls
             onQuickGenerate={() => {}}
@@ -524,7 +592,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
         </div>
       )}
 
-      {/* View Toggle - Only show when there are tasks */}
+      {/* View Toggle */}
       {tickets.length > 0 && (
         <div className="flex justify-start">
           <Tabs value={activeView} onValueChange={(value) => setActiveView(value as "table" | "graph")}>
