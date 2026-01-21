@@ -125,6 +125,7 @@ export interface PullRequestProgress {
   problemDetails?: string;
   conflictFiles?: string[]; // If conflict
   failedChecks?: string[]; // If CI failure
+  failedCheckLogs?: Record<string, string>; // If CI failure
 
   // Agent resolution tracking
   resolution?: PullRequestResolution;
