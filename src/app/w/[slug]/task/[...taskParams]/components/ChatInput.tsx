@@ -178,7 +178,7 @@ export function ChatInput({
       )}>
         <ModeIcon className="h-4 w-4" />
         <span>{modeConfig.label}</span>
-        {!hasPrArtifact && (
+        {!hasPrArtifact && workflowStatus !== WorkflowStatus.COMPLETED && (
           <>
             <span>|</span>
             <WorkflowStatusBadge status={workflowStatus} />
