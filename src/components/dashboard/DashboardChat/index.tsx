@@ -560,7 +560,7 @@ export function DashboardChat() {
     provenanceData?.concepts.some((concept) => concept.files && concept.files.length > 0) ?? false;
 
   return (
-    <div className="pointer-events-none">
+    <div className="pointer-events-none" data-testid="dashboard-chat">
       {/* Message history with optional provenance sidebar */}
       {(messages.length > 0 || activeToolCalls.length > 0) && (
         <div className="flex flex-col">

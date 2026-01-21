@@ -166,7 +166,7 @@ export function ChatInput({
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className="relative flex justify-center items-center gap-2 w-full px-4 py-4"
+      className="relative flex justify-center items-start gap-2 w-full px-4 py-4"
     >
       {/* Drag overlay */}
       {isDragging && (
@@ -224,6 +224,7 @@ export function ChatInput({
       <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px]">
         <textarea
           ref={inputRef}
+          data-testid="dashboard-chat-input"
           placeholder="Ask me about your codebase..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
