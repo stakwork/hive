@@ -220,6 +220,8 @@ model Workspace {
   // Vercel integration
   vercelApiToken String? @map("vercel_api_token") // Encrypted Vercel API token
   vercelTeamId   String? @map("vercel_team_id")   // Vercel team ID (optional)
+  vercelProjectId String? @map("vercel_project_id") // Vercel project ID for log webhook mapping
+  vercelWebhookSecret String? @map("vercel_webhook_secret") // Encrypted webhook secret for log drain verification
 
   // Janitor configuration
   janitorConfig JanitorConfig?
