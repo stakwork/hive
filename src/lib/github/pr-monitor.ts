@@ -97,7 +97,6 @@ async function fetchPRStatus(octokit: Octokit, owner: string, repo: string, prNu
   return data as GitHubPRData;
 }
 
-
 /**
  * Check a single PR and return its current state
  */
@@ -155,10 +154,15 @@ export async function checkPR(
       state = "checking";
     }
 
-    // Check for CI failures (conflict takes precedence)
-    if (state === "healthy" && ciResult.status === "failure") {
-      state = "ci_failure";
-      problemDetails = `CI checks failed: ${ciResult.failedChecks.join(", ")}`;
+    // Check for CI status (conflict takes precedence)
+    if (state === "healthy") {
+      if (ciResult.status === "failure") {
+        state = "ci_failure";
+        problemDetails = `CI checks failed: ${ciResult.failedChecks.join(", ")}`;
+      } else if (ciResult.status === "pending") {
+        // CI is still running - use "checking" state so we re-check soon
+        state = "checking";
+      }
     }
 
     return {
@@ -303,7 +307,8 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       AND a.content->>'url' IS NOT NULL
       AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
       AND COALESCE(a.content->'progress'->'resolution'->>'status', '') NOT IN ('in_progress', 'gave_up')
-      -- Cooldown logic for healthy PRs (only re-check after 1 hour)
+      -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
+      -- All other states (checking, conflict, ci_failure) are re-checked every cron run
       AND (
         COALESCE(a.content->'progress'->>'state', '') != 'healthy'
         OR a.content->'progress'->>'lastCheckedAt' IS NULL
@@ -387,6 +392,7 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
   checked: number;
   conflicts: number;
   ciFailures: number;
+  ciPending: number;
   healthy: number;
   errors: number;
   agentTriggered: number;
@@ -396,6 +402,7 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
     checked: 0,
     conflicts: 0,
     ciFailures: 0,
+    ciPending: 0,
     healthy: 0,
     errors: 0,
     agentTriggered: 0,
@@ -563,7 +570,12 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
           });
         }
       } else {
-        stats.healthy++;
+        // Track checking (CI pending) vs truly healthy
+        if (result.state === "checking") {
+          stats.ciPending++;
+        } else {
+          stats.healthy++;
+        }
 
         // If was problematic and is now healthy, mark as resolved
         if (previousState === "conflict" || previousState === "ci_failure") {
