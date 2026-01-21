@@ -401,8 +401,8 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       if (result.count === 0) {
         toast.info("All tasks already assigned");
       } else {
-        toast.success("All tasks assigned to Task Coordinator", {
-          description: `${result.count} task${result.count > 1 ? "s" : ""} will be processed automatically`,
+        toast.info("Tasks queued for coordinator", {
+          description: "Processing begins when a machine is available",
         });
       }
 
