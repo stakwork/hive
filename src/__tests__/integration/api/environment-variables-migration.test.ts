@@ -318,16 +318,24 @@ describe("Environment Variables Migration", () => {
     });
 
     // Try to create duplicate (should fail due to unique constraint)
-    await expect(
-      db.environmentVariable.create({
+    try {
+      await db.environmentVariable.create({
         data: {
           swarmId,
           serviceName: "",
           name: "TEST_VAR",
           value: JSON.stringify(encrypted[0].value),
         },
-      })
-    ).rejects.toThrow();
+      });
+      // If we get here, the test should fail
+      expect.fail("Expected unique constraint violation but none occurred");
+    } catch (error: any) {
+      // Verify it's the expected unique constraint error
+      expect(error.code).toBe("P2002"); // Prisma unique constraint violation code
+      expect(error.meta?.target).toContain("swarm_id");
+      expect(error.meta?.target).toContain("service_name");
+      expect(error.meta?.target).toContain("name");
+    }
   });
 
   it("should allow same variable name for different service scopes", async () => {
