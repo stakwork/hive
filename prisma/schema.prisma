@@ -340,6 +340,9 @@ model Repository {
   githubWebhookId     String? @map("github_webhook_id")
   githubWebhookSecret String? @map("github_webhook_secret")
 
+  // Stakgraph sync tracking
+  stakgraphRequestId String? @map("stakgraph_request_id")
+
   // Test setup flags
   testingFrameworkSetup Boolean @default(false) @map("testing_framework_setup")
   playwrightSetup       Boolean @default(false) @map("playwright_setup")

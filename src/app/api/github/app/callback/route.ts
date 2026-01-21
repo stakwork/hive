@@ -367,61 +367,82 @@ export async function GET(request: NextRequest) {
         where: { slug: workspaceSlug },
       });
 
-      // Try to get repository URL from localStorage data or primary repository
-      let targetRepositoryUrl: string | undefined;
-
+      // Check access for ALL repositories in the workspace
       if (workspace) {
+        const allRepositories = await db.repository.findMany({
+          where: { workspaceId: workspace.id },
+          select: { repositoryUrl: true, name: true },
+        });
 
-        // Check repositoryDraft first, then fall back to primary repository
-        targetRepositoryUrl = workspace.repositoryDraft ?? undefined;
-        if (!targetRepositoryUrl) {
-          const primaryRepo = await getPrimaryRepository(workspace.id);
-          targetRepositoryUrl = primaryRepo?.repositoryUrl ?? undefined;
-        }
-      }
-
-      // If no swarm yet, try to reconstruct from the state data
-      if (!targetRepositoryUrl) {
-        try {
-          const stateData = JSON.parse(Buffer.from(state, "base64").toString());
-          // If we stored repositoryUrl in state, use it (we should enhance the install route to include this)
-          targetRepositoryUrl = stateData.repositoryUrl;
-        } catch (error) {
-          console.log("Could not extract repository URL from state", error);
-        }
-      }
-
-      if (targetRepositoryUrl) {
-        try {
-
-          console.log('checking repository access for', targetRepositoryUrl)
-          const repositoryAccess = await checkRepositoryAccess(userAccessToken, targetRepositoryUrl);
-
-
-          console.log('repositoryAccess', repositoryAccess)
-
-          if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
-            console.log(`✅ GitHub App has push access to repository: ${targetRepositoryUrl}`);
-            repositoryAccessStatus = "accessible";
-          } else if (repositoryAccess.hasAccess && !repositoryAccess.canPush) {
-            console.log(`❌ GitHub App has read-only access to repository: ${targetRepositoryUrl}`);
-            console.log("🚫 Blocking swarm setup - push permissions required");
-            repositoryAccessStatus = "read_only_blocked";
-          } else {
-            console.log(`❌ GitHub App does not have access to repository: ${targetRepositoryUrl}`);
-            console.log(`Error: ${repositoryAccess.error}`);
-            console.log("🚫 Blocking swarm setup - no repository access");
-            repositoryAccessStatus = repositoryAccess.error || "no_access";
+        // If no repositories yet, check repositoryDraft
+        const repositoriesToCheck: Array<{ repositoryUrl: string; name: string }> = [];
+        
+        if (allRepositories.length > 0) {
+          repositoriesToCheck.push(...allRepositories);
+        } else if (workspace.repositoryDraft) {
+          repositoriesToCheck.push({
+            repositoryUrl: workspace.repositoryDraft,
+            name: "draft",
+          });
+        } else {
+          // Try state data
+          try {
+            const stateData = JSON.parse(Buffer.from(state, "base64").toString());
+            if (stateData.repositoryUrl) {
+              repositoriesToCheck.push({
+                repositoryUrl: stateData.repositoryUrl,
+                name: "from-state",
+              });
+            }
+          } catch (error) {
+            console.log("Could not extract repository URL from state", error);
           }
-        } catch (error) {
-          console.error("Error checking repository access:", error);
-          console.log("🚫 Blocking swarm setup - permission check failed");
-          repositoryAccessStatus = "check_failed";
         }
-      } else {
-        console.log("⚠️ No repository URL found to check access");
-        console.log("🚫 Blocking swarm setup - no repository URL");
-        repositoryAccessStatus = "no_repository_url";
+
+        if (repositoriesToCheck.length > 0) {
+          console.log(`Checking access for ${repositoriesToCheck.length} repository/repositories`);
+          
+          let allAccessible = true;
+          const failedRepos: string[] = [];
+
+          for (const repo of repositoriesToCheck) {
+            try {
+              console.log(`Checking repository access for ${repo.name}: ${repo.repositoryUrl}`);
+              const repositoryAccess = await checkRepositoryAccess(userAccessToken, repo.repositoryUrl);
+
+              console.log(`Repository access for ${repo.name}:`, repositoryAccess);
+
+              if (repositoryAccess.hasAccess && repositoryAccess.canPush) {
+                console.log(`✅ GitHub App has push access to repository: ${repo.repositoryUrl}`);
+              } else if (repositoryAccess.hasAccess && !repositoryAccess.canPush) {
+                console.log(`❌ GitHub App has read-only access to repository: ${repo.repositoryUrl}`);
+                allAccessible = false;
+                failedRepos.push(`${repo.name} (read-only)`);
+              } else {
+                console.log(`❌ GitHub App does not have access to repository: ${repo.repositoryUrl}`);
+                console.log(`Error: ${repositoryAccess.error}`);
+                allAccessible = false;
+                failedRepos.push(`${repo.name} (${repositoryAccess.error || "no access"})`);
+              }
+            } catch (error) {
+              console.error(`Error checking repository access for ${repo.name}:`, error);
+              allAccessible = false;
+              failedRepos.push(`${repo.name} (check failed)`);
+            }
+          }
+
+          if (allAccessible) {
+            repositoryAccessStatus = "accessible";
+          } else {
+            console.log("🚫 Blocking swarm setup - not all repositories are accessible");
+            console.log("Failed repositories:", failedRepos);
+            repositoryAccessStatus = `partial_access:${failedRepos.join(",")}`;
+          }
+        } else {
+          console.log("⚠️ No repository URL found to check access");
+          console.log("🚫 Blocking swarm setup - no repository URL");
+          repositoryAccessStatus = "no_repository_url";
+        }
       }
     } else if (setupAction === "uninstall") {
       console.log(`Unlinking workspace ${workspaceSlug} from SourceControlOrg`);

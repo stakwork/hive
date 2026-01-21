@@ -16,15 +16,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspaceId, swarmId } = body as {
+    const { workspaceId, swarmId, repositoryId } = body as {
       workspaceId?: string;
       swarmId?: string;
+      repositoryId?: string;
     };
 
     console.log("[Sync] Request initiated", {
       userId: session.user.id,
       workspaceId,
       swarmId,
+      repositoryId,
     });
 
     const where: Record<string, string> = {};
@@ -35,8 +37,32 @@ export async function POST(request: NextRequest) {
       console.error("[Sync] Swarm not found or misconfigured", { workspaceId, swarmId });
       return NextResponse.json({ success: false, message: "Swarm not found or misconfigured" }, { status: 400 });
     }
-    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
-    const repositoryUrl = primaryRepo?.repositoryUrl;
+
+    // Get repository - either specific one or primary
+    let repository;
+    if (repositoryId) {
+      repository = await db.repository.findFirst({
+        where: {
+          id: repositoryId,
+          workspaceId: swarm.workspaceId,
+        },
+      });
+      if (!repository) {
+        console.error("[Sync] Repository not found or doesn't belong to workspace", {
+          repositoryId,
+          workspaceId: swarm.workspaceId,
+        });
+        return NextResponse.json(
+          { success: false, message: "Repository not found or doesn't belong to workspace" },
+          { status: 404 },
+        );
+      }
+    } else {
+      // Fallback to primary repository for backward compatibility
+      repository = await getPrimaryRepository(swarm.workspaceId);
+    }
+
+    const repositoryUrl = repository?.repositoryUrl;
 
     if (!repositoryUrl) {
       console.error("[Sync] Repository URL not set", {
@@ -125,24 +151,35 @@ export async function POST(request: NextRequest) {
         workspaceId: swarm.workspaceId,
         swarmId: swarm.id,
         repositoryUrl,
+        repositoryId: repository?.id,
       });
       try {
-        const updatedSwarm = await saveOrUpdateSwarm({
-          workspaceId: swarm.workspaceId,
-          ingestRefId: requestId,
-        });
+        // Save request ID to both swarm (for backward compat) and repository (for multi-repo)
+        await Promise.all([
+          saveOrUpdateSwarm({
+            workspaceId: swarm.workspaceId,
+            ingestRefId: requestId,
+          }),
+          repository
+            ? db.repository.update({
+                where: { id: repository.id },
+                data: { stakgraphRequestId: requestId },
+              })
+            : Promise.resolve(),
+        ]);
 
         console.log("[Sync] Saved ingest reference", {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
-          savedIngestRefId: updatedSwarm?.ingestRefId,
+          repositoryId: repository?.id,
         });
       } catch (err) {
-        console.error("[Sync] Failed to store ingestRefId", {
+        console.error("[Sync] Failed to store request ID", {
           requestId,
           workspaceId: swarm.workspaceId,
           swarmId: swarm.id,
+          repositoryId: repository?.id,
           error: err,
         });
         return NextResponse.json(
