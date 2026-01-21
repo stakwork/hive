@@ -17,7 +17,7 @@ import { getUserAppTokens } from "@/lib/githubApp";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
-import { sendMessageToStakwork } from "@/services/task-workflow";
+import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
 
 const LOG_PREFIX = "[PRMonitor]";
@@ -506,10 +506,11 @@ ${result.problemDetails || ""}`;
 
     // Append log excerpts if available
     if (result.failedCheckLogs && Object.keys(result.failedCheckLogs).length > 0) {
-      prompt += "\n\n--- CI Failure Logs ---\n";
+      prompt += "\n\n<logs>\n";
       for (const [checkName, logs] of Object.entries(result.failedCheckLogs)) {
-        prompt += `\n### ${checkName}\n\`\`\`\n${logs}\n\`\`\`\n`;
+        prompt += `### ${checkName}\n${logs}\n\n`;
       }
+      prompt += "</logs>";
     }
 
     return prompt;
@@ -878,11 +879,12 @@ export async function triggerLiveModeFix(
     const message = `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`;
 
     // 3. Send message to Stakwork workflow
-    const result = await sendMessageToStakwork({
+    const result = await createChatMessageAndTriggerStakwork({
       taskId,
       message,
       userId,
       generateChatTitle: false,
+      mode: "live",
     });
 
     if (!result.stakworkData?.success) {
