@@ -496,7 +496,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
                 </>
               ) : (
                 <>
-                  <Play className="h-4 w-4 mr-2" />
+                  <Play className="h-4 w-4 mr-2 text-green-600" />
                   Start
                 </>
               )}
