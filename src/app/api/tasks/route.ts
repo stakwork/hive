@@ -195,6 +195,12 @@ export async function GET(request: NextRequest) {
             mode: 'insensitive' as const,
           },
         },
+        {
+          branch: {
+            contains: search.trim(),
+            mode: 'insensitive' as const,
+          },
+        },
       ];
 
       // If there's already an OR clause (from visibility rules), we need to combine them with AND
