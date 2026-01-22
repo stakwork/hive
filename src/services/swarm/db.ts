@@ -76,6 +76,8 @@ export const select = {
   agentStatus: true,
   ingestRequestInProgress: true,
   autoLearnEnabled: true,
+  minimumVms: true,
+  webhookUrl: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
@@ -157,6 +159,8 @@ export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
       ingestRefId: params.ingestRefId,
       poolState: params.poolState || PoolState.NOT_STARTED,
       ingestRequestInProgress: params.ingestRequestInProgress || false,
+      minimumVms: 2, // Default value from schema
+      webhookUrl: null, // Nullable field
     } as any;
     console.log("[saveOrUpdateSwarm] Create data:", createData);
     swarm = await db.swarm.create({
