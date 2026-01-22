@@ -524,7 +524,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const mergedPoolMemory = settings.poolMemory ?? existingSwarm?.poolMemory ?? undefined;
 
     // After updating/creating the swarm, sync settings to Pool Manager
-    if (mergedPoolName && swarmPoolApiKey && swarm && Array.isArray(settings.environmentVariables)) {
+    if (mergedPoolName && swarmPoolApiKey && swarm) {
       const syncResult2 = await syncPoolManagerSettings({
         workspaceId: workspace.id,
         workspaceSlug: slug,
@@ -532,7 +532,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         poolApiKey: swarmPoolApiKey,
         poolCpu: mergedPoolCpu,
         poolMemory: mergedPoolMemory,
-        environmentVariables: settings.environmentVariables as Array<{ name: string; value: string }>,
+        environmentVariables: Array.isArray(settings.environmentVariables)
+          ? (settings.environmentVariables as Array<{ name: string; value: string }>)
+          : undefined,
         containerFiles: syncResult.containerFiles,
         userId: userId || undefined,
       });

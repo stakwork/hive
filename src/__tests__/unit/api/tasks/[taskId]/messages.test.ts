@@ -312,6 +312,13 @@ describe("GET /api/tasks/[taskId]/messages - Unit Tests", () => {
           stakworkProjectId: true,
           mode: true,
           podId: true,
+          featureId: true,
+          feature: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
           workspace: {
             select: {
               id: true,

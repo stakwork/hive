@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface AgentChatAreaProps {
   messages: ChatMessage[];
@@ -35,6 +36,8 @@ interface AgentChatAreaProps {
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
   prUrl?: string | null;
+  featureId?: string | null;
+  featureTitle?: string | null;
 }
 
 export function AgentChatArea({
@@ -58,6 +61,8 @@ export function AgentChatArea({
   onReleasePod,
   isReleasingPod = false,
   prUrl = null,
+  featureId,
+  featureTitle,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -151,10 +156,18 @@ export function AgentChatArea({
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.98 }}
                     transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="text-lg font-semibold text-foreground truncate flex-1"
+                    className="text-lg font-semibold text-foreground truncate flex-1 flex items-center"
                     title={taskTitle}
                     data-testid="task-title"
                   >
+                    {/* Inline Breadcrumbs */}
+                    {workspaceSlug && (
+                      <TaskBreadcrumbs
+                        featureId={featureId ?? null}
+                        featureTitle={featureTitle ?? null}
+                        workspaceSlug={workspaceSlug}
+                      />
+                    )}
                     {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
                   </motion.h2>
                 </AnimatePresence>
