@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { COMMON_PERSONAS } from "@/lib/constants/personas";
 
 // Mock dependencies before imports
 vi.mock("@/lib/db", () => ({
@@ -10,6 +11,7 @@ vi.mock("@/lib/db", () => ({
     },
     feature: {
       create: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
@@ -18,10 +20,15 @@ vi.mock("@/services/workspace", () => ({
   validateWorkspaceAccessById: vi.fn(),
 }));
 
+vi.mock("@/services/roadmap/utils", () => ({
+  validateFeatureAccess: vi.fn(),
+}));
+
 // Import after mocks
 import { db } from "@/lib/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { createFeature } from "@/services/roadmap/features";
+import { createFeature, updateFeature } from "@/services/roadmap/features";
+import { validateFeatureAccess } from "@/services/roadmap/utils";
 
 describe("createFeature", () => {
   const mockUserId = "user-123";
@@ -696,7 +703,7 @@ describe("createFeature", () => {
         brief: "Feature brief",
         requirements: "Feature requirements",
         architecture: "Feature architecture",
-        personas: ["persona1", "persona2"],
+        personas: ["End User", "Developer"],
         workspaceId: mockWorkspaceId,
         status: FeatureStatus.PLANNED,
         priority: FeaturePriority.HIGH,
@@ -711,7 +718,7 @@ describe("createFeature", () => {
           brief: "Feature brief",
           requirements: "Feature requirements",
           architecture: "Feature architecture",
-          personas: ["persona1", "persona2"],
+          personas: ["End User", "Developer"],
           workspaceId: mockWorkspaceId,
           status: FeatureStatus.PLANNED,
           priority: FeaturePriority.HIGH,
@@ -787,6 +794,224 @@ describe("createFeature", () => {
           data: expect.objectContaining({
             createdById: mockUserId,
             updatedById: mockUserId,
+          }),
+        })
+      );
+    });
+  });
+
+  describe("Persona Validation", () => {
+    test("accepts valid COMMON_PERSONAS", async () => {
+      await createFeature(mockUserId, {
+        title: "Test Feature",
+        workspaceId: mockWorkspaceId,
+        personas: ["End User", "Admin"],
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            personas: ["End User", "Admin"],
+          }),
+        })
+      );
+    });
+
+    test("throws error for invalid persona", async () => {
+      await expect(
+        createFeature(mockUserId, {
+          title: "Test Feature",
+          workspaceId: mockWorkspaceId,
+          personas: ["Invalid Persona"],
+        })
+      ).rejects.toThrow(
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`
+      );
+    });
+
+    test("throws error for mixed valid and invalid personas", async () => {
+      await expect(
+        createFeature(mockUserId, {
+          title: "Test Feature",
+          workspaceId: mockWorkspaceId,
+          personas: ["End User", "Invalid Persona", "Admin"],
+        })
+      ).rejects.toThrow(
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`
+      );
+    });
+
+    test("accepts empty personas array", async () => {
+      await createFeature(mockUserId, {
+        title: "Test Feature",
+        workspaceId: mockWorkspaceId,
+        personas: [],
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            personas: [],
+          }),
+        })
+      );
+    });
+
+    test("accepts undefined personas (uses default)", async () => {
+      await createFeature(mockUserId, {
+        title: "Test Feature",
+        workspaceId: mockWorkspaceId,
+        personas: undefined,
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            personas: [],
+          }),
+        })
+      );
+    });
+
+    test("accepts all COMMON_PERSONAS values", async () => {
+      await createFeature(mockUserId, {
+        title: "Test Feature",
+        workspaceId: mockWorkspaceId,
+        personas: COMMON_PERSONAS,
+      });
+
+      expect(db.feature.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            personas: COMMON_PERSONAS,
+          }),
+        })
+      );
+    });
+  });
+});
+
+describe("updateFeature", () => {
+  const mockUserId = "user-123";
+  const mockFeatureId = "feature-123";
+  
+  const mockUpdatedFeature = {
+    id: mockFeatureId,
+    title: "Updated Feature",
+    brief: "Updated brief",
+    requirements: null,
+    architecture: null,
+    personas: [],
+    workspaceId: "workspace-456",
+    status: FeatureStatus.BACKLOG,
+    priority: FeaturePriority.LOW,
+    assigneeId: null,
+    createdById: mockUserId,
+    updatedById: mockUserId,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    deleted: false,
+    workspace: {
+      id: "workspace-456",
+      name: "Test Workspace",
+      slug: "test-workspace",
+    },
+    assignee: null,
+    createdBy: {
+      id: mockUserId,
+      name: "Test User",
+      email: "test@example.com",
+      image: null,
+    },
+    updatedBy: {
+      id: mockUserId,
+      name: "Test User",
+      email: "test@example.com",
+      image: null,
+    },
+    userStories: [],
+    phases: [],
+    tasks: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(validateFeatureAccess).mockResolvedValue(undefined);
+    vi.mocked(db.feature.update).mockResolvedValue(mockUpdatedFeature);
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  describe("Persona Validation", () => {
+    test("accepts valid COMMON_PERSONAS", async () => {
+      await updateFeature(mockFeatureId, mockUserId, {
+        personas: ["End User", "Admin"],
+      });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            personas: ["End User", "Admin"],
+          }),
+        })
+      );
+    });
+
+    test("throws error for invalid persona", async () => {
+      await expect(
+        updateFeature(mockFeatureId, mockUserId, {
+          personas: ["Invalid Persona"],
+        })
+      ).rejects.toThrow(
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`
+      );
+    });
+
+    test("throws error for mixed valid and invalid personas", async () => {
+      await expect(
+        updateFeature(mockFeatureId, mockUserId, {
+          personas: ["End User", "Invalid Persona", "Admin"],
+        })
+      ).rejects.toThrow(
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`
+      );
+    });
+
+    test("accepts empty personas array", async () => {
+      await updateFeature(mockFeatureId, mockUserId, {
+        personas: [],
+      });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            personas: [],
+          }),
+        })
+      );
+    });
+
+    test("does not validate when personas is undefined", async () => {
+      await updateFeature(mockFeatureId, mockUserId, {
+        title: "Updated Title",
+      });
+
+      expect(db.feature.update).toHaveBeenCalled();
+      const callArgs = vi.mocked(db.feature.update).mock.calls[0][0];
+      expect(callArgs.data).not.toHaveProperty("personas");
+    });
+
+    test("accepts all COMMON_PERSONAS values", async () => {
+      await updateFeature(mockFeatureId, mockUserId, {
+        personas: COMMON_PERSONAS,
+      });
+
+      expect(db.feature.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            personas: COMMON_PERSONAS,
           }),
         })
       );

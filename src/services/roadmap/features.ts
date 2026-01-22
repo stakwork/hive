@@ -5,6 +5,7 @@ import { validateFeatureAccess } from "./utils";
 import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
+import { COMMON_PERSONAS } from "@/lib/constants/personas";
 
 /**
  * Lists features for a workspace with pagination, filtering, and sorting
@@ -181,6 +182,14 @@ export async function createFeature(
     }
   }
 
+  // Validate personas
+  if (data.personas !== undefined) {
+    const invalidPersonas = data.personas.filter(p => !COMMON_PERSONAS.includes(p));
+    if (invalidPersonas.length > 0) {
+      throw new Error(`Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(', ')}`);
+    }
+  }
+
   const feature = await db.feature.create({
     data: {
       title: data.title.trim(),
@@ -260,6 +269,14 @@ export async function updateFeature(
 
     if (!assignee) {
       throw new Error("Assignee not found");
+    }
+  }
+
+  // Validate personas
+  if (data.personas !== undefined) {
+    const invalidPersonas = data.personas.filter(p => !COMMON_PERSONAS.includes(p));
+    if (invalidPersonas.length > 0) {
+      throw new Error(`Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(', ')}`);
     }
   }
 

@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "@/app/api/features/route";
 import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { COMMON_PERSONAS } from "@/lib/constants/personas";
 import {
   createTestUser,
   createTestWorkspace,
@@ -383,6 +384,92 @@ describe("Features API - Integration Tests", () => {
 
       const data = await expectSuccess(response, 201);
       expect(data.data.title).toBe("Trimmed Feature");
+    });
+
+    test("accepts valid COMMON_PERSONAS", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Feature with Personas",
+        workspaceId: workspace.id,
+        personas: ["End User", "Admin"],
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data.personas).toEqual(["End User", "Admin"]);
+    });
+
+    test("rejects invalid persona", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Feature with Invalid Persona",
+        workspaceId: workspace.id,
+        personas: ["Invalid Persona"],
+      }, user);
+
+      const response = await POST(request);
+
+      await expectError(
+        response,
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`,
+        400
+      );
+    });
+
+    test("rejects mixed valid and invalid personas", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Feature with Mixed Personas",
+        workspaceId: workspace.id,
+        personas: ["End User", "Invalid Persona", "Admin"],
+      }, user);
+
+      const response = await POST(request);
+
+      await expectError(
+        response,
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`,
+        400
+      );
+    });
+
+    test("accepts empty personas array", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const request = createAuthenticatedPostRequest("http://localhost:3000/api/features", {
+        title: "Feature with Empty Personas",
+        workspaceId: workspace.id,
+        personas: [],
+      }, user);
+
+      const response = await POST(request);
+
+      const data = await expectSuccess(response, 201);
+      expect(data.data.personas).toEqual([]);
     });
   });
 });

@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { GET, PATCH } from "@/app/api/features/[featureId]/route";
 import { db } from "@/lib/db";
 import { FeatureStatus, FeaturePriority } from "@prisma/client";
+import { COMMON_PERSONAS } from "@/lib/constants/personas";
 import {
   createTestUser,
   createTestWorkspace,
@@ -617,6 +618,140 @@ describe("Single Feature API - Integration Tests", () => {
 
       // Assert
       await expectError(response, "Assignee not found", 400);
+    });
+
+    test("accepts valid COMMON_PERSONAS", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          personas: [],
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        { personas: ["End User", "Admin"] },
+        user
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ featureId: feature.id }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.data.personas).toEqual(["End User", "Admin"]);
+    });
+
+    test("rejects invalid persona", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          personas: [],
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        { personas: ["Invalid Persona"] },
+        user
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ featureId: feature.id }),
+      });
+
+      await expectError(
+        response,
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`,
+        400
+      );
+    });
+
+    test("rejects mixed valid and invalid personas", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          personas: [],
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        { personas: ["End User", "Invalid Persona", "Admin"] },
+        user
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ featureId: feature.id }),
+      });
+
+      await expectError(
+        response,
+        `Invalid persona(s). Allowed values: ${COMMON_PERSONAS.join(", ")}`,
+        400
+      );
+    });
+
+    test("accepts empty personas array", async () => {
+      const user = await createTestUser();
+      const workspace = await createTestWorkspace({
+        ownerId: user.id,
+        name: "Test Workspace",
+        slug: "test-workspace",
+      });
+
+      const feature = await db.feature.create({
+        data: {
+          title: "Test Feature",
+          workspaceId: workspace.id,
+          personas: ["End User"],
+          createdById: user.id,
+          updatedById: user.id,
+        },
+      });
+
+      const request = createAuthenticatedPatchRequest(
+        `http://localhost:3000/api/features/${feature.id}`,
+        { personas: [] },
+        user
+      );
+
+      const response = await PATCH(request, {
+        params: Promise.resolve({ featureId: feature.id }),
+      });
+
+      const data = await expectSuccess(response, 200);
+      expect(data.data.personas).toEqual([]);
     });
   });
 });
