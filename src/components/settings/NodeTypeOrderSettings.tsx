@@ -81,15 +81,15 @@ function SortableNodeTypeRow({ item, onValueChange, onRemove, canRemove = false 
           <Input
             type="number"
             min="0"
-            max="999"
+            max="5000"
             value={item.value}
             onChange={(e) => {
               const inputValue = e.target.value;
               const value = inputValue === '' ? 0 : parseInt(inputValue, 10);
-              const clampedValue = Math.max(0, Math.min(999, isNaN(value) ? 0 : value));
+              const clampedValue = Math.max(0, Math.min(5000, isNaN(value) ? 0 : value));
               onValueChange(item.type, clampedValue);
             }}
-            className="w-20 text-center hidden"
+            className="w-20 text-center"
             placeholder="0"
           />
           {canRemove && onRemove && (
@@ -433,10 +433,10 @@ export function NodeTypeOrderSettings() {
                     <Input
                       type="number"
                       min="0"
-                      max="999"
+                      max="5000"
                       value={20}
                       readOnly
-                      className="w-20 text-center bg-muted hidden"
+                      className="w-20 text-center bg-muted"
                       placeholder="20"
                     />
                     <div className="flex items-center gap-1">

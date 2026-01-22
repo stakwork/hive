@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { z } from "zod";
 const nodeTypeConfigSchema = z.object({
   nodeTypeOrder: z.array(z.object({
     type: z.string(),
-    value: z.number().min(0).max(999),
+    value: z.number().min(0).max(5000),
   })),
 });
 
@@ -34,7 +34,7 @@ export async function PUT(
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request data", details: parseResult.error.flatten() },
+        { error: "Validation failed", details: parseResult.error.issues },
         { status: 400 }
       );
     }

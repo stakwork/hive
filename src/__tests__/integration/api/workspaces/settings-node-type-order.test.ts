@@ -14,14 +14,7 @@ import {
   createPutRequest,
 } from "@/__tests__/support/helpers";
 
-// APPLICATION BUG: Route imports getServerSession from 'next-auth' instead of 'next-auth/next'
-// This causes all tests to fail with "headers was called outside a request scope" error
-// The global mock is set up for 'next-auth/next' in src/__tests__/setup/global.ts
-// Fix needed in src/app/api/workspaces/[slug]/settings/node-type-order/route.ts line 2:
-// Change: import { getServerSession } from "next-auth";
-// To: import { getServerSession } from "next-auth/next";
-
-describe.skip("Node Type Order Settings API Integration Tests", () => {
+describe("Node Type Order Settings API Integration Tests", () => {
   const defaultNodeTypeOrder = [
     { type: "Function", value: 20 },
     { type: "Feature", value: 20 },
@@ -356,12 +349,12 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
 
-    test("should validate value range (max 999)", async () => {
+    test("should validate value range (max 5000)", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
-      const invalidOrder = [{ type: "Function", value: 1000 }];
+      const invalidOrder = [{ type: "Function", value: 5001 }];
 
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/node-type-order`,
@@ -380,14 +373,14 @@ describe.skip("Node Type Order Settings API Integration Tests", () => {
       expect(unchangedWorkspaceInDb?.nodeTypeOrder).toEqual(defaultNodeTypeOrder);
     });
 
-    test("should accept valid edge values (0 and 999)", async () => {
+    test("should accept valid edge values (0 and 5000)", async () => {
       const { ownerUser, workspace } = await createTestWorkspace();
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(ownerUser));
 
       const validOrder = [
         { type: "Function", value: 0 },
-        { type: "Feature", value: 999 },
+        { type: "Feature", value: 5000 },
       ];
 
       const request = createPutRequest(
