@@ -20,6 +20,11 @@ vi.mock("@/services/pool-manager/sync", () => ({
 vi.mock("@/services/github/WebhookService", () => ({
   WebhookService: vi.fn().mockImplementation(() => ({
     ensureRepoWebhook: vi.fn().mockResolvedValue({ id: 123, secret: "webhook-secret" }),
+    setupRepositoryWithWebhook: vi.fn().mockResolvedValue({
+      repositoryId: "mock-repo-id",
+      defaultBranch: "main",
+      webhookId: 12345,
+    }),
   })),
 }));
 
