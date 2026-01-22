@@ -1,9 +1,10 @@
 import { renderHook, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useFavicon } from '@/hooks/useFavicon';
 
 // Mock the runtime module
-jest.mock('@/lib/runtime', () => ({
-  isDevelopmentMode: jest.fn(() => false),
+vi.mock('@/lib/runtime', () => ({
+  isDevelopmentMode: vi.fn(() => false),
 }));
 
 describe('useFavicon', () => {
@@ -34,7 +35,7 @@ describe('useFavicon', () => {
     link.rel = rel;
     link.href = href;
     if (sizes) {
-      link.sizes.add(sizes);
+      link.setAttribute('sizes', sizes);
     }
     return link;
   }
