@@ -249,6 +249,7 @@ async function broadcastHighlight(workspaceSlug: string, nodeRefId: string): Pro
       title: "Vercel Request",
       timestamp: Date.now(),
       sourceNodeRefId: nodeRefId,
+      expiresIn: 10, // seconds
     };
 
     await pusherServer.trigger(channelName, PUSHER_EVENTS.HIGHLIGHT_NODES, eventPayload);
