@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface AgentChatAreaProps {
   messages: ChatMessage[];
@@ -35,6 +36,8 @@ interface AgentChatAreaProps {
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
   prUrl?: string | null;
+  featureId?: string | null;
+  featureTitle?: string | null;
 }
 
 export function AgentChatArea({
@@ -58,6 +61,8 @@ export function AgentChatArea({
   onReleasePod,
   isReleasingPod = false,
   prUrl = null,
+  featureId,
+  featureTitle,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -139,10 +144,21 @@ export function AgentChatArea({
             className="px-4 py-3 border-b bg-muted/20"
           >
             <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
+              <div className="flex flex-col gap-2 flex-1 min-w-0">
+                <div className="flex items-center gap-3">
+                  <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+
+                  {/* Breadcrumbs */}
+                  {workspaceSlug && (
+                    <TaskBreadcrumbs
+                      featureId={featureId ?? null}
+                      featureTitle={featureTitle ?? null}
+                      workspaceSlug={workspaceSlug}
+                    />
+                  )}
+                </div>
 
                 <AnimatePresence mode="wait">
                   <motion.h2
@@ -151,7 +167,7 @@ export function AgentChatArea({
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.98 }}
                     transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="text-lg font-semibold text-foreground truncate flex-1"
+                    className="text-lg font-semibold text-foreground truncate"
                     title={taskTitle}
                     data-testid="task-title"
                   >

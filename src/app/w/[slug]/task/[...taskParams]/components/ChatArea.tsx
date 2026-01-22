@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -41,6 +42,8 @@ interface ChatAreaProps {
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
+  featureId?: string | null;
+  featureTitle?: string | null;
 }
 
 export function ChatArea({
@@ -67,6 +70,8 @@ export function ChatArea({
   podId,
   onReleasePod,
   isReleasingPod = false,
+  featureId,
+  featureTitle,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -138,11 +143,22 @@ export function ChatArea({
       {taskTitle && (
         <div className="px-4 py-3 border-b bg-muted/20">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              {/* Back Button */}
-              <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
+            <div className="flex flex-col gap-2 flex-1 min-w-0">
+              <div className="flex items-center gap-3">
+                {/* Back Button */}
+                <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+
+                {/* Breadcrumbs */}
+                {workspaceSlug && (
+                  <TaskBreadcrumbs
+                    featureId={featureId ?? null}
+                    featureTitle={featureTitle ?? null}
+                    workspaceSlug={workspaceSlug}
+                  />
+                )}
+              </div>
 
               {/* Task Title - with animation only when title changes */}
               <AnimatePresence mode="wait">
@@ -152,7 +168,7 @@ export function ChatArea({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.98 }}
                   transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="text-lg font-semibold text-foreground truncate flex-1"
+                  className="text-lg font-semibold text-foreground truncate"
                   title={taskTitle}
                   data-testid="task-title"
                 >
