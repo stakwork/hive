@@ -20,15 +20,14 @@ export default function TaskBreadcrumbs({
   }
 
   return (
-    <div className="text-sm text-muted-foreground">
+    <span className="text-sm text-muted-foreground">
       <span
         className="hover:underline cursor-pointer"
         onClick={() => router.push(`/w/${workspaceSlug}/plan/${featureId}`)}
       >
         {featureTitle}
       </span>
-      <span className="mx-2">›</span>
-      <span>Task</span>
-    </div>
+      <span className="mx-1.5">›</span>
+    </span>
   );
 }
