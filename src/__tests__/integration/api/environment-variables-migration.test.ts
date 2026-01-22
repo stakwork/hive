@@ -135,7 +135,15 @@ describe("Environment Variables Migration", () => {
       where: { id: swarmId },
       select: { environmentVariables: true },
     });
-    expect(swarm?.environmentVariables).not.toEqual([]);
+    
+    // Should be an array (not empty) with encrypted values
+    expect(Array.isArray(swarm?.environmentVariables)).toBe(true);
+    if (Array.isArray(swarm?.environmentVariables)) {
+      expect(swarm.environmentVariables.length).toBe(3);
+      // Verify it contains encrypted data structure
+      expect(swarm.environmentVariables[0]).toHaveProperty('name');
+      expect(swarm.environmentVariables[0]).toHaveProperty('value');
+    }
   });
 
   it("should handle idempotent migration - update existing records on subsequent saves", async () => {
