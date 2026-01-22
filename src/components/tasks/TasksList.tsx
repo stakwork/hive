@@ -16,9 +16,13 @@ import { TaskCard } from "./TaskCard";
 import { EmptyState } from "./empty-state";
 import { LoadingState } from "./LoadingState";
 import { useEffect, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X, List, LayoutGrid } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
 import { TaskFilters, TaskFiltersType } from "./TaskFilters";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { KanbanView } from "@/components/ui/kanban-view";
+import { TASK_KANBAN_COLUMNS } from "@/types/roadmap";
+import { TaskStatus } from "@prisma/client";
 
 interface TasksListProps {
   workspaceId: string;
@@ -37,6 +41,14 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
     return "active";
   });
 
+  // View type state with localStorage persistence
+  const [viewType, setViewType] = useState<"list" | "kanban">(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("tasks-view-preference") === "kanban" ? "kanban" : "list";
+    }
+    return "list";
+  });
+
   // Search state
   const [searchQuery, setSearchQuery] = useState<string>("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -44,15 +56,20 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   // Filter state
   const [filters, setFilters] = useState<TaskFiltersType>({});
 
+  // Use larger page limit for Kanban view to load more items at once
+  const pageLimit = viewType === "kanban" ? 100 : 10;
+
   // showArchived is true when activeTab is "archived"
+  // showAllStatuses is true when in Kanban view (to show TODO tasks)
   const { tasks, loading, error, pagination, loadMore, refetch } = useWorkspaceTasks(
     workspaceId,
     workspaceSlug,
     true,
-    10,
+    pageLimit,
     activeTab === "archived",
     debouncedSearchQuery,
-    filters
+    filters,
+    viewType === "kanban"
   );
   const { stats } = useTaskStats(workspaceId);
 
@@ -78,6 +95,13 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
 
   const handleClearFilters = () => {
     setFilters({});
+  };
+
+  const handleViewChange = (value: string) => {
+    if (value === "list" || value === "kanban") {
+      setViewType(value);
+      localStorage.setItem("tasks-view-preference", value);
+    }
   };
 
   // Refresh task list when global notification count changes
@@ -111,11 +135,19 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
   return (
     <Card data-testid="tasks-list-loaded">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <TabsList>
             <TabsTrigger value="active">Active</TabsTrigger>
             <TabsTrigger value="archived">Archived</TabsTrigger>
           </TabsList>
+          <ToggleGroup type="single" value={viewType} onValueChange={handleViewChange}>
+            <ToggleGroupItem value="list" aria-label="List view" className="h-8 px-2">
+              <List className="h-4 w-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="kanban" aria-label="Kanban view" className="h-8 px-2">
+              <LayoutGrid className="h-4 w-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
         </CardHeader>
 
         <CardContent>
@@ -146,69 +178,107 @@ export function TasksList({ workspaceId, workspaceSlug }: TasksListProps) {
             </div>
           </div>
 
-          <TabsContent value="active" className="mt-4 space-y-3">
-            {tasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No active tasks
-              </div>
-            ) : (
-              <>
-                {tasks.map((task) => (
+          {viewType === "list" ? (
+            <>
+              <TabsContent value="active" className="mt-4 space-y-3">
+                {tasks.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No active tasks
+                  </div>
+                ) : (
+                  <>
+                    {tasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        workspaceSlug={workspaceSlug}
+                        isArchived={false}
+                      />
+                    ))}
+
+                    {pagination?.hasMore && (
+                      <div className="pt-3 border-t flex justify-center">
+                        <Button
+                          variant="outline"
+                          onClick={loadMore}
+                          disabled={loading}
+                          size="sm"
+                        >
+                          {loading ? "Loading..." : "Load More"}
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="archived" className="mt-4 space-y-3">
+                {tasks.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No archived tasks
+                  </div>
+                ) : (
+                  <>
+                    {tasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        workspaceSlug={workspaceSlug}
+                        isArchived={true}
+                      />
+                    ))}
+
+                    {pagination?.hasMore && (
+                      <div className="pt-3 border-t flex justify-center">
+                        <Button
+                          variant="outline"
+                          onClick={loadMore}
+                          disabled={loading}
+                          size="sm"
+                        >
+                          {loading ? "Loading..." : "Load More"}
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </TabsContent>
+            </>
+          ) : (
+            <div className="mt-4">
+              <KanbanView
+                items={tasks}
+                columns={TASK_KANBAN_COLUMNS}
+                getItemStatus={(task) => task.status as TaskStatus}
+                getItemId={(task) => task.id}
+                renderCard={(task) => (
                   <TaskCard
-                    key={task.id}
                     task={task}
                     workspaceSlug={workspaceSlug}
-                    isArchived={false}
+                    isArchived={activeTab === "archived"}
                   />
-                ))}
-
-                {pagination?.hasMore && (
-                  <div className="pt-3 border-t flex justify-center">
-                    <Button
-                      variant="outline"
-                      onClick={loadMore}
-                      disabled={loading}
-                      size="sm"
-                    >
-                      {loading ? "Loading..." : "Load More"}
-                    </Button>
-                  </div>
                 )}
-              </>
-            )}
-          </TabsContent>
-
-          <TabsContent value="archived" className="mt-4 space-y-3">
-            {tasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No archived tasks
-              </div>
-            ) : (
-              <>
-                {tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    workspaceSlug={workspaceSlug}
-                    isArchived={true}
-                  />
-                ))}
-
-                {pagination?.hasMore && (
-                  <div className="pt-3 border-t flex justify-center">
-                    <Button
-                      variant="outline"
-                      onClick={loadMore}
-                      disabled={loading}
-                      size="sm"
-                    >
-                      {loading ? "Loading..." : "Load More"}
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-          </TabsContent>
+                sortItems={(a, b) => {
+                  if (a.hasActionArtifact && !b.hasActionArtifact) return -1;
+                  if (!a.hasActionArtifact && b.hasActionArtifact) return 1;
+                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                }}
+                loading={loading}
+              />
+              {pagination?.hasMore && (
+                <div className="pt-3 border-t flex justify-center mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={loadMore}
+                    disabled={loading}
+                    size="sm"
+                  >
+                    {loading ? "Loading..." : "Load More"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Tabs>
     </Card>
