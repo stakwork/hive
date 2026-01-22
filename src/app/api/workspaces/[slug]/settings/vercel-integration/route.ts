@@ -10,7 +10,7 @@ const encryptionService = EncryptionService.getInstance();
 
 // Validation schema for PUT request
 const vercelIntegrationSchema = z.object({
-  vercelApiToken: z.string().min(1, "Vercel API token is required").optional().nullable(),
+  vercelApiToken: z.string().optional().nullable(),
   vercelTeamId: z.string().optional().nullable(),
   vercelProjectId: z.string().optional().nullable(),
   vercelWebhookSecret: z.string().optional().nullable(),
