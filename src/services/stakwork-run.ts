@@ -111,7 +111,7 @@ export async function createStakworkRun(
       },
       repositories: {
         take: 1,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "asc" },
         select: {
           repositoryUrl: true,
           branch: true,

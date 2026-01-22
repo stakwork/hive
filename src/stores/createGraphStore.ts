@@ -1,5 +1,6 @@
 import { NodeExtended } from '@Universe/types';
 import { create } from "zustand";
+import { DEFAULT_CALLOUT_TTL_MS, MAX_CALLOUTS } from "./calloutConstants";
 import { createDataStore } from "./createDataStore";
 import { type GraphCallout, type GraphStore, type GraphStyle, type HighlightChunk } from "./graphStore.types";
 
@@ -213,14 +214,27 @@ export const createGraphStore = (
         highlightTimestamp: Date.now(),
         webhookHighlightDepth: depth
       }),
-      addCallout: (title: string, nodeRefId: string, id?: string, addedAt?: number) => {
+      addCallout: (title: string, nodeRefId: string, id?: string, addedAt?: number, expiresInMs?: number) => {
         const calloutId = id || crypto.randomUUID()
         const { callouts } = get()
         const addedTimestamp = addedAt || Date.now()
-        const nextCallouts: GraphCallout[] = [
+        const expiresAt = expiresInMs ? addedTimestamp + expiresInMs : undefined
+        let nextCallouts: GraphCallout[] = [
           ...callouts.filter((callout) => callout.id !== calloutId),
-          { id: calloutId, title, nodeRefId, addedAt: addedTimestamp }
+          { id: calloutId, title, nodeRefId, addedAt: addedTimestamp, expiresAt }
         ]
+
+        if (nextCallouts.length > MAX_CALLOUTS) {
+          const overflow = nextCallouts.length - MAX_CALLOUTS
+          const idsToRemove = new Set(
+            [...nextCallouts]
+              .sort((a, b) => a.addedAt - b.addedAt)
+              .slice(0, overflow)
+              .map((callout) => callout.id)
+          )
+          nextCallouts = nextCallouts.filter((callout) => !idsToRemove.has(callout.id))
+        }
+
         set({ callouts: nextCallouts })
         return calloutId
       },
@@ -229,11 +243,14 @@ export const createGraphStore = (
         const updated = callouts.filter((callout) => callout.id !== calloutId)
         set({ callouts: updated })
       },
-      pruneExpiredCallouts: (ttlMs = 0.5 * 60 * 1000) => {
+      pruneExpiredCallouts: (ttlMs = DEFAULT_CALLOUT_TTL_MS) => {
         const { callouts } = get()
         if (!callouts.length) return
         const now = Date.now()
-        const fresh = callouts.filter((callout) => now - callout.addedAt < ttlMs)
+        const fresh = callouts.filter((callout) => {
+          const calloutExpiresAt = callout.expiresAt ?? callout.addedAt + ttlMs
+          return now < calloutExpiresAt
+        })
         if (fresh.length !== callouts.length) {
           set({ callouts: fresh })
         }

@@ -35,7 +35,6 @@ describe("Vercel Integration API - Integration Tests", () => {
       // Set up Vercel integration data
       const apiToken = "vercel_test_token_123";
       const teamId = "team_abc123";
-      const projectId = "prj_test123";
       const encrypted = encryptionService.encryptField("vercelApiToken", apiToken);
 
       await db.workspace.update({
@@ -43,7 +42,6 @@ describe("Vercel Integration API - Integration Tests", () => {
         data: {
           vercelApiToken: JSON.stringify(encrypted),
           vercelTeamId: teamId,
-          vercelProjectId: projectId,
         },
       });
 
@@ -61,8 +59,7 @@ describe("Vercel Integration API - Integration Tests", () => {
       const data = await response.json();
       expect(data.vercelApiToken).toBe(apiToken);
       expect(data.vercelTeamId).toBe(teamId);
-      expect(data.vercelProjectId).toBe(projectId);
-      expect(data.webhookUrl).toBe(`${process.env.NEXTAUTH_URL}/api/vercel/log-drain?projectId=${projectId}`);
+      expect(data.webhookUrl).toBe(`${process.env.NEXTAUTH_URL}/api/vercel/log-drain?workspace=${workspace.slug}`);
     });
 
     test("returns vercel settings for workspace admin", async () => {

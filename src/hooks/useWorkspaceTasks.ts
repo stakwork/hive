@@ -48,6 +48,8 @@ export interface TaskData {
   mode: string;
   podId?: string | null;
   stakworkProjectId?: number | null;
+  featureId?: string | null;
+  systemAssigneeType?: "TASK_COORDINATOR" | "BOUNTY_HUNTER" | null;
   createdAt: string;
   updatedAt: string;
   hasActionArtifact?: boolean;
@@ -60,6 +62,8 @@ export interface TaskData {
     id: string;
     name: string | null;
     email: string | null;
+    image?: string | null;
+    icon?: string | null;
   };
   repository?: {
     id: string;
@@ -106,7 +110,8 @@ export function useWorkspaceTasks(
     status?: string;
     priority?: string;
     hasPod?: boolean;
-  }
+  },
+  showAllStatuses: boolean = false
 ): UseWorkspaceTasksResult {
   const { data: session } = useSession();
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -133,7 +138,8 @@ export function useWorkspaceTasks(
       const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
       const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
       const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
-      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}`;
+      const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
+      const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${limit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}`;
 
       const response = await fetch(url, {
         method: "GET",
@@ -161,7 +167,7 @@ export function useWorkspaceTasks(
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod]);
+  }, [workspaceId, session?.user, includeNotifications, pageLimit, showArchived, search, filters?.sourceType, filters?.status, filters?.priority, filters?.hasPod, showAllStatuses]);
 
   // Function to restore state from sessionStorage by fetching all pages up to stored page
   const restoreFromStorage = useCallback(async (includeLatestMessage: boolean = includeNotifications) => {
@@ -190,7 +196,8 @@ export function useWorkspaceTasks(
         const statusParam = filters?.status ? `&status=${encodeURIComponent(filters.status)}` : '';
         const priorityParam = filters?.priority ? `&priority=${encodeURIComponent(filters.priority)}` : '';
         const hasPodParam = filters?.hasPod !== undefined ? `&hasPod=${filters.hasPod}` : '';
-        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}`;
+        const showAllStatusesParam = showAllStatuses ? '&showAllStatuses=true' : '';
+        const url = `/api/tasks?workspaceId=${workspaceId}&page=${page}&limit=${pageLimit}${includeLatestMessage ? '&includeLatestMessage=true' : ''}${archivedParam}${searchParam}${sourceTypeParam}${statusParam}${priorityParam}${hasPodParam}${showAllStatusesParam}`;
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -226,7 +233,7 @@ export function useWorkspaceTasks(
       setLoading(false);
       setIsRestoringFromStorage(false);
     }
-  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived]);
+  }, [workspaceId, session?.user, includeNotifications, fetchTasks, showArchived, showAllStatuses]);
 
   // Handle real-time task title updates (also handles archive status changes)
   const handleTaskTitleUpdate = useCallback(

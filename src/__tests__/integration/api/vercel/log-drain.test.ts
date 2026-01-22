@@ -40,9 +40,9 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
   const baseWebhookUrl = "http://localhost:3000/api/vercel/log-drain";
   const webhookSecret = "test-workspace-webhook-secret";
 
-  // Helper to create webhook URL with projectId
-  function getWebhookUrl(projectId: string) {
-    return `${baseWebhookUrl}?projectId=${encodeURIComponent(projectId)}`;
+  // Helper to create webhook URL with workspace slug
+  function getWebhookUrl(workspaceSlug: string) {
+    return `${baseWebhookUrl}?workspace=${encodeURIComponent(workspaceSlug)}`;
   }
 
   // Helper to compute HMAC-SHA1 signature (same as route.ts)
@@ -51,7 +51,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
   }
 
   // Helper to create NextRequest with proper Content-Length header and signature
-  function createRequest(projectId: string, body?: string, headers: Record<string, string> = {}): NextRequest {
+  function createRequest(workspaceSlug: string, body?: string, headers: Record<string, string> = {}): NextRequest {
     const requestHeaders: Record<string, string> = { ...headers };
 
     if (body) {
@@ -62,7 +62,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       requestHeaders["Content-Length"] = "0";
     }
 
-    return new NextRequest(getWebhookUrl(projectId), {
+    return new NextRequest(getWebhookUrl(workspaceSlug), {
       method: "POST",
       headers: requestHeaders,
       body,
@@ -70,12 +70,8 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
   }
 
   // Helper to create test workspace with swarm and webhook secret
-  async function createTestWorkspace(options?: {
-    vercelProjectId?: string;
-    withWebhookSecret?: boolean;
-    withSwarm?: boolean;
-  }) {
-    const { vercelProjectId = `prj_${generateUniqueId()}`, withWebhookSecret = true, withSwarm = true } = options || {};
+  async function createTestWorkspace(options?: { withWebhookSecret?: boolean; withSwarm?: boolean }) {
+    const { withWebhookSecret = true, withSwarm = true } = options || {};
 
     const encryptedApiKey = JSON.stringify(encryptionService.encryptField("swarmApiKey", "test-swarm-api-key"));
     const encryptedWebhookSecret = withWebhookSecret
@@ -96,7 +92,6 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
           name: `Test Workspace ${generateUniqueId()}`,
           slug: generateUniqueSlug("test-workspace"),
           ownerId: user.id,
-          vercelProjectId,
           vercelWebhookSecret: encryptedWebhookSecret,
         },
       });
@@ -128,10 +123,10 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default mock for fetch (gitree endpoint)
+    // Default mock for fetch (stakgraph /nodes endpoint returns array directly)
     mockedFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ endpoints: [] }),
+      json: async () => [],
     } as Response);
   });
 
@@ -140,7 +135,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
   });
 
   describe("Request Validation", () => {
-    test("should return 400 when projectId query parameter is missing", async () => {
+    test("should return 400 when workspace query parameter is missing", async () => {
       const request = new NextRequest(baseWebhookUrl, {
         method: "POST",
         headers: {
@@ -152,24 +147,24 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data.error).toBe("projectId query parameter required");
+      expect(data.error).toBe("workspace query parameter required");
     });
 
-    test("should return 404 when workspace not found for projectId", async () => {
-      const request = createRequest("prj_nonexistent");
+    test("should return 404 when workspace not found for slug", async () => {
+      const request = createRequest("nonexistent-workspace");
 
       const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
-      expect(data.error).toBe("Workspace not found for this project");
+      expect(data.error).toBe("Workspace not found");
     });
   });
 
   describe("Verification Requests", () => {
     test("should return 200 with x-vercel-verify header for verification request", async () => {
       const { workspace } = await createTestWorkspace();
-      const request = createRequest(workspace.vercelProjectId!);
+      const request = createRequest(workspace.slug);
 
       const response = await POST(request);
 
@@ -179,7 +174,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
     test("should return 500 when workspace has no webhook secret configured", async () => {
       const { workspace } = await createTestWorkspace({ withWebhookSecret: false });
-      const request = createRequest(workspace.vercelProjectId!);
+      const request = createRequest(workspace.slug);
 
       const response = await POST(request);
       const data = await response.json();
@@ -193,7 +188,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
     test("should return 401 when workspace has no webhook secret for data requests", async () => {
       const { workspace } = await createTestWorkspace({ withWebhookSecret: false });
       const body = JSON.stringify({ id: "log-1", message: "test" });
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -212,12 +207,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "GET /api/health 200",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         path: "/api/health",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -235,18 +229,16 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "test 1",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
       };
       const log2 = {
         id: "log-2",
         message: "test 2",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
       };
 
       const ndjsonBody = `${JSON.stringify(log1)}\n${JSON.stringify(log2)}`;
-      const request = createRequest(workspace.vercelProjectId!, ndjsonBody);
+      const request = createRequest(workspace.slug, ndjsonBody);
 
       const response = await POST(request);
       const data = await response.json();
@@ -260,7 +252,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       const log1 = { id: "log-1", message: "valid", timestamp: Date.now(), source: "lambda" as const };
       const ndjsonBody = `${JSON.stringify(log1)}\n{invalid json}\n${JSON.stringify(log1)}`;
-      const request = createRequest(workspace.vercelProjectId!, ndjsonBody);
+      const request = createRequest(workspace.slug, ndjsonBody);
 
       const response = await POST(request);
       const data = await response.json();
@@ -274,7 +266,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       const log1 = { id: "log-1", message: "test", timestamp: Date.now(), source: "lambda" as const };
       const ndjsonBody = `${JSON.stringify(log1)}\n\n\n${JSON.stringify(log1)}\n`;
-      const request = createRequest(workspace.vercelProjectId!, ndjsonBody);
+      const request = createRequest(workspace.slug, ndjsonBody);
 
       const response = await POST(request);
       const data = await response.json();
@@ -287,7 +279,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       const { workspace } = await createTestWorkspace();
 
       const body = "{invalid}\n{also invalid}";
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -301,24 +293,16 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
     test("should match exact path and broadcast highlight", async () => {
       const { workspace } = await createTestWorkspace();
 
-      // Mock gitree response with endpoint nodes
+      // Mock stakgraph /nodes response (returns array directly with EndpointNode format)
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/health",
-                name: "/api/health",
-              },
-            },
-          ],
-        }),
+        json: async () => [
+          {
+            name: "/api/health",
+            file: "src/app/api/health/route.ts",
+            ref_id: "endpoint-1",
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -326,12 +310,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "GET /api/health 200",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         path: "/api/health",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -346,7 +329,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         expect.objectContaining({
           nodeIds: ["endpoint-1"],
           workspaceId: workspace.slug,
-          title: "Vercel Request",
+          title: "/api/health",
         }),
       );
     });
@@ -356,21 +339,13 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-users",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/users/[id]",
-                name: "/api/users/[id]",
-              },
-            },
-          ],
-        }),
+        json: async () => [
+          {
+            name: "/api/users/[id]",
+            file: "src/app/api/users/[id]/route.ts",
+            ref_id: "endpoint-users",
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -378,12 +353,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "GET /api/users/123 200",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         path: "/api/users/123",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -398,21 +372,13 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/health",
-                name: "/api/health",
-              },
-            },
-          ],
-        }),
+        json: async () => [
+          {
+            name: "/api/health",
+            file: "src/app/api/health/route.ts",
+            ref_id: "endpoint-1",
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -420,7 +386,6 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "Proxy request",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         proxy: {
           timestamp: Date.now(),
           method: "GET",
@@ -436,7 +401,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -453,12 +418,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "Build completed",
         timestamp: Date.now(),
         source: "build" as const,
-        projectId: workspace.vercelProjectId,
         // No path field
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -469,70 +433,18 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
       expect(pusherServer.trigger).not.toHaveBeenCalled();
     });
 
-    test("should skip entries without projectId in log entry", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      const logEntry = {
-        id: "log-1",
-        message: "test",
-        timestamp: Date.now(),
-        source: "lambda" as const,
-        path: "/api/health",
-        // No projectId in the log entry (but URL has projectId)
-      };
-
-      const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.highlighted).toBe(0);
-    });
-
-    test("should skip entries for unmapped projects in log entry", async () => {
-      const { workspace } = await createTestWorkspace();
-
-      const logEntry = {
-        id: "log-1",
-        message: "test",
-        timestamp: Date.now(),
-        source: "lambda" as const,
-        projectId: "prj-different", // Different from URL projectId
-        path: "/api/health",
-      };
-
-      const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
-
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.highlighted).toBe(0);
-    });
-
     test("should skip when no matching endpoint found", async () => {
       const { workspace } = await createTestWorkspace();
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/different",
-                name: "/api/different",
-              },
-            },
-          ],
-        }),
+        json: async () => [
+          {
+            name: "/api/different",
+            file: "src/app/api/different/route.ts",
+            ref_id: "endpoint-1",
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -540,12 +452,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "test",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         path: "/api/unknown",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -570,18 +481,17 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "test",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         path: "/api/health",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);
-      expect(data.error).toBe("Workspace not found for this project");
+      expect(data.error).toBe("Workspace not found");
     });
   });
 
@@ -596,12 +506,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "test",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         path: "/api/health",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
@@ -616,21 +525,13 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/health",
-                name: "/api/health",
-              },
-            },
-          ],
-        }),
+        json: async () => [
+          {
+            name: "/api/health",
+            file: "src/app/api/health/route.ts",
+            ref_id: "endpoint-1",
+          },
+        ],
       } as Response);
 
       mockedPusherServer.trigger.mockRejectedValueOnce(new Error("Pusher error"));
@@ -640,12 +541,11 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         message: "test",
         timestamp: Date.now(),
         source: "lambda" as const,
-        projectId: workspace.vercelProjectId,
         path: "/api/health",
       };
 
       const body = JSON.stringify(logEntry);
-      const request = createRequest(workspace.vercelProjectId!, body);
+      const request = createRequest(workspace.slug, body);
 
       const response = await POST(request);
       const data = await response.json();
