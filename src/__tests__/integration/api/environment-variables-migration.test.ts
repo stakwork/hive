@@ -13,7 +13,7 @@ import {
 
 // Mock pool manager services
 vi.mock("@/services/pool-manager/sync", () => ({
-  syncPoolManagerSettings: vi.fn().mockResolvedValue(undefined),
+  syncPoolManagerSettings: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 // Mock GitHub webhook service
