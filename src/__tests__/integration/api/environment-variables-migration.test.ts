@@ -28,6 +28,12 @@ vi.mock("@/services/github/WebhookService", () => ({
   })),
 }));
 
+// Mock swarm secrets service to avoid external HTTP calls
+vi.mock("@/services/swarm/secrets", () => ({
+  getSwarmPoolApiKeyFor: vi.fn().mockResolvedValue("mock-pool-api-key"),
+  updateSwarmPoolApiKeyFor: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe("Environment Variables Migration", () => {
   let workspaceId: string;
   let swarmId: string;
