@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { describe, test, expect, beforeEach, vi, afterEach } from "vitest";
 import { POST } from "@/app/api/vercel/log-drain/route";
 import { db } from "@/lib/db";
@@ -44,12 +45,19 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
     return `${baseWebhookUrl}?projectId=${encodeURIComponent(projectId)}`;
   }
 
-  // Helper to create NextRequest with proper Content-Length header
+  // Helper to compute HMAC-SHA1 signature (same as route.ts)
+  function computeSignature(body: string, secret: string): string {
+    return crypto.createHmac("sha1", secret).update(Buffer.from(body, "utf-8")).digest("hex");
+  }
+
+  // Helper to create NextRequest with proper Content-Length header and signature
   function createRequest(projectId: string, body?: string, headers: Record<string, string> = {}): NextRequest {
     const requestHeaders: Record<string, string> = { ...headers };
 
     if (body) {
       requestHeaders["Content-Length"] = body.length.toString();
+      // Add signature header for authenticated requests
+      requestHeaders["x-vercel-signature"] = computeSignature(body, webhookSecret);
     } else {
       requestHeaders["Content-Length"] = "0";
     }
