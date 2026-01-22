@@ -11,8 +11,6 @@ import { Copy, Eye, EyeOff, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface VercelIntegrationData {
-  vercelApiToken: string | null;
-  vercelTeamId: string | null;
   vercelProjectId: string | null;
   vercelWebhookSecret: string | null;
   webhookUrl: string;
@@ -24,20 +22,15 @@ export function VercelIntegrationSettings() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showToken, setShowToken] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Form state
-  const [vercelApiToken, setVercelApiToken] = useState("");
-  const [vercelTeamId, setVercelTeamId] = useState("");
   const [vercelProjectId, setVercelProjectId] = useState("");
   const [vercelWebhookSecret, setVercelWebhookSecret] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
 
   // Track original values to detect changes
-  const [originalToken, setOriginalToken] = useState("");
-  const [originalTeamId, setOriginalTeamId] = useState("");
   const [originalProjectId, setOriginalProjectId] = useState("");
   const [originalWebhookSecret, setOriginalWebhookSecret] = useState("");
 
@@ -60,15 +53,11 @@ export function VercelIntegrationSettings() {
 
         const data: VercelIntegrationData = await response.json();
 
-        setVercelApiToken(data.vercelApiToken || "");
-        setVercelTeamId(data.vercelTeamId || "");
         setVercelProjectId(data.vercelProjectId || "");
         setVercelWebhookSecret(data.vercelWebhookSecret || "");
         setWebhookUrl(data.webhookUrl || "");
 
         // Store original values
-        setOriginalToken(data.vercelApiToken || "");
-        setOriginalTeamId(data.vercelTeamId || "");
         setOriginalProjectId(data.vercelProjectId || "");
         setOriginalWebhookSecret(data.vercelWebhookSecret || "");
       } catch (error) {
@@ -105,8 +94,6 @@ export function VercelIntegrationSettings() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          vercelApiToken: vercelApiToken || null,
-          vercelTeamId: vercelTeamId || null,
           vercelProjectId: vercelProjectId || null,
           vercelWebhookSecret: vercelWebhookSecret || null,
         }),
@@ -118,8 +105,6 @@ export function VercelIntegrationSettings() {
       }
 
       // Update original values after successful save
-      setOriginalToken(vercelApiToken);
-      setOriginalTeamId(vercelTeamId);
       setOriginalProjectId(vercelProjectId);
       setOriginalWebhookSecret(vercelWebhookSecret);
 
@@ -130,14 +115,10 @@ export function VercelIntegrationSettings() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [workspace?.slug, vercelApiToken, vercelTeamId, vercelProjectId, vercelWebhookSecret]);
+  }, [workspace?.slug, vercelProjectId, vercelWebhookSecret]);
 
   // Check if there are changes to save
-  const hasChanges =
-    vercelApiToken !== originalToken ||
-    vercelTeamId !== originalTeamId ||
-    vercelProjectId !== originalProjectId ||
-    vercelWebhookSecret !== originalWebhookSecret;
+  const hasChanges = vercelProjectId !== originalProjectId || vercelWebhookSecret !== originalWebhookSecret;
 
   if (!workspace) return null;
 
@@ -157,55 +138,6 @@ export function VercelIntegrationSettings() {
           </div>
         ) : (
           <>
-            {/* Vercel API Token */}
-            <div className="space-y-2">
-              <Label htmlFor="vercel-api-token">Vercel API Token (optional)</Label>
-              <div className="relative">
-                <Input
-                  id="vercel-api-token"
-                  type={showToken ? "text" : "password"}
-                  value={vercelApiToken}
-                  onChange={(e) => setVercelApiToken(e.target.value)}
-                  placeholder="Enter your Vercel API token"
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowToken(!showToken)}
-                  tabIndex={-1}
-                >
-                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Optional. For future Vercel API integrations. Create a token at{" "}
-                <a
-                  href="https://vercel.com/account/tokens"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-foreground"
-                >
-                  vercel.com/account/tokens
-                </a>
-              </p>
-            </div>
-
-            {/* Vercel Team ID */}
-            <div className="space-y-2">
-              <Label htmlFor="vercel-team-id">Vercel Team ID (optional)</Label>
-              <Input
-                id="vercel-team-id"
-                type="text"
-                value={vercelTeamId}
-                onChange={(e) => setVercelTeamId(e.target.value)}
-                placeholder="team_xxxxx"
-              />
-              <p className="text-sm text-muted-foreground">
-                Required if using a team account. Find it in your team settings.
-              </p>
-            </div>
-
             {/* Vercel Project ID */}
             <div className="space-y-2">
               <Label htmlFor="vercel-project-id">Vercel Project ID</Label>
