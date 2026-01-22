@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { PoolManagerService } from "@/services/pool-manager";
@@ -101,7 +101,9 @@ export async function syncPoolManagerSettings(
         select: { environmentVariables: true },
       });
 
-      envVars = (swarm?.environmentVariables as Array<{ name: string; value: string }>) || [];
+      // Decrypt env vars from database (they are stored encrypted)
+      const rawEnvVars = (swarm?.environmentVariables as Array<{ name: string; value: unknown }>) || [];
+      envVars = rawEnvVars.length > 0 ? decryptEnvVars(rawEnvVars) : [];
     }
 
     // Get GitHub credentials if userId provided
