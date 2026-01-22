@@ -880,7 +880,8 @@ export async function triggerAgentModeFix(
  *
  * This function is for tasks with mode="live":
  * 1. Looks up the workspace owner for authentication
- * 2. Sends the fix prompt to Stakwork workflow
+ * 2. Checks workflowStatus to avoid triggering duplicate workflows
+ * 3. Sends the fix prompt to Stakwork workflow
  *
  * The response will be delivered via Stakwork webhook callback.
  *
@@ -892,11 +893,12 @@ export async function triggerLiveModeFix(
   prompt: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Load task to get workspace owner
+    // 1. Load task to get workspace owner and workflow status
     const task = await db.task.findUnique({
       where: { id: taskId },
       select: {
         mode: true,
+        workflowStatus: true,
         workspace: {
           select: {
             ownerId: true,
@@ -911,6 +913,16 @@ export async function triggerLiveModeFix(
 
     if (task.mode !== "live") {
       return { success: false, error: "Task is not in live mode" };
+    }
+
+    // 2. Check workflowStatus to avoid duplicate triggers
+    // Only trigger auto-fix if no workflow is currently running
+    if (task.workflowStatus !== "COMPLETED") {
+      log.info("Skipping live mode fix - workflow already in progress", {
+        taskId,
+        workflowStatus: task.workflowStatus,
+      });
+      return { success: false, error: `Workflow already in progress (status: ${task.workflowStatus})` };
     }
 
     const userId = task.workspace.ownerId;
