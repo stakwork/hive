@@ -4279,3 +4279,381 @@ describe("callStakworkAPI", () => {
   });
 });
 */
+
+// Test suite for task summary in feature context (live mode only)
+describe("Task Summary in Feature Context", () => {
+  beforeEach(() => {
+    MockSetup.reset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("startTaskWorkflow with mode=live", () => {
+    test("should include task summary in feature context when mode is live and summary exists", async () => {
+      mockBuildFeatureContext.mockResolvedValue({
+        feature: {
+          title: "Test Feature",
+          brief: "Feature brief",
+          userStories: ["Story 1"],
+          requirements: "Requirements",
+          architecture: "Architecture",
+        },
+        currentPhase: {
+          name: "Phase 1",
+          description: "Phase description",
+          tickets: [],
+        },
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      // Setup task with featureId, phaseId, and summary
+      mockDb.task.findFirst.mockResolvedValue({
+        ...TestDataFactory.createValidTask({
+          featureId: "feature-123",
+          phaseId: "phase-456",
+          summary: "This is a test task summary",
+        }),
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        summary: "This is a test task summary",
+      } as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        mode: "live",
+      });
+
+      // Verify buildFeatureContext was called
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
+
+      // Verify feature context with taskSummary was included in Stakwork payload
+      TestHelpers.expectStakworkCalledWithVars({
+        featureContext: expect.objectContaining({
+          taskSummary: "This is a test task summary",
+        }),
+      });
+    });
+
+    test("should not include empty task summary in feature context", async () => {
+      mockBuildFeatureContext.mockResolvedValue({
+        feature: {
+          title: "Test Feature",
+          brief: "Feature brief",
+          userStories: ["Story 1"],
+          requirements: "Requirements",
+          architecture: "Architecture",
+        },
+        currentPhase: {
+          name: "Phase 1",
+          description: "Phase description",
+          tickets: [],
+        },
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      // Setup task with featureId, phaseId, but empty summary
+      mockDb.task.findFirst.mockResolvedValue({
+        ...TestDataFactory.createValidTask({
+          featureId: "feature-123",
+          phaseId: "phase-456",
+          summary: "",
+        }),
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        summary: "",
+      } as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        mode: "live",
+      });
+
+      // Verify buildFeatureContext was called (mode=live with featureId/phaseId)
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
+
+      // Verify feature context was built but does NOT contain taskSummary
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const featureContext = payload.workflow_params.set_var.attributes.vars.featureContext;
+      
+      expect(featureContext).toBeDefined();
+      expect(featureContext.feature).toBeDefined();
+      expect(featureContext.currentPhase).toBeDefined();
+      expect(featureContext.taskSummary).toBeUndefined();
+    });
+
+    test("should not include whitespace-only task summary in feature context", async () => {
+      mockBuildFeatureContext.mockResolvedValue({
+        feature: {
+          title: "Test Feature",
+          brief: "Feature brief",
+          userStories: ["Story 1"],
+          requirements: "Requirements",
+          architecture: "Architecture",
+        },
+        currentPhase: {
+          name: "Phase 1",
+          description: "Phase description",
+          tickets: [],
+        },
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      // Setup task with featureId, phaseId, but whitespace-only summary
+      mockDb.task.findFirst.mockResolvedValue({
+        ...TestDataFactory.createValidTask({
+          featureId: "feature-123",
+          phaseId: "phase-456",
+          summary: "   \n\t  ",
+        }),
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        summary: "   \n\t  ",
+      } as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        mode: "live",
+      });
+
+      // Verify buildFeatureContext was called (mode=live with featureId/phaseId)
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
+
+      // Verify feature context was built but does NOT contain taskSummary
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const featureContext = payload.workflow_params.set_var.attributes.vars.featureContext;
+      
+      expect(featureContext).toBeDefined();
+      expect(featureContext.feature).toBeDefined();
+      expect(featureContext.currentPhase).toBeDefined();
+      expect(featureContext.taskSummary).toBeUndefined();
+    });
+
+    test("should not include task summary when summary is null", async () => {
+      mockBuildFeatureContext.mockResolvedValue({
+        feature: {
+          title: "Test Feature",
+          brief: "Feature brief",
+          userStories: ["Story 1"],
+          requirements: "Requirements",
+          architecture: "Architecture",
+        },
+        currentPhase: {
+          name: "Phase 1",
+          description: "Phase description",
+          tickets: [],
+        },
+      });
+
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      // Setup task with featureId, phaseId, but null summary
+      mockDb.task.findFirst.mockResolvedValue({
+        ...TestDataFactory.createValidTask({
+          featureId: "feature-123",
+          phaseId: "phase-456",
+          summary: null,
+        }),
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        summary: null,
+      } as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        mode: "live",
+      });
+
+      // Verify buildFeatureContext was called (mode=live with featureId/phaseId)
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
+
+      // Verify feature context was built but does NOT contain taskSummary
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const featureContext = payload.workflow_params.set_var.attributes.vars.featureContext;
+      
+      expect(featureContext).toBeDefined();
+      expect(featureContext.feature).toBeDefined();
+      expect(featureContext.currentPhase).toBeDefined();
+      expect(featureContext.taskSummary).toBeUndefined();
+    });
+
+    test("should not build feature context when mode is not live", async () => {
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      // Setup task with featureId, phaseId, and summary
+      mockDb.task.findFirst.mockResolvedValue({
+        ...TestDataFactory.createValidTask({
+          featureId: "feature-123",
+          phaseId: "phase-456",
+          summary: "This is a test task summary",
+        }),
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        summary: "This is a test task summary",
+      } as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        mode: "test", // Not live mode
+      });
+
+      // Verify buildFeatureContext was NOT called
+      expect(mockBuildFeatureContext).not.toHaveBeenCalled();
+
+      // Verify feature context was not included
+      const fetchCall = mockFetch.mock.calls[0];
+      const payload = JSON.parse(fetchCall[1]?.body as string);
+      const featureContext = payload.workflow_params.set_var.attributes.vars.featureContext;
+      
+      expect(featureContext).toBeUndefined();
+    });
+
+    test("should not build feature context when mode is agent", async () => {
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      // Setup task with featureId, phaseId, and summary
+      mockDb.task.findFirst.mockResolvedValue({
+        ...TestDataFactory.createValidTask({
+          featureId: "feature-123",
+          phaseId: "phase-456",
+          summary: "This is a test task summary",
+        }),
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        summary: "This is a test task summary",
+      } as any);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        mode: "agent",
+      });
+
+      // Verify buildFeatureContext was NOT called
+      expect(mockBuildFeatureContext).not.toHaveBeenCalled();
+    });
+
+    test("should not build feature context when mode is default (undefined)", async () => {
+      TestHelpers.setupValidUser();
+      TestHelpers.setupValidChatMessage();
+      TestHelpers.setupValidGithubProfile();
+      TestHelpers.setupTaskStatusCheck("TODO");
+      TestHelpers.setupTaskUpdate();
+
+      // Setup task with featureId, phaseId, and summary but mode defaults to "live"
+      mockDb.task.findFirst.mockResolvedValue({
+        ...TestDataFactory.createValidTask({
+          featureId: "feature-123",
+          phaseId: "phase-456",
+          summary: "This is a test task summary",
+        }),
+        featureId: "feature-123",
+        phaseId: "phase-456",
+        summary: "This is a test task summary",
+      } as any);
+
+      mockBuildFeatureContext.mockResolvedValue({
+        feature: {
+          title: "Test Feature",
+          brief: "Feature brief",
+          userStories: ["Story 1"],
+          requirements: "Requirements",
+          architecture: "Architecture",
+        },
+        currentPhase: {
+          name: "Phase 1",
+          description: "Phase description",
+          tickets: [],
+        },
+      });
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => TestDataFactory.createStakworkSuccessResponse(),
+      } as Response);
+
+      const { startTaskWorkflow } = await import("@/services/task-workflow");
+      await startTaskWorkflow({
+        taskId: "test-task-id",
+        userId: "test-user-id",
+        // mode not specified - defaults to "live"
+      });
+
+      // When mode is not specified, it defaults to "live" in startTaskWorkflow
+      // So buildFeatureContext SHOULD be called
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
+    });
+  });
+});

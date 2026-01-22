@@ -240,6 +240,7 @@ export async function startTaskWorkflow(params: {
       branch: true,
       featureId: true,
       phaseId: true,
+      summary: true,
       sourceType: true,
       runBuild: true,
       runTestSuite: true,
@@ -276,11 +277,19 @@ export async function startTaskWorkflow(params: {
   // Build message from task title and description
   const message = `${task.title}\n\n${task.description || ""}`.trim();
 
-  // Build feature context if task is linked to a feature and phase
+  // Build feature context if task is linked to a feature and phase and mode is live
   let featureContext;
-  if (task.featureId && task.phaseId) {
+  if (mode === "live" && task.featureId && task.phaseId) {
     try {
       featureContext = await buildFeatureContext(task.featureId, task.phaseId);
+      
+      // Add task summary to feature context if it exists and is non-empty
+      if (task.summary && task.summary.trim()) {
+        featureContext = {
+          ...featureContext,
+          taskSummary: task.summary,
+        };
+      }
     } catch (error) {
       console.error("Error building feature context:", error);
       // Continue without feature context if it fails

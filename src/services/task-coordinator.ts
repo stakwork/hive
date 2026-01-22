@@ -18,6 +18,11 @@ export interface FeatureContext {
       status: string;
     }>;
   };
+  /**
+   * Optional task summary for live mode workflows
+   * Provides additional context about the specific task being executed
+   */
+  taskSummary?: string;
 }
 
 /**

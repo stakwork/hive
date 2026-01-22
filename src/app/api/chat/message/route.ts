@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
         agentPassword: true,
         featureId: true,
         phaseId: true,
+        summary: true,
         workspace: {
           select: {
             ownerId: true,
@@ -311,11 +312,19 @@ export async function POST(request: NextRequest) {
         ? encryptionService.decryptField("agentPassword", task.agentPassword)
         : null;
 
-      // Build feature context if task is linked to a feature and phase
+      // Build feature context if task is linked to a feature and phase and mode is live
       let featureContext;
-      if (task.featureId && task.phaseId) {
+      if (mode === "live" && task.featureId && task.phaseId) {
         try {
           featureContext = await buildFeatureContext(task.featureId, task.phaseId);
+          
+          // Add task summary to feature context if it exists and is non-empty
+          if (task.summary && task.summary.trim()) {
+            featureContext = {
+              ...featureContext,
+              taskSummary: task.summary,
+            };
+          }
         } catch (error) {
           console.error("Error building feature context:", error);
           // Continue without feature context if it fails
