@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, processed: logEntries.length, matched: 0, highlighted: 0 });
     }
 
+    console.log("logEntries:", JSON.stringify(logEntries, null, 2));
     // Process all log entries with the pre-fetched endpoint nodes
     const results = await Promise.all(logEntries.map((entry) => processLogEntry(entry, workspace.slug, endpointNodes)));
 
