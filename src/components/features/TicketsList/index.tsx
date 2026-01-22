@@ -481,10 +481,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
               disabled={assigningTasks}
             >
               {assigningTasks ? (
-                <>
-                  <Spinner className="h-4 w-4 mr-2" />
-                  Assigning...
-                </>
+                "Running"
               ) : (
                 <>
                   <Play className="h-4 w-4 mr-2 text-green-600" />
