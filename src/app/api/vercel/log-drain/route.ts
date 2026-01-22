@@ -24,26 +24,26 @@ const encryptionService = EncryptionService.getInstance();
  * Receives NDJSON log payloads from Vercel, matches request paths to endpoint nodes,
  * and broadcasts highlights to the workspace via Pusher for real-time graph visualization.
  *
- * Endpoint: POST /api/vercel/log-drain?projectId=<vercel-project-id>
+ * Endpoint: POST /api/vercel/log-drain?workspace=<workspace-slug>
  *
  * Authentication: Per-workspace webhook secret via x-vercel-signature header
  * Verification: Returns workspace-specific x-vercel-verify header for webhook setup
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get project ID from query params to identify workspace
+    // Get workspace slug from query params
     const { searchParams } = new URL(request.url);
-    const projectId = searchParams.get("projectId");
+    const workspaceSlug = searchParams.get("workspace");
 
-    if (!projectId) {
-      console.error("[Vercel Logs] Missing projectId query parameter");
-      return NextResponse.json({ error: "projectId query parameter required" }, { status: 400 });
+    if (!workspaceSlug) {
+      console.error("[Vercel Logs] Missing workspace query parameter");
+      return NextResponse.json({ error: "workspace query parameter required" }, { status: 400 });
     }
 
-    // Find workspace by Vercel project ID
+    // Find workspace by slug
     const workspace = await db.workspace.findFirst({
       where: {
-        vercelProjectId: projectId,
+        slug: workspaceSlug,
         deleted: false,
       },
       include: {
@@ -52,8 +52,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      console.error(`[Vercel Logs] No workspace found for projectId: ${projectId}`);
-      return NextResponse.json({ error: "Workspace not found for this project" }, { status: 404 });
+      console.error(`[Vercel Logs] No workspace found for slug: ${workspaceSlug}`);
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     // Handle verification requests (no body)
@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
       console.error("[Vercel Logs] Signature mismatch");
       return NextResponse.json({ code: "invalid_signature", error: "Signature didn't match" }, { status: 403 });
     }
+
     const logEntries: VercelLogEntry[] = [];
 
     for (const line of body.split("\n")) {
@@ -116,8 +117,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No valid log entries found" }, { status: 400 });
     }
 
-    // Process each log entry
-    const results = await Promise.all(logEntries.map((entry) => processLogEntry(entry)));
+    // Fetch endpoint nodes once for all log entries
+    if (!workspace.swarm) {
+      console.warn(`[Vercel Logs] No swarm found for workspace ${workspace.slug}`);
+      return NextResponse.json({ success: true, processed: logEntries.length, matched: 0, highlighted: 0 });
+    }
+
+    const endpointNodes = await fetchEndpointNodes(workspace.swarm);
+    if (endpointNodes.length === 0) {
+      return NextResponse.json({ success: true, processed: logEntries.length, matched: 0, highlighted: 0 });
+    }
+
+    // Process all log entries with the pre-fetched endpoint nodes
+    const results = await Promise.all(logEntries.map((entry) => processLogEntry(entry, workspace.slug, endpointNodes)));
 
     const successCount = results.filter((r) => r.success).length;
     const highlightedCount = results.filter((r) => r.highlighted).length;
@@ -137,45 +149,16 @@ export async function POST(request: NextRequest) {
 /**
  * Process a single log entry: match path to endpoint and broadcast highlight
  */
-async function processLogEntry(entry: VercelLogEntry): Promise<{ success: boolean; highlighted: boolean }> {
+async function processLogEntry(
+  entry: VercelLogEntry,
+  workspaceSlug: string,
+  endpointNodes: NodeFull[],
+): Promise<{ success: boolean; highlighted: boolean }> {
   try {
     // Extract path from log entry
     const path = entry.path || entry.proxy?.path;
     if (!path) {
       // No path to match (e.g., build logs)
-      return { success: true, highlighted: false };
-    }
-
-    // Find workspace by Vercel project ID
-    const projectId = entry.projectId;
-    if (!projectId) {
-      console.warn("[Vercel Logs] No projectId in log entry");
-      return { success: true, highlighted: false };
-    }
-
-    const workspace = await db.workspace.findFirst({
-      where: {
-        vercelProjectId: projectId,
-        deleted: false,
-      },
-      include: {
-        swarm: true,
-      },
-    });
-
-    if (!workspace) {
-      // No workspace mapped to this Vercel project
-      return { success: true, highlighted: false };
-    }
-
-    if (!workspace.swarm) {
-      console.warn(`[Vercel Logs] No swarm found for workspace ${workspace.slug}`);
-      return { success: true, highlighted: false };
-    }
-
-    // Fetch endpoint nodes from swarm
-    const endpointNodes = await fetchEndpointNodes(workspace.swarm);
-    if (endpointNodes.length === 0) {
       return { success: true, highlighted: false };
     }
 
@@ -188,7 +171,7 @@ async function processLogEntry(entry: VercelLogEntry): Promise<{ success: boolea
     console.log(`[Vercel Logs] Matched ${path} -> ${matchedNode.ref_id}`);
 
     // Broadcast highlight event via Pusher
-    await broadcastHighlight(workspace.slug, matchedNode.ref_id);
+    await broadcastHighlight(workspaceSlug, matchedNode.ref_id);
 
     return { success: true, highlighted: true };
   } catch (error) {

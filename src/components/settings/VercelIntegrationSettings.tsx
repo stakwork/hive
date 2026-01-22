@@ -11,7 +11,6 @@ import { Copy, Eye, EyeOff, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface VercelIntegrationData {
-  vercelProjectId: string | null;
   vercelWebhookSecret: string | null;
   webhookUrl: string;
 }
@@ -26,12 +25,10 @@ export function VercelIntegrationSettings() {
   const [copySuccess, setCopySuccess] = useState(false);
 
   // Form state
-  const [vercelProjectId, setVercelProjectId] = useState("");
   const [vercelWebhookSecret, setVercelWebhookSecret] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
 
   // Track original values to detect changes
-  const [originalProjectId, setOriginalProjectId] = useState("");
   const [originalWebhookSecret, setOriginalWebhookSecret] = useState("");
 
   // Fetch current settings on mount
@@ -53,12 +50,10 @@ export function VercelIntegrationSettings() {
 
         const data: VercelIntegrationData = await response.json();
 
-        setVercelProjectId(data.vercelProjectId || "");
         setVercelWebhookSecret(data.vercelWebhookSecret || "");
         setWebhookUrl(data.webhookUrl || "");
 
         // Store original values
-        setOriginalProjectId(data.vercelProjectId || "");
         setOriginalWebhookSecret(data.vercelWebhookSecret || "");
       } catch (error) {
         console.error("Error fetching Vercel integration settings:", error);
@@ -94,7 +89,6 @@ export function VercelIntegrationSettings() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          vercelProjectId: vercelProjectId || null,
           vercelWebhookSecret: vercelWebhookSecret || null,
         }),
       });
@@ -105,7 +99,6 @@ export function VercelIntegrationSettings() {
       }
 
       // Update original values after successful save
-      setOriginalProjectId(vercelProjectId);
       setOriginalWebhookSecret(vercelWebhookSecret);
 
       toast.success("Vercel integration settings saved successfully");
@@ -115,10 +108,10 @@ export function VercelIntegrationSettings() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [workspace?.slug, vercelProjectId, vercelWebhookSecret]);
+  }, [workspace?.slug, vercelWebhookSecret]);
 
   // Check if there are changes to save
-  const hasChanges = vercelProjectId !== originalProjectId || vercelWebhookSecret !== originalWebhookSecret;
+  const hasChanges = vercelWebhookSecret !== originalWebhookSecret;
 
   if (!workspace) return null;
 
@@ -138,21 +131,6 @@ export function VercelIntegrationSettings() {
           </div>
         ) : (
           <>
-            {/* Vercel Project ID */}
-            <div className="space-y-2">
-              <Label htmlFor="vercel-project-id">Vercel Project ID</Label>
-              <Input
-                id="vercel-project-id"
-                type="text"
-                value={vercelProjectId}
-                onChange={(e) => setVercelProjectId(e.target.value)}
-                placeholder="prj_xxxxx"
-              />
-              <p className="text-sm text-muted-foreground">
-                Required for log drain integration. Find it in your Vercel project settings under General → Project ID.
-              </p>
-            </div>
-
             {/* Vercel Webhook Secret */}
             <div className="space-y-2">
               <Label htmlFor="vercel-webhook-secret">Log Drain Webhook Secret</Label>
@@ -207,9 +185,8 @@ export function VercelIntegrationSettings() {
             <div className="rounded-lg border bg-muted/50 p-4">
               <h4 className="font-medium mb-2">Setup Instructions</h4>
               <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Enter your Vercel Project ID above (found in project settings → General)</li>
                 <li>Create a webhook secret (any random string) and enter it above</li>
-                <li>Save these settings, then copy the generated webhook URL</li>
+                <li>Save these settings, then copy the webhook URL</li>
                 <li>Go to your Vercel project settings → Log Drains</li>
                 <li>Add a new log drain with the webhook URL and the same secret</li>
                 <li>Select &quot;JSON&quot; format and the log sources you want to receive</li>
