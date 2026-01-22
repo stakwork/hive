@@ -94,9 +94,9 @@ export async function GET(
       try {
         const messages = Array.isArray(conv.messages) ? conv.messages : [];
         const firstUserMessage = messages.find(
-          (m: any) => m.role === "user" && m.content
+          (m: any) => m && typeof m === "object" && m.role === "user" && m.content
         );
-        if (firstUserMessage) {
+        if (firstUserMessage && typeof firstUserMessage === "object" && "content" in firstUserMessage) {
           const content = typeof firstUserMessage.content === "string"
             ? firstUserMessage.content
             : "";
@@ -195,9 +195,9 @@ export async function POST(
     let title = body.title || null;
     if (!title) {
       const firstUserMessage = body.messages.find(
-        (m: any) => m.role === "user" && m.content
+        (m: any) => m && typeof m === "object" && m.role === "user" && m.content
       );
-      if (firstUserMessage) {
+      if (firstUserMessage && typeof firstUserMessage === "object" && "content" in firstUserMessage) {
         const content = typeof firstUserMessage.content === "string"
           ? firstUserMessage.content
           : "";
