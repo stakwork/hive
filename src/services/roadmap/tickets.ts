@@ -269,6 +269,11 @@ export async function updateTicket(
   if (data.status !== undefined) {
     validateEnum(data.status, TaskStatus, "status");
     updateData.status = data.status;
+    
+    // Auto-set workflowStatus to COMPLETED when status is set to DONE (unless explicitly provided)
+    if (data.status === TaskStatus.DONE && data.workflowStatus === undefined) {
+      updateData.workflowStatus = WorkflowStatus.COMPLETED;
+    }
   }
 
   if (data.workflowStatus !== undefined) {
