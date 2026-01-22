@@ -354,11 +354,11 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         expect(pm2Content).toContain("5000");
       });
 
-      it("pm2.config.js takes precedence when both services and pm2.config.js sent", async () => {
+      it("services takes precedence when both services and pm2.config.js sent", async () => {
         const newServices = [
           { name: "winner-service", port: 9999, scripts: { start: "npm run winner" } },
         ];
-        const newPm2Config = toBase64(UPDATED_PM2_CONFIG); // Has "api" service with port 4000
+        const newPm2Config = toBase64(UPDATED_PM2_CONFIG); // Has "api" service
 
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
@@ -379,15 +379,15 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         const containerFiles = swarm?.containerFiles as Record<string, string>;
         const services = swarm?.services as any[];
 
-        // Services should include "api" service (parsed from pm2.config.js), not winner-service
-        const apiService = services.find((s) => s.name === "api");
-        expect(apiService).toBeDefined();
-        expect(apiService.port).toBe(4000);
+        // Services should include winner-service (from services array)
+        const winnerService = services.find((s) => s.name === "winner-service");
+        expect(winnerService).toBeDefined();
+        expect(winnerService.port).toBe(9999);
 
-        // pm2.config.js should be kept as-is (not regenerated)
+        // pm2.config.js should be REGENERATED from services (not the one sent)
         const pm2Content = fromBase64(containerFiles["pm2.config.js"]);
-        expect(pm2Content).toContain("api");
-        expect(pm2Content).toContain("4000");
+        expect(pm2Content).toContain("winner-service");
+        expect(pm2Content).toContain("9999");
       });
 
       it("merges services by name - updating existing service", async () => {
