@@ -8,6 +8,7 @@ import { TestTube, FunctionSquare, Globe, Target, Shield } from "lucide-react";
 import { TestCoverageData } from "@/types";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useCoverageStore } from "@/stores/useCoverageStore";
+import { MetricDisplayCountOnly } from "../ui/metric-display-count-only";
 
 export function TestCoverageCard() {
   const { id: workspaceId } = useWorkspace();
@@ -193,12 +194,7 @@ export function TestCoverageCard() {
                 <span className="text-sm font-medium">End to End Tests</span>
               </div>
 
-              <MetricDisplay
-                label="Total Tests"
-                percent={100}
-                covered={data.e2e_tests.total_tests || 0}
-                total={data.e2e_tests.total_tests || 0}
-              />
+              <MetricDisplayCountOnly label="Total Tests" count={data.e2e_tests.total_tests || 0} />
             </div>
           )}
 
