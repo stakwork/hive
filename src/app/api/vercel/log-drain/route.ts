@@ -245,7 +245,7 @@ async function broadcastHighlight(workspaceSlug: string, nodeRefId: string, endp
     const eventPayload = {
       nodeIds: [nodeRefId],
       workspaceId: workspaceSlug,
-      depth: 0,
+      depth: 1,
       title: endpoint,
       timestamp: Date.now(),
       sourceNodeRefId: nodeRefId,
