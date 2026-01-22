@@ -442,7 +442,7 @@ describe("Vercel Integration API - Integration Tests", () => {
       expect(response.status).toBe(401);
     });
 
-    test("returns 400 for invalid request body", async () => {
+    test("allows empty string to clear vercelApiToken", async () => {
       const owner = await createTestUser();
       const workspace = await createTestWorkspace({ ownerId: owner.id });
 
@@ -451,7 +451,7 @@ describe("Vercel Integration API - Integration Tests", () => {
       const request = createPutRequest(
         `http://localhost:3000/api/workspaces/${workspace.slug}/settings/vercel-integration`,
         {
-          vercelApiToken: "", // Empty string should fail validation
+          vercelApiToken: "", // Empty string is allowed (clears the token)
         },
       );
 
@@ -459,7 +459,8 @@ describe("Vercel Integration API - Integration Tests", () => {
         params: Promise.resolve({ slug: workspace.slug }),
       });
 
-      expect(response.status).toBe(400);
+      // Empty string is valid - allows users to clear the token
+      expect(response.status).toBe(200);
     });
 
     test.skip("preserves existing token when updating only team ID", async () => {
