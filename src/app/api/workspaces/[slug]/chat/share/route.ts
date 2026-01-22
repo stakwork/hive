@@ -48,6 +48,37 @@ export async function POST(
     // Parse and validate request body
     const body = await request.json() as CreateSharedConversationRequest;
 
+    // If conversationId provided, update existing conversation to set isShared=true
+    if (body.conversationId) {
+      const existingConversation = await db.sharedConversation.findFirst({
+        where: {
+          id: body.conversationId,
+          workspaceId: workspace.id,
+          userId,
+        },
+      });
+
+      if (!existingConversation) {
+        return NextResponse.json(
+          { error: "Conversation not found or access denied" },
+          { status: 404 }
+        );
+      }
+
+      const sharedConversation = await db.sharedConversation.update({
+        where: { id: body.conversationId },
+        data: { isShared: true },
+      });
+
+      const response: SharedConversationResponse = {
+        shareId: sharedConversation.id,
+        url: `/w/${slug}/chat/shared/${sharedConversation.id}`,
+      };
+
+      return NextResponse.json(response, { status: 200 });
+    }
+
+    // Create new shared conversation
     if (!body.messages) {
       return NextResponse.json(
         { error: "messages field is required" },
@@ -71,6 +102,8 @@ export async function POST(
         messages: body.messages as any,
         provenanceData: body.provenanceData as any || null,
         followUpQuestions: body.followUpQuestions as any,
+        isShared: true,
+        source: "dashboard",
       },
     });
 
