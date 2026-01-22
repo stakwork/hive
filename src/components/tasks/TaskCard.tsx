@@ -26,7 +26,12 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
   const [isHovered, setIsHovered] = useState(false);
 
   const handleClick = () => {
-    router.push(`/w/${workspaceSlug}/task/${task.id}`);
+    // TODO tasks with a featureId should navigate to the feature page with tasks tab
+    if (task.status === "TODO" && task.featureId) {
+      router.push(`/w/${workspaceSlug}/plan/${task.featureId}?tab=tasks`);
+    } else {
+      router.push(`/w/${workspaceSlug}/task/${task.id}`);
+    }
   };
 
   const handleArchiveToggle = async (e: React.MouseEvent) => {
@@ -82,9 +87,9 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
         )}
       </div>
 
-      {/* Archive button - absolute positioned top-right */}
+      {/* Archive button - absolute positioned top-right (hidden for TODO tasks) */}
       <AnimatePresence>
-        {isHovered && (
+        {isHovered && task.status !== "TODO" && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -116,27 +121,27 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
 
       {/* Bottom metadata row: user | date | status | optional badges */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-        {/* User */}
+        {/* Assignee - show system assignee if no regular assignee */}
         {task.assignee ? (
           <div className="flex items-center gap-1.5">
-            <Avatar className="size-5">
-              <AvatarFallback className="text-xs">
-                <User className="w-3 h-3" />
-              </AvatarFallback>
-            </Avatar>
+            {task.assignee.id.startsWith("system:") ? (
+              <Bot className="w-4 h-4 text-blue-600" />
+            ) : (
+              <Avatar className="size-5">
+                <AvatarImage src={task.assignee.image || undefined} />
+                <AvatarFallback className="text-xs">
+                  <User className="w-3 h-3" />
+                </AvatarFallback>
+              </Avatar>
+            )}
             <span>{task.assignee.name || task.assignee.email}</span>
           </div>
-        ) : (
+        ) : task.systemAssigneeType === "TASK_COORDINATOR" ? (
           <div className="flex items-center gap-1.5">
-            <Avatar className="size-5">
-              <AvatarImage src={task.createdBy.image || undefined} />
-              <AvatarFallback className="text-xs">
-                <User className="w-3 h-3" />
-              </AvatarFallback>
-            </Avatar>
-            <span>{task.createdBy.githubAuth?.githubUsername || task.createdBy.name || task.createdBy.email}</span>
+            <Bot className="w-4 h-4 text-blue-600" />
+            <span>Task Coordinator</span>
           </div>
-        )}
+        ) : null}
 
         {/* Date */}
         <div className="flex items-center gap-1">
@@ -184,9 +189,9 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           </Badge>
         )}
 
-        {/* Workflow Status - hidden when PR artifact exists or workflow is completed */}
+        {/* Workflow Status - hidden when PR artifact exists, workflow is completed, or task is TODO */}
         {/* Agent tasks show "Running" instead of "Pending" since they're active until completion */}
-        {!hideWorkflowStatus && !task.prArtifact && task.workflowStatus !== "COMPLETED" && (
+        {!hideWorkflowStatus && !task.prArtifact && task.workflowStatus !== "COMPLETED" && task.status !== "TODO" && (
           <div className="px-2 py-0.5 rounded-full border bg-background text-xs">
             <WorkflowStatusBadge
               status={
