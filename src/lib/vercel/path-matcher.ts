@@ -1,5 +1,3 @@
-import type { NodeFull } from "@/types/stakgraph";
-
 /** Concise node shape returned by swarm /nodes endpoint */
 export interface EndpointNode {
   name: string;
@@ -99,42 +97,6 @@ export function matchPathToEndpoint(requestPath: string, endpointNodes: Endpoint
 
       // Also try case-insensitive match for robustness
       if (node.name.toLowerCase() === pattern.toLowerCase()) {
-        return node;
-      }
-    }
-  }
-
-  return null;
-}
-
-/** @deprecated Use matchPathToEndpoint with EndpointNode[] instead */
-export function matchPathToEndpointLegacy(requestPath: string, endpointNodes: NodeFull[]): NodeFull | null {
-  const pathWithoutQuery = requestPath.split("?")[0];
-  const normalizedPath = pathWithoutQuery.startsWith("/")
-    ? pathWithoutQuery.replace(/\/$/, "")
-    : `/${pathWithoutQuery.replace(/\/$/, "")}`;
-
-  for (const node of endpointNodes) {
-    const nodePath = node.properties?.path as string | undefined;
-    const nodeName = node.properties?.name as string | undefined;
-
-    if (nodePath === normalizedPath || nodeName === normalizedPath) {
-      return node;
-    }
-  }
-
-  const patternVariations = convertPathToPattern(normalizedPath);
-
-  for (const pattern of patternVariations) {
-    for (const node of endpointNodes) {
-      const nodePath = node.properties?.path as string | undefined;
-      const nodeName = node.properties?.name as string | undefined;
-
-      if (nodePath === pattern || nodeName === pattern) {
-        return node;
-      }
-
-      if (nodePath?.toLowerCase() === pattern.toLowerCase() || nodeName?.toLowerCase() === pattern.toLowerCase()) {
         return node;
       }
     }
