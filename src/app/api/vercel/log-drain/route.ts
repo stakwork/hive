@@ -2,9 +2,8 @@ import crypto from "crypto";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
-import { matchPathToEndpoint } from "@/lib/vercel/path-matcher";
+import { matchPathToEndpoint, type EndpointNode } from "@/lib/vercel/path-matcher";
 import type { VercelLogEntry } from "@/types/vercel";
-import type { NodeFull } from "@/types/stakgraph";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -153,7 +152,7 @@ export async function POST(request: NextRequest) {
 async function processLogEntry(
   entry: VercelLogEntry,
   workspaceSlug: string,
-  endpointNodes: NodeFull[],
+  endpointNodes: EndpointNode[],
 ): Promise<{ success: boolean; highlighted: boolean }> {
   try {
     // Extract path from log entry
@@ -184,7 +183,10 @@ async function processLogEntry(
 /**
  * Fetch endpoint nodes from workspace swarm
  */
-async function fetchEndpointNodes(swarm: { swarmUrl: string | null; swarmApiKey: string | null }): Promise<NodeFull[]> {
+async function fetchEndpointNodes(swarm: {
+  swarmUrl: string | null;
+  swarmApiKey: string | null;
+}): Promise<EndpointNode[]> {
   if (!swarm.swarmUrl || !swarm.swarmApiKey) {
     console.warn("[Vercel Logs] Missing swarm config");
     return [];
@@ -223,7 +225,7 @@ async function fetchEndpointNodes(swarm: { swarmUrl: string | null; swarmApiKey:
       return [];
     }
 
-    const nodes: NodeFull[] = await response.json();
+    const nodes: EndpointNode[] = await response.json();
 
     console.log(`[Vercel Logs] Fetched ${nodes.length} endpoints from swarm`);
 
