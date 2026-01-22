@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || undefined;
     const hasPod = searchParams.get("hasPod") || undefined;
     const priority = searchParams.get("priority") || undefined;
+    const showAllStatuses = searchParams.get("showAllStatuses") === "true";
     const requestContext = {
       workspaceId,
       page,
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
       status,
       hasPod,
       priority,
+      showAllStatuses,
       userId,
       url: request.url,
     };
@@ -109,7 +111,8 @@ export async function GET(request: NextRequest) {
     };
 
     // If showing non-archived tasks (Recent tab), apply visibility rules
-    if (!isShowingArchived) {
+    // Unless showAllStatuses is true (for Kanban view)
+    if (!isShowingArchived && !showAllStatuses) {
       whereClause.OR = [
         // Show non-TODO tasks (active work)
         { status: { not: TaskStatus.TODO } },
@@ -231,6 +234,8 @@ export async function GET(request: NextRequest) {
           stakworkProjectId: true,
           testFilePath: true,
           testFileUrl: true,
+          featureId: true,
+          systemAssigneeType: true,
           createdAt: true,
           updatedAt: true,
           assignee: {
@@ -238,6 +243,7 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               email: true,
+              image: true,
             },
           },
           repository: {

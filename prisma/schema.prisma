@@ -320,15 +320,60 @@ model Swarm {
   // Auto-learn on PR merge (triggers gitree/process when PR merged to main/master)
   autoLearnEnabled Boolean @default(false) @map("auto_learn_enabled")
 
+  // Pool configuration (migrated from ConfigMaps)
+  minimumVms Int     @default(2) @map("minimum_vms")
+  webhookUrl String? @map("webhook_url")
+
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // One-to-many relationship with environment variables
   environmentVariablesNew EnvironmentVariable[] @relation("SwarmEnvironmentVariables")
+  // Pods in this swarm/pool
+  pods Pod[]
 
   @@index([swarmId])
   @@map("swarms")
+}
+
+// Pod instances within a swarm/pool (migrated from ConfigMaps)
+model Pod {
+  id    String @id @default(cuid())
+  podId String @unique @map("pod_id") // workspace-xxx identifier from k8s
+
+  // Relationship to swarm
+  swarmId String @map("swarm_id")
+  swarm   Swarm  @relation(fields: [swarmId], references: [id], onDelete: Cascade)
+
+  // Pod credentials (encrypted)
+  password     String? // encrypted
+  portMappings Json?   @map("port_mappings")
+
+  // Status tracking
+  status      PodStatus      @default(PENDING)
+  usageStatus PodUsageStatus @default(UNUSED) @map("usage_status")
+
+  // Usage tracking
+  usageStatusMarkedAt DateTime? @map("usage_status_marked_at")
+  usageStatusMarkedBy String?   @map("usage_status_marked_by")
+  usageStatusReason   String?   @map("usage_status_reason")
+
+  // Health monitoring
+  lastHealthCheck DateTime? @map("last_health_check")
+
+  // Recreation flags
+  flaggedForRecreation Boolean        @default(false) @map("flagged_for_recreation")
+  flaggedAt            DateTime?      @map("flagged_at")
+  flaggedReason        PodFlagReason? @map("flagged_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([swarmId])
+  @@index([status])
+  @@index([usageStatus])
+  @@map("pods")
 }
 
 model Repository {
@@ -712,6 +757,26 @@ enum PodState {
   VALIDATING
   COMPLETED
   FAILED
+}
+
+// Pod status enums (for Pod table - migrated from ConfigMaps)
+enum PodStatus {
+  PENDING
+  RUNNING
+  FAILED
+  STOPPED
+  TERMINATING
+}
+
+enum PodUsageStatus {
+  UNUSED
+  USED
+}
+
+enum PodFlagReason {
+  POOL_CONFIG_CHANGED
+  HEALTH_CHECK_FAILED
+  MANUAL
 }
 
 enum TaskStatus {
