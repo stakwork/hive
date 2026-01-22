@@ -7,8 +7,93 @@ export interface DevContainerFile {
   type: string;
 }
 
+// PM2-specific settings that aren't in the services schema
+export interface PM2Settings {
+  instances?: number | string;
+  autorestart?: boolean;
+  watch?: boolean;
+  max_memory_restart?: string;
+  exec_mode?: string;
+}
+
+// Default PM2 settings
+const DEFAULT_PM2_SETTINGS: PM2Settings = {
+  instances: 1,
+  autorestart: true,
+  watch: false,
+  max_memory_restart: "1G",
+};
+
+/**
+ * Extract PM2-specific settings from existing pm2.config.js content
+ * Returns a map of service name -> PM2 settings
+ */
+export function extractPM2Settings(pm2Content: string | undefined): Map<string, PM2Settings> {
+  const settingsMap = new Map<string, PM2Settings>();
+  if (!pm2Content) return settingsMap;
+
+  try {
+    // Match the apps array
+    const appsMatch = pm2Content.match(/apps:\s*\[([\s\S]*?)\]/);
+    if (!appsMatch) return settingsMap;
+
+    const appsContent = appsMatch[1];
+    const serviceBlocks = appsContent.split(/(?=name:)/);
+
+    for (const block of serviceBlocks) {
+      if (!block.trim()) continue;
+
+      const nameMatch = block.match(/name:\s*["']([^"']+)["']/);
+      if (!nameMatch) continue;
+
+      const serviceName = nameMatch[1];
+      const settings: PM2Settings = {};
+
+      // Extract instances (can be number or "max")
+      const instancesMatch = block.match(/instances:\s*(?:["']([^"']+)["']|(\d+))/);
+      if (instancesMatch) {
+        settings.instances = instancesMatch[1] || parseInt(instancesMatch[2]);
+      }
+
+      // Extract autorestart
+      const autorestartMatch = block.match(/autorestart:\s*(true|false)/);
+      if (autorestartMatch) {
+        settings.autorestart = autorestartMatch[1] === "true";
+      }
+
+      // Extract watch
+      const watchMatch = block.match(/watch:\s*(true|false)/);
+      if (watchMatch) {
+        settings.watch = watchMatch[1] === "true";
+      }
+
+      // Extract max_memory_restart
+      const maxMemMatch = block.match(/max_memory_restart:\s*["']([^"']+)["']/);
+      if (maxMemMatch) {
+        settings.max_memory_restart = maxMemMatch[1];
+      }
+
+      // Extract exec_mode
+      const execModeMatch = block.match(/exec_mode:\s*["']([^"']+)["']/);
+      if (execModeMatch) {
+        settings.exec_mode = execModeMatch[1];
+      }
+
+      settingsMap.set(serviceName, settings);
+    }
+  } catch (error) {
+    console.error("Failed to extract PM2 settings:", error);
+  }
+
+  return settingsMap;
+}
+
 // Helper function to generate PM2 apps from services data
-export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfig[]) => {
+export const generatePM2Apps = (
+  repoName: string,
+  servicesData: ServiceDataConfig[],
+  existingPM2Settings?: Map<string, PM2Settings>
+) => {
   if (!servicesData || servicesData.length === 0) {
     // Return default configuration if no services
     return [
@@ -36,14 +121,19 @@ export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfi
     // Otherwise use the workspace root
     const cwd = service.cwd ? `/workspaces/${repoName}/${service.cwd.replace(/^\/+/, "")}` : `/workspaces/${repoName}`;
 
+    // Get existing PM2 settings for this service, or use defaults
+    const existingSettings = existingPM2Settings?.get(service.name) || {};
+    const pm2Settings = { ...DEFAULT_PM2_SETTINGS, ...existingSettings };
+
     const appConfig = {
       name: service.name,
       script: service.scripts?.start || "",
       cwd,
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: "1G",
+      instances: pm2Settings.instances,
+      autorestart: pm2Settings.autorestart,
+      watch: pm2Settings.watch,
+      max_memory_restart: pm2Settings.max_memory_restart,
+      exec_mode: pm2Settings.exec_mode,
       env: {} as Record<string, string>,
       interpreter: service.interpreter?.toString(),
     };
@@ -94,11 +184,12 @@ export const formatPM2Apps = (
     name: string;
     script: string;
     cwd: string;
-    instances: number;
-    autorestart: boolean;
-    watch: boolean;
+    instances?: number | string;
+    autorestart?: boolean;
+    watch?: boolean;
     interpreter?: string;
-    max_memory_restart: string;
+    exec_mode?: string;
+    max_memory_restart?: string;
     env: Record<string, string>;
   }>,
 ) => {
@@ -108,15 +199,19 @@ export const formatPM2Apps = (
       .join(",\n");
 
     const interpreterLine = app.interpreter ? `      interpreter: "${app.interpreter}",\n` : "";
+    const execModeLine = app.exec_mode ? `      exec_mode: "${app.exec_mode}",\n` : "";
+
+    // Format instances - could be number or string like "max"
+    const instancesValue = typeof app.instances === "string" ? `"${app.instances}"` : (app.instances ?? 1);
 
     return `    {
       name: "${app.name}",
       script: "${app.script}",
       cwd: "${app.cwd}",
-      instances: ${app.instances},
-      autorestart: ${app.autorestart},
-      watch: ${app.watch},
-${interpreterLine}      max_memory_restart: "${app.max_memory_restart}",
+      instances: ${instancesValue},
+      autorestart: ${app.autorestart ?? true},
+      watch: ${app.watch ?? false},
+${interpreterLine}${execModeLine}      max_memory_restart: "${app.max_memory_restart ?? "1G"}",
       env: {
 ${envEntries}
       }
@@ -126,8 +221,14 @@ ${envEntries}
   return `[\n${formattedApps.join(",\n")}\n  ]`;
 };
 
-export const getPM2AppsContent = (repoName: string, servicesData: ServiceDataConfig[]) => {
-  const pm2Apps = generatePM2Apps(repoName, servicesData);
+export const getPM2AppsContent = (
+  repoName: string,
+  servicesData: ServiceDataConfig[],
+  existingPM2Content?: string
+) => {
+  // Extract existing PM2 settings to preserve them during regeneration
+  const existingSettings = existingPM2Content ? extractPM2Settings(existingPM2Content) : undefined;
+  const pm2Apps = generatePM2Apps(repoName, servicesData, existingSettings);
   const pm2AppFormatted = formatPM2Apps(pm2Apps);
 
   return {
