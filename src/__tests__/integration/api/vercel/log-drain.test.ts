@@ -293,20 +293,14 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
     test("should match exact path and broadcast highlight", async () => {
       const { workspace } = await createTestWorkspace();
 
-      // Mock stakgraph /nodes response (returns array directly)
+      // Mock stakgraph /nodes response (returns array directly with EndpointNode format)
       mockedFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [
           {
-            node_type: "Endpoint",
+            name: "/api/health",
+            file: "src/app/api/health/route.ts",
             ref_id: "endpoint-1",
-            weight: 1,
-            test_count: 0,
-            covered: false,
-            properties: {
-              path: "/api/health",
-              name: "/api/health",
-            },
           },
         ],
       } as Response);
@@ -347,15 +341,9 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         ok: true,
         json: async () => [
           {
-            node_type: "Endpoint",
+            name: "/api/users/[id]",
+            file: "src/app/api/users/[id]/route.ts",
             ref_id: "endpoint-users",
-            weight: 1,
-            test_count: 0,
-            covered: false,
-            properties: {
-              path: "/api/users/[id]",
-              name: "/api/users/[id]",
-            },
           },
         ],
       } as Response);
@@ -386,15 +374,9 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         ok: true,
         json: async () => [
           {
-            node_type: "Endpoint",
+            name: "/api/health",
+            file: "src/app/api/health/route.ts",
             ref_id: "endpoint-1",
-            weight: 1,
-            test_count: 0,
-            covered: false,
-            properties: {
-              path: "/api/health",
-              name: "/api/health",
-            },
           },
         ],
       } as Response);
@@ -458,15 +440,9 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         ok: true,
         json: async () => [
           {
-            node_type: "Endpoint",
+            name: "/api/different",
+            file: "src/app/api/different/route.ts",
             ref_id: "endpoint-1",
-            weight: 1,
-            test_count: 0,
-            covered: false,
-            properties: {
-              path: "/api/different",
-              name: "/api/different",
-            },
           },
         ],
       } as Response);
@@ -551,15 +527,9 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         ok: true,
         json: async () => [
           {
-            node_type: "Endpoint",
+            name: "/api/health",
+            file: "src/app/api/health/route.ts",
             ref_id: "endpoint-1",
-            weight: 1,
-            test_count: 0,
-            covered: false,
-            properties: {
-              path: "/api/health",
-              name: "/api/health",
-            },
           },
         ],
       } as Response);
