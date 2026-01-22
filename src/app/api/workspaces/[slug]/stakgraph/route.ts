@@ -231,6 +231,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 /**
  * Migrates environment variables from Swarm.environmentVariables JSON field to EnvironmentVariable table
  * Uses empty string for serviceName to indicate global scope
+ * NOTE: Does NOT clear the old JSON field - keeps it for backward compatibility and fallback
  * @param swarmId - The swarm ID to migrate env vars for
  * @param environmentVariables - Array of env vars from the JSON field or incoming request
  * @returns Promise<void>
@@ -269,16 +270,13 @@ async function migrateEnvironmentVariablesToTable(
       })),
     });
 
-    // Clear the old JSON field
-    await db.swarm.update({
-      where: { id: swarmId },
-      data: { environmentVariables: [] },
-    });
+    // Keep old JSON field populated for backward compatibility
+    // (saveOrUpdateSwarm already handles this via environmentVariables parameter)
     
     return;
   }
 
-  // First time migration - insert encrypted env vars
+  // First time migration - insert encrypted env vars into new table
   const encrypted = encryptEnvVars(environmentVariables);
   await db.environmentVariable.createMany({
     data: encrypted.map((ev) => ({
@@ -289,11 +287,8 @@ async function migrateEnvironmentVariablesToTable(
     })),
   });
 
-  // Clear the old JSON field after successful migration
-  await db.swarm.update({
-    where: { id: swarmId },
-    data: { environmentVariables: [] },
-  });
+  // Keep old JSON field for backward compatibility
+  // (saveOrUpdateSwarm already handles this via environmentVariables parameter)
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {

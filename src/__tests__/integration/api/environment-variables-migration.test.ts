@@ -130,12 +130,12 @@ describe("Environment Variables Migration", () => {
     expect(migratedVars[0].value).toContain('"keyId"');
     expect(migratedVars[0].value).toContain('"data"');
 
-    // Verify old JSON field is cleared
+    // Verify old JSON field is KEPT for backward compatibility (not cleared)
     const swarm = await db.swarm.findUnique({
       where: { id: swarmId },
       select: { environmentVariables: true },
     });
-    expect(swarm?.environmentVariables).toEqual([]);
+    expect(swarm?.environmentVariables).not.toEqual([]);
   });
 
   it("should handle idempotent migration - update existing records on subsequent saves", async () => {
@@ -373,7 +373,7 @@ describe("Environment Variables Migration", () => {
     expect(vars[1].serviceName).toBe("api"); // Service-specific
   });
 
-  it("should clear old JSON field after successful migration", async () => {
+  it("should keep old JSON field for backward compatibility after migration", async () => {
     // Verify swarm has old JSON data
     const beforeSwarm = await db.swarm.findUnique({
       where: { id: swarmId },
@@ -395,12 +395,20 @@ describe("Environment Variables Migration", () => {
       params: Promise.resolve({ slug }),
     });
 
-    // Verify old field is cleared
+    // Verify old field is KEPT for backward compatibility
     const afterSwarm = await db.swarm.findUnique({
       where: { id: swarmId },
       select: { environmentVariables: true },
     });
-    expect(afterSwarm?.environmentVariables).toEqual([]);
+    
+    // Should still have data (not cleared)
+    expect(afterSwarm?.environmentVariables).not.toEqual([]);
+    
+    // Verify new table also has the data
+    const newTableVars = await db.environmentVariable.findMany({
+      where: { swarmId },
+    });
+    expect(newTableVars).toHaveLength(1);
   });
 
   it("should delete old records before creating new ones during update", async () => {
