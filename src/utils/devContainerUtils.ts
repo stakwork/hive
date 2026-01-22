@@ -8,8 +8,29 @@ export interface DevContainerFile {
 }
 
 // Helper function to generate PM2 apps from services data
-export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfig[]) => {
+export const generatePM2Apps = (
+  repoName: string,
+  servicesData: ServiceDataConfig[],
+  globalEnvVars?: Array<{ name: string; value: string }>
+) => {
   if (!servicesData || servicesData.length === 0) {
+    // Build env object with merged variables
+    const env: Record<string, string> = {};
+
+    // 1. First apply global env vars
+    if (globalEnvVars) {
+      globalEnvVars.forEach((envVar) => {
+        env[envVar.name] = envVar.value;
+      });
+    }
+
+    // 2. Then apply command-related defaults (override globals)
+    env.INSTALL_COMMAND = "npm install";
+    env.TEST_COMMAND = "npm test";
+    env.BUILD_COMMAND = "npm run build";
+    env.E2E_TEST_COMMAND = "npx playwright test";
+    env.PORT = "3000";
+
     // Return default configuration if no services
     return [
       {
@@ -20,13 +41,7 @@ export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfi
         autorestart: true,
         watch: false,
         max_memory_restart: "1G",
-        env: {
-          INSTALL_COMMAND: "npm install",
-          TEST_COMMAND: "npm test",
-          BUILD_COMMAND: "npm run build",
-          E2E_TEST_COMMAND: "npx playwright test",
-          PORT: "3000",
-        },
+        env,
       },
     ];
   }
@@ -48,6 +63,22 @@ export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfi
       interpreter: service.interpreter?.toString(),
     };
 
+    // Environment variable merging with correct precedence:
+    // 1. Global env vars (lowest priority)
+    if (globalEnvVars) {
+      globalEnvVars.forEach((envVar) => {
+        appConfig.env[envVar.name] = envVar.value;
+      });
+    }
+
+    // 2. Service-specific env vars from service.env (overrides globals)
+    if (service.env) {
+      Object.entries(service.env).forEach(([key, value]) => {
+        appConfig.env[key] = String(value);
+      });
+    }
+
+    // 3. Command-related variables and PORT (highest priority, override everything)
     if (service.port) {
       appConfig.env.PORT = service.port.toString();
     }
