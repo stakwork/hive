@@ -244,13 +244,15 @@ async function seedFeatures(
 
   const features: Array<{ id: string; title: string; phaseId: string }> = [];
 
-  for (const data of featureData) {
+  for (let index = 0; index < featureData.length; index++) {
+    const data = featureData[index];
+    const creatorId = userIds[index % userIds.length]; // Rotate through team members
     const feature = await db.feature.create({
       data: {
         ...data,
         workspaceId,
-        createdById: userId,
-        updatedById: userId,
+        createdById: creatorId,
+        updatedById: creatorId,
       },
       select: { id: true, title: true },
     });
