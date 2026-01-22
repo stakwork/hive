@@ -34,7 +34,7 @@ export function mergeContainerFiles(
  * 1. Neither sent → return existing unchanged
  * 2. Only services sent → merge services + regenerate pm2.config.js
  * 3. Only pm2.config.js sent → merge files + parse PM2 → update services
- * 4. Both sent → services wins, regenerate pm2.config.js
+ * 4. Both sent → pm2.config.js wins, parse PM2 → update services
  * 5. Only other containerFiles sent (no pm2, no services) → merge files only
  */
 export function syncPM2AndServices(
@@ -78,12 +78,12 @@ export function syncPM2AndServices(
     return { services: mergedServices, containerFiles: mergedFiles };
   }
 
-  // Case 4: Both sent - services wins, regenerate pm2.config.js
-  console.warn("[syncPM2AndServices] Both services and pm2.config.js provided, using services array");
-  const mergedServices = mergeServices(existingServices, incomingServices!);
-  const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[]);
-  const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
-  mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
+  // Case 4: Both sent - pm2.config.js wins, parse PM2 → update services
+  console.warn("[syncPM2AndServices] Both services and pm2.config.js provided, using pm2.config.js");
+  const decodedPM2 = Buffer.from(incomingContainerFiles!["pm2.config.js"], "base64").toString("utf-8");
+  const parsedServices = parsePM2Content(decodedPM2);
+  const mergedServices = mergeServices(existingServices, parsedServices);
+  const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles!);
   return { services: mergedServices, containerFiles: mergedFiles };
 }
 
