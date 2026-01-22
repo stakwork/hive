@@ -113,7 +113,8 @@ export interface PullRequestResolution {
 // PR monitoring progress tracking
 export interface PullRequestProgress {
   // Current state (what the cron updates)
-  state: "healthy" | "conflict" | "ci_failure" | "checking";
+  // "out_of_date" = behind base branch but no conflicts (can auto-merge)
+  state: "healthy" | "conflict" | "ci_failure" | "checking" | "out_of_date";
   lastCheckedAt: string;
 
   // GitHub data

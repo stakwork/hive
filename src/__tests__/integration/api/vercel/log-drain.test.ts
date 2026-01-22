@@ -329,7 +329,7 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
         expect.objectContaining({
           nodeIds: ["endpoint-1"],
           workspaceId: workspace.slug,
-          title: "Vercel Request",
+          title: "/api/health",
         }),
       );
     });

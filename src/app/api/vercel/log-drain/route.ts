@@ -171,7 +171,7 @@ async function processLogEntry(
     console.log(`[Vercel Logs] Matched ${path} -> ${matchedNode.ref_id}`);
 
     // Broadcast highlight event via Pusher
-    await broadcastHighlight(workspaceSlug, matchedNode.ref_id);
+    await broadcastHighlight(workspaceSlug, matchedNode.ref_id, path);
 
     return { success: true, highlighted: true };
   } catch (error) {
@@ -239,16 +239,17 @@ async function fetchEndpointNodes(swarm: {
 /**
  * Broadcast highlight event to workspace via Pusher
  */
-async function broadcastHighlight(workspaceSlug: string, nodeRefId: string): Promise<void> {
+async function broadcastHighlight(workspaceSlug: string, nodeRefId: string, endpoint: string): Promise<void> {
   try {
     const channelName = getWorkspaceChannelName(workspaceSlug);
     const eventPayload = {
       nodeIds: [nodeRefId],
       workspaceId: workspaceSlug,
-      depth: 0,
-      title: "Vercel Request",
+      depth: 1,
+      title: endpoint,
       timestamp: Date.now(),
       sourceNodeRefId: nodeRefId,
+      expiresIn: 10, // seconds
     };
 
     await pusherServer.trigger(channelName, PUSHER_EVENTS.HIGHLIGHT_NODES, eventPayload);

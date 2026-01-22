@@ -11,6 +11,7 @@ interface HighlightEvent {
   title: string
   timestamp: number
   sourceNodeRefId: string
+  expiresIn?: number
 }
 
 const dedupeIds = (ids: (string | undefined)[]) =>
@@ -147,7 +148,8 @@ export const useWebhookHighlights = () => {
           console.log('Creating highlight chunk with nodes:', finalNodeIds)
           const calloutNodeRefId = data.sourceNodeRefId || finalNodeIds[0]
           if (calloutNodeRefId) {
-            addCallout(data.title, calloutNodeRefId, undefined, data.timestamp)
+            const expiresInMs = data.expiresIn ? data.expiresIn * 1000 : undefined
+            addCallout(data.title, calloutNodeRefId, undefined, data.timestamp, expiresInMs)
           }
           addHighlightChunk(data.title, finalNodeIds, data.sourceNodeRefId)
         }

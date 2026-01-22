@@ -106,9 +106,18 @@ export async function syncPoolManagerSettings(
       envVars = rawEnvVars.length > 0 ? decryptEnvVars(rawEnvVars) : [];
     }
 
-    // Get GitHub credentials if userId provided
-    const githubCreds = userId
-      ? await getGithubUsernameAndPAT(userId, workspaceSlug)
+    // Get GitHub credentials - use provided userId or fall back to workspace owner
+    let effectiveUserId = userId;
+    if (!effectiveUserId) {
+      const workspace = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { ownerId: true },
+      });
+      effectiveUserId = workspace?.ownerId;
+    }
+
+    const githubCreds = effectiveUserId
+      ? await getGithubUsernameAndPAT(effectiveUserId, workspaceSlug)
       : null;
 
     // Get primary repo branch
@@ -129,7 +138,7 @@ export async function syncPoolManagerSettings(
           }))
         : undefined;
 
-    // Call Pool Manager update API
+    // Call Pool Manager update API - only pass GitHub credentials if available
     await poolManager.updatePoolData(
       swarmId,
       decryptedPoolApiKey,
@@ -138,8 +147,8 @@ export async function syncPoolManagerSettings(
       files,
       poolCpu || undefined,
       poolMemory || undefined,
-      githubCreds?.token || "",
-      githubCreds?.username || "",
+      githubCreds?.token,
+      githubCreds?.username,
       primaryRepo?.branch || "",
       repositoriesConfig
     );
