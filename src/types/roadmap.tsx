@@ -4,7 +4,7 @@ import type {
   PaginatedApiResponse,
 } from "./common";
 import React from "react";
-import { Inbox, Calendar, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Inbox, Calendar, Loader2, CheckCircle, XCircle, PlayCircle } from "lucide-react";
 import type { KanbanColumn } from "@/components/ui/kanban-view";
 
 // Re-export Prisma enums for convenience
@@ -71,6 +71,31 @@ export const FEATURE_KANBAN_COLUMNS: KanbanColumn<FeatureStatus>[] = [
     icon: <XCircle className="h-4 w-4" />,
     color: "text-red-600 dark:text-red-400",
     bgColor: "bg-red-50/30 dark:bg-red-950/10",
+  },
+];
+
+// Kanban columns configuration for task board
+export const TASK_KANBAN_COLUMNS: KanbanColumn<TaskStatus>[] = [
+  {
+    status: "TODO",
+    title: "To Do",
+    icon: <Inbox className="h-4 w-4" />,
+    color: "text-gray-600 dark:text-gray-400",
+    bgColor: "bg-gray-50/30 dark:bg-gray-950/10",
+  },
+  {
+    status: "IN_PROGRESS",
+    title: "In Progress",
+    icon: <PlayCircle className="h-4 w-4" />,
+    color: "text-amber-600 dark:text-amber-400",
+    bgColor: "bg-amber-50/30 dark:bg-amber-950/10",
+  },
+  {
+    status: "DONE",
+    title: "Done",
+    icon: <CheckCircle className="h-4 w-4" />,
+    color: "text-green-600 dark:text-green-400",
+    bgColor: "bg-green-50/30 dark:bg-green-950/10",
   },
 ];
 
@@ -573,6 +598,7 @@ export interface UpdateRoadmapTaskRequest {
   title?: string;
   description?: string;
   status?: import("@prisma/client").TaskStatus;
+  workflowStatus?: import("@prisma/client").WorkflowStatus;
   priority?: import("@prisma/client").Priority;
   order?: number;
   phaseId?: string | null;

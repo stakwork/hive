@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Lightbulb, Image as ImageIcon, X, Eye, Share2 } from "lucide-react";
+import { Eye, Image as ImageIcon, Lightbulb, Send, Share2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface ChatInputProps {
   onSend: (message: string, clearInput: () => void) => Promise<void>;
@@ -166,7 +166,7 @@ export function ChatInput({
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className="relative flex justify-center items-center gap-2 w-full px-4 py-4"
+      className="relative flex justify-center items-center gap-2 w-full px-4 py-4 -mb-4"
     >
       {/* Drag overlay */}
       {isDragging && (
@@ -194,11 +194,10 @@ export function ChatInput({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className={`relative h-10 w-10 rounded-full border-2 transition-all overflow-hidden ${
-            imageData
-              ? "border-primary"
-              : "border-border/20 hover:border-primary/50 bg-background/5"
-          } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          className={`relative h-10 w-10 rounded-full border-2 transition-all overflow-hidden ${imageData
+            ? "border-primary"
+            : "border-border/20 hover:border-primary/50 bg-background/5"
+            } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
           title={imageData ? "Click to change image" : "Upload image"}
         >
           {imageData ? (
@@ -221,7 +220,7 @@ export function ChatInput({
         </button>
       </div>
 
-      <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px]">
+      <div className="relative w-full max-w-[70vw] sm:max-w-[450px] md:max-w-[500px] lg:max-w-[600px] leading-none">
         <textarea
           ref={inputRef}
           placeholder="Ask me about your codebase..."
@@ -230,9 +229,8 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           disabled={disabled}
           rows={rows}
-          className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/5 border border-border/20 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${
-            disabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
+          className={`w-full px-4 py-3 pr-12 rounded-2xl bg-background/5 border border-border/20 text-sm text-foreground/95 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none ${disabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
         />
         <Button
           type="submit"

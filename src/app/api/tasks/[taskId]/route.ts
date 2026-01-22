@@ -5,6 +5,7 @@ import { startTaskWorkflow } from "@/services/task-workflow";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
 import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 export async function PATCH(
   request: NextRequest,
@@ -149,8 +150,19 @@ export async function PATCH(
           archived: true,
           archivedAt: true,
           updatedAt: true,
+          featureId: true,
         },
       });
+
+      // Sync feature status if task belongs to a feature
+      if (updatedTask.featureId) {
+        try {
+          await updateFeatureStatusFromTasks(updatedTask.featureId);
+        } catch (error) {
+          console.error('Failed to sync feature status:', error);
+          // Don't fail the request if feature sync fails
+        }
+      }
 
       // Broadcast status update to real-time subscribers
       try {

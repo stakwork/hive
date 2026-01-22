@@ -279,6 +279,16 @@ export async function releaseStaleTaskPods(): Promise<{
         podId: true,
         status: true,
         workflowStatus: true,
+        chatMessages: {
+          select: {
+            artifacts: {
+              where: { type: "PULL_REQUEST" },
+              select: {
+                content: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -287,8 +297,22 @@ export async function releaseStaleTaskPods(): Promise<{
     // Process all stale tasks
     for (const task of staleTasks) {
       try {
-        // Determine if this task should be halted (only IN_PROGRESS tasks not already halted)
-        const shouldHalt = task.status === "IN_PROGRESS" && task.workflowStatus !== "HALTED";
+        // Check if task has an open PR - don't halt if PR is pending review/merge
+        const prArtifacts = task.chatMessages?.flatMap((m) => m.artifacts) || [];
+        const hasOpenPr = prArtifacts.some((pr) => {
+          const content = pr.content as { status?: string } | null;
+          // PR is open if it has a status that's not DONE (merged) or CANCELLED
+          return content?.status && content.status !== "DONE" && content.status !== "CANCELLED";
+        });
+
+        if (hasOpenPr) {
+          console.log(
+            `[ReleaseStaleTaskPods] Skipping halt for task ${task.id} - has open PR`
+          );
+        }
+
+        // Determine if this task should be halted (only IN_PROGRESS tasks not already halted, and no open PR)
+        const shouldHalt = task.status === "IN_PROGRESS" && task.workflowStatus !== "HALTED" && !hasOpenPr;
 
         if (task.podId) {
           // Task has a pod - use releaseTaskPod to release it
@@ -316,7 +340,8 @@ export async function releaseStaleTaskPods(): Promise<{
 
           console.log(
             `[ReleaseStaleTaskPods] Processed task ${task.id} (status: ${task.status}, workflowStatus: ${task.workflowStatus}): ` +
-            `pod released: ${result.podDropped}, halted: ${shouldHalt}, reassigned: ${result.reassigned || false}`
+            `pod released: ${result.podDropped}, halted: ${shouldHalt}, reassigned: ${result.reassigned || false}` +
+            (hasOpenPr ? `, skipped halt due to open PR` : "")
           );
 
           if (!result.success && result.error) {

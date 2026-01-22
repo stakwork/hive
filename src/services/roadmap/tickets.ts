@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { TaskStatus, Priority } from "@prisma/client";
+import { TaskStatus, Priority, WorkflowStatus } from "@prisma/client";
 import type {
   CreateRoadmapTaskRequest,
   UpdateRoadmapTaskRequest,
@@ -11,6 +11,7 @@ import { USER_SELECT } from "@/lib/db/selects";
 import { validateEnum } from "@/lib/validators";
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
 import { getSystemAssigneeUser } from "@/lib/system-assignees";
+import { updateFeatureStatusFromTasks } from "./feature-status-sync";
 
 /**
  * Gets a roadmap task with full context (feature, phase, creator, updater)
@@ -268,6 +269,16 @@ export async function updateTicket(
   if (data.status !== undefined) {
     validateEnum(data.status, TaskStatus, "status");
     updateData.status = data.status;
+    
+    // Auto-set workflowStatus to COMPLETED when status is set to DONE (unless explicitly provided)
+    if (data.status === TaskStatus.DONE && data.workflowStatus === undefined) {
+      updateData.workflowStatus = WorkflowStatus.COMPLETED;
+    }
+  }
+
+  if (data.workflowStatus !== undefined) {
+    validateEnum(data.workflowStatus, WorkflowStatus, "workflowStatus");
+    updateData.workflowStatus = data.workflowStatus;
   }
 
   if (data.priority !== undefined) {
@@ -418,6 +429,16 @@ export async function updateTicket(
       },
     },
   });
+
+  // Sync feature status if task belongs to a feature and status/workflowStatus was changed
+  if (updatedTask.featureId && (data.status !== undefined || data.workflowStatus !== undefined)) {
+    try {
+      await updateFeatureStatusFromTasks(updatedTask.featureId);
+    } catch (error) {
+      console.error('Failed to sync feature status:', error);
+      // Don't fail the request if feature sync fails
+    }
+  }
 
   // Convert system assignee type to virtual user object
   if (updatedTask.systemAssigneeType) {

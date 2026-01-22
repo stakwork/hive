@@ -333,6 +333,7 @@ async function triggerPodRepair(
     const stakworkPayload = {
       name: `pod-repair-${workspaceSlug}-${Date.now()}`,
       workflow_id: parseInt(workflowId, 10),
+      webhook_url: webhookUrl,
       workflow_params: {
         set_var: {
           attributes: {
@@ -412,17 +413,26 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
       result.workspacesProcessed++;
 
       if (!workspace.swarm?.poolApiKey) {
+        console.log(
+          `[PodRepairCron] Skipping ${workspace.slug}: no pool API key configured`
+        );
         continue;
       }
 
       // Skip already-completed workspaces
       if (workspace.swarm.podState === PodState.COMPLETED) {
+        console.log(
+          `[PodRepairCron] Skipping ${workspace.slug}: pod already COMPLETED`
+        );
         result.workspacesWithRunningPods++;
         continue;
       }
 
       // Skip failed workspaces (max attempts exhausted)
       if (workspace.swarm.podState === PodState.FAILED) {
+        console.log(
+          `[PodRepairCron] Skipping ${workspace.slug}: pod already FAILED (max attempts exhausted)`
+        );
         continue;
       }
 

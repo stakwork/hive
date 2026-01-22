@@ -22,7 +22,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { branch } = body;
+    const { branch, summary } = body;
 
     // Validate task exists
     const task = await db.task.findFirst({
@@ -40,7 +40,7 @@ export async function PUT(
     }
 
     // Build update data from provided fields
-    const updateData: Record<string, string> = {};
+    const updateData: Record<string, string | null> = {};
 
     if (branch !== undefined) {
       if (typeof branch !== "string") {
@@ -50,6 +50,17 @@ export async function PUT(
         );
       }
       updateData.branch = branch.trim();
+    }
+
+    if (summary !== undefined) {
+      if (summary !== null && typeof summary !== "string") {
+        return NextResponse.json(
+          { error: "Summary must be a string or null" },
+          { status: 400 },
+        );
+      }
+      // Allow null or empty string to clear the field, otherwise trim
+      updateData.summary = summary === null || summary === "" ? null : summary.trim();
     }
 
     // Require at least one field to update
@@ -68,6 +79,7 @@ export async function PUT(
         id: true,
         title: true,
         branch: true,
+        summary: true,
         workspaceId: true,
       },
     });

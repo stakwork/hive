@@ -1,10 +1,10 @@
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { PoolManagerService } from "@/services/pool-manager";
 import { getServiceConfig } from "@/config/services";
-import { ServiceConfig } from "@/types";
+import { ServiceConfig, RepositoryConfig } from "@/types";
 import { DevContainerFile, getDevContainerFilesFromBase64 } from "@/utils/devContainerUtils";
 
 const encryptionService = EncryptionService.getInstance();
@@ -101,18 +101,44 @@ export async function syncPoolManagerSettings(
         select: { environmentVariables: true },
       });
 
-      envVars = (swarm?.environmentVariables as Array<{ name: string; value: string }>) || [];
+      // Decrypt env vars from database (they are stored encrypted)
+      const rawEnvVars = (swarm?.environmentVariables as Array<{ name: string; value: unknown }>) || [];
+      envVars = rawEnvVars.length > 0 ? decryptEnvVars(rawEnvVars) : [];
     }
 
-    // Get GitHub credentials if userId provided
-    const githubCreds = userId
-      ? await getGithubUsernameAndPAT(userId, workspaceSlug)
+    // Get GitHub credentials - use provided userId or fall back to workspace owner
+    let effectiveUserId = userId;
+    if (!effectiveUserId) {
+      const workspace = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { ownerId: true },
+      });
+      effectiveUserId = workspace?.ownerId;
+    }
+
+    const githubCreds = effectiveUserId
+      ? await getGithubUsernameAndPAT(effectiveUserId, workspaceSlug)
       : null;
 
     // Get primary repo branch
     const primaryRepo = await getPrimaryRepository(workspaceId);
 
-    // Call Pool Manager update API
+    // Get all repositories for multi-repo support
+    const allRepositories = await db.repository.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Build repositories config for multi-repo support (only if more than 1 repo)
+    const repositoriesConfig: RepositoryConfig[] | undefined =
+      allRepositories.length > 1
+        ? allRepositories.map((repo) => ({
+            url: repo.repositoryUrl,
+            branch: repo.branch || "",
+          }))
+        : undefined;
+
+    // Call Pool Manager update API - only pass GitHub credentials if available
     await poolManager.updatePoolData(
       swarmId,
       decryptedPoolApiKey,
@@ -121,9 +147,10 @@ export async function syncPoolManagerSettings(
       files,
       poolCpu || undefined,
       poolMemory || undefined,
-      githubCreds?.token || "",
-      githubCreds?.username || "",
-      primaryRepo?.branch || ""
+      githubCreds?.token,
+      githubCreds?.username,
+      primaryRepo?.branch || "",
+      repositoriesConfig
     );
 
     console.log(

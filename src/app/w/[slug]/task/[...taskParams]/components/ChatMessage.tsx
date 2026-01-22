@@ -1,12 +1,30 @@
 "use client";
 
-import React, { memo, useState } from "react";
+import React, { memo, useState, useMemo } from "react";
 import { motion } from "framer-motion";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
+
+/**
+ * Parse message content to extract <logs> sections
+ * Returns the message without logs and an array of log sections
+ */
+function parseLogsFromMessage(message: string): { content: string; logs: string[] } {
+  const logsRegex = /<logs>([\s\S]*?)<\/logs>/g;
+  const logs: string[] = [];
+  let match;
+
+  while ((match = logsRegex.exec(message)) !== null) {
+    logs.push(match[1].trim());
+  }
+
+  const content = message.replace(logsRegex, "").trim();
+  return { content, logs };
+}
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -29,12 +47,15 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   return messageEqual && replyMessageEqual;
 }
 
-export const ChatMessage = memo(function ChatMessage({
-  message,
-  replyMessage,
-  onArtifactAction,
-}: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [logsExpanded, setLogsExpanded] = useState(false);
+
+  // Parse logs from message content
+  const { content: messageContent, logs } = useMemo(
+    () => (message.message ? parseLogsFromMessage(message.message) : { content: "", logs: [] }),
+    [message.message],
+  );
 
   return (
     <motion.div
@@ -58,8 +79,28 @@ export const ChatMessage = memo(function ChatMessage({
             onMouseLeave={() => setIsHovered(false)}
           >
             <MarkdownRenderer variant={message.role === "USER" ? "user" : "assistant"}>
-              {message.message}
+              {messageContent}
             </MarkdownRenderer>
+
+            {/* Collapsible Logs Section */}
+            {logs.length > 0 && (
+              <div className="mt-2 border-t pt-2">
+                <button
+                  onClick={() => setLogsExpanded(!logsExpanded)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {logsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  <span>Logs</span>
+                </button>
+                {logsExpanded && (
+                  <div className="mt-2 max-h-64 overflow-auto rounded bg-muted/50 p-2 text-xs font-mono whitespace-pre-wrap">
+                    {logs.map((log, index) => (
+                      <div key={index}>{log}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Workflow URL Link for message bubble */}
             {message.workflowUrl && (

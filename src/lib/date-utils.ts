@@ -57,3 +57,18 @@ export function formatFeatureDate(date: string | Date): string {
     timeZone: "UTC",
   });
 }
+
+/**
+ * Check if a date should be formatted as relative time.
+ * Returns true for dates within 48 hours (2 days) of now.
+ */
+export function isRelativeFormat(date: string | Date): boolean {
+  const dateObj = new Date(date);
+  const now = new Date();
+  const diffMs = now.getTime() - dateObj.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  
+  // Include dates from 0 to just under 48 hours
+  // At exactly 48 hours or more, return false (use absolute format)
+  return diffHours >= 0 && diffHours <= 48;
+}

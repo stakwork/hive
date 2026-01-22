@@ -5,6 +5,7 @@ import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { EncryptionService } from "@/lib/encryption";
+import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -108,7 +109,7 @@ export async function createTaskWithStakworkWorkflow(params: {
           },
           repositories: {
             take: 1,
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: "asc" },
             select: {
               repositoryUrl: true,
               branch: true,
@@ -187,7 +188,7 @@ export async function sendMessageToStakwork(params: {
           },
           repositories: {
             take: 1,
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: "asc" },
             select: {
               repositoryUrl: true,
               branch: true,
@@ -257,7 +258,7 @@ export async function startTaskWorkflow(params: {
           },
           repositories: {
             take: 1,
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: "asc" },
             select: {
               repositoryUrl: true,
               branch: true,
@@ -450,22 +451,61 @@ export async function createChatMessageAndTriggerStakwork(params: {
           updateData.status = TaskStatus.IN_PROGRESS;
         }
 
-        await db.task.update({
+        const updatedTask = await db.task.update({
           where: { id: taskId },
           data: updateData,
+          select: {
+            featureId: true,
+          },
         });
+
+        // Sync feature status if task belongs to a feature
+        if (updatedTask.featureId) {
+          try {
+            await updateFeatureStatusFromTasks(updatedTask.featureId);
+          } catch (error) {
+            console.error('Failed to sync feature status:', error);
+            // Don't fail the request if feature sync fails
+          }
+        }
       } else {
-        await db.task.update({
+        const updatedTask = await db.task.update({
           where: { id: taskId },
           data: { workflowStatus: WorkflowStatus.FAILED },
+          select: {
+            featureId: true,
+          },
         });
+
+        // Sync feature status if task belongs to a feature
+        if (updatedTask.featureId) {
+          try {
+            await updateFeatureStatusFromTasks(updatedTask.featureId);
+          } catch (error) {
+            console.error('Failed to sync feature status:', error);
+            // Don't fail the request if feature sync fails
+          }
+        }
       }
     } catch (error) {
       console.error("Error calling Stakwork:", error);
-      await db.task.update({
+      const updatedTask = await db.task.update({
         where: { id: taskId },
         data: { workflowStatus: "FAILED" },
+        select: {
+          featureId: true,
+        },
       });
+
+      // Sync feature status if task belongs to a feature
+      if (updatedTask.featureId) {
+        try {
+          await updateFeatureStatusFromTasks(updatedTask.featureId);
+        } catch (error) {
+          console.error('Failed to sync feature status:', error);
+          // Don't fail the request if feature sync fails
+        }
+      }
     }
   }
 

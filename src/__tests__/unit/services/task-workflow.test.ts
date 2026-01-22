@@ -24,6 +24,15 @@ vi.mock("@/config/env", () => ({
     STAKWORK_API_KEY: "test-api-key",
     STAKWORK_BASE_URL: "https://test-stakwork.com",
     STAKWORK_WORKFLOW_ID: "123,456,789",
+    USE_MOCKS: false,
+    MOCK_BASE: "http://localhost:3000",
+  },
+  optionalEnvVars: {
+    STAKWORK_BASE_URL: "https://test-stakwork.com",
+    POOL_MANAGER_BASE_URL: "https://workspaces.sphinx.chat/api",
+    SWARM_SUPER_ADMIN_URL: "https://app.superadmin.sphinx.chat",
+    GEMINI_API_BASE_URL: "https://generativelanguage.googleapis.com",
+    API_TIMEOUT: 20000,
   },
 }));
 
@@ -496,7 +505,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
               },
               repositories: {
                 take: 1,
-                orderBy: { createdAt: "desc" },
+                orderBy: { createdAt: "asc" },
                 select: {
                   repositoryUrl: true,
                   branch: true,

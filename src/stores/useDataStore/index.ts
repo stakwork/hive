@@ -9,7 +9,7 @@ export const defaultFilters = {
   depth: '3',
   sort_by: 'score',
   include_properties: 'true',
-  top_node_count: '40',
+  top_node_count: '400',
   includeContent: 'true',
   node_type: [],
   search_method: 'hybrid',

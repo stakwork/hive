@@ -22,6 +22,12 @@ vi.mock("@/config/env", () => ({
     STAKWORK_BASE_URL: "https://test-stakwork.com",
     STAKWORK_WORKFLOW_ID: "123,456,789",
   },
+  optionalEnvVars: {
+    STAKWORK_API_KEY: "test-stakwork-key",
+    STAKWORK_BASE_URL: "https://test-stakwork.com",
+    STAKWORK_WORKFLOW_ID: "123,456,789",
+    API_TIMEOUT: 20000,
+  },
 }));
 
 // Mock external services

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -437,11 +437,51 @@ export default function FeatureDetailPage() {
 
         <CardContent>
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="mb-6">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="architecture">Architecture</TabsTrigger>
-              <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            </TabsList>
+            {(() => {
+              // Compute Task Coordinator progress from all phases
+              const allTasks = feature.phases?.flatMap((p) => p.tasks) || [];
+              const tcTasks = allTasks.filter((t) => t.assignee?.id?.startsWith("system:task-coordinator"));
+              const tcTotal = tcTasks.length;
+              const tcQueued = tcTasks.filter((t) => t.status === "TODO").length;
+              const tcRunning = tcTasks.filter((t) => t.status === "IN_PROGRESS").length;
+              const tcDone = tcTasks.filter((t) => t.status === "DONE").length;
+              const showTcProgress = tcTotal > 0 && tcDone < tcTotal;
+
+              return (
+                <div className="flex items-center gap-4 mb-6">
+                  <TabsList>
+                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                    <TabsTrigger value="architecture">Architecture</TabsTrigger>
+                    <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                  </TabsList>
+
+                  {/* Task Coordinator Progress */}
+                  {showTcProgress && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Bot className="h-4 w-4" />
+                      <div className="flex items-center gap-3">
+                        {tcQueued > 0 && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-muted-foreground/40" />
+                            <span>{tcQueued} queued</span>
+                          </div>
+                        )}
+                        {tcRunning > 0 && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                            <span>{tcRunning} running</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>{tcDone} done</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <TabsContent value="overview" className="space-y-6 pt-0">
               {/* Brief - Always visible */}

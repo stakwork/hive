@@ -5,7 +5,9 @@
  * When issues are detected, it can:
  * 1. Update the PR artifact's progress state
  * 2. Notify the user via Pusher
- * 3. Trigger the agent to fix the issue (if pod is available)
+ * 3. Trigger a fix based on task mode:
+ *    - "agent" mode: Direct connection to agent server for streaming fixes
+ *    - "live" mode: Stakwork workflow for automated fixes
  */
 
 import { Octokit } from "@octokit/rest";
@@ -15,10 +17,16 @@ import { getUserAppTokens } from "@/lib/githubApp";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
+import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
 import type { PullRequestProgress, PullRequestContent } from "@/lib/chat";
+import { fetchCIStatus } from "./pr-ci";
 
 const LOG_PREFIX = "[PRMonitor]";
 const encryptionService = EncryptionService.getInstance();
+
+// Retry limits to prevent infinite loops
+const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "6", 10);
+const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
 
 // Simple console logging helpers
 const log = {
@@ -37,22 +45,7 @@ interface GitHubPRData {
   mergeable: boolean | null;
   mergeable_state: string;
   head: { ref: string; sha: string };
-  base: { ref: string };
-}
-
-interface GitHubCheckRun {
-  name: string;
-  status: "queued" | "in_progress" | "completed";
-  conclusion: string | null;
-}
-
-interface GitHubCombinedStatus {
-  state: "pending" | "success" | "failure" | "error";
-  statuses: Array<{
-    context: string;
-    state: string;
-    description: string | null;
-  }>;
+  base: { ref: string; sha: string };
 }
 
 // Result of checking a single PR
@@ -69,8 +62,11 @@ export interface PRCheckResult {
   problemDetails?: string;
   conflictFiles?: string[];
   failedChecks?: string[];
+  failedCheckLogs?: Record<string, string>;
   prState: "open" | "closed";
   merged: boolean;
+  headBranch: string;
+  baseBranch: string;
 }
 
 /**
@@ -104,73 +100,84 @@ async function fetchPRStatus(octokit: Octokit, owner: string, repo: string, prNu
 }
 
 /**
- * Fetch CI check status for a PR
+ * Check if the PR branch is behind the base branch
+ * Returns true if base branch has commits not in the head branch
  */
-async function fetchCIStatus(
+async function isPRBehindBase(
   octokit: Octokit,
   owner: string,
   repo: string,
-  ref: string,
-): Promise<{ status: PullRequestProgress["ciStatus"]; summary: string; failedChecks: string[] }> {
-  // Fetch both check runs (GitHub Actions) and commit statuses (legacy CI)
-  const [checkRuns, combinedStatus] = await Promise.all([
-    octokit.checks.listForRef({ owner, repo, ref }).then((r) => r.data),
-    octokit.repos.getCombinedStatusForRef({ owner, repo, ref }).then((r) => r.data as GitHubCombinedStatus),
-  ]);
+  baseBranch: string,
+  headBranch: string,
+): Promise<boolean> {
+  try {
+    const { data } = await octokit.repos.compareCommits({
+      owner,
+      repo,
+      base: headBranch,
+      head: baseBranch,
+    });
+    // If base is ahead of head, the PR is behind
+    return data.ahead_by > 0;
+  } catch (error) {
+    log.warn("Failed to compare branches", { owner, repo, baseBranch, headBranch, error: String(error) });
+    return false;
+  }
+}
 
-  const failedChecks: string[] = [];
-  let totalChecks = 0;
-  let passedChecks = 0;
-  let pendingChecks = 0;
+/**
+ * Merge the base branch into the PR's head branch using GitHub's Merges API
+ *
+ * This creates a merge commit, similar to the "Update branch" button in GitHub UI.
+ * Works when there are no conflicts - will fail if conflicts exist.
+ *
+ * @returns Object with success status and optional error/sha
+ */
+export async function mergeBaseBranch(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  headBranch: string,
+  baseBranch: string,
+  commitMessage?: string,
+): Promise<{ success: boolean; sha?: string; error?: string }> {
+  try {
+    const { data } = await octokit.repos.merge({
+      owner,
+      repo,
+      base: headBranch, // The branch to merge INTO (PR's head branch)
+      head: baseBranch, // The branch to merge FROM (e.g., main)
+      commit_message: commitMessage || `Merge branch '${baseBranch}' into ${headBranch}`,
+    });
 
-  // Process check runs (GitHub Actions)
-  for (const check of checkRuns.check_runs as GitHubCheckRun[]) {
-    totalChecks++;
-    if (check.status !== "completed") {
-      pendingChecks++;
-    } else if (check.conclusion === "success" || check.conclusion === "skipped") {
-      passedChecks++;
-    } else if (check.conclusion === "failure" || check.conclusion === "timed_out") {
-      failedChecks.push(check.name);
+    log.info("Successfully merged base branch into PR branch", {
+      owner,
+      repo,
+      headBranch,
+      baseBranch,
+      sha: data.sha,
+    });
+
+    return { success: true, sha: data.sha };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // GitHub returns 409 Conflict if there are merge conflicts
+    if (errorMessage.includes("409") || errorMessage.includes("Merge conflict")) {
+      log.info("Cannot auto-merge: conflicts exist", { owner, repo, headBranch, baseBranch });
+      return { success: false, error: "Merge conflicts exist" };
     }
+
+    log.error("Failed to merge base branch", {
+      owner,
+      repo,
+      headBranch,
+      baseBranch,
+      error: errorMessage,
+    });
+
+    return { success: false, error: errorMessage };
   }
-
-  // Process legacy commit statuses
-  for (const status of combinedStatus.statuses) {
-    totalChecks++;
-    if (status.state === "pending") {
-      pendingChecks++;
-    } else if (status.state === "success") {
-      passedChecks++;
-    } else if (status.state === "failure" || status.state === "error") {
-      failedChecks.push(status.context);
-    }
-  }
-
-  // Determine overall status
-  let status: PullRequestProgress["ciStatus"];
-  if (totalChecks === 0) {
-    status = "success"; // No checks configured
-  } else if (failedChecks.length > 0) {
-    status = "failure";
-  } else if (pendingChecks > 0) {
-    status = "pending";
-  } else {
-    status = "success";
-  }
-
-  const summary =
-    totalChecks === 0
-      ? "No checks configured"
-      : `${passedChecks}/${totalChecks} passed${pendingChecks > 0 ? ` (${pendingChecks} pending)` : ""}`;
-
-  // Limit failedChecks to first 10 to avoid storing too much data
-  const limitedFailedChecks = failedChecks.slice(0, 10);
-  if (failedChecks.length > 10) {
-    limitedFailedChecks.push(`... and ${failedChecks.length - 10} more`);
-  }
-
-  return { status, summary, failedChecks: limitedFailedChecks };
 }
 
 /**
@@ -207,6 +214,8 @@ export async function checkPR(
         ciStatus: undefined,
         prState: "closed",
         merged: prData.merged,
+        headBranch: prData.head.ref,
+        baseBranch: prData.base.ref,
       };
     }
 
@@ -230,10 +239,24 @@ export async function checkPR(
       state = "checking";
     }
 
-    // Check for CI failures (conflict takes precedence)
-    if (state === "healthy" && ciResult.status === "failure") {
-      state = "ci_failure";
-      problemDetails = `CI checks failed: ${ciResult.failedChecks.join(", ")}`;
+    // Check for CI status (conflict takes precedence)
+    if (state === "healthy") {
+      if (ciResult.status === "failure") {
+        state = "ci_failure";
+        problemDetails = `CI checks failed: ${ciResult.failedChecks.join(", ")}`;
+      } else if (ciResult.status === "pending") {
+        // CI is still running - use "checking" state so we re-check soon
+        state = "checking";
+      }
+    }
+
+    // Check if PR is behind base branch (only if otherwise healthy and CI passed)
+    if (state === "healthy" && prData.mergeable === true) {
+      const isBehind = await isPRBehindBase(octokit, owner, repo, prData.base.ref, prData.head.ref);
+      if (isBehind) {
+        state = "out_of_date";
+        problemDetails = `PR branch is behind ${prData.base.ref} and needs to be updated`;
+      }
     }
 
     return {
@@ -249,8 +272,11 @@ export async function checkPR(
       problemDetails,
       conflictFiles,
       failedChecks: ciResult.failedChecks.length > 0 ? ciResult.failedChecks : undefined,
+      failedCheckLogs: Object.keys(ciResult.failedCheckLogs).length > 0 ? ciResult.failedCheckLogs : undefined,
       prState: prData.state,
       merged: prData.merged,
+      headBranch: prData.head.ref,
+      baseBranch: prData.base.ref,
     };
   } catch (error) {
     log.error("Error checking PR", { owner, repo, prNumber, error: String(error) });
@@ -377,7 +403,8 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       AND a.content->>'url' IS NOT NULL
       AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
       AND COALESCE(a.content->'progress'->'resolution'->>'status', '') NOT IN ('in_progress', 'gave_up')
-      -- Cooldown logic for healthy PRs (only re-check after 1 hour)
+      -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
+      -- All other states (checking, conflict, ci_failure) are re-checked every cron run
       AND (
         COALESCE(a.content->'progress'->>'state', '') != 'healthy'
         OR a.content->'progress'->>'lastCheckedAt' IS NULL
@@ -425,16 +452,27 @@ ${result.problemDetails || ""}`;
   }
 
   if (result.state === "ci_failure") {
-    return `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
+    let prompt = `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has failing CI checks.
 
 Failed checks: ${result.failedChecks?.join(", ") || "unknown"}
 
 Please:
-1. Review the CI failure logs
+1. Review the CI failure logs below
 2. Fix the issues causing the failures
 3. Push the fixes
 
 ${result.problemDetails || ""}`;
+
+    // Append log excerpts if available
+    if (result.failedCheckLogs && Object.keys(result.failedCheckLogs).length > 0) {
+      prompt += "\n\n<logs>\n";
+      for (const [checkName, logs] of Object.entries(result.failedCheckLogs)) {
+        prompt += `### ${checkName}\n${logs}\n\n`;
+      }
+      prompt += "</logs>";
+    }
+
+    return prompt;
   }
 
   return `Please check the status of pull request #${result.prNumber} in ${result.owner}/${result.repo}.`;
@@ -450,6 +488,9 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
   checked: number;
   conflicts: number;
   ciFailures: number;
+  ciPending: number;
+  outOfDate: number;
+  autoMerged: number;
   healthy: number;
   errors: number;
   agentTriggered: number;
@@ -459,6 +500,9 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
     checked: 0,
     conflicts: 0,
     ciFailures: 0,
+    ciPending: 0,
+    outOfDate: 0,
+    autoMerged: 0,
     healthy: 0,
     errors: 0,
     agentTriggered: 0,
@@ -539,25 +583,85 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         problemDetails: result.problemDetails,
         conflictFiles: result.conflictFiles,
         failedChecks: result.failedChecks,
+        failedCheckLogs: result.failedCheckLogs,
       };
 
       // Check if state changed and requires action
       const previousState = pr.progress?.state;
       const stateChanged = previousState !== result.state;
-      const isProblematic = result.state === "conflict" || result.state === "ci_failure";
+      const needsAgentFix = result.state === "conflict" || result.state === "ci_failure";
 
-      if (isProblematic) {
+      // Handle out_of_date: try auto-merge first (no agent needed)
+      if (result.state === "out_of_date") {
+        stats.outOfDate++;
+
+        log.info("PR is out of date, attempting auto-merge", {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          repo: `${result.owner}/${result.repo}`,
+          headBranch: result.headBranch,
+          baseBranch: result.baseBranch,
+        });
+
+        const mergeResult = await mergeBaseBranch(
+          octokit,
+          result.owner,
+          result.repo,
+          result.headBranch,
+          result.baseBranch,
+        );
+
+        if (mergeResult.success) {
+          stats.autoMerged++;
+          log.info("Auto-merged base branch into PR", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            sha: mergeResult.sha,
+          });
+
+          // Update progress to checking (CI will run on new merge commit)
+          progress.state = "checking";
+          progress.problemDetails = undefined;
+          await updatePRArtifactProgress(pr.artifactId, progress);
+        } else {
+          // Auto-merge failed (likely conflicts appeared) - update state and let next check handle it
+          log.warn("Auto-merge failed", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            error: mergeResult.error,
+          });
+          await updatePRArtifactProgress(pr.artifactId, progress);
+        }
+      } else if (needsAgentFix) {
         if (result.state === "conflict") {
           stats.conflicts++;
         } else {
           stats.ciFailures++;
         }
 
-        // Initialize resolution tracking if this is a new problem
-        if (stateChanged || !pr.progress?.resolution) {
+        const currentAttempts = pr.progress?.resolution?.attempts || 0;
+        const lastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
+        const cooldownElapsed = !lastAttemptAt || Date.now() - new Date(lastAttemptAt).getTime() > PR_FIX_COOLDOWN_MS;
+
+        // Check if we've exceeded max attempts
+        if (currentAttempts >= PR_FIX_MAX_ATTEMPTS) {
+          progress.resolution = {
+            status: "gave_up",
+            attempts: currentAttempts,
+            lastAttemptAt: lastAttemptAt,
+            lastError: `Max fix attempts (${PR_FIX_MAX_ATTEMPTS}) exceeded`,
+          };
+          log.warn("PR fix max attempts exceeded", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            attempts: currentAttempts,
+            maxAttempts: PR_FIX_MAX_ATTEMPTS,
+          });
+        } else if (stateChanged || !pr.progress?.resolution) {
+          // Initialize/update resolution tracking for new problem
           progress.resolution = {
             status: pr.podId ? "in_progress" : "notified",
-            attempts: (pr.progress?.resolution?.attempts || 0) + 1,
+            attempts: currentAttempts + 1,
             lastAttemptAt: new Date().toISOString(),
           };
         }
@@ -576,30 +680,46 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
         stats.notified++;
 
-        // If pod is available and this is a new problem, would trigger the agent
-        // TODO: Uncomment when ready to enable auto-fix
-        if (pr.podId && stateChanged) {
+        // If pod is available and this is a new problem, trigger an automatic fix
+        // The triggerFix function auto-detects whether to use agent mode or live mode
+        // Only trigger if: not gave_up, state changed, and cooldown elapsed
+        const shouldTriggerFix =
+          pr.podId && stateChanged && cooldownElapsed && progress.resolution?.status !== "gave_up";
+
+        if (shouldTriggerFix) {
           const fixPrompt = buildFixPrompt(result);
-          log.info("WOULD TRIGGER AGENT (disabled)", {
+          log.info("Triggering PR fix", {
             taskId: pr.taskId,
             podId: pr.podId,
             state: result.state,
             prNumber: result.prNumber,
             repo: `${result.owner}/${result.repo}`,
-            prompt: fixPrompt.substring(0, 200) + "...",
+            attempt: progress.resolution?.attempts,
+            maxAttempts: PR_FIX_MAX_ATTEMPTS,
           });
-          // TODO:
-          // Uncomment below to enable agent auto-fix:
-          // const triggerResult = await triggerAgentFix(pr.taskId, fixPrompt);
-          // if (triggerResult.success) {
-          //   stats.agentTriggered++;
-          // }
+
+          const triggerResult = await triggerFix(pr.taskId, fixPrompt);
+          if (triggerResult.success) {
+            stats.agentTriggered++;
+          }
+        } else if (pr.podId && stateChanged && !cooldownElapsed) {
+          log.info("Skipping PR fix due to cooldown", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            lastAttemptAt,
+            cooldownMs: PR_FIX_COOLDOWN_MS,
+          });
         }
       } else {
-        stats.healthy++;
+        // Track checking (CI pending) vs truly healthy
+        if (result.state === "checking") {
+          stats.ciPending++;
+        } else {
+          stats.healthy++;
+        }
 
         // If was problematic and is now healthy, mark as resolved
-        if (previousState === "conflict" || previousState === "ci_failure") {
+        if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date") {
           progress.resolution = {
             ...pr.progress?.resolution,
             status: "resolved",
@@ -622,16 +742,22 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
 }
 
 /**
- * Trigger the agent to fix a PR issue (server-side, no streaming)
+ * Trigger the agent to fix a PR issue in "agent" mode (server-side, no streaming)
  *
- * This function:
+ * This function is for tasks with mode="agent":
  * 1. Saves a system message explaining the issue
- * 2. Creates/refreshes an agent session
+ * 2. Creates/refreshes an agent session with the remote agent server
  * 3. Sends the fix prompt to the agent (fire-and-forget)
  *
  * The agent's response will be persisted via the webhook callback.
+ *
+ * @param taskId - The task ID (must be in "agent" mode)
+ * @param prompt - The fix prompt describing the issue and resolution steps
  */
-export async function triggerAgentFix(taskId: string, prompt: string): Promise<{ success: boolean; error?: string }> {
+export async function triggerAgentModeFix(
+  taskId: string,
+  prompt: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Load task
     const task = await db.task.findUnique({
@@ -741,10 +867,119 @@ export async function triggerAgentFix(taskId: string, prompt: string): Promise<{
       log.error("Error initiating agent stream", { taskId, error: String(error) });
     });
 
-    log.info("Triggered agent fix", { taskId });
+    log.info("Triggered agent mode fix", { taskId });
     return { success: true };
   } catch (error) {
-    log.error("Error triggering agent fix", { taskId, error: String(error) });
+    log.error("Error triggering agent mode fix", { taskId, error: String(error) });
     return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Trigger a fix for a PR issue in "live" mode via Stakwork workflow
+ *
+ * This function is for tasks with mode="live":
+ * 1. Looks up the workspace owner for authentication
+ * 2. Checks workflowStatus to avoid triggering duplicate workflows
+ * 3. Sends the fix prompt to Stakwork workflow
+ *
+ * The response will be delivered via Stakwork webhook callback.
+ *
+ * @param taskId - The task ID (must be in "live" mode)
+ * @param prompt - The fix prompt describing the issue and resolution steps
+ */
+export async function triggerLiveModeFix(
+  taskId: string,
+  prompt: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. Load task to get workspace owner and workflow status
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: {
+        mode: true,
+        workflowStatus: true,
+        workspace: {
+          select: {
+            ownerId: true,
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      return { success: false, error: "Task not found" };
+    }
+
+    if (task.mode !== "live") {
+      return { success: false, error: "Task is not in live mode" };
+    }
+
+    // 2. Check workflowStatus to avoid duplicate triggers
+    // Only trigger auto-fix if no workflow is currently running
+    if (task.workflowStatus !== "COMPLETED") {
+      log.info("Skipping live mode fix - workflow already in progress", {
+        taskId,
+        workflowStatus: task.workflowStatus,
+      });
+      return { success: false, error: `Workflow already in progress (status: ${task.workflowStatus})` };
+    }
+
+    const userId = task.workspace.ownerId;
+
+    // 2. Create the fix message with PR monitor context
+    const message = `[PR Monitor] Detected issue with pull request. Attempting automatic fix...\n\n${prompt}`;
+
+    // 3. Send message to Stakwork workflow
+    const result = await createChatMessageAndTriggerStakwork({
+      taskId,
+      message,
+      userId,
+      generateChatTitle: false,
+      mode: "live",
+    });
+
+    if (!result.stakworkData?.success) {
+      log.error("Failed to trigger Stakwork workflow", {
+        taskId,
+        error: result.stakworkData?.error,
+      });
+      return { success: false, error: "Failed to trigger Stakwork workflow" };
+    }
+
+    log.info("Triggered live mode fix", { taskId, projectId: result.stakworkData.data?.project_id });
+    return { success: true };
+  } catch (error) {
+    log.error("Error triggering live mode fix", { taskId, error: String(error) });
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Trigger a fix for a PR issue based on the task's mode
+ *
+ * This is a convenience wrapper that automatically selects the correct
+ * fix function based on the task's mode setting.
+ *
+ * @param taskId - The task ID
+ * @param prompt - The fix prompt describing the issue and resolution steps
+ */
+export async function triggerFix(taskId: string, prompt: string): Promise<{ success: boolean; error?: string }> {
+  // Load task to determine mode
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: { mode: true },
+  });
+
+  if (!task) {
+    return { success: false, error: "Task not found" };
+  }
+
+  if (task.mode === "agent") {
+    return triggerAgentModeFix(taskId, prompt);
+  } else if (task.mode === "live") {
+    return triggerLiveModeFix(taskId, prompt);
+  } else {
+    return { success: false, error: `Unsupported task mode: ${task.mode}` };
   }
 }

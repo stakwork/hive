@@ -2,6 +2,7 @@ import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { VMConfigSection } from "@/components/pool-status";
 import { RerunIngest } from "@/components/RerunIngest";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
+import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
 import { PageHeader } from "@/components/ui/page-header";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
 import { WorkspaceSettings } from "@/components/WorkspaceSettings";
@@ -10,11 +11,7 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 import { getServerSession } from "next-auth/next";
 import { notFound } from "next/navigation";
 
-export default async function SettingsPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const session = await getServerSession(authOptions);
   const { slug } = await params;
 
@@ -35,10 +32,7 @@ export default async function SettingsPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Workspace Settings"
-        description="Manage workspace configuration, members, and settings."
-      />
+      <PageHeader title="Workspace Settings" description="Manage workspace configuration, members, and settings." />
 
       <div className="max-w-2xl">
         <div className="space-y-6">
@@ -48,18 +42,14 @@ export default async function SettingsPage({
 
           <WorkspaceMembers canAdmin={workspace.userRole === "OWNER" || workspace.userRole === "ADMIN"} />
 
-          <RerunIngest
-            workspaceId={workspace.id}
-            workspaceName={workspace.name}
-          />
+          <RerunIngest workspaceId={workspace.id} workspaceName={workspace.name} />
 
           <NodeTypeOrderSettings />
 
+          <VercelIntegrationSettings />
+
           {workspace.userRole === "OWNER" && (
-            <DeleteWorkspace
-              workspaceSlug={workspace.slug}
-              workspaceName={workspace.name}
-            />
+            <DeleteWorkspace workspaceSlug={workspace.slug} workspaceName={workspace.name} />
           )}
         </div>
       </div>
