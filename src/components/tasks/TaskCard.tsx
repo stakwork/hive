@@ -121,7 +121,7 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
 
       {/* Bottom metadata row: user | date | status | optional badges */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-        {/* Assignee - show system assignee if no regular assignee */}
+        {/* Assignee - show system assignee if no regular assignee, fallback to createdBy */}
         {task.assignee ? (
           <div className="flex items-center gap-1.5">
             {task.assignee.id.startsWith("system:") ? (
@@ -140,6 +140,16 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
           <div className="flex items-center gap-1.5">
             <Bot className="w-4 h-4 text-blue-600" />
             <span>Task Coordinator</span>
+          </div>
+        ) : task.createdBy ? (
+          <div className="flex items-center gap-1.5">
+            <Avatar className="size-5">
+              <AvatarImage src={task.createdBy.image || undefined} />
+              <AvatarFallback className="text-xs">
+                <User className="w-3 h-3" />
+              </AvatarFallback>
+            </Avatar>
+            <span>{task.createdBy.name || task.createdBy.email}</span>
           </div>
         ) : null}
 

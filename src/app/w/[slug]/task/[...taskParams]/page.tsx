@@ -91,6 +91,8 @@ export default function TaskChatPage() {
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [podId, setPodId] = useState<string | null>(null);
+  const [featureId, setFeatureId] = useState<string | null>(null);
+  const [featureTitle, setFeatureTitle] = useState<string | null>(null);
   const [isReleasingPod, setIsReleasingPod] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isChainVisible, setIsChainVisible] = useState(false);
@@ -240,6 +242,12 @@ export default function TaskChatPage() {
         // Set podId from API response
         if (result.data.task?.podId) {
           setPodId(result.data.task.podId);
+        }
+
+        // Set feature data from API response
+        if (result.data.task?.featureId && result.data.task?.feature?.title) {
+          setFeatureId(result.data.task.featureId);
+          setFeatureTitle(result.data.task.feature.title);
         }
 
         // Restore workflow context for workflow_editor mode
@@ -1137,6 +1145,8 @@ export default function TaskChatPage() {
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
                     prUrl={prLink}
+                    featureId={featureId}
+                    featureTitle={featureTitle}
                   />
                 )}
               </div>
@@ -1162,6 +1172,8 @@ export default function TaskChatPage() {
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
                       prUrl={prLink}
+                      featureId={featureId}
+                      featureTitle={featureTitle}
                     />
                   </div>
                 </ResizablePanel>
@@ -1198,6 +1210,8 @@ export default function TaskChatPage() {
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
                 prUrl={prLink}
+                featureId={featureId}
+                featureTitle={featureTitle}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -1239,6 +1253,8 @@ export default function TaskChatPage() {
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
+                    featureId={featureId}
+                    featureTitle={featureTitle}
                   />
                 )}
               </div>
@@ -1268,6 +1284,8 @@ export default function TaskChatPage() {
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
+                      featureId={featureId}
+                      featureTitle={featureTitle}
                     />
                   </div>
                 </ResizablePanel>
@@ -1309,6 +1327,8 @@ export default function TaskChatPage() {
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
+                featureId={featureId}
+                featureTitle={featureTitle}
               />
             </div>
           )}

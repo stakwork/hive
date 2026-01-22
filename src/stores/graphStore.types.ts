@@ -21,6 +21,7 @@ export type GraphCallout = {
   title: string
   nodeRefId: string
   addedAt: number
+  expiresAt?: number
 }
 
 export type TestLayerType = 'unitTests' | 'integrationTests' | 'e2eTests' | null
@@ -98,7 +99,7 @@ export type GraphStore = {
   setCameraTarget(target: CameraTarget | null): void
   saveCameraState(position: CameraPosition, target: CameraTarget): void
   setWebhookHighlightNodes(nodeIds: string[], depth?: number): void
-  addCallout(title: string, nodeRefId: string, id?: string, addedAt?: number): string
+  addCallout(title: string, nodeRefId: string, id?: string, addedAt?: number, expiresInMs?: number): string
   removeCallout(calloutId: string): void
   pruneExpiredCallouts(ttlMs?: number): void
   clearCallouts(): void
