@@ -1,10 +1,9 @@
 import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService, decryptEnvVars } from "@/lib/encryption";
+import { EncryptionService } from "@/lib/encryption";
 import { poolManagerService } from "@/lib/service-factory";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swarm/secrets";
-import { EnvironmentVariable } from "@/types";
 import { isApiError } from "@/types/errors";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -125,6 +124,31 @@ export async function POST(request: NextRequest) {
       poolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
     }
 
+    // Fetch environment variables from database
+    const allEnvVars = await db.environmentVariable.findMany({
+      where: { swarmId: swarm.id },
+    });
+
+    // Decrypt and separate global vs service-specific env vars
+    const globalEnvVars: Array<{ name: string; value: string }> = [];
+    const serviceEnvVarsMap = new Map<string, Array<{ name: string; value: string }>>();
+
+    for (const envVar of allEnvVars) {
+      const decryptedValue = encryptionService.decryptField("environmentVariable", envVar.value);
+      const envEntry = { name: envVar.name, value: decryptedValue };
+
+      if (!envVar.serviceName || envVar.serviceName === "") {
+        // Global env var
+        globalEnvVars.push(envEntry);
+      } else {
+        // Service-specific env var
+        if (!serviceEnvVarsMap.has(envVar.serviceName)) {
+          serviceEnvVarsMap.set(envVar.serviceName, []);
+        }
+        serviceEnvVarsMap.get(envVar.serviceName)!.push(envEntry);
+      }
+    }
+
     // Generate container files from database services and environment variables
     let finalContainerFiles: Record<string, string> = {};
 
@@ -151,14 +175,33 @@ export async function POST(request: NextRequest) {
             ? JSON.parse(swarm.services)
             : swarm.services;
           services = Array.isArray(parsedServices) ? parsedServices : [];
+
+          // Merge service-specific env vars into service.env
+          services = services.map(service => {
+            const serviceEnvVars = serviceEnvVarsMap.get(service.name);
+            if (serviceEnvVars && serviceEnvVars.length > 0) {
+              const envObject: Record<string, string> = {};
+              serviceEnvVars.forEach(({ name, value }) => {
+                envObject[name] = value;
+              });
+              return {
+                ...service,
+                env: {
+                  ...service.env,
+                  ...envObject,
+                },
+              };
+            }
+            return service;
+          });
         } catch (error) {
           console.warn("Failed to parse swarm services:", error);
           services = [];
         }
       }
 
-      // Generate container files using existing utilities
-      const pm2Apps = generatePM2Apps(repoName, services);
+      // Generate container files using existing utilities with global env vars
+      const pm2Apps = generatePM2Apps(repoName, services, globalEnvVars);
       const containerFiles = {
         "devcontainer.json": devcontainerJsonContent(repoName),
         "pm2.config.js": `module.exports = {\n  apps: ${formatPM2Apps(pm2Apps)},\n};\n`,
@@ -217,48 +260,6 @@ export async function POST(request: NextRequest) {
     const poolManager = poolManagerService();
     poolManager.updateApiKey(encryptionService.decryptField("poolApiKey", poolApiKey));
 
-    let envVars: EnvironmentVariable[] = [
-      {
-        name: "MY_ENV",
-        value: "MY_VALUE",
-      },
-    ];
-    if (typeof swarm.environmentVariables === "string") {
-      try {
-        const parsed = JSON.parse(swarm.environmentVariables);
-        if (Array.isArray(parsed)) {
-          const maybeEncrypted = parsed as Array<{
-            name: string;
-            value: unknown;
-          }>;
-          // Decrypt if values appear encrypted; fallback to as-is
-          try {
-            envVars = decryptEnvVars(maybeEncrypted).map(({ name, value }) => ({
-              name,
-              value,
-            }));
-          } catch {
-            envVars = parsed as EnvironmentVariable[];
-          }
-        }
-      } catch {
-        // keep default
-      }
-    } else if (Array.isArray(swarm.environmentVariables)) {
-      const arr = swarm.environmentVariables as Array<{
-        name: string;
-        value: unknown;
-      }>;
-      try {
-        envVars = decryptEnvVars(arr).map(({ name, value }) => ({
-          name,
-          value,
-        }));
-      } catch {
-        envVars = arr as unknown as EnvironmentVariable[];
-      }
-    }
-
     // Build repositories array for multi-repo support
     const repositoriesConfig = repositories.length > 1
       ? repositories.map(repo => ({
@@ -267,6 +268,7 @@ export async function POST(request: NextRequest) {
         }))
       : undefined;
 
+    // Environment variables are now embedded in PM2 config, no need to pass separately
     const pool = await withRetry(
       () => poolManager.createPool({
         pool_name: swarm.id,
@@ -276,7 +278,7 @@ export async function POST(request: NextRequest) {
         repositories: repositoriesConfig,
         github_pat: github_pat?.token || "",
         github_username: github_pat?.username || "",
-        env_vars: envVars,
+        env_vars: [], // Empty array - all env vars now in PM2 config
         container_files: finalContainerFiles,
       }),
       3,
