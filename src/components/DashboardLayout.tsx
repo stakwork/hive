@@ -2,10 +2,12 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useFavicon } from "@/hooks/useFavicon";
 import { AlertTriangle } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "./GlobalSearch";
+import { useEffect, useState } from "react";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -25,6 +27,35 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const { workspace, loading, error } = useWorkspace();
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");
+  const [workspaceLogoUrl, setWorkspaceLogoUrl] = useState<string | null>(null);
+
+  // Fetch workspace logo URL when workspace changes
+  useEffect(() => {
+    const fetchWorkspaceLogo = async () => {
+      if (!workspace?.slug || !workspace?.logoKey) {
+        setWorkspaceLogoUrl(null);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/workspaces/${workspace.slug}/image`);
+        if (response.ok) {
+          const data = await response.json();
+          setWorkspaceLogoUrl(data.presignedUrl || null);
+        } else {
+          setWorkspaceLogoUrl(null);
+        }
+      } catch (error) {
+        console.error('Error fetching workspace logo for favicon:', error);
+        setWorkspaceLogoUrl(null);
+      }
+    };
+
+    fetchWorkspaceLogo();
+  }, [workspace?.slug, workspace?.logoKey]);
+
+  // Update favicon when workspace logo changes
+  useFavicon({ workspaceLogoUrl, enabled: true });
 
   // Priority 1: Show loading state while workspace is being resolved
   if (loading) {

@@ -10,6 +10,7 @@ import ModalClient from "./ModalClient";
 import QueryProvider from "@/providers/QueryProvider";
 import { getMetadata } from "@/lib/metadata";
 import { DevPanel } from "@/components/DevPanel";
+import { FaviconManager } from "@/components/FaviconManager";
 
 const inter = Inter({ subsets: ["latin"] });
 const roboto = Roboto({
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SessionProvider>
             <WorkspaceProvider>
               <QueryProvider>
+                <FaviconManager />
                 <ModalClient>{children}</ModalClient>
               </QueryProvider>
             </WorkspaceProvider>
