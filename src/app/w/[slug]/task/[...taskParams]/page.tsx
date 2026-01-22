@@ -1041,6 +1041,9 @@ export default function TaskChatPage() {
   const hasNonFormArtifacts = artifactsWithoutOldDiffs.some((a) => a.type !== "FORM" && a.type !== "LONGFORM");
   const browserArtifact = artifactsWithoutOldDiffs.find((a) => a.type === "BROWSER");
   
+  // Check if code has been created (CODE or DIFF artifacts exist)
+  const hasCodeArtifact = artifactsWithoutOldDiffs.some((a) => a.type === "CODE" || a.type === "DIFF");
+  
   // Extract PR URL from PULL_REQUEST artifacts (get the first one if multiple exist)
   const prArtifact = messages
     .slice()
@@ -1124,7 +1127,7 @@ export default function TaskChatPage() {
                     workflowStatus={workflowStatus}
                     taskTitle={taskTitle}
                     workspaceSlug={slug}
-                    onCommit={handleCommit}
+                    onCommit={hasCodeArtifact ? handleCommit : undefined}
                     isCommitting={isGeneratingCommitInfo || isCommitting}
                     showPreviewToggle={!!browserArtifact}
                     showPreview={showPreview}
@@ -1152,7 +1155,7 @@ export default function TaskChatPage() {
                       workflowStatus={workflowStatus}
                       taskTitle={taskTitle}
                       workspaceSlug={slug}
-                      onCommit={handleCommit}
+                      onCommit={hasCodeArtifact ? handleCommit : undefined}
                       isCommitting={isGeneratingCommitInfo || isCommitting}
                       taskMode={taskMode}
                       podId={podId}
@@ -1188,7 +1191,7 @@ export default function TaskChatPage() {
                 workflowStatus={workflowStatus}
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
-                onCommit={handleCommit}
+                onCommit={hasCodeArtifact ? handleCommit : undefined}
                 isCommitting={isGeneratingCommitInfo || isCommitting}
                 taskMode={taskMode}
                 podId={podId}
