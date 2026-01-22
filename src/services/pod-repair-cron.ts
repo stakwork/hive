@@ -67,13 +67,27 @@ export async function fetchPodJlist(
   try {
     const response = await fetch(jlistUrl, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
       signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
       console.warn(
         `[PodRepairCron] jlist request failed for ${podId}: ${response.status}`
+      );
+      return null;
+    }
+
+    // Check content-type before parsing as JSON
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const textPreview = await response.text();
+      console.warn(
+        `[PodRepairCron] jlist returned non-JSON response for ${podId}. ` +
+        `Content-Type: ${contentType}, Preview: ${textPreview.substring(0, 200)}`
       );
       return null;
     }
