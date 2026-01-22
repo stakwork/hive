@@ -1,10 +1,17 @@
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
-import { matchPathToEndpoint } from "@/lib/vercel/path-matcher";
+import { matchPathToEndpoint, type EndpointNode } from "@/lib/vercel/path-matcher";
 import type { VercelLogEntry } from "@/types/vercel";
-import type { NodeFull } from "@/types/stakgraph";
 import { NextRequest, NextResponse } from "next/server";
+
+/**
+ * Compute HMAC-SHA1 signature for Vercel webhook verification
+ */
+function computeSignature(body: string, secret: string): string {
+  return crypto.createHmac("sha1", secret).update(Buffer.from(body, "utf-8")).digest("hex");
+}
 
 export const fetchCache = "force-no-store";
 
@@ -12,33 +19,30 @@ const encryptionService = EncryptionService.getInstance();
 
 /**
  * Vercel Log Drain Webhook Handler
- * 
+ *
  * Receives NDJSON log payloads from Vercel, matches request paths to endpoint nodes,
  * and broadcasts highlights to the workspace via Pusher for real-time graph visualization.
- * 
- * Endpoint: POST /api/vercel/log-drain?projectId=<vercel-project-id>
- * 
+ *
+ * Endpoint: POST /api/vercel/log-drain?workspace=<workspace-slug>
+ *
  * Authentication: Per-workspace webhook secret via x-vercel-signature header
  * Verification: Returns workspace-specific x-vercel-verify header for webhook setup
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get project ID from query params to identify workspace
+    // Get workspace slug from query params
     const { searchParams } = new URL(request.url);
-    const projectId = searchParams.get("projectId");
+    const workspaceSlug = searchParams.get("workspace");
 
-    if (!projectId) {
-      console.error("[Vercel Logs] Missing projectId query parameter");
-      return NextResponse.json(
-        { error: "projectId query parameter required" },
-        { status: 400 }
-      );
+    if (!workspaceSlug) {
+      console.error("[Vercel Logs] Missing workspace query parameter");
+      return NextResponse.json({ error: "workspace query parameter required" }, { status: 400 });
     }
 
-    // Find workspace by Vercel project ID
+    // Find workspace by slug
     const workspace = await db.workspace.findFirst({
       where: {
-        vercelProjectId: projectId,
+        slug: workspaceSlug,
         deleted: false,
       },
       include: {
@@ -47,11 +51,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (!workspace) {
-      console.error(`[Vercel Logs] No workspace found for projectId: ${projectId}`);
-      return NextResponse.json(
-        { error: "Workspace not found for this project" },
-        { status: 404 }
-      );
+      console.error(`[Vercel Logs] No workspace found for slug: ${workspaceSlug}`);
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     // Handle verification requests (no body)
@@ -59,20 +60,12 @@ export async function POST(request: NextRequest) {
     if (!contentLength || contentLength === "0") {
       // Verification request - return workspace-specific secret in header
       if (!workspace.vercelWebhookSecret) {
-        console.error(
-          `[Vercel Logs] No webhook secret configured for workspace ${workspace.slug}`
-        );
-        return NextResponse.json(
-          { error: "Webhook secret not configured for this workspace" },
-          { status: 500 }
-        );
+        console.error(`[Vercel Logs] No webhook secret configured for workspace ${workspace.slug}`);
+        return NextResponse.json({ error: "Webhook secret not configured for this workspace" }, { status: 500 });
       }
 
       // Decrypt the webhook secret
-      const decryptedSecret = encryptionService.decryptField(
-        "vercelWebhookSecret",
-        workspace.vercelWebhookSecret
-      );
+      const decryptedSecret = encryptionService.decryptField("vercelWebhookSecret", workspace.vercelWebhookSecret);
 
       return new NextResponse(null, {
         status: 200,
@@ -82,21 +75,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Verify webhook signature (optional but recommended)
-    // For now, we just check that the workspace has a webhook secret configured
-    // In production, you should verify the x-vercel-signature header
+    // Verify webhook signature
     if (!workspace.vercelWebhookSecret) {
-      console.error(
-        `[Vercel Logs] No webhook secret configured for workspace ${workspace.slug}`
-      );
-      return NextResponse.json(
-        { error: "Webhook secret not configured" },
-        { status: 401 }
-      );
+      console.error(`[Vercel Logs] No webhook secret configured for workspace ${workspace.slug}`);
+      return NextResponse.json({ error: "Webhook secret not configured" }, { status: 401 });
     }
 
     // Parse NDJSON payload (newline-delimited JSON)
     const body = await request.text();
+
+    // Verify the x-vercel-signature header
+    const signature = request.headers.get("x-vercel-signature");
+    if (!signature) {
+      console.error("[Vercel Logs] Missing x-vercel-signature header");
+      return NextResponse.json({ code: "invalid_signature", error: "Missing signature" }, { status: 403 });
+    }
+
+    const decryptedSecret = encryptionService.decryptField("vercelWebhookSecret", workspace.vercelWebhookSecret);
+    const expectedSignature = computeSignature(body, decryptedSecret);
+
+    if (signature !== expectedSignature) {
+      console.error("[Vercel Logs] Signature mismatch");
+      return NextResponse.json({ code: "invalid_signature", error: "Signature didn't match" }, { status: 403 });
+    }
+
     const logEntries: VercelLogEntry[] = [];
 
     for (const line of body.split("\n")) {
@@ -111,16 +113,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (logEntries.length === 0) {
-      return NextResponse.json(
-        { error: "No valid log entries found" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No valid log entries found" }, { status: 400 });
     }
 
-    // Process each log entry
-    const results = await Promise.all(
-      logEntries.map((entry) => processLogEntry(entry))
-    );
+    // Fetch endpoint nodes once for all log entries
+    if (!workspace.swarm) {
+      console.warn(`[Vercel Logs] No swarm found for workspace ${workspace.slug}`);
+      return NextResponse.json({ success: true, processed: logEntries.length, matched: 0, highlighted: 0 });
+    }
+
+    const endpointNodes = await fetchEndpointNodes(workspace.swarm);
+    if (endpointNodes.length === 0) {
+      return NextResponse.json({ success: true, processed: logEntries.length, matched: 0, highlighted: 0 });
+    }
+
+    console.log("logEntries:", JSON.stringify(logEntries, null, 2));
+    // Process all log entries with the pre-fetched endpoint nodes
+    const results = await Promise.all(logEntries.map((entry) => processLogEntry(entry, workspace.slug, endpointNodes)));
 
     const successCount = results.filter((r) => r.success).length;
     const highlightedCount = results.filter((r) => r.highlighted).length;
@@ -133,10 +142,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[Vercel Logs] Error processing webhook:", error);
-    return NextResponse.json(
-      { error: "Failed to process webhook" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 });
   }
 }
 
@@ -144,7 +150,9 @@ export async function POST(request: NextRequest) {
  * Process a single log entry: match path to endpoint and broadcast highlight
  */
 async function processLogEntry(
-  entry: VercelLogEntry
+  entry: VercelLogEntry,
+  workspaceSlug: string,
+  endpointNodes: EndpointNode[],
 ): Promise<{ success: boolean; highlighted: boolean }> {
   try {
     // Extract path from log entry
@@ -154,53 +162,16 @@ async function processLogEntry(
       return { success: true, highlighted: false };
     }
 
-    // Find workspace by Vercel project ID
-    const projectId = entry.projectId;
-    if (!projectId) {
-      console.warn("[Vercel Logs] No projectId in log entry");
-      return { success: true, highlighted: false };
-    }
-
-    const workspace = await db.workspace.findFirst({
-      where: {
-        vercelProjectId: projectId,
-        deleted: false,
-      },
-      include: {
-        swarm: true,
-      },
-    });
-
-    if (!workspace) {
-      // No workspace mapped to this Vercel project
-      return { success: true, highlighted: false };
-    }
-
-    if (!workspace.swarm) {
-      console.warn(
-        `[Vercel Logs] No swarm found for workspace ${workspace.slug}`
-      );
-      return { success: true, highlighted: false };
-    }
-
-    // Fetch endpoint nodes from swarm
-    const endpointNodes = await fetchEndpointNodes(workspace.swarm);
-    if (endpointNodes.length === 0) {
-      console.warn(
-        `[Vercel Logs] No endpoint nodes found for workspace ${workspace.slug}`
-      );
-      return { success: true, highlighted: false };
-    }
-
     // Match path to endpoint
     const matchedNode = matchPathToEndpoint(path, endpointNodes);
     if (!matchedNode) {
-      // No matching endpoint found
       return { success: true, highlighted: false };
     }
 
+    console.log(`[Vercel Logs] Matched ${path} -> ${matchedNode.ref_id}`);
+
     // Broadcast highlight event via Pusher
-    await broadcastHighlight(workspace.slug, matchedNode.ref_id);
+    await broadcastHighlight(workspaceSlug, matchedNode.ref_id);
 
     return { success: true, highlighted: true };
   } catch (error) {
@@ -215,8 +186,9 @@ async function processLogEntry(
 async function fetchEndpointNodes(swarm: {
   swarmUrl: string | null;
   swarmApiKey: string | null;
-}): Promise<NodeFull[]> {
+}): Promise<EndpointNode[]> {
   if (!swarm.swarmUrl || !swarm.swarmApiKey) {
+    console.warn("[Vercel Logs] Missing swarm config");
     return [];
   }
 
@@ -236,10 +208,10 @@ async function fetchEndpointNodes(swarm: {
       apiKey = process.env.CUSTOM_SWARM_API_KEY;
     }
 
-    // Fetch endpoint nodes from gitree
-    const url = new URL(`${graphUrl}/gitree`);
-    url.searchParams.set("node_type", "endpoint");
-    url.searchParams.set("limit", "1000");
+    // Fetch endpoint nodes from stakgraph
+    const url = new URL(`${graphUrl}/nodes`);
+    url.searchParams.set("node_type", "Endpoint");
+    url.searchParams.set("concise", "true");
     url.searchParams.set("output", "json");
 
     const response = await fetch(url.toString(), {
@@ -249,19 +221,15 @@ async function fetchEndpointNodes(swarm: {
     });
 
     if (!response.ok) {
-      console.error(
-        `[Vercel Logs] Failed to fetch endpoint nodes: ${response.status}`
-      );
+      console.error(`[Vercel Logs] Failed to fetch endpoints: ${response.status} from ${url.toString()}`);
       return [];
     }
 
-    const data = await response.json();
+    const nodes: EndpointNode[] = await response.json();
 
-    // Parse response format from gitree endpoint
-    // Response can be { endpoints: NodeFull[] } or { nodes: NodeFull[] }
-    const nodes: NodeFull[] = data.endpoints || data.nodes || [];
+    console.log(`[Vercel Logs] Fetched ${nodes.length} endpoints from swarm`);
 
-    return nodes.filter((node) => node.node_type === "Endpoint");
+    return nodes;
   } catch (error) {
     console.error("[Vercel Logs] Error fetching endpoint nodes:", error);
     return [];
@@ -271,10 +239,7 @@ async function fetchEndpointNodes(swarm: {
 /**
  * Broadcast highlight event to workspace via Pusher
  */
-async function broadcastHighlight(
-  workspaceSlug: string,
-  nodeRefId: string
-): Promise<void> {
+async function broadcastHighlight(workspaceSlug: string, nodeRefId: string): Promise<void> {
   try {
     const channelName = getWorkspaceChannelName(workspaceSlug);
     const eventPayload = {
@@ -286,15 +251,7 @@ async function broadcastHighlight(
       sourceNodeRefId: nodeRefId,
     };
 
-    await pusherServer.trigger(
-      channelName,
-      PUSHER_EVENTS.HIGHLIGHT_NODES,
-      eventPayload
-    );
-
-    console.log(
-      `[Vercel Logs] Broadcasted highlight for node ${nodeRefId} to workspace ${workspaceSlug}`
-    );
+    await pusherServer.trigger(channelName, PUSHER_EVENTS.HIGHLIGHT_NODES, eventPayload);
   } catch (error) {
     console.error("[Vercel Logs] Error broadcasting highlight:", error);
     // Don't throw - highlight failures shouldn't fail the webhook

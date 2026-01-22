@@ -1,4 +1,9 @@
-import type { NodeFull } from "@/types/stakgraph";
+/** Concise node shape returned by swarm /nodes endpoint */
+export interface EndpointNode {
+  name: string;
+  file: string;
+  ref_id: string;
+}
 
 /**
  * Converts a request path with actual values to a pattern path with dynamic segments
@@ -61,27 +66,21 @@ export function convertPathToPattern(requestPath: string): string[] {
 /**
  * Matches a request path to an endpoint node from the graph
  * Returns the matched node or null if no match found
- * 
+ *
  * Matching strategy:
  * 1. Try exact match first
  * 2. Try pattern matches (converting dynamic segments)
- * 3. Check both node.name and node.properties.path
  */
-export function matchPathToEndpoint(
-  requestPath: string,
-  endpointNodes: NodeFull[]
-): NodeFull | null {
-  // Normalize request path (remove trailing slash, ensure leading slash)
-  const normalizedPath = requestPath.startsWith("/")
-    ? requestPath.replace(/\/$/, "")
-    : `/${requestPath.replace(/\/$/, "")}`;
+export function matchPathToEndpoint(requestPath: string, endpointNodes: EndpointNode[]): EndpointNode | null {
+  // Strip query string and normalize path (remove trailing slash, ensure leading slash)
+  const pathWithoutQuery = requestPath.split("?")[0];
+  const normalizedPath = pathWithoutQuery.startsWith("/")
+    ? pathWithoutQuery.replace(/\/$/, "")
+    : `/${pathWithoutQuery.replace(/\/$/, "")}`;
 
   // Try exact match first
   for (const node of endpointNodes) {
-    const nodePath = node.properties.path as string | undefined;
-    const nodeName = node.properties.name as string | undefined;
-
-    if (nodePath === normalizedPath || nodeName === normalizedPath) {
+    if (node.name === normalizedPath) {
       return node;
     }
   }
@@ -92,18 +91,12 @@ export function matchPathToEndpoint(
   // Try pattern matches
   for (const pattern of patternVariations) {
     for (const node of endpointNodes) {
-      const nodePath = node.properties.path as string | undefined;
-      const nodeName = node.properties.name as string | undefined;
-
-      if (nodePath === pattern || nodeName === pattern) {
+      if (node.name === pattern) {
         return node;
       }
 
       // Also try case-insensitive match for robustness
-      if (
-        nodePath?.toLowerCase() === pattern.toLowerCase() ||
-        nodeName?.toLowerCase() === pattern.toLowerCase()
-      ) {
+      if (node.name.toLowerCase() === pattern.toLowerCase()) {
         return node;
       }
     }

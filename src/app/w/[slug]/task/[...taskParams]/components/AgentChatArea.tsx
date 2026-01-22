@@ -204,7 +204,8 @@ export function AgentChatArea({
                   <Button
                     size="sm"
                     onClick={() => window.open(prUrl, '_blank')}
-                    className="flex-shrink-0 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                    className="flex-shrink-0 gap-1 text-white hover:opacity-90"
+                    style={{ backgroundColor: "#238636" }}
                   >
                     <Github className="w-3 h-3" />
                     Open PR
