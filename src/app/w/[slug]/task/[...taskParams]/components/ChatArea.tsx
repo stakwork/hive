@@ -143,24 +143,13 @@ export function ChatArea({
       {taskTitle && (
         <div className="px-4 py-3 border-b bg-muted/20">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col gap-2 flex-1 min-w-0">
-              <div className="flex items-center gap-3">
-                {/* Back Button */}
-                <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {/* Back Button */}
+              <Button variant="ghost" size="sm" onClick={handleBackToTasks} className="flex-shrink-0">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
 
-                {/* Breadcrumbs */}
-                {workspaceSlug && (
-                  <TaskBreadcrumbs
-                    featureId={featureId ?? null}
-                    featureTitle={featureTitle ?? null}
-                    workspaceSlug={workspaceSlug}
-                  />
-                )}
-              </div>
-
-              {/* Task Title - with animation only when title changes */}
+              {/* Task Title with inline breadcrumbs - with animation only when title changes */}
               <AnimatePresence mode="wait">
                 <motion.h2
                   key={taskTitle} // This will trigger re-animation when title changes
@@ -168,10 +157,18 @@ export function ChatArea({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.98 }}
                   transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="text-lg font-semibold text-foreground truncate"
+                  className="text-lg font-semibold text-foreground truncate flex-1 flex items-center"
                   title={taskTitle}
                   data-testid="task-title"
                 >
+                  {/* Inline Breadcrumbs */}
+                  {workspaceSlug && (
+                    <TaskBreadcrumbs
+                      featureId={featureId ?? null}
+                      featureTitle={featureTitle ?? null}
+                      workspaceSlug={workspaceSlug}
+                    />
+                  )}
                   {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
                 </motion.h2>
               </AnimatePresence>
