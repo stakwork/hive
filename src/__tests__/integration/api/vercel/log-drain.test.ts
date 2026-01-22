@@ -123,10 +123,10 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default mock for fetch (gitree endpoint)
+    // Default mock for fetch (stakgraph /nodes endpoint returns array directly)
     mockedFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ endpoints: [] }),
+      json: async () => [],
     } as Response);
   });
 
@@ -293,24 +293,22 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
     test("should match exact path and broadcast highlight", async () => {
       const { workspace } = await createTestWorkspace();
 
-      // Mock gitree response with endpoint nodes
+      // Mock stakgraph /nodes response (returns array directly)
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/health",
-                name: "/api/health",
-              },
+        json: async () => [
+          {
+            node_type: "Endpoint",
+            ref_id: "endpoint-1",
+            weight: 1,
+            test_count: 0,
+            covered: false,
+            properties: {
+              path: "/api/health",
+              name: "/api/health",
             },
-          ],
-        }),
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -347,21 +345,19 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-users",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/users/[id]",
-                name: "/api/users/[id]",
-              },
+        json: async () => [
+          {
+            node_type: "Endpoint",
+            ref_id: "endpoint-users",
+            weight: 1,
+            test_count: 0,
+            covered: false,
+            properties: {
+              path: "/api/users/[id]",
+              name: "/api/users/[id]",
             },
-          ],
-        }),
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -388,21 +384,19 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/health",
-                name: "/api/health",
-              },
+        json: async () => [
+          {
+            node_type: "Endpoint",
+            ref_id: "endpoint-1",
+            weight: 1,
+            test_count: 0,
+            covered: false,
+            properties: {
+              path: "/api/health",
+              name: "/api/health",
             },
-          ],
-        }),
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -462,21 +456,19 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/different",
-                name: "/api/different",
-              },
+        json: async () => [
+          {
+            node_type: "Endpoint",
+            ref_id: "endpoint-1",
+            weight: 1,
+            test_count: 0,
+            covered: false,
+            properties: {
+              path: "/api/different",
+              name: "/api/different",
             },
-          ],
-        }),
+          },
+        ],
       } as Response);
 
       const logEntry = {
@@ -557,21 +549,19 @@ describe("Vercel Logs Webhook - POST /api/vercel/log-drain", () => {
 
       mockedFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          endpoints: [
-            {
-              node_type: "Endpoint",
-              ref_id: "endpoint-1",
-              weight: 1,
-              test_count: 0,
-              covered: false,
-              properties: {
-                path: "/api/health",
-                name: "/api/health",
-              },
+        json: async () => [
+          {
+            node_type: "Endpoint",
+            ref_id: "endpoint-1",
+            weight: 1,
+            test_count: 0,
+            covered: false,
+            properties: {
+              path: "/api/health",
+              name: "/api/health",
             },
-          ],
-        }),
+          },
+        ],
       } as Response);
 
       mockedPusherServer.trigger.mockRejectedValueOnce(new Error("Pusher error"));

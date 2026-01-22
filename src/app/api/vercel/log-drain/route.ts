@@ -205,10 +205,10 @@ async function fetchEndpointNodes(swarm: { swarmUrl: string | null; swarmApiKey:
       apiKey = process.env.CUSTOM_SWARM_API_KEY;
     }
 
-    // Fetch endpoint nodes from gitree
-    const url = new URL(`${graphUrl}/gitree`);
-    url.searchParams.set("node_type", "endpoint");
-    url.searchParams.set("limit", "1000");
+    // Fetch endpoint nodes from stakgraph
+    const url = new URL(`${graphUrl}/nodes`);
+    url.searchParams.set("node_type", "Endpoint");
+    url.searchParams.set("concise", "true");
     url.searchParams.set("output", "json");
 
     const response = await fetch(url.toString(), {
@@ -222,16 +222,11 @@ async function fetchEndpointNodes(swarm: { swarmUrl: string | null; swarmApiKey:
       return [];
     }
 
-    const data = await response.json();
+    const nodes: NodeFull[] = await response.json();
 
-    // Parse response format from gitree endpoint
-    // Response can be { endpoints: NodeFull[] } or { nodes: NodeFull[] }
-    const nodes: NodeFull[] = data.endpoints || data.nodes || [];
-    const filteredNodes = nodes.filter((node) => node.node_type === "Endpoint");
+    console.log(`[Vercel Logs] Fetched ${nodes.length} endpoints from swarm`);
 
-    console.log(`[Vercel Logs] Fetched ${filteredNodes.length} endpoints from swarm`);
-
-    return filteredNodes;
+    return nodes;
   } catch (error) {
     console.error("[Vercel Logs] Error fetching endpoint nodes:", error);
     return [];
