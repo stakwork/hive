@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
             },
             repositories: {
               take: 1,
-              orderBy: { createdAt: "desc" },
+              orderBy: { createdAt: "asc" },
               select: {
                 name: true,
                 repositoryUrl: true,

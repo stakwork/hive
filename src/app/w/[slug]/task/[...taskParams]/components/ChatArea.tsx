@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
+import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
@@ -41,6 +42,8 @@ interface ChatAreaProps {
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
+  featureId?: string | null;
+  featureTitle?: string | null;
 }
 
 export function ChatArea({
@@ -67,6 +70,8 @@ export function ChatArea({
   podId,
   onReleasePod,
   isReleasingPod = false,
+  featureId,
+  featureTitle,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -144,7 +149,7 @@ export function ChatArea({
                 <ArrowLeft className="w-4 h-4" />
               </Button>
 
-              {/* Task Title - with animation only when title changes */}
+              {/* Task Title with inline breadcrumbs - with animation only when title changes */}
               <AnimatePresence mode="wait">
                 <motion.h2
                   key={taskTitle} // This will trigger re-animation when title changes
@@ -152,10 +157,18 @@ export function ChatArea({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.98 }}
                   transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="text-lg font-semibold text-foreground truncate flex-1"
+                  className="text-lg font-semibold text-foreground truncate flex-1 flex items-center"
                   title={taskTitle}
                   data-testid="task-title"
                 >
+                  {/* Inline Breadcrumbs */}
+                  {workspaceSlug && (
+                    <TaskBreadcrumbs
+                      featureId={featureId ?? null}
+                      featureTitle={featureTitle ?? null}
+                      workspaceSlug={workspaceSlug}
+                    />
+                  )}
                   {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
                 </motion.h2>
               </AnimatePresence>
