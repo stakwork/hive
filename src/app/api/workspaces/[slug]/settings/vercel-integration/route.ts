@@ -12,7 +12,6 @@ const encryptionService = EncryptionService.getInstance();
 const vercelIntegrationSchema = z.object({
   vercelApiToken: z.string().optional().nullable(),
   vercelTeamId: z.string().optional().nullable(),
-  vercelProjectId: z.string().optional().nullable(),
   vercelWebhookSecret: z.string().optional().nullable(),
 });
 
@@ -57,7 +56,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         id: true,
         vercelApiToken: true,
         vercelTeamId: true,
-        vercelProjectId: true,
         vercelWebhookSecret: true,
       },
     });
@@ -89,16 +87,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Generate webhook URL - requires projectId query param for the log drain endpoint
+    // Generate webhook URL using workspace slug
     const baseUrl = process.env.NEXTAUTH_URL;
-    const webhookUrl = workspace.vercelProjectId
-      ? `${baseUrl}/api/vercel/log-drain?projectId=${workspace.vercelProjectId}`
-      : `${baseUrl}/api/vercel/log-drain?projectId=<your-vercel-project-id>`;
+    const webhookUrl = `${baseUrl}/api/vercel/log-drain?workspace=${slug}`;
 
     return NextResponse.json({
       vercelApiToken: decryptedToken,
       vercelTeamId: workspace.vercelTeamId,
-      vercelProjectId: workspace.vercelProjectId,
       vercelWebhookSecret: decryptedWebhookSecret,
       webhookUrl,
     });
@@ -177,26 +172,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       data: {
         vercelApiToken: encryptedToken,
         vercelTeamId: validatedData.vercelTeamId,
-        vercelProjectId: validatedData.vercelProjectId,
         vercelWebhookSecret: encryptedWebhookSecret,
       },
       select: {
         id: true,
         vercelTeamId: true,
-        vercelProjectId: true,
       },
     });
 
-    // Generate webhook URL for response
+    // Generate webhook URL using workspace slug
     const baseUrl = process.env.NEXTAUTH_URL;
-    const webhookUrl = updatedWorkspace.vercelProjectId
-      ? `${baseUrl}/api/vercel/log-drain?projectId=${updatedWorkspace.vercelProjectId}`
-      : `${baseUrl}/api/vercel/log-drain?projectId=<your-vercel-project-id>`;
+    const webhookUrl = `${baseUrl}/api/vercel/log-drain?workspace=${slug}`;
 
     return NextResponse.json({
       success: true,
       vercelTeamId: updatedWorkspace.vercelTeamId,
-      vercelProjectId: updatedWorkspace.vercelProjectId,
       webhookUrl,
     });
   } catch (error) {
