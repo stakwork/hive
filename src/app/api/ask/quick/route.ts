@@ -9,7 +9,7 @@ import { askTools, listConcepts, createHasEndMarkerCondition, clueToolMsgs } fro
 import { streamText, ModelMessage, generateObject } from "ai";
 import { getModel, getApiKeyForProvider } from "@/lib/ai/provider";
 import { z } from "zod";
-import { getPrimaryRepository } from "@/lib/helpers/repository";
+import { getRepository } from "@/lib/helpers/repository";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { sanitizeAndCompleteToolCalls } from "@/lib/ai/message-sanitizer";
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const body = await request.json();
-    const { messages, workspaceSlug } = body;
+    const { messages, workspaceSlug, repositoryId } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       throw validationError("Missing required parameter: messages (must be a non-empty array)");
@@ -122,11 +122,18 @@ export async function POST(request: NextRequest) {
       baseSwarmUrl = `http://localhost:3355`;
     }
 
-    const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
-    const repoUrl = primaryRepo?.repositoryUrl;
-    if (!repoUrl) {
-      throw notFoundError("Repository URL not configured for this swarm");
+    // Get repository (by ID if provided, otherwise primary)
+    const targetRepo = await getRepository(swarm.workspaceId, repositoryId);
+    
+    if (!targetRepo && repositoryId) {
+      throw notFoundError("Repository not found or does not belong to workspace");
     }
+    
+    if (!targetRepo) {
+      throw notFoundError("No repository configured for this workspace");
+    }
+
+    const repoUrl = targetRepo.repositoryUrl;
 
     const workspace = await db.workspace.findUnique({
       where: { id: workspaceAccess.workspace?.id },
