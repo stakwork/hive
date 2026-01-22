@@ -109,7 +109,7 @@ export async function createTaskWithStakworkWorkflow(params: {
           },
           repositories: {
             take: 1,
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: "asc" },
             select: {
               repositoryUrl: true,
               branch: true,
@@ -188,7 +188,7 @@ export async function sendMessageToStakwork(params: {
           },
           repositories: {
             take: 1,
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: "asc" },
             select: {
               repositoryUrl: true,
               branch: true,
@@ -258,7 +258,7 @@ export async function startTaskWorkflow(params: {
           },
           repositories: {
             take: 1,
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: "asc" },
             select: {
               repositoryUrl: true,
               branch: true,
