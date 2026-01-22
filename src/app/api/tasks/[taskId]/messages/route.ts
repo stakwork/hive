@@ -48,6 +48,13 @@ export async function GET(
         stakworkProjectId: true,
         mode: true,
         podId: true,
+        featureId: true,
+        feature: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
         workspace: {
           select: {
             id: true,
@@ -135,6 +142,8 @@ export async function GET(
             stakworkProjectId: task.stakworkProjectId,
             mode: task.mode,
             podId: task.podId,
+            featureId: task.featureId,
+            feature: task.feature,
           },
           messages: clientMessages,
           count: clientMessages.length,

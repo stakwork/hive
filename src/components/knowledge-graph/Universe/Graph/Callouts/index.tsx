@@ -1,5 +1,6 @@
 import { useStoreId } from '@/stores/StoreProvider'
 import { getStoreBundle } from '@/stores/createStoreFactory'
+import { DEFAULT_CALLOUT_TTL_MS } from '@/stores/calloutConstants'
 import type { GraphCallout } from '@/stores/graphStore.types'
 import { useDataStore, useGraphStore, useSimulationStore } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
@@ -10,8 +11,8 @@ import { Group } from 'three'
 import { CalloutLabel } from '../HighlightedNodes/ChunkLayer/CalloutLabel'
 
 const CALLOUT_COLOR = '#7DDCFF'
-const CALLOUT_TTL_MS = 15 * 60 * 1000
 const CALLOUT_SWEEP_MS = 30 * 1000
+const getCalloutExpiry = (callout: GraphCallout) => callout.expiresAt ?? callout.addedAt + DEFAULT_CALLOUT_TTL_MS
 
 const CalloutInstance = memo(({ callout }: { callout: GraphCallout }) => {
   const htmlRef = useRef<Group>(null)
@@ -77,7 +78,7 @@ export const CalloutsLayer = memo(() => {
   // Keep callout state clean while this layer is mounted
   useEffect(() => {
     const interval = setInterval(() => {
-      pruneExpiredCallouts(CALLOUT_TTL_MS)
+      pruneExpiredCallouts(DEFAULT_CALLOUT_TTL_MS)
     }, CALLOUT_SWEEP_MS)
     return () => clearInterval(interval)
   }, [pruneExpiredCallouts])
@@ -86,7 +87,7 @@ export const CalloutsLayer = memo(() => {
     () =>
       callouts.filter(
         (callout) =>
-          Date.now() - callout.addedAt < CALLOUT_TTL_MS &&
+          Date.now() < getCalloutExpiry(callout) &&
           nodesNormalized.has(callout.nodeRefId)
       ),
     [callouts, nodesNormalized]
