@@ -478,11 +478,15 @@ model SharedConversation {
   messages          Json
   provenanceData    Json?     @map("provenance_data")
   followUpQuestions Json      @map("follow_up_questions")
+  isShared          Boolean   @default(false) @map("is_shared")
+  lastMessageAt     DateTime? @map("last_message_at")
+  source            String?
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([userId])
+  @@index([userId, workspaceId, lastMessageAt])
   @@map("shared_conversations")
 }
 

@@ -22,9 +22,40 @@ export interface CreateSharedConversationRequest {
   provenanceData?: unknown; // ProvenanceData format (optional)
   followUpQuestions: unknown; // string[] format
   title?: string; // Optional title for the conversation
+  conversationId?: string; // Optional: update existing conversation instead of creating new one
 }
 
 export interface SharedConversationResponse {
   shareId: string;
   url: string; // Format: `/w/${slug}/chat/shared/${shareId}`
+}
+
+// Conversation management types
+export interface ConversationListItem {
+  id: string;
+  title: string | null;
+  lastMessageAt: string | null;
+  preview: string; // Preview of first message
+  source: string | null;
+  isShared: boolean;
+  createdAt: string;
+}
+
+export interface ConversationDetail extends SharedConversationData {
+  source: string | null;
+  isShared: boolean;
+  lastMessageAt: string | null;
+}
+
+export interface UpdateConversationRequest {
+  messages: unknown[]; // Messages to append
+  title?: string; // Optional: update title
+}
+
+export interface CreateConversationRequest {
+  messages: unknown[]; // AI SDK UIMessage[] format
+  provenanceData?: unknown; // ProvenanceData format (optional)
+  followUpQuestions?: unknown; // string[] format (optional)
+  title?: string; // Optional title for the conversation
+  source?: string; // Optional source identifier
 }

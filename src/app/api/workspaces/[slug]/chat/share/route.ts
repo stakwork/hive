@@ -62,17 +62,59 @@ export async function POST(
       );
     }
 
-    // Create shared conversation
-    const sharedConversation = await db.sharedConversation.create({
-      data: {
-        workspaceId: workspace.id,
-        userId,
-        title: body.title || null,
-        messages: body.messages as any,
-        provenanceData: body.provenanceData as any || null,
-        followUpQuestions: body.followUpQuestions as any,
-      },
-    });
+    // Calculate lastMessageAt from messages array
+    let lastMessageAt: Date | null = null;
+    if (Array.isArray(body.messages) && body.messages.length > 0) {
+      lastMessageAt = new Date();
+    }
+
+    let sharedConversation;
+
+    // If conversationId is provided, update existing conversation and mark as shared
+    if (body.conversationId) {
+      // Verify the conversation exists and belongs to this workspace and user
+      const existing = await db.sharedConversation.findFirst({
+        where: {
+          id: body.conversationId,
+          workspaceId: workspace.id,
+          userId,
+        },
+      });
+
+      if (!existing) {
+        return NextResponse.json(
+          { error: "Conversation not found" },
+          { status: 404 }
+        );
+      }
+
+      // Update the existing conversation
+      sharedConversation = await db.sharedConversation.update({
+        where: { id: body.conversationId },
+        data: {
+          title: body.title || existing.title,
+          messages: body.messages as any,
+          provenanceData: body.provenanceData as any || existing.provenanceData,
+          followUpQuestions: body.followUpQuestions as any,
+          isShared: true,
+          lastMessageAt,
+        },
+      });
+    } else {
+      // Create new shared conversation
+      sharedConversation = await db.sharedConversation.create({
+        data: {
+          workspaceId: workspace.id,
+          userId,
+          title: body.title || null,
+          messages: body.messages as any,
+          provenanceData: body.provenanceData as any || null,
+          followUpQuestions: body.followUpQuestions as any,
+          isShared: true,
+          lastMessageAt,
+        },
+      });
+    }
 
     const response: SharedConversationResponse = {
       shareId: sharedConversation.id,
