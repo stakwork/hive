@@ -586,6 +586,115 @@ async function seedTasks(
       assignToTeamMember: 3, // David (DEVELOPER)
       blockingReason: "Blocked: WebSocket infrastructure deployment pending DevOps approval. Security review in progress for real-time data streaming. Expected resolution: 2 weeks.",
     },
+
+    // COMPLEX DEPENDENCY PATTERN TASKS - for stress testing collision detection
+    // These 10 tasks create diamond, wide, deep chain, and mixed patterns
+
+    // Diamond Pattern - Root (will have 2 children, then 1 merge)
+    {
+      title: "Design database schema for analytics",
+      description:
+        "Create initial database schema design for the analytics module. This will branch into parallel implementation tasks.",
+      status: TaskStatus.DONE,
+      workflowStatus: WorkflowStatus.COMPLETED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+      assignToTeamMember: 0, // Alice (ADMIN)
+    },
+
+    // Diamond Pattern - Parallel branch 1
+    {
+      title: "Implement user events tracking",
+      description:
+        "Implement tracking logic for user events based on the analytics schema. Parallel with session tracking.",
+      status: TaskStatus.IN_PROGRESS,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+      assignToTeamMember: 2, // Carol (DEVELOPER)
+      withPod: true,
+    },
+
+    // Diamond Pattern - Parallel branch 2
+    {
+      title: "Implement session analytics tracking",
+      description:
+        "Implement session tracking and aggregation logic. Parallel with user events.",
+      status: TaskStatus.IN_PROGRESS,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+      assignToTeamMember: 3, // David (DEVELOPER)
+      withPod: true,
+    },
+
+    // Diamond Pattern - Merge point (depends on both parallel branches)
+    {
+      title: "Create analytics dashboard UI",
+      description:
+        "Build the dashboard that displays both user events and session data. Merges the two tracking implementations.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.MEDIUM,
+      assignToTeamMember: 2, // Carol (DEVELOPER)
+    },
+
+    // Wide Graph - Root (will fan out to 4+ tasks)
+    {
+      title: "Design microservices architecture",
+      description:
+        "Create architectural design for breaking monolith into microservices. This will spawn multiple parallel service implementations.",
+      status: TaskStatus.DONE,
+      workflowStatus: WorkflowStatus.COMPLETED,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.CRITICAL,
+      assignToTeamMember: 1, // Bob (PM)
+    },
+
+    // Wide Graph - Child 1
+    {
+      title: "Implement authentication microservice",
+      description: "Build standalone authentication service based on architecture design.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+    },
+
+    // Wide Graph - Child 2
+    {
+      title: "Implement notification microservice",
+      description: "Build standalone notification service based on architecture design.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.MEDIUM,
+    },
+
+    // Wide Graph - Child 3
+    {
+      title: "Implement billing microservice",
+      description: "Build standalone billing service based on architecture design.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.HIGH,
+    },
+
+    // Wide Graph - Child 4
+    {
+      title: "Implement analytics microservice",
+      description: "Build standalone analytics service based on architecture design.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.MEDIUM,
+    },
+
+    // Isolated Task - No dependencies (edge case)
+    {
+      title: "Update company branding assets",
+      description:
+        "Update logos, colors, and branding guidelines. Independent task with no dependencies.",
+      status: TaskStatus.TODO,
+      sourceType: TaskSourceType.USER,
+      priority: Priority.LOW,
+      assignToTeamMember: 1, // Bob (PM)
+    },
   ];
 
   const createdTasks: Array<{ id: string; title: string; status: TaskStatus; sourceType: TaskSourceType }> = [];
@@ -660,13 +769,23 @@ async function seedTasks(
   // Add chat messages with artifacts to some tasks
   await seedChatMessagesWithArtifacts(createdTasks.slice(0, 5));
 
-  // Second pass: Add task dependencies
-  // Create diverse dependency scenarios as specified in requirements
+  // Second pass: Add task dependencies with complex patterns for collision testing
   const dependencyUpdates = [];
+  
+  // Track complex pattern counts
+  let diamondPatterns = 0;
+  let wideGraphPatterns = 0;
+  let deepChainPatterns = 0;
+  let mixedPatterns = 0;
+  let multiIncomingEdges = 0;
+  let multiOutgoingEdges = 0;
+  let isolatedTasks = 0;
+  let identicalDepsCount = 0;
 
-  if (createdTasks.length >= 10) {
+  if (createdTasks.length >= 29) {
+    // ===== ORIGINAL SIMPLE PATTERNS (tasks 0-9) =====
+    
     // Scenario 1: Simple chain A→B→C (tasks 0, 1, 2)
-    // Task 2 depends on Task 1, Task 1 depends on Task 0
     dependencyUpdates.push(
       db.task.update({
         where: { id: createdTasks[1].id },
@@ -678,7 +797,7 @@ async function seedTasks(
       })
     );
 
-    // Scenario 2: Parallel dependencies - task depends on 2 others (task 5 depends on tasks 3 and 4)
+    // Scenario 2: Parallel dependencies (task 5 depends on tasks 3 and 4)
     dependencyUpdates.push(
       db.task.update({
         where: { id: createdTasks[5].id },
@@ -687,7 +806,6 @@ async function seedTasks(
     );
 
     // Scenario 3: Cross-feature dependencies (task 7 depends on task 6)
-    // These are from different features due to feature distribution in main loop
     dependencyUpdates.push(
       db.task.update({
         where: { id: createdTasks[7].id },
@@ -695,15 +813,13 @@ async function seedTasks(
       })
     );
 
-    // Scenario 4: Complex - task depends on multiple, including from a chain (task 9 depends on tasks 2 and 8)
-    if (createdTasks.length > 9) {
-      dependencyUpdates.push(
-        db.task.update({
-          where: { id: createdTasks[9].id },
-          data: { dependsOnTaskIds: [createdTasks[2].id, createdTasks[8].id] },
-        })
-      );
-    }
+    // Scenario 4: Complex multi-dependency (task 9 depends on tasks 2 and 8)
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[9].id },
+        data: { dependsOnTaskIds: [createdTasks[2].id, createdTasks[8].id] },
+      })
+    );
 
     // Scenario 5: Another simple dependency (task 8 depends on task 6)
     dependencyUpdates.push(
@@ -713,9 +829,138 @@ async function seedTasks(
       })
     );
 
+    // ===== COMPLEX PATTERNS (tasks 10-28) =====
+
+    // Pattern 1: DEEP CHAIN (6 sequential dependencies: 10→11→12→13→14→15)
+    // This creates a long vertical stack that tests vertical collision detection
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[11].id },
+        data: { dependsOnTaskIds: [createdTasks[10].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[12].id },
+        data: { dependsOnTaskIds: [createdTasks[11].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[13].id },
+        data: { dependsOnTaskIds: [createdTasks[12].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[14].id },
+        data: { dependsOnTaskIds: [createdTasks[13].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[15].id },
+        data: { dependsOnTaskIds: [createdTasks[14].id] },
+      })
+    );
+    deepChainPatterns++;
+
+    // Pattern 2: DIAMOND STRUCTURE (task 19→[20,21]→22)
+    // Root task (19) branches to 2 parallel (20, 21), then merges to one (22)
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[20].id },
+        data: { dependsOnTaskIds: [createdTasks[19].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[21].id },
+        data: { dependsOnTaskIds: [createdTasks[19].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[22].id },
+        data: { dependsOnTaskIds: [createdTasks[20].id, createdTasks[21].id] },
+      })
+    );
+    diamondPatterns++;
+
+    // Pattern 3: WIDE GRAPH (task 23→[24,25,26,27])
+    // One root fans out to 4+ parallel tasks - tests horizontal collision
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[24].id },
+        data: { dependsOnTaskIds: [createdTasks[23].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[25].id },
+        data: { dependsOnTaskIds: [createdTasks[23].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[26].id },
+        data: { dependsOnTaskIds: [createdTasks[23].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[27].id },
+        data: { dependsOnTaskIds: [createdTasks[23].id] },
+      })
+    );
+    wideGraphPatterns++;
+    multiOutgoingEdges++; // task 23 has 4 outgoing edges
+
+    // Pattern 4: IDENTICAL DEPENDENCIES (tasks 16 and 17 both depend on task 10)
+    // Edge case: two tasks with exact same dependency set
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[16].id },
+        data: { dependsOnTaskIds: [createdTasks[10].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[17].id },
+        data: { dependsOnTaskIds: [createdTasks[10].id] },
+      })
+    );
+    identicalDepsCount += 2;
+
+    // Pattern 5: MULTIPLE INCOMING EDGES (task 18 depends on tasks 15, 16, 17)
+    // Tests collision when many edges converge on one task
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[18].id },
+        data: { dependsOnTaskIds: [createdTasks[15].id, createdTasks[16].id, createdTasks[17].id] },
+      })
+    );
+    multiIncomingEdges++; // task 18 has 3 incoming edges
+
+    // Pattern 6: MIXED COMPLEX (task 4 gets 3 more dependencies: 10, 15, 22)
+    // Creates a task with diverse dependency sources from different patterns
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[4].id },
+        data: { dependsOnTaskIds: [createdTasks[10].id, createdTasks[15].id, createdTasks[22].id] },
+      })
+    );
+    mixedPatterns++;
+    multiIncomingEdges++; // task 4 now has 3 incoming edges
+
+    // Pattern 7: ISOLATED TASK (task 28 has no dependencies)
+    // Already isolated by not adding any dependencies - just count it
+    isolatedTasks++;
+
     // Execute all dependency updates
     await Promise.all(dependencyUpdates);
-    console.log(`[MockSeed] Added dependencies to ${dependencyUpdates.length} tasks`);
+
+    // Log comprehensive statistics
+    console.log(`[MockSeed] ========================================`);
+    console.log(`[MockSeed] DEPENDENCY PATTERN STATISTICS`);
+    console.log(`[MockSeed] ========================================`);
+    console.log(`[MockSeed] Total tasks created: ${createdTasks.length}`);
+    console.log(`[MockSeed] Total dependencies added: ${dependencyUpdates.length}`);
+    console.log(`[MockSeed] ----------------------------------------`);
+    console.log(`[MockSeed] Complex Patterns:`);
+    console.log(`[MockSeed]   - Deep chains (5+ sequential): ${deepChainPatterns}`);
+    console.log(`[MockSeed]   - Diamond structures (1→2→1): ${diamondPatterns}`);
+    console.log(`[MockSeed]   - Wide graphs (1→4+ parallel): ${wideGraphPatterns}`);
+    console.log(`[MockSeed]   - Mixed patterns: ${mixedPatterns}`);
+    console.log(`[MockSeed] ----------------------------------------`);
+    console.log(`[MockSeed] Edge Cases:`);
+    console.log(`[MockSeed]   - Tasks with 3+ incoming edges: ${multiIncomingEdges}`);
+    console.log(`[MockSeed]   - Tasks with 4+ outgoing edges: ${multiOutgoingEdges}`);
+    console.log(`[MockSeed]   - Tasks with identical dependencies: ${identicalDepsCount}`);
+    console.log(`[MockSeed]   - Isolated tasks (no deps): ${isolatedTasks}`);
+    console.log(`[MockSeed] ========================================`);
+  } else {
+    console.log(`[MockSeed] WARNING: Not enough tasks (${createdTasks.length}) for full complex patterns. Need 29+ tasks.`);
   }
 
   console.log(`[MockSeed] Created ${createdTasks.length} tasks, ${tasksWithPods.length} with pods`);
