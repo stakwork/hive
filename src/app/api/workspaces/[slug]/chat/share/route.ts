@@ -46,7 +46,7 @@ export async function POST(
     }
 
     // Parse and validate request body
-    const body = await request.json() as CreateSharedConversationRequest;
+    const body = await request.json() as CreateSharedConversationRequest & { conversationId?: string };
 
     if (!body.messages) {
       return NextResponse.json(
@@ -73,6 +73,23 @@ export async function POST(
         followUpQuestions: body.followUpQuestions as any,
       },
     });
+
+    // If conversationId provided, link the shared conversation to the private conversation
+    if (body.conversationId) {
+      await db.conversation.update({
+        where: {
+          id: body.conversationId,
+          userId,
+          workspaceId: workspace.id,
+        },
+        data: {
+          sharedConversationId: sharedConversation.id,
+        },
+      }).catch((error) => {
+        console.error("Failed to link shared conversation to private conversation:", error);
+        // Non-fatal error, continue with response
+      });
+    }
 
     const response: SharedConversationResponse = {
       shareId: sharedConversation.id,
