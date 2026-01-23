@@ -219,7 +219,8 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     });
 
     // Convert to DevContainerFile format for Pool Manager API
-    const files = getDevContainerFilesFromBase64(base64ContainerFiles);
+    // Use mergedContainerFiles to preserve user modifications (Dockerfile, docker-compose, etc.)
+    const files = getDevContainerFilesFromBase64(mergedContainerFiles);
 
     // Get GitHub credentials - use provided userId or fall back to workspace owner
     let effectiveUserId = userId;
