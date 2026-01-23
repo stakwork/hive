@@ -499,6 +499,10 @@ model Task {
   // Janitor type for tasks created from janitor recommendations
   janitorType JanitorType? @map("janitor_type")
 
+  // Layer type classification for filtering/visualization
+  layerType           TaskLayerType? @map("layer_type")
+  manualLayerOverride Boolean?       @map("manual_layer_override")
+
   @@index([workspaceId])
   @@index([janitorType])
   @@index([assigneeId])
@@ -509,6 +513,7 @@ model Task {
   @@index([phaseId])
   @@index([systemAssigneeType])
   @@index([bountyCode])
+  @@index([layerType])
   @@map("tasks")
 }
 
@@ -883,6 +888,17 @@ enum SourceControlOrgType {
 enum SystemAssigneeType {
   TASK_COORDINATOR
   BOUNTY_HUNTER
+}
+
+enum TaskLayerType {
+  DATABASE_SCHEMA
+  BACKEND_API
+  FRONTEND_COMPONENT
+  INTEGRATION_TEST
+  UNIT_TEST
+  E2E_TEST
+  CONFIG_INFRA
+  DOCUMENTATION
 }
 
 // =============================================
