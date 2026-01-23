@@ -145,13 +145,17 @@ async function seedAdditionalRepositories(workspaceId: string): Promise<Array<{ 
 
 /**
  * Creates fake team members with various roles
+ * Uses unique emails per workspace to avoid conflicts in parallel tests
  */
 async function seedTeamMembers(workspaceId: string): Promise<string[]> {
+  // Generate unique suffix to avoid email conflicts in tests
+  const uniqueSuffix = `${workspaceId.slice(0, 8)}`;
+  
   const fakeMembers = [
-    { name: "Alice Chen", email: "alice.chen@example.com", role: WorkspaceRole.ADMIN },
-    { name: "Bob Martinez", email: "bob.martinez@example.com", role: WorkspaceRole.PM },
-    { name: "Carol Johnson", email: "carol.johnson@example.com", role: WorkspaceRole.DEVELOPER },
-    { name: "David Kim", email: "david.kim@example.com", role: WorkspaceRole.DEVELOPER },
+    { name: "Alice Chen", email: `alice.chen+${uniqueSuffix}@example.com`, role: WorkspaceRole.ADMIN },
+    { name: "Bob Martinez", email: `bob.martinez+${uniqueSuffix}@example.com`, role: WorkspaceRole.PM },
+    { name: "Carol Johnson", email: `carol.johnson+${uniqueSuffix}@example.com`, role: WorkspaceRole.DEVELOPER },
+    { name: "David Kim", email: `david.kim+${uniqueSuffix}@example.com`, role: WorkspaceRole.DEVELOPER },
   ];
 
   const userIds: string[] = [];
@@ -244,13 +248,16 @@ async function seedFeatures(
 
   const features: Array<{ id: string; title: string; phaseId: string }> = [];
 
-  for (const data of featureData) {
+  for (let index = 0; index < featureData.length; index++) {
+    const data = featureData[index];
+    const creatorId = userIds[index % userIds.length];
+    
     const feature = await db.feature.create({
       data: {
         ...data,
         workspaceId,
-        createdById: userId,
-        updatedById: userId,
+        createdById: creatorId,
+        updatedById: creatorId,
       },
       select: { id: true, title: true },
     });
@@ -261,7 +268,7 @@ async function seedFeatures(
     features.push({ ...feature, phaseId });
 
     // Create user stories
-    await seedUserStories(userId, feature.id);
+    await seedUserStories(creatorId, feature.id);
   }
 
   return features;
