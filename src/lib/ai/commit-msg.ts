@@ -65,7 +65,7 @@ Generate a commit message that describes the changes made and a branch name that
   // Use provided baseUrl or fall back to NEXTAUTH_URL or localhost
   const origin = baseUrl || process.env.NEXTAUTH_URL || "http://localhost:3000";
   const hiveTaskUrl = `${origin}/w/${task.workspace.slug}/task/${taskId}`;
-  const commitMessageWithLink = `${result.object.commit_message}\n\nPR was created and opened at ${hiveTaskUrl}`;
+  const commitMessageWithLink = `${result.object.commit_message}\n\n---\n\n_View task here [${taskId}](${hiveTaskUrl})_`;
 
   return {
     commit_message: commitMessageWithLink,
