@@ -59,10 +59,14 @@ export function syncPM2AndServices(
     return { services: existingServices, containerFiles: mergedFiles };
   }
 
-  // Case 2: Only services sent - regenerate pm2.config.js
+  // Case 2: Only services sent - regenerate pm2.config.js, preserving existing PM2 settings
   if (hasIncomingServices && !hasIncomingPM2) {
     const mergedServices = mergeServices(existingServices, incomingServices);
-    const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[]);
+    // Decode existing PM2 to preserve PM2-specific settings (instances, autorestart, etc.)
+    const existingPM2 = existingContainerFiles["pm2.config.js"]
+      ? Buffer.from(existingContainerFiles["pm2.config.js"], "base64").toString("utf-8")
+      : undefined;
+    const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[], existingPM2);
     const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
     mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
     return { services: mergedServices, containerFiles: mergedFiles };
@@ -78,10 +82,12 @@ export function syncPM2AndServices(
     return { services: mergedServices, containerFiles: mergedFiles };
   }
 
-  // Case 4: Both sent - services wins, regenerate pm2.config.js
-  console.warn("[syncPM2AndServices] Both services and pm2.config.js provided, using services array");
+  // Case 4: Both sent - services wins for service definitions, but preserve PM2-specific settings from incoming pm2
+  console.warn("[syncPM2AndServices] Both services and pm2.config.js provided, using services array with PM2 settings from pm2.config.js");
   const mergedServices = mergeServices(existingServices, incomingServices!);
-  const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[]);
+  // Decode incoming PM2 to preserve PM2-specific settings (instances, autorestart, etc.)
+  const incomingPM2 = Buffer.from(incomingContainerFiles!["pm2.config.js"], "base64").toString("utf-8");
+  const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[], incomingPM2);
   const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
   mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
   return { services: mergedServices, containerFiles: mergedFiles };
