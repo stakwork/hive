@@ -860,18 +860,18 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       } as Response);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/workflow/prompts?name=test"
+        "http://localhost:3000/api/workflow/prompts?search=test"
       );
 
       await GET(request);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("name=test"),
+        expect.stringContaining("search=test"),
         expect.any(Object)
       );
     });
 
-    test("URL encodes name parameter correctly", async () => {
+    test("URL encodes search parameter correctly", async () => {
       mockGetServerSession.mockResolvedValueOnce({
         user: { id: testUser.id, email: testUser.email },
       } as any);
@@ -890,16 +890,16 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       } as Response);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/workflow/prompts?name=test%20prompt"
+        "http://localhost:3000/api/workflow/prompts?search=test%20prompt"
       );
 
       await GET(request);
 
       const fetchUrl = mockFetch.mock.calls[0][0] as string;
-      expect(fetchUrl).toContain("name=test%20prompt");
+      expect(fetchUrl).toContain("search=test%20prompt");
     });
 
-    test("handles special characters in name parameter", async () => {
+    test("handles special characters in search parameter", async () => {
       mockGetServerSession.mockResolvedValueOnce({
         user: { id: testUser.id, email: testUser.email },
       } as any);
@@ -919,16 +919,16 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
 
       const specialName = "test&prompt=special";
       const request = new NextRequest(
-        `http://localhost:3000/api/workflow/prompts?name=${encodeURIComponent(specialName)}`
+        `http://localhost:3000/api/workflow/prompts?search=${encodeURIComponent(specialName)}`
       );
 
       await GET(request);
 
       const fetchUrl = mockFetch.mock.calls[0][0] as string;
-      expect(fetchUrl).toContain(`name=${encodeURIComponent(specialName)}`);
+      expect(fetchUrl).toContain(`search=${encodeURIComponent(specialName)}`);
     });
 
-    test("omits name parameter when not provided", async () => {
+    test("omits search parameter when not provided", async () => {
       mockGetServerSession.mockResolvedValueOnce({
         user: { id: testUser.id, email: testUser.email },
       } as any);
@@ -951,10 +951,10 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       await GET(request);
 
       const fetchUrl = mockFetch.mock.calls[0][0] as string;
-      expect(fetchUrl).not.toContain("name=");
+      expect(fetchUrl).not.toContain("search=");
     });
 
-    test("handles empty name parameter", async () => {
+    test("handles empty search parameter", async () => {
       mockGetServerSession.mockResolvedValueOnce({
         user: { id: testUser.id, email: testUser.email },
       } as any);
@@ -973,17 +973,17 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       } as Response);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/workflow/prompts?name="
+        "http://localhost:3000/api/workflow/prompts?search="
       );
 
       await GET(request);
 
       const fetchUrl = mockFetch.mock.calls[0][0] as string;
-      // Empty name should not add the parameter to the URL
-      expect(fetchUrl).not.toContain("name=");
+      // Empty search should not add the parameter to the URL
+      expect(fetchUrl).not.toContain("search=");
     });
 
-    test("combines name with other query parameters", async () => {
+    test("combines search with other query parameters", async () => {
       mockGetServerSession.mockResolvedValueOnce({
         user: { id: testUser.id, email: testUser.email },
       } as any);
@@ -1002,7 +1002,7 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       } as Response);
 
       const request = new NextRequest(
-        "http://localhost:3000/api/workflow/prompts?page=2&workflow_id=wf-123&include_usages=true&name=search"
+        "http://localhost:3000/api/workflow/prompts?page=2&workflow_id=wf-123&include_usages=true&search=searchterm"
       );
 
       await GET(request);
@@ -1011,7 +1011,7 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       expect(fetchUrl).toContain("page=2");
       expect(fetchUrl).toContain("workflow_id=wf-123");
       expect(fetchUrl).toContain("include_usages=true");
-      expect(fetchUrl).toContain("name=search");
+      expect(fetchUrl).toContain("search=searchterm");
     });
   });
 
