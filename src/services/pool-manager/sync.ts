@@ -39,9 +39,7 @@ export interface SyncPoolManagerResult {
  * Sync pool settings to Pool Manager
  * Extracted from stakgraph route for reuse in memory bump and other scenarios
  */
-export async function syncPoolManagerSettings(
-  params: SyncPoolManagerParams
-): Promise<SyncPoolManagerResult> {
+export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Promise<SyncPoolManagerResult> {
   const {
     workspaceId,
     workspaceSlug,
@@ -56,19 +54,13 @@ export async function syncPoolManagerSettings(
 
   try {
     // Decrypt pool API key
-    const decryptedPoolApiKey = encryptionService.decryptField(
-      "poolApiKey",
-      poolApiKey
-    );
+    const decryptedPoolApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
 
     const config = getServiceConfig("poolManager");
     const poolManager = new PoolManagerService(config as unknown as ServiceConfig);
 
     // Get current env vars from Pool Manager (returns { key, value } format)
-    const currentEnvVarsRaw = await poolManager.getPoolEnvVars(
-      swarmId,
-      decryptedPoolApiKey
-    );
+    const currentEnvVarsRaw = await poolManager.getPoolEnvVars(swarmId, decryptedPoolApiKey);
 
     // Transform to expected format { name, value, masked }
     const currentEnvVars = currentEnvVarsRaw.map((env) => ({
@@ -125,13 +117,11 @@ export async function syncPoolManagerSettings(
     let services: ServiceDataConfig[] = [];
     if (swarm.services) {
       try {
-        const parsedServices = typeof swarm.services === 'string'
-          ? JSON.parse(swarm.services)
-          : swarm.services;
+        const parsedServices = typeof swarm.services === "string" ? JSON.parse(swarm.services) : swarm.services;
         services = Array.isArray(parsedServices) ? parsedServices : [];
 
         // Merge service-specific env vars into service.env
-        services = services.map(service => {
+        services = services.map((service) => {
           const serviceEnvVars = serviceEnvVarsMap.get(service.name);
           if (serviceEnvVars && serviceEnvVars.length > 0) {
             const envObject: Record<string, string> = {};
@@ -160,7 +150,7 @@ export async function syncPoolManagerSettings(
       "devcontainer.json": devcontainerJsonContent(repoName),
       "pm2.config.js": `module.exports = {\n  apps: ${formatPM2Apps(pm2Apps)},\n};\n`,
       "docker-compose.yml": dockerComposeContent(),
-      "Dockerfile": dockerfileContent(),
+      Dockerfile: dockerfileContent(),
     };
 
     // Base64 encode the generated files
@@ -169,16 +159,23 @@ export async function syncPoolManagerSettings(
         acc[name] = Buffer.from(content).toString("base64");
         return acc;
       },
-      {} as Record<string, string>
+      {} as Record<string, string>,
     );
 
     // Convert to DevContainerFile format for Pool Manager API
     const files = getDevContainerFilesFromBase64(base64ContainerFiles);
 
-    // Get GitHub credentials if userId provided
-    const githubCreds = userId
-      ? await getGithubUsernameAndPAT(userId, workspaceSlug)
-      : null;
+    // Get GitHub credentials - use provided userId or fall back to workspace owner
+    let effectiveUserId = userId;
+    if (!effectiveUserId) {
+      const workspace = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { ownerId: true },
+      });
+      effectiveUserId = workspace?.ownerId;
+    }
+
+    const githubCreds = effectiveUserId ? await getGithubUsernameAndPAT(effectiveUserId, workspaceSlug) : null;
 
     // Get primary repo branch
     const primaryRepo = await getPrimaryRepository(workspaceId);
@@ -199,6 +196,7 @@ export async function syncPoolManagerSettings(
         : undefined;
 
     // Environment variables are now embedded in PM2 config, pass empty array
+    // Call Pool Manager update API - only pass GitHub credentials if available
     await poolManager.updatePoolData(
       swarmId,
       decryptedPoolApiKey,
@@ -207,23 +205,18 @@ export async function syncPoolManagerSettings(
       files,
       poolCpu || undefined,
       poolMemory || undefined,
-      githubCreds?.token || "",
-      githubCreds?.username || "",
+      githubCreds?.token,
+      githubCreds?.username,
       primaryRepo?.branch || "",
-      repositoriesConfig
+      repositoriesConfig,
     );
 
-    console.log(
-      `[PoolManagerSync] Successfully synced settings for workspace ${workspaceSlug}`
-    );
+    console.log(`[PoolManagerSync] Successfully synced settings for workspace ${workspaceSlug}`);
 
     return { success: true };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(
-      `[PoolManagerSync] Failed to sync settings for workspace ${workspaceSlug}:`,
-      errorMessage
-    );
+    console.error(`[PoolManagerSync] Failed to sync settings for workspace ${workspaceSlug}:`, errorMessage);
     return { success: false, error: errorMessage };
   }
 }

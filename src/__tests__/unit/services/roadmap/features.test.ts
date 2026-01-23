@@ -10,6 +10,8 @@ vi.mock("@/lib/db", () => ({
     },
     feature: {
       create: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
     },
   },
 }));
@@ -21,7 +23,7 @@ vi.mock("@/services/workspace", () => ({
 // Import after mocks
 import { db } from "@/lib/db";
 import { validateWorkspaceAccessById } from "@/services/workspace";
-import { createFeature } from "@/services/roadmap/features";
+import { createFeature, listFeatures } from "@/services/roadmap/features";
 
 describe("createFeature", () => {
   const mockUserId = "user-123";
@@ -790,6 +792,279 @@ describe("createFeature", () => {
           }),
         })
       );
+    });
+  });
+});
+
+describe("listFeatures", () => {
+  const mockUserId = "user-123";
+  const mockWorkspaceId = "workspace-456";
+  const mockCreatorId = "creator-789";
+
+  const mockWorkspaceAccess = {
+    hasAccess: true,
+    canRead: true,
+    canWrite: true,
+    canAdmin: false,
+    userRole: "DEVELOPER" as const,
+    workspace: {
+      id: mockWorkspaceId,
+      name: "Test Workspace",
+      description: "Test workspace description",
+      slug: "test-workspace",
+      ownerId: "owner-123",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  };
+
+  const mockFeatures = [
+    {
+      id: "feature-1",
+      title: "Feature 1",
+      status: FeatureStatus.BACKLOG,
+      priority: FeaturePriority.LOW,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      assignee: null,
+      createdBy: { id: mockCreatorId, name: "Creator", email: "creator@test.com", image: null },
+      _count: { userStories: 0 },
+    },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(validateWorkspaceAccessById).mockResolvedValue(mockWorkspaceAccess);
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  describe("createdById filter", () => {
+    test("filters features by specific creator ID", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        createdById: mockCreatorId,
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            createdById: mockCreatorId,
+          }),
+        })
+      );
+    });
+
+    test("does not filter by createdById when not provided", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+          }),
+        })
+      );
+
+      // Verify createdById is not in the where clause
+      const callArgs = vi.mocked(db.feature.findMany).mock.calls[0][0];
+      expect(callArgs.where).not.toHaveProperty("createdById");
+    });
+
+    test("combines createdById with status filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        createdById: mockCreatorId,
+        statuses: [FeatureStatus.BACKLOG],
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            createdById: mockCreatorId,
+            status: { in: [FeatureStatus.BACKLOG] },
+          }),
+        })
+      );
+    });
+
+    test("combines createdById with priority filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        createdById: mockCreatorId,
+        priorities: [FeaturePriority.HIGH],
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            createdById: mockCreatorId,
+            priority: { in: [FeaturePriority.HIGH] },
+          }),
+        })
+      );
+    });
+
+    test("combines createdById with assigneeId filter", async () => {
+      const assigneeId = "assignee-999";
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        createdById: mockCreatorId,
+        assigneeId: assigneeId,
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            createdById: mockCreatorId,
+            assigneeId: assigneeId,
+          }),
+        })
+      );
+    });
+
+    test("combines createdById with UNASSIGNED assigneeId", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        createdById: mockCreatorId,
+        assigneeId: "UNASSIGNED",
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            createdById: mockCreatorId,
+            assigneeId: null,
+          }),
+        })
+      );
+    });
+
+    test("combines createdById with search filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        createdById: mockCreatorId,
+        search: "test",
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            workspaceId: mockWorkspaceId,
+            deleted: false,
+            createdById: mockCreatorId,
+            title: {
+              contains: "test",
+              mode: "insensitive",
+            },
+          }),
+        })
+      );
+    });
+
+    test("respects pagination with createdById filter", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(25);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+        createdById: mockCreatorId,
+        page: 2,
+        limit: 10,
+      });
+
+      expect(db.feature.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdById: mockCreatorId,
+          }),
+          skip: 10,
+          take: 10,
+        })
+      );
+    });
+  });
+
+  describe("access validation", () => {
+    test("throws error when user does not have workspace access", async () => {
+      vi.mocked(validateWorkspaceAccessById).mockResolvedValue({
+        hasAccess: false,
+        canRead: false,
+        canWrite: false,
+        canAdmin: false,
+      });
+
+      await expect(
+        listFeatures({
+          workspaceId: mockWorkspaceId,
+          userId: mockUserId,
+        })
+      ).rejects.toThrow("Access denied");
+
+      expect(validateWorkspaceAccessById).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        mockUserId
+      );
+    });
+
+    test("allows listing when user has workspace access", async () => {
+      vi.mocked(db.feature.findMany).mockResolvedValue(mockFeatures);
+      vi.mocked(db.feature.count).mockResolvedValue(1);
+
+      await listFeatures({
+        workspaceId: mockWorkspaceId,
+        userId: mockUserId,
+      });
+
+      expect(validateWorkspaceAccessById).toHaveBeenCalledWith(
+        mockWorkspaceId,
+        mockUserId
+      );
+      expect(db.feature.findMany).toHaveBeenCalled();
     });
   });
 });

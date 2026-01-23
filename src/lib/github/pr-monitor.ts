@@ -45,7 +45,7 @@ interface GitHubPRData {
   mergeable: boolean | null;
   mergeable_state: string;
   head: { ref: string; sha: string };
-  base: { ref: string };
+  base: { ref: string; sha: string };
 }
 
 // Result of checking a single PR
@@ -65,6 +65,8 @@ export interface PRCheckResult {
   failedCheckLogs?: Record<string, string>;
   prState: "open" | "closed";
   merged: boolean;
+  headBranch: string;
+  baseBranch: string;
 }
 
 /**
@@ -95,6 +97,87 @@ async function fetchPRStatus(octokit: Octokit, owner: string, repo: string, prNu
     pull_number: prNumber,
   });
   return data as GitHubPRData;
+}
+
+/**
+ * Check if the PR branch is behind the base branch
+ * Returns true if base branch has commits not in the head branch
+ */
+async function isPRBehindBase(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  baseBranch: string,
+  headBranch: string,
+): Promise<boolean> {
+  try {
+    const { data } = await octokit.repos.compareCommits({
+      owner,
+      repo,
+      base: headBranch,
+      head: baseBranch,
+    });
+    // If base is ahead of head, the PR is behind
+    return data.ahead_by > 0;
+  } catch (error) {
+    log.warn("Failed to compare branches", { owner, repo, baseBranch, headBranch, error: String(error) });
+    return false;
+  }
+}
+
+/**
+ * Merge the base branch into the PR's head branch using GitHub's Merges API
+ *
+ * This creates a merge commit, similar to the "Update branch" button in GitHub UI.
+ * Works when there are no conflicts - will fail if conflicts exist.
+ *
+ * @returns Object with success status and optional error/sha
+ */
+export async function mergeBaseBranch(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  headBranch: string,
+  baseBranch: string,
+  commitMessage?: string,
+): Promise<{ success: boolean; sha?: string; error?: string }> {
+  try {
+    const { data } = await octokit.repos.merge({
+      owner,
+      repo,
+      base: headBranch, // The branch to merge INTO (PR's head branch)
+      head: baseBranch, // The branch to merge FROM (e.g., main)
+      commit_message: commitMessage || `Merge branch '${baseBranch}' into ${headBranch}`,
+    });
+
+    log.info("Successfully merged base branch into PR branch", {
+      owner,
+      repo,
+      headBranch,
+      baseBranch,
+      sha: data.sha,
+    });
+
+    return { success: true, sha: data.sha };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // GitHub returns 409 Conflict if there are merge conflicts
+    if (errorMessage.includes("409") || errorMessage.includes("Merge conflict")) {
+      log.info("Cannot auto-merge: conflicts exist", { owner, repo, headBranch, baseBranch });
+      return { success: false, error: "Merge conflicts exist" };
+    }
+
+    log.error("Failed to merge base branch", {
+      owner,
+      repo,
+      headBranch,
+      baseBranch,
+      error: errorMessage,
+    });
+
+    return { success: false, error: errorMessage };
+  }
 }
 
 /**
@@ -131,6 +214,8 @@ export async function checkPR(
         ciStatus: undefined,
         prState: "closed",
         merged: prData.merged,
+        headBranch: prData.head.ref,
+        baseBranch: prData.base.ref,
       };
     }
 
@@ -165,6 +250,15 @@ export async function checkPR(
       }
     }
 
+    // Check if PR is behind base branch (only if otherwise healthy and CI passed)
+    if (state === "healthy" && prData.mergeable === true) {
+      const isBehind = await isPRBehindBase(octokit, owner, repo, prData.base.ref, prData.head.ref);
+      if (isBehind) {
+        state = "out_of_date";
+        problemDetails = `PR branch is behind ${prData.base.ref} and needs to be updated`;
+      }
+    }
+
     return {
       artifactId,
       taskId,
@@ -181,6 +275,8 @@ export async function checkPR(
       failedCheckLogs: Object.keys(ciResult.failedCheckLogs).length > 0 ? ciResult.failedCheckLogs : undefined,
       prState: prData.state,
       merged: prData.merged,
+      headBranch: prData.head.ref,
+      baseBranch: prData.base.ref,
     };
   } catch (error) {
     log.error("Error checking PR", { owner, repo, prNumber, error: String(error) });
@@ -345,7 +441,7 @@ export async function getOctokitForWorkspace(userId: string, owner: string): Pro
  */
 export function buildFixPrompt(result: PRCheckResult): string {
   if (result.state === "conflict") {
-    return `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has merge conflicts.
+    return `The PR (#${result.prNumber}) created from the branch you are on (${result.headBranch}) in ${result.owner}/${result.repo} has merge conflicts.
 
 Please:
 1. Fetch the latest changes from the base branch (${result.problemDetails?.includes("with") ? result.problemDetails.split("with ")[1] : "main"})
@@ -393,6 +489,8 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
   conflicts: number;
   ciFailures: number;
   ciPending: number;
+  outOfDate: number;
+  autoMerged: number;
   healthy: number;
   errors: number;
   agentTriggered: number;
@@ -403,6 +501,8 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
     conflicts: 0,
     ciFailures: 0,
     ciPending: 0,
+    outOfDate: 0,
+    autoMerged: 0,
     healthy: 0,
     errors: 0,
     agentTriggered: 0,
@@ -489,9 +589,50 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
       // Check if state changed and requires action
       const previousState = pr.progress?.state;
       const stateChanged = previousState !== result.state;
-      const isProblematic = result.state === "conflict" || result.state === "ci_failure";
+      const needsAgentFix = result.state === "conflict" || result.state === "ci_failure";
 
-      if (isProblematic) {
+      // Handle out_of_date: try auto-merge first (no agent needed)
+      if (result.state === "out_of_date") {
+        stats.outOfDate++;
+
+        log.info("PR is out of date, attempting auto-merge", {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          repo: `${result.owner}/${result.repo}`,
+          headBranch: result.headBranch,
+          baseBranch: result.baseBranch,
+        });
+
+        const mergeResult = await mergeBaseBranch(
+          octokit,
+          result.owner,
+          result.repo,
+          result.headBranch,
+          result.baseBranch,
+        );
+
+        if (mergeResult.success) {
+          stats.autoMerged++;
+          log.info("Auto-merged base branch into PR", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            sha: mergeResult.sha,
+          });
+
+          // Update progress to checking (CI will run on new merge commit)
+          progress.state = "checking";
+          progress.problemDetails = undefined;
+          await updatePRArtifactProgress(pr.artifactId, progress);
+        } else {
+          // Auto-merge failed (likely conflicts appeared) - update state and let next check handle it
+          log.warn("Auto-merge failed", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            error: mergeResult.error,
+          });
+          await updatePRArtifactProgress(pr.artifactId, progress);
+        }
+      } else if (needsAgentFix) {
         if (result.state === "conflict") {
           stats.conflicts++;
         } else {
@@ -578,7 +719,7 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         }
 
         // If was problematic and is now healthy, mark as resolved
-        if (previousState === "conflict" || previousState === "ci_failure") {
+        if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date") {
           progress.resolution = {
             ...pr.progress?.resolution,
             status: "resolved",
@@ -739,7 +880,8 @@ export async function triggerAgentModeFix(
  *
  * This function is for tasks with mode="live":
  * 1. Looks up the workspace owner for authentication
- * 2. Sends the fix prompt to Stakwork workflow
+ * 2. Checks workflowStatus to avoid triggering duplicate workflows
+ * 3. Sends the fix prompt to Stakwork workflow
  *
  * The response will be delivered via Stakwork webhook callback.
  *
@@ -751,11 +893,12 @@ export async function triggerLiveModeFix(
   prompt: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Load task to get workspace owner
+    // 1. Load task to get workspace owner and workflow status
     const task = await db.task.findUnique({
       where: { id: taskId },
       select: {
         mode: true,
+        workflowStatus: true,
         workspace: {
           select: {
             ownerId: true,
@@ -770,6 +913,16 @@ export async function triggerLiveModeFix(
 
     if (task.mode !== "live") {
       return { success: false, error: "Task is not in live mode" };
+    }
+
+    // 2. Check workflowStatus to avoid duplicate triggers
+    // Only trigger auto-fix if no workflow is currently running
+    if (task.workflowStatus !== "COMPLETED") {
+      log.info("Skipping live mode fix - workflow already in progress", {
+        taskId,
+        workflowStatus: task.workflowStatus,
+      });
+      return { success: false, error: `Workflow already in progress (status: ${task.workflowStatus})` };
     }
 
     const userId = task.workspace.ownerId;

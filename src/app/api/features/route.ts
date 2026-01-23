@@ -62,6 +62,9 @@ export async function GET(request: NextRequest) {
     // Keep "UNASSIGNED" as string - service layer will convert to null for Prisma
     const assigneeId = searchParams.get("assigneeId") || undefined;
 
+    // Keep "UNCREATED" as string - service layer will convert to null for Prisma
+    const createdById = searchParams.get("createdById") || undefined;
+
     // Search param
     const search = searchParams.get("search") || undefined;
 
@@ -110,6 +113,7 @@ export async function GET(request: NextRequest) {
       statuses,
       priorities,
       assigneeId,
+      createdById,
       search,
       sortBy,
       sortOrder,
