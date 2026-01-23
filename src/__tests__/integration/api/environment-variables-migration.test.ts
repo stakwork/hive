@@ -109,13 +109,14 @@ describe("Environment Variables Migration", () => {
     expect(initialCount).toBe(0);
 
     // Make PUT request with environment variables
+    // Note: PORT and other SERVICE_CONFIG_ENV_VARS are filtered out and not saved
     const request = createPutRequest(
       `http://localhost:3000/api/workspaces/${slug}/stakgraph`,
       {
         environmentVariables: [
           { name: "API_KEY", value: "secret123" },
           { name: "DB_HOST", value: "localhost" },
-          { name: "PORT", value: "3000" },
+          { name: "REDIS_URL", value: "redis://localhost:6379" },
         ],
       }
     );
@@ -135,7 +136,7 @@ describe("Environment Variables Migration", () => {
     expect(migratedVars[0].serviceName).toBe(""); // Global scope
     expect(migratedVars[0].name).toBe("API_KEY");
     expect(migratedVars[1].name).toBe("DB_HOST");
-    expect(migratedVars[2].name).toBe("PORT");
+    expect(migratedVars[2].name).toBe("REDIS_URL");
 
     // Verify values are encrypted (stored as JSON string)
     expect(migratedVars[0].value).toContain('"keyId"');

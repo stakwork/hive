@@ -42,7 +42,8 @@ export function syncPM2AndServices(
   existingContainerFiles: Record<string, string>,
   incomingServices: ServiceConfig[] | undefined,
   incomingContainerFiles: Record<string, string> | undefined,
-  repoName: string
+  repoName: string,
+  globalEnvVars?: Array<{ name: string; value: string }>
 ): SyncResult {
   const hasIncomingServices = incomingServices && incomingServices.length > 0;
   const hasIncomingPM2 = incomingContainerFiles?.["pm2.config.js"];
@@ -62,7 +63,7 @@ export function syncPM2AndServices(
   // Case 2: Only services sent - regenerate pm2.config.js
   if (hasIncomingServices && !hasIncomingPM2) {
     const mergedServices = mergeServices(existingServices, incomingServices);
-    const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[]);
+    const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[], globalEnvVars);
     const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
     mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
     return { services: mergedServices, containerFiles: mergedFiles };
@@ -81,7 +82,7 @@ export function syncPM2AndServices(
   // Case 4: Both sent - services wins, regenerate pm2.config.js
   console.warn("[syncPM2AndServices] Both services and pm2.config.js provided, using services array");
   const mergedServices = mergeServices(existingServices, incomingServices!);
-  const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[]);
+  const pm2Content = getPM2AppsContent(repoName, mergedServices as ServiceDataConfig[], globalEnvVars);
   const mergedFiles = mergeContainerFiles(existingContainerFiles, incomingContainerFiles || {});
   mergedFiles["pm2.config.js"] = Buffer.from(pm2Content.content).toString("base64");
   return { services: mergedServices, containerFiles: mergedFiles };
