@@ -16,6 +16,7 @@ import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
+import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
 import { z } from "zod";
 
