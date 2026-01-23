@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { PenLine, Plus, ExternalLink, Unlink, Loader2, Save } from "lucide-react";
+import { PenLine, Plus, ExternalLink, Unlink, Loader2, CheckCircle2 } from "lucide-react";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -47,13 +48,15 @@ export function FeatureWhiteboardSection({
   workspaceSlug,
 }: FeatureWhiteboardSectionProps) {
   const router = useRouter();
-  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const [whiteboard, setWhiteboard] = useState<WhiteboardData | null>(null);
   const [availableWhiteboards, setAvailableWhiteboards] = useState<WhiteboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [linking, setLinking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialLoadRef = useRef(true);
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -90,6 +93,11 @@ export function FeatureWhiteboardSection({
     loadWhiteboard();
     loadAvailableWhiteboards();
   }, [loadWhiteboard, loadAvailableWhiteboards]);
+
+  // Reset initial load flag when whiteboard changes
+  useEffect(() => {
+    isInitialLoadRef.current = true;
+  }, [whiteboard?.id]);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -155,39 +163,75 @@ export function FeatureWhiteboardSection({
     }
   };
 
-  const handleSave = async () => {
-    if (!excalidrawAPI || !whiteboard) return;
+  const saveWhiteboard = useCallback(
+    async (
+      elements: readonly ExcalidrawElement[],
+      appState: AppState,
+      files: BinaryFiles
+    ) => {
+      if (!whiteboard) return;
 
-    setSaving(true);
-    try {
-      const elements = excalidrawAPI.getSceneElements();
-      const appState = excalidrawAPI.getAppState();
-      const files = excalidrawAPI.getFiles();
+      setSaving(true);
+      setSaved(false);
+      try {
+        const data = {
+          elements,
+          appState: {
+            viewBackgroundColor: appState.viewBackgroundColor,
+            gridSize: appState.gridSize,
+          },
+          files,
+        };
 
-      const data = {
-        elements,
-        appState: {
-          viewBackgroundColor: appState.viewBackgroundColor,
-          gridSize: appState.gridSize,
-        },
-        files,
-      };
+        const res = await fetch(`/api/whiteboards/${whiteboard.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
 
-      const res = await fetch(`/api/whiteboards/${whiteboard.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to save");
+        if (!res.ok) {
+          throw new Error("Failed to save");
+        }
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } catch (error) {
+        console.error("Error saving whiteboard:", error);
+      } finally {
+        setSaving(false);
       }
-    } catch (error) {
-      console.error("Error saving whiteboard:", error);
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    [whiteboard]
+  );
+
+  const handleChange = useCallback(
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      // Skip autosave on initial load
+      if (isInitialLoadRef.current) {
+        isInitialLoadRef.current = false;
+        return;
+      }
+
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Debounce save by 1 second
+      saveTimeoutRef.current = setTimeout(() => {
+        saveWhiteboard(elements, appState, files);
+      }, 1000);
+    },
+    [saveWhiteboard]
+  );
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -249,7 +293,21 @@ export function FeatureWhiteboardSection({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Whiteboard</Label>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
+            {saving && (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving...</span>
+              </>
+            )}
+            {saved && !saving && (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                <span>Saved</span>
+              </>
+            )}
+          </div>
           <Button
             variant="outline"
             size="sm"
@@ -273,23 +331,15 @@ export function FeatureWhiteboardSection({
             <ExternalLink className="w-4 h-4 mr-2" />
             Full Screen
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4 mr-2" />
-            )}
-            Save
-          </Button>
         </div>
       </div>
       <Card className="h-[500px] overflow-hidden">
         <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
           initialData={{
             elements: (whiteboard.elements || []) as never,
             appState: whiteboard.appState as never,
           }}
+          onChange={handleChange}
         />
       </Card>
     </div>

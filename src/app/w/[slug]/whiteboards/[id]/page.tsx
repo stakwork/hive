@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Save, Loader2, ArrowLeft, Pencil, Check, X } from "lucide-react";
+import { Loader2, ArrowLeft, Pencil, Check, X, CheckCircle2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import "@excalidraw/excalidraw/index.css";
 
@@ -30,13 +31,14 @@ export default function WhiteboardDetailPage() {
   const { slug } = useWorkspace();
   const whiteboardId = params.id as string;
 
-  const [excalidrawAPI, setExcalidrawAPI] =
-    useState<ExcalidrawImperativeAPI | null>(null);
   const [whiteboard, setWhiteboard] = useState<WhiteboardData | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialLoadRef = useRef(true);
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -60,39 +62,75 @@ export default function WhiteboardDetailPage() {
     loadWhiteboard();
   }, [loadWhiteboard]);
 
-  const handleSave = async () => {
-    if (!excalidrawAPI || !whiteboard) return;
+  const saveWhiteboard = useCallback(
+    async (
+      elements: readonly ExcalidrawElement[],
+      appState: AppState,
+      files: BinaryFiles
+    ) => {
+      if (!whiteboard) return;
 
-    setSaving(true);
-    try {
-      const elements = excalidrawAPI.getSceneElements();
-      const appState = excalidrawAPI.getAppState();
-      const files = excalidrawAPI.getFiles();
+      setSaving(true);
+      setSaved(false);
+      try {
+        const data = {
+          elements,
+          appState: {
+            viewBackgroundColor: appState.viewBackgroundColor,
+            gridSize: appState.gridSize,
+          },
+          files,
+        };
 
-      const data = {
-        elements,
-        appState: {
-          viewBackgroundColor: appState.viewBackgroundColor,
-          gridSize: appState.gridSize,
-        },
-        files,
-      };
+        const res = await fetch(`/api/whiteboards/${whiteboard.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
 
-      const res = await fetch(`/api/whiteboards/${whiteboard.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to save");
+        if (!res.ok) {
+          throw new Error("Failed to save");
+        }
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } catch (error) {
+        console.error("Error saving whiteboard:", error);
+      } finally {
+        setSaving(false);
       }
-    } catch (error) {
-      console.error("Error saving whiteboard:", error);
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    [whiteboard]
+  );
+
+  const handleChange = useCallback(
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      // Skip autosave on initial load
+      if (isInitialLoadRef.current) {
+        isInitialLoadRef.current = false;
+        return;
+      }
+
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Debounce save by 1 second
+      saveTimeoutRef.current = setTimeout(() => {
+        saveWhiteboard(elements, appState, files);
+      }, 1000);
+    },
+    [saveWhiteboard]
+  );
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSaveName = async () => {
     if (!whiteboard || !editName.trim()) return;
@@ -183,23 +221,29 @@ export default function WhiteboardDetailPage() {
           </div>
         }
         actions={
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4 mr-2" />
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            {saving && (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving...</span>
+              </>
             )}
-            Save
-          </Button>
+            {saved && !saving && (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                <span>Saved</span>
+              </>
+            )}
+          </div>
         }
       />
       <div className="flex-1 mt-4 border rounded-lg overflow-hidden">
         <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
           initialData={{
             elements: (whiteboard.elements || []) as never,
             appState: whiteboard.appState as never,
           }}
+          onChange={handleChange}
         />
       </div>
     </div>

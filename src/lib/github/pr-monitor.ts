@@ -12,7 +12,7 @@
 
 import { Octokit } from "@octokit/rest";
 import { db } from "@/lib/db";
-import { Prisma, ChatRole, ChatStatus } from "@prisma/client";
+import { Prisma, ChatRole, ChatStatus, TaskStatus } from "@prisma/client";
 import { getUserAppTokens } from "@/lib/githubApp";
 import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
@@ -569,6 +569,19 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
           },
           newStatus,
         );
+
+        // Update task status to DONE if PR was merged
+        if (result.merged) {
+          await db.task.update({
+            where: { id: pr.taskId },
+            data: { status: TaskStatus.DONE },
+          });
+          log.info("Updated task status to DONE for merged PR", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+          });
+        }
+
         stats.healthy++;
         continue;
       }
