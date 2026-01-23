@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     const serviceEnvVarsMap = new Map<string, Array<{ name: string; value: string }>>();
 
     for (const envVar of allEnvVars) {
-      const decryptedValue = encryptionService.decryptField("environmentVariable", envVar.value);
+      const decryptedValue = encryptionService.decryptField("environmentVariables", envVar.value);
       const envEntry = { name: envVar.name, value: decryptedValue };
 
       if (!envVar.serviceName || envVar.serviceName === "") {
