@@ -95,7 +95,8 @@ model User {
   // Source control tokens
   sourceControlTokens SourceControlToken[]
 
-  // Shared conversations
+  // Conversations
+  conversations       Conversation[]
   sharedConversations SharedConversation[]
 
   @@index([createdAt])
@@ -246,7 +247,8 @@ model Workspace {
   // Whiteboards
   whiteboards Whiteboard[]
 
-  // Shared conversations
+  // Conversations
+  conversations       Conversation[]
   sharedConversations SharedConversation[]
 
   // Node type ordering for graph visualization
@@ -516,18 +518,42 @@ model Task {
 // CHAT & ARTIFACTS
 // =============================================
 
+// Private conversation for DashboardChat (persists user's chat history)
+model Conversation {
+  id                  String    @id @default(cuid())
+  workspaceId         String    @map("workspace_id")
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId              String    @map("user_id")
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String?
+  messages            Json      // Message[] format
+  provenanceData      Json?     @map("provenance_data") // ProvenanceData format
+  followUpQuestions   Json      @default("[]") @map("follow_up_questions") // string[] format
+  sharedConversationId String?  @unique @map("shared_conversation_id") // Link to shared version if shared
+  sharedConversation  SharedConversation? @relation(fields: [sharedConversationId], references: [id], onDelete: SetNull)
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([workspaceId, userId, updatedAt(sort: Desc)]) // For fetching most recent conversation
+  @@map("conversations")
+}
+
+// Public shared conversation (created when user shares a conversation)
 model SharedConversation {
-  id                String    @id @default(cuid())
-  workspaceId       String    @map("workspace_id")
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  userId            String    @map("user_id")
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String         @id @default(cuid())
+  workspaceId       String         @map("workspace_id")
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId            String         @map("user_id")
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   title             String?
   messages          Json
-  provenanceData    Json?     @map("provenance_data")
-  followUpQuestions Json      @map("follow_up_questions")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  provenanceData    Json?          @map("provenance_data")
+  followUpQuestions Json           @map("follow_up_questions")
+  conversation      Conversation?  // Back-reference to private conversation
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
   @@index([workspaceId])
   @@index([userId])
