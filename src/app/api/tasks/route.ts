@@ -236,8 +236,15 @@ export async function GET(request: NextRequest) {
           testFileUrl: true,
           featureId: true,
           systemAssigneeType: true,
+          dependsOnTaskIds: true,
           createdAt: true,
           updatedAt: true,
+          feature: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
           assignee: {
             select: {
               id: true,
