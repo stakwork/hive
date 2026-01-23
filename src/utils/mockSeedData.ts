@@ -660,6 +660,64 @@ async function seedTasks(
   // Add chat messages with artifacts to some tasks
   await seedChatMessagesWithArtifacts(createdTasks.slice(0, 5));
 
+  // Second pass: Add task dependencies
+  // Create diverse dependency scenarios as specified in requirements
+  const dependencyUpdates = [];
+
+  if (createdTasks.length >= 10) {
+    // Scenario 1: Simple chain A→B→C (tasks 0, 1, 2)
+    // Task 2 depends on Task 1, Task 1 depends on Task 0
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[1].id },
+        data: { dependsOnTaskIds: [createdTasks[0].id] },
+      }),
+      db.task.update({
+        where: { id: createdTasks[2].id },
+        data: { dependsOnTaskIds: [createdTasks[1].id] },
+      })
+    );
+
+    // Scenario 2: Parallel dependencies - task depends on 2 others (task 5 depends on tasks 3 and 4)
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[5].id },
+        data: { dependsOnTaskIds: [createdTasks[3].id, createdTasks[4].id] },
+      })
+    );
+
+    // Scenario 3: Cross-feature dependencies (task 7 depends on task 6)
+    // These are from different features due to feature distribution in main loop
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[7].id },
+        data: { dependsOnTaskIds: [createdTasks[6].id] },
+      })
+    );
+
+    // Scenario 4: Complex - task depends on multiple, including from a chain (task 9 depends on tasks 2 and 8)
+    if (createdTasks.length > 9) {
+      dependencyUpdates.push(
+        db.task.update({
+          where: { id: createdTasks[9].id },
+          data: { dependsOnTaskIds: [createdTasks[2].id, createdTasks[8].id] },
+        })
+      );
+    }
+
+    // Scenario 5: Another simple dependency (task 8 depends on task 6)
+    dependencyUpdates.push(
+      db.task.update({
+        where: { id: createdTasks[8].id },
+        data: { dependsOnTaskIds: [createdTasks[6].id] },
+      })
+    );
+
+    // Execute all dependency updates
+    await Promise.all(dependencyUpdates);
+    console.log(`[MockSeed] Added dependencies to ${dependencyUpdates.length} tasks`);
+  }
+
   console.log(`[MockSeed] Created ${createdTasks.length} tasks, ${tasksWithPods.length} with pods`);
   return { tasksWithPods, allTasks: createdTasks };
 }
