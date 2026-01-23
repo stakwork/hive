@@ -20,8 +20,13 @@ export async function POST(request: NextRequest) {
 
     console.log(">>> Generating commit message and branch name for task:", taskId);
 
+    // Get the base URL from the request
+    const protocol = request.headers.get("x-forwarded-proto") || "http";
+    const host = request.headers.get("host");
+    const baseUrl = host ? `${protocol}://${host}` : undefined;
+
     // Generate commit message and branch name using AI from task conversation
-    const { commit_message, branch_name } = await generateCommitMessage(taskId);
+    const { commit_message, branch_name } = await generateCommitMessage(taskId, baseUrl);
 
     console.log(">>> Generated commit message:", commit_message);
     console.log(">>> Generated branch name:", branch_name);
