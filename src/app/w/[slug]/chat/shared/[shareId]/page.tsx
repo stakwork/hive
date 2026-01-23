@@ -81,6 +81,9 @@ async function getSharedConversation(
         messages: true,
         provenanceData: true,
         followUpQuestions: true,
+        isShared: true,
+        lastMessageAt: true,
+        source: true,
         createdAt: true,
         updatedAt: true,
         user: {
@@ -111,6 +114,9 @@ async function getSharedConversation(
       messages: sharedConversation.messages,
       provenanceData: sharedConversation.provenanceData,
       followUpQuestions: sharedConversation.followUpQuestions,
+      isShared: sharedConversation.isShared,
+      lastMessageAt: sharedConversation.lastMessageAt?.toISOString() ?? null,
+      source: sharedConversation.source,
       createdAt: sharedConversation.createdAt.toISOString(),
       updatedAt: sharedConversation.updatedAt.toISOString(),
       createdBy: {
