@@ -91,9 +91,9 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
 
   // Initialize search from URL on mount
   useEffect(() => {
-    const nameParam = searchParams.get("name");
-    if (nameParam) {
-      setSearchQuery(nameParam);
+    const searchParam = searchParams.get("search");
+    if (searchParam) {
+      setSearchQuery(searchParam);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -122,7 +122,7 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
       // Add search parameter if provided and not empty
       const trimmedSearch = searchTerm?.trim();
       if (trimmedSearch) {
-        url += `&name=${encodeURIComponent(trimmedSearch)}`;
+        url += `&search=${encodeURIComponent(trimmedSearch)}`;
       }
       const response = await fetch(url);
       if (!response.ok) {
@@ -187,18 +187,26 @@ export function PromptsPanel({ workflowId, variant = "panel", onNavigateToWorkfl
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     setPage(1);
-    
-    // Update URL with search parameter
-    const params = new URLSearchParams(searchParams.toString());
-    if (value.trim()) {
-      params.set("name", value.trim());
-    } else {
-      params.delete("name");
-    }
-    params.delete("page"); // Remove page param when searching
-    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
-    router.replace(newUrl, { scroll: false });
   };
+
+  // Update URL when debounced search changes
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const currentSearch = params.get("search") || "";
+    const trimmedQuery = debouncedSearchQuery.trim();
+
+    // Only update if the value actually changed
+    if (currentSearch !== trimmedQuery) {
+      if (trimmedQuery) {
+        params.set("search", trimmedQuery);
+      } else {
+        params.delete("search");
+      }
+      params.delete("page"); // Remove page param when searching
+      const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [debouncedSearchQuery, pathname, router]);
 
   const handlePromptClick = (prompt: Prompt) => {
     setViewMode("detail");
