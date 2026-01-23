@@ -4,7 +4,22 @@ import { getApiKeyForProvider, getModel, Provider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
 
 export async function generateCommitMessage(taskId: string) {
-  // Load conversation history from the task
+  // Load conversation history from the task and get workspace slug
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: {
+      workspace: {
+        select: {
+          slug: true,
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    throw new Error("Task not found");
+  }
+
   const chatMessages = await db.chatMessage.findMany({
     where: { taskId },
     orderBy: { timestamp: "asc" },
@@ -45,5 +60,13 @@ Generate a commit message that describes the changes made and a branch name that
     prompt,
     schema,
   });
-  return result.object;
+
+  // Append the Hive task link to the commit message
+  const hiveTaskUrl = `https://hive.sphinx.chat/w/${task.workspace.slug}/task/${taskId}`;
+  const commitMessageWithLink = `${result.object.commit_message}\n\nPR was created and opened at ${hiveTaskUrl}`;
+
+  return {
+    commit_message: commitMessageWithLink,
+    branch_name: result.object.branch_name,
+  };
 }
