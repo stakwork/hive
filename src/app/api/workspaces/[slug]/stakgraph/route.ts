@@ -532,10 +532,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         poolApiKey: swarmPoolApiKey,
         poolCpu: mergedPoolCpu,
         poolMemory: mergedPoolMemory,
-        environmentVariables: Array.isArray(settings.environmentVariables)
-          ? (settings.environmentVariables as Array<{ name: string; value: string }>)
-          : undefined,
-        containerFiles: syncResult.containerFiles,
         userId: userId || undefined,
       });
 
