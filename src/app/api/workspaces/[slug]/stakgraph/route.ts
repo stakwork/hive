@@ -137,15 +137,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-   await db.repository.findMany({
-     where: { workspaceId: workspace.id },
-     select: {
-       id: true,
-       repositoryUrl: true,
-       branch: true,
-     },
-     orderBy: { createdAt: "asc" },
-   });
+    await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        branch: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
     const environmentVariables = swarm?.environmentVariables;
 
@@ -238,7 +238,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  */
 async function migrateEnvironmentVariablesToTable(
   swarmId: string,
-  environmentVariables: Array<{ name: string; value: string }> | undefined
+  environmentVariables: Array<{ name: string; value: string }> | undefined,
 ): Promise<void> {
   if (!environmentVariables || environmentVariables.length === 0) {
     return;
@@ -255,7 +255,7 @@ async function migrateEnvironmentVariablesToTable(
     await db.environmentVariable.deleteMany({
       where: {
         swarmId,
-        serviceName: '',
+        serviceName: "",
       },
     });
 
@@ -264,7 +264,7 @@ async function migrateEnvironmentVariablesToTable(
     await db.environmentVariable.createMany({
       data: encrypted.map((ev) => ({
         swarmId,
-        serviceName: '', // Empty string indicates global scope
+        serviceName: "", // Empty string indicates global scope
         name: ev.name,
         value: JSON.stringify(ev.value), // Store encrypted data as JSON string
       })),
@@ -272,7 +272,7 @@ async function migrateEnvironmentVariablesToTable(
 
     // Keep old JSON field populated for backward compatibility
     // (saveOrUpdateSwarm already handles this via environmentVariables parameter)
-    
+
     return;
   }
 
@@ -281,7 +281,7 @@ async function migrateEnvironmentVariablesToTable(
   await db.environmentVariable.createMany({
     data: encrypted.map((ev) => ({
       swarmId,
-      serviceName: '', // Empty string indicates global scope
+      serviceName: "", // Empty string indicates global scope
       name: ev.name,
       value: JSON.stringify(ev.value), // Store encrypted data as JSON string
     })),
@@ -431,9 +431,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // Get repo name for pm2 generation
     const primaryRepo = await getPrimaryRepository(workspace.id);
-    const repoName = extractRepoName(
-      primaryRepo?.repositoryUrl || settings.repositories?.[0]?.repositoryUrl
-    );
+    const repoName = extractRepoName(primaryRepo?.repositoryUrl || settings.repositories?.[0]?.repositoryUrl);
+
+    // Get global env vars for PM2 config generation
+    const globalEnvVars = Array.isArray(settings.environmentVariables)
+      ? (settings.environmentVariables as Array<{ name: string; value: string }>)
+      : undefined;
 
     // Perform bidirectional sync for services/containerFiles
     const syncResult = syncPM2AndServices(
@@ -441,7 +444,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       (existingSwarm?.containerFiles as unknown as Record<string, string>) || {},
       settings.services as SwarmServiceConfig[] | undefined,
       settings.containerFiles,
-      repoName
+      repoName,
+      globalEnvVars,
     );
 
     // Merge all fields - use incoming if provided, else preserve existing

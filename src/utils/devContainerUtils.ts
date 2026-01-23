@@ -157,8 +157,50 @@ ${envEntries}
   return `[\n${formattedApps.join(",\n")}\n  ]`;
 };
 
-export const getPM2AppsContent = (repoName: string, servicesData: ServiceDataConfig[]) => {
-  const pm2Apps = generatePM2Apps(repoName, servicesData);
+/**
+ * Mask env var values in PM2 config content for display purposes
+ * Only masks values inside env: { } blocks, not other config like name, script, etc.
+ */
+export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
+  // Non-sensitive vars that should not be masked
+  const nonSensitiveVars = [
+    "PORT",
+    "INSTALL_COMMAND",
+    "TEST_COMMAND",
+    "BUILD_COMMAND",
+    "E2E_TEST_COMMAND",
+    "PRE_START_COMMAND",
+    "POST_START_COMMAND",
+    "REBUILD_COMMAND",
+    "RESET_COMMAND",
+  ];
+
+  // Find and replace only the env: { ... } blocks
+  return pm2Content.replace(
+    /env:\s*\{([^}]*)\}/g,
+    (envBlock) => {
+      // Within each env block, mask the values
+      return envBlock.replace(
+        /(\s+)(\w+):\s*["']([^"']*)["']/g,
+        (match, whitespace, key, _value) => {
+          // Don't mask non-sensitive command vars
+          if (nonSensitiveVars.includes(key)) {
+            return match;
+          }
+          // Mask the value
+          return `${whitespace}${key}: "****"`;
+        }
+      );
+    }
+  );
+};
+
+export const getPM2AppsContent = (
+  repoName: string,
+  servicesData: ServiceDataConfig[],
+  globalEnvVars?: Array<{ name: string; value: string }>
+) => {
+  const pm2Apps = generatePM2Apps(repoName, servicesData, globalEnvVars);
   const pm2AppFormatted = formatPM2Apps(pm2Apps);
 
   return {
