@@ -120,6 +120,7 @@ export function AITextareaSection({
     onBlur(aiGeneration.content);
 
     await aiGeneration.accept();
+    setMode("preview");
   };
 
   const handleReject = async () => {
