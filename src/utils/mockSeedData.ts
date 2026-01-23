@@ -244,13 +244,16 @@ async function seedFeatures(
 
   const features: Array<{ id: string; title: string; phaseId: string }> = [];
 
-  for (const data of featureData) {
+  for (let index = 0; index < featureData.length; index++) {
+    const data = featureData[index];
+    const creatorId = userIds[index % userIds.length];
+    
     const feature = await db.feature.create({
       data: {
         ...data,
         workspaceId,
-        createdById: userId,
-        updatedById: userId,
+        createdById: creatorId,
+        updatedById: creatorId,
       },
       select: { id: true, title: true },
     });
@@ -261,7 +264,7 @@ async function seedFeatures(
     features.push({ ...feature, phaseId });
 
     // Create user stories
-    await seedUserStories(userId, feature.id);
+    await seedUserStories(creatorId, feature.id);
   }
 
   return features;
