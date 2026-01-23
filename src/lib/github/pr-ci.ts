@@ -280,13 +280,13 @@ export async function fetchCIStatus(
   }
 
   // Build summary with passed/total and additional details
+  // Note: Failed checks are displayed separately, so we only show skipped and pending here
   let summary = "";
   if (totalChecks === 0) {
     summary = "No checks configured";
   } else {
     summary = `${passedChecks}/${totalChecks} passed`;
     const details: string[] = [];
-    if (failedChecksCount > 0) details.push(`${failedChecksCount} failed`);
     if (skippedChecks > 0) details.push(`${skippedChecks} skipped`);
     if (pendingChecks > 0) details.push(`${pendingChecks} pending`);
     if (details.length > 0) {
