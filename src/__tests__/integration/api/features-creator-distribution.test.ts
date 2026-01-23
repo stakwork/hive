@@ -37,13 +37,13 @@ describe("Features API - Creator Distribution Integration Tests", () => {
       const response = await GET(request);
 
       // Assert
-      const data = await expectSuccess(response);
+      const json = await expectSuccess(response);
 
-      expect(data.data).toHaveLength(5);
+      expect(json.data).toHaveLength(5);
 
       // Extract unique creator IDs
       const uniqueCreatorIds = new Set(
-        data.data.map((f: any) => f.createdBy.id)
+        json.data.map((f: any) => f.createdBy.id)
       );
 
       // Should have at least 3 different creators (as per requirements)
@@ -70,10 +70,10 @@ describe("Features API - Creator Distribution Integration Tests", () => {
       const response = await GET(request);
 
       // Assert
-      const data = await expectSuccess(response);
+      const json = await expectSuccess(response);
 
       // Verify each feature has creator info if API returns it
-      for (const feature of data.data) {
+      for (const feature of json.data) {
         expect(feature.createdBy).toBeDefined();
         expect(feature.createdBy.id).toBeDefined();
         expect(typeof feature.createdBy.id).toBe("string");
