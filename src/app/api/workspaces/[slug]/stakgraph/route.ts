@@ -16,6 +16,7 @@ import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
+import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
 import { z } from "zod";
 
@@ -150,6 +151,40 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const environmentVariables = swarm?.environmentVariables;
 
+    // Fetch service-specific env vars from the table
+    const serviceEnvVarsFromTable = await db.environmentVariable.findMany({
+      where: {
+        swarmId: swarm.id,
+        serviceName: { not: "" }, // Only service-specific vars (not global)
+      },
+      select: {
+        serviceName: true,
+        name: true,
+        value: true,
+      },
+    });
+
+    // Group service env vars by service name and decrypt
+    const serviceEnvMap: Record<string, Record<string, string>> = {};
+    for (const envVar of serviceEnvVarsFromTable) {
+      if (!envVar.serviceName) continue;
+      
+      if (!serviceEnvMap[envVar.serviceName]) {
+        serviceEnvMap[envVar.serviceName] = {};
+      }
+
+      try {
+        // Decrypt the value (it's stored as encrypted JSON string)
+        const encryptedData = JSON.parse(envVar.value);
+        const decrypted = decryptEnvVars([{ name: envVar.name, value: encryptedData }]);
+        serviceEnvMap[envVar.serviceName][envVar.name] = decrypted[0]?.value || '';
+      } catch (error) {
+        console.warn(`[Stakgraph GET] Failed to decrypt env var ${envVar.name} for service ${envVar.serviceName}:`, error);
+        // Fallback: try to use raw value if it's a string
+        serviceEnvMap[envVar.serviceName][envVar.name] = typeof envVar.value === 'string' ? envVar.value : '';
+      }
+    }
+
     const repositories = await db.repository.findMany({
       where: { workspaceId: workspace.id },
       select: {
@@ -206,7 +241,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                   }
                 })()
               : environmentVariables,
-        services: typeof swarm.services === "string" ? JSON.parse(swarm.services) : swarm.services || [],
+        services: (() => {
+          const services = typeof swarm.services === "string" ? JSON.parse(swarm.services) : swarm.services || [];
+          // Populate each service with its environment variables from the table
+          return services.map((service: ServiceDataConfig) => ({
+            ...service,
+            env: serviceEnvMap[service.name] || service.env || {}
+          }));
+        })(),
         status: swarm.status,
         lastUpdated: swarm.updatedAt,
         containerFiles: swarm.containerFiles || [],
@@ -269,6 +311,50 @@ async function migrateEnvironmentVariablesToTable(
 
   // Keep old JSON field for backward compatibility
   // (saveOrUpdateSwarm already handles this via environmentVariables parameter)
+}
+
+/**
+ * Saves service-specific environment variables from services array to EnvironmentVariable table
+ * @param swarmId - The swarm ID
+ * @param services - Array of services with env fields
+ * @returns Promise<void>
+ */
+async function saveServiceEnvironmentVariables(
+  swarmId: string,
+  services: Array<ServiceDataConfig> | undefined,
+): Promise<void> {
+  if (!services || services.length === 0) return;
+
+  for (const service of services) {
+    const serviceName = service.name;
+    if (!serviceName) continue;
+
+    const envVars = service.env || {};
+    const envVarsArray = Object.entries(envVars)
+      .filter(([key, value]) => key.trim() !== "")
+      .map(([key, value]) => ({ name: key, value }));
+
+    // Delete existing service-specific env vars for this service
+    await db.environmentVariable.deleteMany({
+      where: {
+        swarmId,
+        serviceName: serviceName,
+      },
+    });
+
+    // Encrypt and insert new env vars if any
+    if (envVarsArray.length > 0) {
+      const encrypted = encryptEnvVars(envVarsArray);
+      await db.environmentVariable.createMany({
+        data: encrypted.map((ev) => ({
+          swarmId,
+          serviceName: serviceName,
+          name: ev.name,
+          value: JSON.stringify(ev.value),
+        })),
+      });
+    }
+  }
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
@@ -466,10 +552,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       await migrateEnvironmentVariablesToTable(swarm.id, settings.environmentVariables);
     }
 
+    // Save service-specific env vars from services array (UI path)
+    const hasIncomingServices = settings.services && settings.services.length > 0;
+    if (hasIncomingServices) {
+      await saveServiceEnvironmentVariables(swarm.id, settings.services as ServiceDataConfig[]);
+      console.log(`[Stakgraph PUT] Saved service-specific env vars from services array for ${settings.services!.length} services`);
+    }
+
     // Extract and save service-specific env vars from PM2 config
     // Only do this when pm2.config.js is explicitly sent WITHOUT services
     // (i.e., an external update, not UI-regenerated pm2 config)
-    const hasIncomingServices = settings.services && settings.services.length > 0;
     const hasIncomingPM2 = settings.containerFiles?.["pm2.config.js"];
 
     if (hasIncomingPM2 && !hasIncomingServices) {
