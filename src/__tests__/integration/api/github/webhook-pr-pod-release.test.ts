@@ -13,7 +13,7 @@ import { resetDatabase } from '@/__tests__/support/utilities/database';
 import { db } from '@/lib/db';
 import { triggerAsyncSync } from '@/services/swarm/stakgraph-actions';
 import { getGithubUsernameAndPAT } from '@/lib/auth/nextauth';
-import { pusherServer } from '@/lib/pusher';
+import { pusherServer, PUSHER_EVENTS } from '@/lib/pusher';
 import { releaseTaskPod } from '@/lib/pods/utils';
 import { generateUniqueId } from '@/__tests__/support/helpers';
 import { EncryptionService } from '@/lib/encryption';
@@ -25,6 +25,13 @@ vi.mock('@/lib/pusher', () => ({
   pusherServer: {
     trigger: vi.fn(),
   },
+  getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
+  PUSHER_EVENTS: {
+    WORKSPACE_TASK_TITLE_UPDATE: 'workspace-task-title-update',
+  },
+}));
+vi.mock('@/services/roadmap/feature-status-sync', () => ({
+  updateFeatureStatusFromTasks: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('@/lib/pods/utils', async () => {
   const actual = await vi.importActual('@/lib/pods/utils');
@@ -99,7 +106,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
 
       // Create PR artifact
       const prUrl = 'https://github.com/test-owner/test-repo/pull/123';
-      await db.artifact.create({
+      const artifact = await db.artifact.create({
         data: {
           messageId: message.id,
           type: ArtifactType.PULL_REQUEST,
@@ -155,6 +162,35 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       const body = await response.json();
       expect(body.success).toBe(true);
 
+      // Verify task status was updated to DONE
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { status: true },
+      });
+      expect(updatedTask?.status).toBe(TaskStatus.DONE);
+
+      // Verify PR artifact status was updated to "DONE"
+      const updatedArtifact = await db.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact?.content).toMatchObject({
+        repo: 'test-owner/test-repo',
+        url: prUrl,
+        status: 'DONE',
+      });
+
+      // Verify Pusher trigger was called
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+        expect.objectContaining({
+          taskId: task.id,
+          status: TaskStatus.DONE,
+          archived: false,
+        })
+      );
+
       // Verify releaseTaskPod was called with correct params
       expect(releaseTaskPod).toHaveBeenCalledWith({
         taskId: task.id,
@@ -166,7 +202,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       });
     });
 
-    test('should return 202 when PR is merged but no tasks with pods found', async () => {
+    test('should update task status and artifact when PR is merged for task without pod', async () => {
       const testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
@@ -199,7 +235,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
 
       // Create PR artifact
       const prUrl = 'https://github.com/test-owner/test-repo/pull/456';
-      await db.artifact.create({
+      const artifact = await db.artifact.create({
         data: {
           messageId: message.id,
           type: ArtifactType.PULL_REQUEST,
@@ -242,12 +278,41 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
       });
 
-      // Should return 202 (acknowledged, no action needed)
+      // Should return 202 (acknowledged, task updated but no pod to release)
       expect(response.status).toBe(202);
       const body = await response.json();
       expect(body.success).toBe(true);
 
-      // Verify releaseTaskPod was NOT called
+      // Verify task status was updated to DONE
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { status: true },
+      });
+      expect(updatedTask?.status).toBe(TaskStatus.DONE);
+
+      // Verify PR artifact status was updated to "DONE"
+      const updatedArtifact = await db.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact?.content).toMatchObject({
+        repo: 'test-owner/test-repo',
+        url: prUrl,
+        status: 'DONE',
+      });
+
+      // Verify Pusher trigger was called
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+        expect.objectContaining({
+          taskId: task.id,
+          status: TaskStatus.DONE,
+          archived: false,
+        })
+      );
+
+      // Verify releaseTaskPod was NOT called (no pod)
       expect(releaseTaskPod).not.toHaveBeenCalled();
     });
 
