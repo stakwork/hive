@@ -156,7 +156,7 @@ export function AgentChatArea({
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.98 }}
                     transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="text-lg font-semibold text-foreground truncate flex-1 flex items-center"
+                    className="text-lg font-semibold text-foreground flex-1 flex flex-col items-start gap-1"
                     title={taskTitle}
                     data-testid="task-title"
                   >
@@ -168,7 +168,9 @@ export function AgentChatArea({
                         workspaceSlug={workspaceSlug}
                       />
                     )}
-                    {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                    <span className="truncate w-full">
+                      {taskTitle.length > 60 ? `${taskTitle.slice(0, 60)}...` : taskTitle}
+                    </span>
                   </motion.h2>
                 </AnimatePresence>
               </div>
