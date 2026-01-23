@@ -101,3 +101,4 @@ GITHUB_CLIENT_SECRET="your-github-client-secret"
 
 Optional environment variables:
 - `USE_MOCKS` - Enable mock mode for all external services (`true` to enable)
+ test
