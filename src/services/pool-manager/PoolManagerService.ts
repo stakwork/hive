@@ -1,5 +1,11 @@
 import { BaseServiceClass } from "@/lib/base-service";
-import { PoolUserResponse, ServiceConfig, PoolStatusResponse, PoolWorkspacesResponse, StaklinkStartResponse } from "@/types";
+import {
+  PoolUserResponse,
+  ServiceConfig,
+  PoolStatusResponse,
+  PoolWorkspacesResponse,
+  StaklinkStartResponse,
+} from "@/types";
 import { RepositoryConfig } from "@/types/pool-manager";
 import { CreateUserRequest, CreatePoolRequest, DeletePoolRequest, DeleteUserRequest, Pool } from "@/types";
 import { fetchPoolEnvVars, updatePoolDataApi } from "@/services/pool-manager/api/envVars";
@@ -97,7 +103,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${decryptedApiKey}`,
+          Authorization: `Bearer ${decryptedApiKey}`,
         },
       });
 
@@ -133,7 +139,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${decryptedApiKey}`,
+          Authorization: `Bearer ${decryptedApiKey}`,
         },
       });
 
@@ -175,16 +181,13 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
     try {
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-      const response = await fetch(
-        `${this.config.baseURL}/pools/${poolId}/workspaces/${podId}/staklink-start`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${decryptedApiKey}`,
-          },
-        }
-      );
+      const response = await fetch(`${this.config.baseURL}/pools/${poolId}/workspaces/${podId}/staklink-start`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${decryptedApiKey}`,
+        },
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to start staklink: ${response.status}`);

@@ -8,7 +8,7 @@ import {
 } from "@/components/stakgraph/types";
 import { toast } from "sonner";
 import { EnvironmentVariable } from "@/types/wizard";
-import { getPM2AppsContent } from "@/utils/devContainerUtils";
+import { getPM2AppsContent, maskEnvVarsInPM2Config } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { createRequestManager, isAbortError } from "@/utils/request-manager";
 import { create } from "zustand";
@@ -116,7 +116,13 @@ export const useStakgraphStore = create<StakgraphStore>()(
 
             const files = Object.entries(settings.containerFiles || {}).reduce(
               (acc, curr) => {
-                acc[curr[0]] = atob(curr[1] as string);
+                const fileName = curr[0];
+                let content = atob(curr[1] as string);
+                // Mask env var values in PM2 config for display
+                if (fileName === "pm2.config.js") {
+                  content = maskEnvVarsInPM2Config(content);
+                }
+                acc[fileName] = content;
                 return acc;
               },
               {} as Record<string, string>,
@@ -245,9 +251,15 @@ export const useStakgraphStore = create<StakgraphStore>()(
           }
         })();
 
+        // Get global env vars (those without a serviceName) for PM2 config
+        const globalEnvVars = state.envVars.map((env) => ({
+          name: env.name,
+          value: env.value,
+        }));
+
         const containerFiles = {
           ...state.formData.containerFiles,
-          "pm2.config.js": getPM2AppsContent(repoName, state.formData.services)?.content || "",
+          "pm2.config.js": getPM2AppsContent(repoName, state.formData.services, globalEnvVars)?.content || "",
         };
 
         const base64EncodedFiles = Object.entries(containerFiles).reduce(

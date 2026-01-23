@@ -1,6 +1,20 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { ServiceConfig } from "@/services/swarm/db";
 
+// These are service configuration commands, not actual env vars to persist
+// Used to filter out non-sensitive/non-secret values when saving or displaying
+export const SERVICE_CONFIG_ENV_VARS = [
+  "PORT",
+  "INSTALL_COMMAND",
+  "TEST_COMMAND",
+  "BUILD_COMMAND",
+  "E2E_TEST_COMMAND",
+  "PRE_START_COMMAND",
+  "POST_START_COMMAND",
+  "REBUILD_COMMAND",
+  "RESET_COMMAND",
+];
+
 export interface DevContainerFile {
   name: string;
   content: string;
@@ -8,8 +22,29 @@ export interface DevContainerFile {
 }
 
 // Helper function to generate PM2 apps from services data
-export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfig[]) => {
+export const generatePM2Apps = (
+  repoName: string,
+  servicesData: ServiceDataConfig[],
+  globalEnvVars?: Array<{ name: string; value: string }>
+) => {
   if (!servicesData || servicesData.length === 0) {
+    // Build env object with merged variables
+    const env: Record<string, string> = {};
+
+    // 1. First apply global env vars
+    if (globalEnvVars) {
+      globalEnvVars.forEach((envVar) => {
+        env[envVar.name] = envVar.value;
+      });
+    }
+
+    // 2. Then apply command-related defaults (override globals)
+    env.INSTALL_COMMAND = "npm install";
+    env.TEST_COMMAND = "npm test";
+    env.BUILD_COMMAND = "npm run build";
+    env.E2E_TEST_COMMAND = "npx playwright test";
+    env.PORT = "3000";
+
     // Return default configuration if no services
     return [
       {
@@ -20,13 +55,7 @@ export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfi
         autorestart: true,
         watch: false,
         max_memory_restart: "1G",
-        env: {
-          INSTALL_COMMAND: "npm install",
-          TEST_COMMAND: "npm test",
-          BUILD_COMMAND: "npm run build",
-          E2E_TEST_COMMAND: "npx playwright test",
-          PORT: "3000",
-        },
+        env,
       },
     ];
   }
@@ -48,6 +77,22 @@ export const generatePM2Apps = (repoName: string, servicesData: ServiceDataConfi
       interpreter: service.interpreter?.toString(),
     };
 
+    // Environment variable merging with correct precedence:
+    // 1. Global env vars (lowest priority)
+    if (globalEnvVars) {
+      globalEnvVars.forEach((envVar) => {
+        appConfig.env[envVar.name] = envVar.value;
+      });
+    }
+
+    // 2. Service-specific env vars from service.env (overrides globals)
+    if (service.env) {
+      Object.entries(service.env).forEach(([key, value]) => {
+        appConfig.env[key] = String(value);
+      });
+    }
+
+    // 3. Command-related variables and PORT (highest priority, override everything)
     if (service.port) {
       appConfig.env.PORT = service.port.toString();
     }
@@ -126,8 +171,80 @@ ${envEntries}
   return `[\n${formattedApps.join(",\n")}\n  ]`;
 };
 
-export const getPM2AppsContent = (repoName: string, servicesData: ServiceDataConfig[]) => {
-  const pm2Apps = generatePM2Apps(repoName, servicesData);
+/**
+ * Mask env var values in PM2 config content for display purposes
+ * Only masks values inside env: { } blocks, not other config like name, script, etc.
+ */
+/**
+ * Extract all env vars from PM2 config, grouped by service name
+ * Filters out script commands and PORT which are service config, not env vars
+ * Returns a map of service name -> env vars array
+ */
+export const extractEnvVarsFromPM2Config = (
+  pm2Content: string
+): Map<string, Array<{ name: string; value: string }>> => {
+  const result = new Map<string, Array<{ name: string; value: string }>>();
+
+  try {
+    // Match each app block to get service name and env block
+    const appBlockRegex = /\{\s*name:\s*["']([^"']+)["'][^}]*env:\s*\{([^}]*)\}/g;
+    let match;
+
+    while ((match = appBlockRegex.exec(pm2Content)) !== null) {
+      const serviceName = match[1];
+      const envBlock = match[2];
+      const envVars: Array<{ name: string; value: string }> = [];
+
+      // Parse individual env var entries
+      const envVarRegex = /(\w+):\s*["']([^"']*)["']/g;
+      let envMatch;
+
+      while ((envMatch = envVarRegex.exec(envBlock)) !== null) {
+        const varName = envMatch[1];
+        // Skip service config vars (scripts and PORT)
+        if (!SERVICE_CONFIG_ENV_VARS.includes(varName)) {
+          envVars.push({ name: varName, value: envMatch[2] });
+        }
+      }
+
+      if (envVars.length > 0) {
+        result.set(serviceName, envVars);
+      }
+    }
+  } catch (error) {
+    console.warn("[extractEnvVarsFromPM2Config] Failed to parse PM2 config:", error);
+  }
+
+  return result;
+};
+
+export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
+  // Find and replace only the env: { ... } blocks
+  return pm2Content.replace(
+    /env:\s*\{([^}]*)\}/g,
+    (envBlock) => {
+      // Within each env block, mask the values
+      return envBlock.replace(
+        /(\s+)(\w+):\s*["']([^"']*)["']/g,
+        (match, whitespace, key, _value) => {
+          // Don't mask service config vars (non-sensitive)
+          if (SERVICE_CONFIG_ENV_VARS.includes(key)) {
+            return match;
+          }
+          // Mask the value
+          return `${whitespace}${key}: "****"`;
+        }
+      );
+    }
+  );
+};
+
+export const getPM2AppsContent = (
+  repoName: string,
+  servicesData: ServiceDataConfig[],
+  globalEnvVars?: Array<{ name: string; value: string }>
+) => {
+  const pm2Apps = generatePM2Apps(repoName, servicesData, globalEnvVars);
   const pm2AppFormatted = formatPM2Apps(pm2Apps);
 
   return {
