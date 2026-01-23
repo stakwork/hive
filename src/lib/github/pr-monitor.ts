@@ -437,6 +437,166 @@ export async function getOctokitForWorkspace(userId: string, owner: string): Pro
 }
 
 /**
+ * Check if failed checks existed and were passing in the last N merged PRs
+ * 
+ * @returns Object with shouldAutoFix flag and reason string
+ */
+export async function shouldAutoFixBasedOnHistory(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  baseBranch: string,
+  failedChecks: string[],
+  historyCount: number = 5,
+): Promise<{ shouldAutoFix: boolean; reason: string }> {
+  try {
+    // Fetch last N merged PRs
+    const { data: recentPRs } = await octokit.pulls.list({
+      owner,
+      repo,
+      state: "closed",
+      base: baseBranch,
+      sort: "updated",
+      direction: "desc",
+      per_page: historyCount * 2, // Fetch extra to account for closed-but-not-merged PRs
+    });
+
+    // Filter to only merged PRs and limit to historyCount
+    const mergedPRs = recentPRs.filter((pr) => pr.merged_at).slice(0, historyCount);
+
+    if (mergedPRs.length === 0) {
+      log.info("No merged PRs found in history - allowing auto-fix", {
+        owner,
+        repo,
+        baseBranch,
+      });
+      return {
+        shouldAutoFix: true,
+        reason: "No merged PR history available for comparison",
+      };
+    }
+
+    log.info("Checking PR history for failed checks", {
+      owner,
+      repo,
+      baseBranch,
+      failedChecks,
+      mergedPRsFound: mergedPRs.length,
+    });
+
+    // Track status of each failed check across historical PRs
+    const checkHistory: Record<string, { existed: boolean; wasPassingOrSkipped: boolean }> = {};
+
+    for (const checkName of failedChecks) {
+      // Skip meta entries like "... and X more"
+      if (checkName.includes("...")) {
+        continue;
+      }
+
+      let existedInAnyPR = false;
+      let wasPassingOrSkippedInAll = true;
+
+      // Check this failed check's status across all merged PRs
+      for (const pr of mergedPRs) {
+        if (!pr.merge_commit_sha) {
+          continue;
+        }
+
+        // Fetch check runs for this historical PR's merge commit
+        const { data: checkRuns } = await octokit.checks.listForRef({
+          owner,
+          repo,
+          ref: pr.merge_commit_sha,
+        });
+
+        // Look for this specific check name
+        const historicalCheck = checkRuns.check_runs.find((check) => check.name === checkName);
+
+        if (historicalCheck) {
+          existedInAnyPR = true;
+
+          // Check if it was passing or skipped
+          if (
+            historicalCheck.status !== "completed" ||
+            (historicalCheck.conclusion !== "success" && historicalCheck.conclusion !== "skipped")
+          ) {
+            wasPassingOrSkippedInAll = false;
+            log.info("Historical check was not passing", {
+              checkName,
+              prNumber: pr.number,
+              status: historicalCheck.status,
+              conclusion: historicalCheck.conclusion,
+            });
+          }
+        }
+      }
+
+      checkHistory[checkName] = {
+        existed: existedInAnyPR,
+        wasPassingOrSkipped: wasPassingOrSkippedInAll,
+      };
+
+      log.info("Check history analysis", {
+        checkName,
+        existed: existedInAnyPR,
+        wasPassingOrSkipped: wasPassingOrSkippedInAll,
+      });
+    }
+
+    // Determine if we should auto-fix
+    // Only auto-fix if ALL failed checks:
+    // 1. Existed in at least one historical PR, AND
+    // 2. Were passing or skipped in ALL historical PRs where they existed
+    const checksPreventingAutoFix: string[] = [];
+
+    for (const [checkName, history] of Object.entries(checkHistory)) {
+      if (!history.existed) {
+        checksPreventingAutoFix.push(`${checkName} (did not exist in history)`);
+      } else if (!history.wasPassingOrSkipped) {
+        checksPreventingAutoFix.push(`${checkName} (was failing in history)`);
+      }
+    }
+
+    if (checksPreventingAutoFix.length > 0) {
+      const reason = `Skipping auto-fix: ${checksPreventingAutoFix.join(", ")}`;
+      log.warn("Auto-fix prevented by check history", {
+        owner,
+        repo,
+        baseBranch,
+        checksPreventingAutoFix,
+        historyChecked: mergedPRs.length,
+      });
+      return { shouldAutoFix: false, reason };
+    }
+
+    log.info("Auto-fix allowed based on check history", {
+      owner,
+      repo,
+      baseBranch,
+      failedChecks,
+      historyChecked: mergedPRs.length,
+    });
+
+    return {
+      shouldAutoFix: true,
+      reason: `All failed checks existed and were passing in last ${mergedPRs.length} merged PRs`,
+    };
+  } catch (error) {
+    log.error("Error checking PR history", {
+      owner,
+      repo,
+      baseBranch,
+      error: String(error),
+    });
+    // On error, be conservative and allow auto-fix (to avoid blocking valid fixes)
+    return {
+      shouldAutoFix: true,
+      reason: "Error checking history - proceeding with auto-fix",
+    };
+  }
+}
+
+/**
  * Build the prompt for the agent to fix a PR issue
  */
 export function buildFixPrompt(result: PRCheckResult): string {
@@ -696,8 +856,34 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         // If pod is available and this is a new problem, trigger an automatic fix
         // The triggerFix function auto-detects whether to use agent mode or live mode
         // Only trigger if: not gave_up, state changed, and cooldown elapsed
-        const shouldTriggerFix =
+        let shouldTriggerFix =
           pr.podId && stateChanged && cooldownElapsed && progress.resolution?.status !== "gave_up";
+
+        // For CI failures, check if the failed checks were passing in recent history
+        let historyCheckReason: string | undefined;
+        if (shouldTriggerFix && result.state === "ci_failure" && result.failedChecks && result.failedChecks.length > 0) {
+          const historyCheck = await shouldAutoFixBasedOnHistory(
+            octokit,
+            result.owner,
+            result.repo,
+            result.baseBranch,
+            result.failedChecks,
+          );
+          
+          if (!historyCheck.shouldAutoFix) {
+            shouldTriggerFix = false;
+            historyCheckReason = historyCheck.reason;
+            
+            // Update progress with reason for not auto-fixing
+            progress.resolution = {
+              status: "notified",
+              attempts: progress.resolution?.attempts || currentAttempts,
+              lastAttemptAt: progress.resolution?.lastAttemptAt,
+              lastError: historyCheck.reason,
+            };
+            await updatePRArtifactProgress(pr.artifactId, progress);
+          }
+        }
 
         if (shouldTriggerFix) {
           const fixPrompt = buildFixPrompt(result);
@@ -721,6 +907,12 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
             prNumber: result.prNumber,
             lastAttemptAt,
             cooldownMs: PR_FIX_COOLDOWN_MS,
+          });
+        } else if (historyCheckReason) {
+          log.info("Skipping PR fix due to check history", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            reason: historyCheckReason,
           });
         }
       } else {
