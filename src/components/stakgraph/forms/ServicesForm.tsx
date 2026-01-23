@@ -14,6 +14,10 @@ import {
   RefreshCw,
   Zap,
   RotateCcw,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FormSectionProps, ServiceDataConfig } from "../types";
+import { useState } from "react";
 
 type ScriptConfig = {
   key: keyof ServiceDataConfig["scripts"];
@@ -37,6 +42,11 @@ export default function ServicesForm({
   loading,
   onChange,
 }: Omit<FormSectionProps<ServiceDataConfig[]>, "errors">) {
+  // Track which service env sections are expanded
+  const [expandedEnvSections, setExpandedEnvSections] = useState<Record<number, boolean>>({});
+  // Track which env var values are shown (not hidden)
+  const [visibleEnvVars, setVisibleEnvVars] = useState<Record<string, boolean>>({});
+
   const scriptConfigs: Record<string, ScriptConfig> = {
     start: {
       key: "start",
@@ -200,6 +210,91 @@ export default function ServicesForm({
       return svc;
     });
     onChange(updatedServices);
+  };
+
+  // Service environment variable handlers
+  const toggleEnvSection = (idx: number) => {
+    setExpandedEnvSections(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
+
+  const handleServiceEnvChange = (
+    serviceIdx: number,
+    envKey: string,
+    field: 'key' | 'value',
+    value: string,
+    oldKey?: string
+  ) => {
+    const updatedServices = [...data];
+    const service = updatedServices[serviceIdx];
+    const env = { ...(service.env || {}) };
+
+    if (field === 'key') {
+      // Rename key
+      if (oldKey && oldKey !== value) {
+        const oldValue = env[oldKey];
+        delete env[oldKey];
+        if (value.trim()) {
+          env[value] = oldValue || '';
+        }
+      } else if (!oldKey && value.trim()) {
+        env[value] = '';
+      }
+    } else {
+      // Update value
+      if (envKey) {
+        env[envKey] = value;
+      }
+    }
+
+    updatedServices[serviceIdx] = {
+      ...service,
+      env
+    };
+    onChange(updatedServices);
+  };
+
+  const handleAddServiceEnv = (serviceIdx: number) => {
+    const updatedServices = [...data];
+    const service = updatedServices[serviceIdx];
+    
+    // Find a unique temp key
+    let counter = 1;
+    while (`NEW_VAR_${counter}` in (service.env || {})) {
+      counter++;
+    }
+    
+    updatedServices[serviceIdx] = {
+      ...service,
+      env: {
+        ...(service.env || {}),
+        [`NEW_VAR_${counter}`]: ''
+      }
+    };
+    onChange(updatedServices);
+  };
+
+  const handleRemoveServiceEnv = (serviceIdx: number, envKey: string) => {
+    const updatedServices = [...data];
+    const service = updatedServices[serviceIdx];
+    const env = { ...(service.env || {}) };
+    delete env[envKey];
+    
+    updatedServices[serviceIdx] = {
+      ...service,
+      env
+    };
+    onChange(updatedServices);
+  };
+
+  const toggleEnvVisibility = (serviceIdx: number, envKey: string) => {
+    const visKey = `${serviceIdx}-${envKey}`;
+    setVisibleEnvVars(prev => ({
+      ...prev,
+      [visKey]: !prev[visKey]
+    }));
   };
 
   return (
@@ -491,6 +586,122 @@ export default function ServicesForm({
                             ))}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                    </div>
+                  )}
+                </div>
+
+                {/* Environment Variables Section */}
+                <div className="border-t pt-4 mt-4">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => toggleEnvSection(idx)}
+                    disabled={loading}
+                    className="flex items-center space-x-2 p-0 h-auto hover:bg-transparent"
+                  >
+                    {expandedEnvSections[idx] ? (
+                      <ChevronDown className="w-4 h-4" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4" />
+                    )}
+                    <span className="text-sm font-medium">
+                      Environment Variables
+                      {Object.keys(svc.env || {}).length > 0 && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          ({Object.keys(svc.env || {}).length})
+                        </span>
+                      )}
+                    </span>
+                  </Button>
+
+                  {expandedEnvSections[idx] && (
+                    <div className="mt-3 space-y-3 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                      <p className="text-xs text-muted-foreground">
+                        Service-specific environment variables. These override global variables with the same name.
+                      </p>
+
+                      {Object.entries(svc.env || {}).length === 0 ? (
+                        <p className="text-sm text-muted-foreground italic">
+                          No environment variables defined for this service.
+                        </p>
+                      ) : (
+                        Object.entries(svc.env || {}).map(([key, value]) => {
+                          const visKey = `${idx}-${key}`;
+                          const isVisible = visibleEnvVars[visKey];
+
+                          return (
+                            <div key={key} className="flex gap-2 items-center">
+                              <Input
+                                placeholder="KEY"
+                                value={key}
+                                onChange={(e) =>
+                                  handleServiceEnvChange(
+                                    idx,
+                                    key,
+                                    'key',
+                                    e.target.value,
+                                    key
+                                  )
+                                }
+                                className="w-1/3 font-mono"
+                                disabled={loading}
+                              />
+                              <div className="relative w-1/2">
+                                <Input
+                                  placeholder="VALUE"
+                                  type={isVisible ? "text" : "password"}
+                                  value={value}
+                                  onChange={(e) =>
+                                    handleServiceEnvChange(
+                                      idx,
+                                      key,
+                                      'value',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="pr-10 font-mono"
+                                  disabled={loading}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => toggleEnvVisibility(idx, key)}
+                                  className="absolute right-0 top-0 h-full px-3"
+                                  disabled={loading}
+                                >
+                                  {isVisible ? (
+                                    <EyeOff className="h-4 w-4" />
+                                  ) : (
+                                    <Eye className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => handleRemoveServiceEnv(idx, key)}
+                                className="px-2"
+                                disabled={loading}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          );
+                        })
+                      )}
+
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleAddServiceEnv(idx)}
+                        disabled={loading}
+                        className="mt-2"
+                      >
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Add Variable
+                      </Button>
                     </div>
                   )}
                 </div>
