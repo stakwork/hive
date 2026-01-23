@@ -5,7 +5,7 @@ import { getBaseUrl } from "@/lib/utils";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { buildFeatureContext } from "@/services/task-coordinator";
 import { EncryptionService } from "@/lib/encryption";
-import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
+import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -424,20 +424,8 @@ export async function createChatMessageAndTriggerStakwork(params: {
       });
 
       if (stakworkData.success) {
-        const updateData: {
-          workflowStatus: WorkflowStatus;
-          workflowStartedAt: Date;
-          stakworkProjectId?: number;
-          status?: TaskStatus;
-        } = {
-          workflowStatus: WorkflowStatus.IN_PROGRESS,
-          workflowStartedAt: new Date(),
-        };
-
         // Extract project ID from Stakwork response
-        if (stakworkData.data?.project_id) {
-          updateData.stakworkProjectId = stakworkData.data.project_id;
-        } else {
+        if (!stakworkData.data?.project_id) {
           console.warn("No project_id found in Stakwork response:", stakworkData);
         }
 
@@ -447,65 +435,32 @@ export async function createChatMessageAndTriggerStakwork(params: {
           select: { status: true },
         });
 
+        const additionalData: Record<string, unknown> = {};
+        if (stakworkData.data?.project_id) {
+          additionalData.stakworkProjectId = stakworkData.data.project_id;
+        }
         if (currentTask?.status === TaskStatus.TODO) {
-          updateData.status = TaskStatus.IN_PROGRESS;
+          additionalData.status = TaskStatus.IN_PROGRESS;
         }
 
-        const updatedTask = await db.task.update({
-          where: { id: taskId },
-          data: updateData,
-          select: {
-            featureId: true,
-          },
+        await updateTaskWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          workflowStartedAt: new Date(),
+          additionalData: Object.keys(additionalData).length > 0 ? additionalData : undefined,
         });
-
-        // Sync feature status if task belongs to a feature
-        if (updatedTask.featureId) {
-          try {
-            await updateFeatureStatusFromTasks(updatedTask.featureId);
-          } catch (error) {
-            console.error('Failed to sync feature status:', error);
-            // Don't fail the request if feature sync fails
-          }
-        }
       } else {
-        const updatedTask = await db.task.update({
-          where: { id: taskId },
-          data: { workflowStatus: WorkflowStatus.FAILED },
-          select: {
-            featureId: true,
-          },
+        await updateTaskWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.FAILED,
         });
-
-        // Sync feature status if task belongs to a feature
-        if (updatedTask.featureId) {
-          try {
-            await updateFeatureStatusFromTasks(updatedTask.featureId);
-          } catch (error) {
-            console.error('Failed to sync feature status:', error);
-            // Don't fail the request if feature sync fails
-          }
-        }
       }
     } catch (error) {
       console.error("Error calling Stakwork:", error);
-      const updatedTask = await db.task.update({
-        where: { id: taskId },
-        data: { workflowStatus: "FAILED" },
-        select: {
-          featureId: true,
-        },
+      await updateTaskWorkflowStatus({
+        taskId,
+        workflowStatus: WorkflowStatus.FAILED,
       });
-
-      // Sync feature status if task belongs to a feature
-      if (updatedTask.featureId) {
-        try {
-          await updateFeatureStatusFromTasks(updatedTask.featureId);
-        } catch (error) {
-          console.error('Failed to sync feature status:', error);
-          // Don't fail the request if feature sync fails
-        }
-      }
     }
   }
 

@@ -1053,6 +1053,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         data: {
           workflowStatus: WorkflowStatus.FAILED,
         },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
+        },
       });
     });
 
@@ -1080,6 +1085,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         where: { id: mockTaskId },
         data: {
           workflowStatus: WorkflowStatus.FAILED,
+        },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
         },
       });
     });
@@ -1237,6 +1247,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           workflowStartedAt: expect.any(Date),
           stakworkProjectId: 12345,
         },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
+        },
       });
     });
 
@@ -1267,6 +1282,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: expect.any(Date),
           stakworkProjectId: 67890,
+        },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
         },
       });
     });
@@ -1303,6 +1323,11 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
         data: {
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: expect.any(Date),
+        },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
         },
       });
     });
