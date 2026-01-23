@@ -378,19 +378,26 @@ describe("POST /api/pool-manager/create-pool", () => {
       );
     });
 
-    test("calls service with correct parameters including environment variables", async () => {
+    test("calls service with env vars embedded in PM2 config instead of env_vars parameter", async () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
-      const envVars = [
-        { name: "TEST_VAR", value: "test-value" },
-        { name: "ANOTHER_VAR", value: "another-value" },
-      ];
-
-      await db.swarm.update({
-        where: { id: swarm.id },
-        data: {
-          environmentVariables: JSON.stringify(envVars),
-        },
+      // Add environment variables to the database (global vars)
+      const encryptionService = (await import("@/lib/encryption")).EncryptionService.getInstance();
+      await db.environmentVariable.createMany({
+        data: [
+          {
+            swarmId: swarm.id,
+            serviceName: null, // Global env var
+            name: "GLOBAL_VAR",
+            value: JSON.stringify(encryptionService.encryptField("environmentVariable", "global-value")),
+          },
+          {
+            swarmId: swarm.id,
+            serviceName: null, // Global env var
+            name: "ANOTHER_GLOBAL",
+            value: JSON.stringify(encryptionService.encryptField("environmentVariable", "another-global-value")),
+          },
+        ],
       });
 
       const mockPool = {
@@ -418,14 +425,26 @@ describe("POST /api/pool-manager/create-pool", () => {
       const response = await POST(request);
 
       await expectSuccess(response, 201);
+      
+      // Verify env_vars is now empty (env vars embedded in PM2 config)
       expect(mockCreatePool).toHaveBeenCalledWith(
         expect.objectContaining({
-          env_vars: expect.arrayContaining([
-            expect.objectContaining({ name: "TEST_VAR", value: "test-value" }),
-            expect.objectContaining({ name: "ANOTHER_VAR", value: "another-value" }),
-          ]),
+          env_vars: [],
+          container_files: expect.objectContaining({
+            "pm2.config.js": expect.any(String),
+          }),
         })
       );
+
+      // Decode and verify PM2 config contains the global env vars
+      const callArgs = mockCreatePool.mock.calls[0][0];
+      const pm2ConfigBase64 = callArgs.container_files["pm2.config.js"];
+      const pm2Config = Buffer.from(pm2ConfigBase64, "base64").toString("utf-8");
+      
+      expect(pm2Config).toContain("GLOBAL_VAR");
+      expect(pm2Config).toContain("global-value");
+      expect(pm2Config).toContain("ANOTHER_GLOBAL");
+      expect(pm2Config).toContain("another-global-value");
     });
   });
 

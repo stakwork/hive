@@ -10,6 +10,7 @@ import { getSwarmPoolApiKeyFor, updateSwarmPoolApiKeyFor } from "@/services/swar
 import { getWorkspaceBySlug } from "@/services/workspace";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { syncPM2AndServices, extractRepoName } from "@/utils/stakgraphSync";
+import { extractEnvVarsFromPM2Config, SERVICE_CONFIG_ENV_VARS } from "@/utils/devContainerUtils";
 import { SwarmStatus } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
@@ -44,7 +45,7 @@ const stakgraphSettingsSchema = z.object({
   environmentVariables: z
     .array(
       z.object({
-        name: z.string().min(1, "Environment variable key is required"),
+        name: z.string(), // Allow empty strings - they get filtered out before saving
         value: z.string(),
       }),
     )
@@ -137,15 +138,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-   await db.repository.findMany({
-     where: { workspaceId: workspace.id },
-     select: {
-       id: true,
-       repositoryUrl: true,
-       branch: true,
-     },
-     orderBy: { createdAt: "asc" },
-   });
+    await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        branch: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
     const environmentVariables = swarm?.environmentVariables;
 
@@ -238,54 +239,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  */
 async function migrateEnvironmentVariablesToTable(
   swarmId: string,
-  environmentVariables: Array<{ name: string; value: string }> | undefined
+  environmentVariables: Array<{ name: string; value: string }> | undefined,
 ): Promise<void> {
-  if (!environmentVariables || environmentVariables.length === 0) {
-    return;
-  }
+  // Filter out service config vars and entries with empty names
+  const filteredEnvVars = (environmentVariables || []).filter(
+    (ev) => ev.name.trim() !== "" && !SERVICE_CONFIG_ENV_VARS.includes(ev.name)
+  );
 
-  // Check if migration already done - if new table has records for this swarm, skip migration
-  const existingCount = await db.environmentVariable.count({
-    where: { swarmId },
+  // Always delete existing global env vars first
+  await db.environmentVariable.deleteMany({
+    where: {
+      swarmId,
+      serviceName: "",
+    },
   });
 
-  if (existingCount > 0) {
-    // Already migrated or using new table - just update records
-    // Delete existing records for this swarm with global scope (empty serviceName)
-    await db.environmentVariable.deleteMany({
-      where: {
-        swarmId,
-        serviceName: '',
-      },
-    });
-
-    // Encrypt and insert new env vars as global (serviceName='')
-    const encrypted = encryptEnvVars(environmentVariables);
+  // If there are env vars to save, encrypt and insert them
+  if (filteredEnvVars.length > 0) {
+    const encrypted = encryptEnvVars(filteredEnvVars);
     await db.environmentVariable.createMany({
       data: encrypted.map((ev) => ({
         swarmId,
-        serviceName: '', // Empty string indicates global scope
+        serviceName: "", // Empty string indicates global scope
         name: ev.name,
         value: JSON.stringify(ev.value), // Store encrypted data as JSON string
       })),
     });
-
-    // Keep old JSON field populated for backward compatibility
-    // (saveOrUpdateSwarm already handles this via environmentVariables parameter)
-    
-    return;
   }
-
-  // First time migration - insert encrypted env vars into new table
-  const encrypted = encryptEnvVars(environmentVariables);
-  await db.environmentVariable.createMany({
-    data: encrypted.map((ev) => ({
-      swarmId,
-      serviceName: '', // Empty string indicates global scope
-      name: ev.name,
-      value: JSON.stringify(ev.value), // Store encrypted data as JSON string
-    })),
-  });
 
   // Keep old JSON field for backward compatibility
   // (saveOrUpdateSwarm already handles this via environmentVariables parameter)
@@ -431,9 +411,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // Get repo name for pm2 generation
     const primaryRepo = await getPrimaryRepository(workspace.id);
-    const repoName = extractRepoName(
-      primaryRepo?.repositoryUrl || settings.repositories?.[0]?.repositoryUrl
-    );
+    const repoName = extractRepoName(primaryRepo?.repositoryUrl || settings.repositories?.[0]?.repositoryUrl);
+
+    // Get global env vars for PM2 config generation
+    const globalEnvVars = Array.isArray(settings.environmentVariables)
+      ? (settings.environmentVariables as Array<{ name: string; value: string }>)
+      : undefined;
 
     // Perform bidirectional sync for services/containerFiles
     const syncResult = syncPM2AndServices(
@@ -441,7 +424,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       (existingSwarm?.containerFiles as unknown as Record<string, string>) || {},
       settings.services as SwarmServiceConfig[] | undefined,
       settings.containerFiles,
-      repoName
+      repoName,
+      globalEnvVars,
     );
 
     // Merge all fields - use incoming if provided, else preserve existing
@@ -480,6 +464,47 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Migrate environment variables from JSON field to new table
     if (settings.environmentVariables) {
       await migrateEnvironmentVariablesToTable(swarm.id, settings.environmentVariables);
+    }
+
+    // Extract and save service-specific env vars from PM2 config
+    // Only do this when pm2.config.js is explicitly sent WITHOUT services
+    // (i.e., an external update, not UI-regenerated pm2 config)
+    const hasIncomingServices = settings.services && settings.services.length > 0;
+    const hasIncomingPM2 = settings.containerFiles?.["pm2.config.js"];
+
+    if (hasIncomingPM2 && !hasIncomingServices) {
+      try {
+        const pm2Content = Buffer.from(settings.containerFiles!["pm2.config.js"], "base64").toString("utf-8");
+        const envVarsPerService = extractEnvVarsFromPM2Config(pm2Content);
+
+        // Save env vars for each service
+        for (const [serviceName, envVars] of envVarsPerService) {
+          // Delete existing service-specific env vars for this service
+          await db.environmentVariable.deleteMany({
+            where: {
+              swarmId: swarm.id,
+              serviceName: serviceName,
+            },
+          });
+
+          // Encrypt and insert new env vars
+          if (envVars.length > 0) {
+            const encrypted = encryptEnvVars(envVars);
+            await db.environmentVariable.createMany({
+              data: encrypted.map((ev) => ({
+                swarmId: swarm.id,
+                serviceName: serviceName,
+                name: ev.name,
+                value: JSON.stringify(ev.value),
+              })),
+            });
+          }
+        }
+
+        console.log(`[Stakgraph] Saved service-specific env vars from PM2 config for ${envVarsPerService.size} services`);
+      } catch (error) {
+        console.warn("[Stakgraph] Failed to extract env vars from PM2 config:", error);
+      }
     }
 
     let swarmPoolApiKey = await getSwarmPoolApiKeyFor(swarm.id);
@@ -532,10 +557,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         poolApiKey: swarmPoolApiKey,
         poolCpu: mergedPoolCpu,
         poolMemory: mergedPoolMemory,
-        environmentVariables: Array.isArray(settings.environmentVariables)
-          ? (settings.environmentVariables as Array<{ name: string; value: string }>)
-          : undefined,
-        containerFiles: syncResult.containerFiles,
         userId: userId || undefined,
       });
 

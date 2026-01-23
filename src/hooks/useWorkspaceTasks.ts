@@ -50,6 +50,7 @@ export interface TaskData {
   stakworkProjectId?: number | null;
   featureId?: string | null;
   systemAssigneeType?: "TASK_COORDINATOR" | "BOUNTY_HUNTER" | null;
+  dependsOnTaskIds?: string[];
   createdAt: string;
   updatedAt: string;
   hasActionArtifact?: boolean;
@@ -57,6 +58,10 @@ export interface TaskData {
     id: string;
     type: string;
     content: any;
+  } | null;
+  feature?: {
+    id: string;
+    title: string;
   } | null;
   assignee?: {
     id: string;
