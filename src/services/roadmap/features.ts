@@ -17,6 +17,7 @@ export async function listFeatures({
   statuses,
   priorities,
   assigneeId,
+  createdById,
   search,
   sortBy,
   sortOrder,
@@ -28,6 +29,7 @@ export async function listFeatures({
   statuses?: FeatureStatus[]; // Array of statuses for multi-select filtering
   priorities?: FeaturePriority[]; // Array of priorities for multi-select filtering
   assigneeId?: string; // String including "UNASSIGNED" special value
+  createdById?: string; // String including "UNCREATED" special value
   search?: string; // Text search for feature title
   sortBy?: "title" | "createdAt" | "updatedAt";
   sortOrder?: "asc" | "desc";
@@ -61,6 +63,15 @@ export async function listFeatures({
       whereClause.assigneeId = null;
     } else {
       whereClause.assigneeId = assigneeId;
+    }
+  }
+
+  // Handle createdById - convert "UNCREATED" to null for Prisma query
+  if (createdById !== undefined) {
+    if (createdById === "UNCREATED") {
+      whereClause.createdById = null;
+    } else {
+      whereClause.createdById = createdById;
     }
   }
 
