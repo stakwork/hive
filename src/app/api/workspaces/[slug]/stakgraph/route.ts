@@ -331,7 +331,7 @@ async function saveServiceEnvironmentVariables(
 
     const envVars = service.env || {};
     const envVarsArray = Object.entries(envVars)
-      .filter(([key, value]) => key.trim() !== "")
+      .filter(([key]) => key.trim() !== "" && !SERVICE_CONFIG_ENV_VARS.includes(key))
       .map(([key, value]) => ({ name: key, value }));
 
     // Delete existing service-specific env vars for this service
