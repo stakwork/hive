@@ -1,6 +1,20 @@
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 import { ServiceConfig } from "@/services/swarm/db";
 
+// These are service configuration commands, not actual env vars to persist
+// Used to filter out non-sensitive/non-secret values when saving or displaying
+export const SERVICE_CONFIG_ENV_VARS = [
+  "PORT",
+  "INSTALL_COMMAND",
+  "TEST_COMMAND",
+  "BUILD_COMMAND",
+  "E2E_TEST_COMMAND",
+  "PRE_START_COMMAND",
+  "POST_START_COMMAND",
+  "REBUILD_COMMAND",
+  "RESET_COMMAND",
+];
+
 export interface DevContainerFile {
   name: string;
   content: string;
@@ -161,20 +175,50 @@ ${envEntries}
  * Mask env var values in PM2 config content for display purposes
  * Only masks values inside env: { } blocks, not other config like name, script, etc.
  */
-export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
-  // Non-sensitive vars that should not be masked
-  const nonSensitiveVars = [
-    "PORT",
-    "INSTALL_COMMAND",
-    "TEST_COMMAND",
-    "BUILD_COMMAND",
-    "E2E_TEST_COMMAND",
-    "PRE_START_COMMAND",
-    "POST_START_COMMAND",
-    "REBUILD_COMMAND",
-    "RESET_COMMAND",
-  ];
+/**
+ * Extract all env vars from PM2 config, grouped by service name
+ * Filters out script commands and PORT which are service config, not env vars
+ * Returns a map of service name -> env vars array
+ */
+export const extractEnvVarsFromPM2Config = (
+  pm2Content: string
+): Map<string, Array<{ name: string; value: string }>> => {
+  const result = new Map<string, Array<{ name: string; value: string }>>();
 
+  try {
+    // Match each app block to get service name and env block
+    const appBlockRegex = /\{\s*name:\s*["']([^"']+)["'][^}]*env:\s*\{([^}]*)\}/g;
+    let match;
+
+    while ((match = appBlockRegex.exec(pm2Content)) !== null) {
+      const serviceName = match[1];
+      const envBlock = match[2];
+      const envVars: Array<{ name: string; value: string }> = [];
+
+      // Parse individual env var entries
+      const envVarRegex = /(\w+):\s*["']([^"']*)["']/g;
+      let envMatch;
+
+      while ((envMatch = envVarRegex.exec(envBlock)) !== null) {
+        const varName = envMatch[1];
+        // Skip service config vars (scripts and PORT)
+        if (!SERVICE_CONFIG_ENV_VARS.includes(varName)) {
+          envVars.push({ name: varName, value: envMatch[2] });
+        }
+      }
+
+      if (envVars.length > 0) {
+        result.set(serviceName, envVars);
+      }
+    }
+  } catch (error) {
+    console.warn("[extractEnvVarsFromPM2Config] Failed to parse PM2 config:", error);
+  }
+
+  return result;
+};
+
+export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
   // Find and replace only the env: { ... } blocks
   return pm2Content.replace(
     /env:\s*\{([^}]*)\}/g,
@@ -183,8 +227,8 @@ export const maskEnvVarsInPM2Config = (pm2Content: string): string => {
       return envBlock.replace(
         /(\s+)(\w+):\s*["']([^"']*)["']/g,
         (match, whitespace, key, _value) => {
-          // Don't mask non-sensitive command vars
-          if (nonSensitiveVars.includes(key)) {
+          // Don't mask service config vars (non-sensitive)
+          if (SERVICE_CONFIG_ENV_VARS.includes(key)) {
             return match;
           }
           // Mask the value
