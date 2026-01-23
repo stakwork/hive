@@ -316,15 +316,11 @@ export async function POST(request: NextRequest) {
       let featureContext;
       if (mode === "live" && task.featureId && task.phaseId) {
         try {
-          featureContext = await buildFeatureContext(task.featureId, task.phaseId);
-          
-          // Add task summary to feature context if it exists and is non-empty
-          if (task.summary && task.summary.trim()) {
-            featureContext = {
-              ...featureContext,
-              taskSummary: task.summary,
-            };
-          }
+          featureContext = await buildFeatureContext(
+            task.featureId, 
+            task.phaseId,
+            task.summary
+          );
         } catch (error) {
           console.error("Error building feature context:", error);
           // Continue without feature context if it fails

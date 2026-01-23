@@ -28,10 +28,15 @@ export interface FeatureContext {
 /**
  * Build feature context JSON for Stakwork workflow
  * Used by task coordinator cron and manual task starts
+ * 
+ * @param featureId - The feature ID to fetch context for
+ * @param phaseId - The phase ID to fetch context for
+ * @param taskSummary - Optional task summary to include in context (only added if non-empty)
  */
 export async function buildFeatureContext(
   featureId: string,
-  phaseId: string
+  phaseId: string,
+  taskSummary?: string | null
 ): Promise<FeatureContext> {
   const feature = await db.feature.findUnique({
     where: { id: featureId },
@@ -62,7 +67,7 @@ export async function buildFeatureContext(
     throw new Error(`Feature or Phase not found: ${featureId}, ${phaseId}`);
   }
 
-  return {
+  const context: FeatureContext = {
     feature: {
       title: feature.title,
       brief: feature.brief,
@@ -76,4 +81,11 @@ export async function buildFeatureContext(
       tickets: phase.tasks,
     },
   };
+
+  // Add task summary if provided and non-empty
+  if (taskSummary && taskSummary.trim()) {
+    context.taskSummary = taskSummary;
+  }
+
+  return context;
 }

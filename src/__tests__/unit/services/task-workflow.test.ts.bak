@@ -505,7 +505,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
               },
               repositories: {
                 take: 1,
-                orderBy: { createdAt: "asc" },
+                orderBy: { createdAt: "desc" },
                 select: {
                   repositoryUrl: true,
                   branch: true,
@@ -1278,7 +1278,7 @@ describe("Feature Context Integration", () => {
       });
 
       // Verify buildFeatureContext was called with correct IDs
-      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456", undefined);
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
 
       // Verify feature context was included in Stakwork payload
       TestHelpers.expectStakworkCalledWithVars({
@@ -1977,7 +1977,7 @@ describe("Feature Context Integration", () => {
       });
 
       // Verify buildFeatureContext was called with correct IDs
-      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456", undefined);
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
 
       // Verify feature context was included in Stakwork payload
       TestHelpers.expectStakworkCalledWithVars({
@@ -4305,7 +4305,6 @@ describe("Task Summary in Feature Context", () => {
           description: "Phase description",
           tickets: [],
         },
-        taskSummary: "This is a test task summary", // Mock now includes taskSummary since buildFeatureContext handles it
       });
 
       TestHelpers.setupValidUser();
@@ -4339,7 +4338,7 @@ describe("Task Summary in Feature Context", () => {
       });
 
       // Verify buildFeatureContext was called
-      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456", "This is a test task summary");
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
 
       // Verify feature context with taskSummary was included in Stakwork payload
       TestHelpers.expectStakworkCalledWithVars({
@@ -4396,7 +4395,7 @@ describe("Task Summary in Feature Context", () => {
       });
 
       // Verify buildFeatureContext was called (mode=live with featureId/phaseId)
-      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456", "");
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
 
       // Verify feature context was built but does NOT contain taskSummary
       const fetchCall = mockFetch.mock.calls[0];
@@ -4456,7 +4455,7 @@ describe("Task Summary in Feature Context", () => {
       });
 
       // Verify buildFeatureContext was called (mode=live with featureId/phaseId)
-      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456", "   \n\t  ");
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
 
       // Verify feature context was built but does NOT contain taskSummary
       const fetchCall = mockFetch.mock.calls[0];
@@ -4516,7 +4515,7 @@ describe("Task Summary in Feature Context", () => {
       });
 
       // Verify buildFeatureContext was called (mode=live with featureId/phaseId)
-      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456", null);
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
 
       // Verify feature context was built but does NOT contain taskSummary
       const fetchCall = mockFetch.mock.calls[0];
@@ -4654,7 +4653,7 @@ describe("Task Summary in Feature Context", () => {
 
       // When mode is not specified, it defaults to "live" in startTaskWorkflow
       // So buildFeatureContext SHOULD be called
-      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456", "This is a test task summary");
+      expect(mockBuildFeatureContext).toHaveBeenCalledWith("feature-123", "phase-456");
     });
   });
 });
