@@ -6,7 +6,6 @@ import { PoolManagerService } from "@/services/pool-manager";
 import { getServiceConfig } from "@/config/services";
 import { ServiceConfig, RepositoryConfig } from "@/types";
 import {
-  DevContainerFile,
   getDevContainerFilesFromBase64,
   generatePM2Apps,
   formatPM2Apps,
@@ -17,6 +16,42 @@ import {
 import { ServiceDataConfig } from "@/components/stakgraph/types";
 
 const encryptionService = EncryptionService.getInstance();
+
+/**
+ * Parse env vars from existing PM2 config content
+ * Returns a map of service name -> env vars
+ */
+function parseEnvVarsFromPM2Config(pm2Content: string): Map<string, Record<string, string>> {
+  const result = new Map<string, Record<string, string>>();
+
+  try {
+    // Match each app block with its name and env
+    const appBlockRegex = /\{\s*name:\s*["']([^"']+)["'][^}]*env:\s*\{([^}]*)\}/g;
+    let match;
+
+    while ((match = appBlockRegex.exec(pm2Content)) !== null) {
+      const serviceName = match[1];
+      const envBlock = match[2];
+      const envVars: Record<string, string> = {};
+
+      // Parse individual env var entries
+      const envVarRegex = /(\w+):\s*["']([^"']*)["']/g;
+      let envMatch;
+
+      while ((envMatch = envVarRegex.exec(envBlock)) !== null) {
+        envVars[envMatch[1]] = envMatch[2];
+      }
+
+      if (Object.keys(envVars).length > 0) {
+        result.set(serviceName, envVars);
+      }
+    }
+  } catch (error) {
+    console.warn("[parseEnvVarsFromPM2Config] Failed to parse PM2 config:", error);
+  }
+
+  return result;
+}
 
 export interface SyncPoolManagerParams {
   workspaceId: string;
@@ -82,10 +117,9 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
       }
     }
 
-    // Fetch swarm data for services and repository info
+    // Fetch swarm data for services, containerFiles, and repository info
     const swarm = await db.swarm.findUnique({
       where: { id: swarmId },
-      select: { services: true, workspaceId: true },
     });
 
     if (!swarm) {
@@ -134,6 +168,27 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
 
     // Generate container files with merged env vars
     const pm2Apps = generatePM2Apps(repoName, services, globalEnvVars);
+
+    // Parse existing PM2 config to preserve any env vars not in the new config
+    const existingContainerFiles = (swarm.containerFiles as Record<string, string>) || {};
+    if (existingContainerFiles["pm2.config.js"]) {
+      try {
+        const existingPM2Content = Buffer.from(existingContainerFiles["pm2.config.js"], "base64").toString("utf-8");
+        const existingEnvVarsPerService = parseEnvVarsFromPM2Config(existingPM2Content);
+
+        // Merge existing env vars into new pm2Apps (existing takes precedence)
+        for (const app of pm2Apps) {
+          const existingEnvVars = existingEnvVarsPerService.get(app.name);
+          if (existingEnvVars) {
+            // Apply existing env vars on top of new ones (existing wins)
+            app.env = { ...app.env, ...existingEnvVars };
+          }
+        }
+      } catch (error) {
+        console.warn("[PoolManagerSync] Failed to parse existing PM2 config, proceeding with new config:", error);
+      }
+    }
+
     const containerFilesContent = {
       "devcontainer.json": devcontainerJsonContent(repoName),
       "pm2.config.js": `module.exports = {\n  apps: ${formatPM2Apps(pm2Apps)},\n};\n`,
@@ -149,6 +204,16 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
       },
       {} as Record<string, string>,
     );
+
+    // Save regenerated container files to database (merge with existing)
+    const mergedContainerFiles = {
+      ...existingContainerFiles,
+      ...base64ContainerFiles,
+    };
+    await db.swarm.update({
+      where: { id: swarmId },
+      data: { containerFiles: mergedContainerFiles },
+    });
 
     // Convert to DevContainerFile format for Pool Manager API
     const files = getDevContainerFilesFromBase64(base64ContainerFiles);
@@ -188,7 +253,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     await poolManager.updatePoolData(
       swarmId,
       decryptedPoolApiKey,
-      [], // Empty array - all env vars now in PM2 config
+      globalEnvVars, // Empty array - all env vars now in PM2 config
       currentEnvVars,
       files,
       poolCpu || undefined,
