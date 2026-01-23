@@ -162,7 +162,6 @@ const TestDataFactories = {
     onRemoveDebugAttachment: vi.fn(),
     workflowStatus: null,
     taskTitle: null,
-    stakworkProjectId: null,
     workspaceSlug: null,
     ...props,
   }),
@@ -478,19 +477,6 @@ describe("ChatArea", () => {
 
       expect(screen.getByText("Communicating with workflow...")).toBeInTheDocument();
     });
-
-    test("displays Stakwork project link when stakworkProjectId is provided", () => {
-      const { props } = setupChatAreaTest({
-        taskTitle: "Test Task",
-        stakworkProjectId: 12345,
-      });
-      render(<ChatArea {...props} />);
-
-      const link = screen.getByRole("link", { name: /workflow/i });
-      expect(link).toHaveAttribute("href", "https://jobs.stakwork.com/admin/projects/12345");
-      expect(link).toHaveAttribute("target", "_blank");
-      expect(screen.getByTestId("external-link-icon")).toBeInTheDocument();
-    });
   });
 
   describe("ChatInput Integration", () => {
@@ -665,7 +651,6 @@ describe("ChatArea", () => {
         pendingDebugAttachment: null,
         workflowStatus: null,
         taskTitle: null,
-        stakworkProjectId: null,
         workspaceSlug: null,
       });
 
@@ -706,16 +691,12 @@ describe("ChatArea", () => {
     test("has proper button roles and labels", () => {
       const { props } = setupChatAreaTest({
         taskTitle: "Test Task",
-        stakworkProjectId: 12345,
       });
       render(<ChatArea {...props} />);
 
       // Find the back button by the arrow icon testid within it
       const backButton = screen.getByTestId("arrow-left-icon").closest("button");
       expect(backButton).toBeInTheDocument();
-
-      const workflowLink = screen.getByRole("link", { name: /workflow/i });
-      expect(workflowLink).toBeInTheDocument();
     });
 
     test("maintains focus management during interactions", async () => {
