@@ -441,7 +441,7 @@ export async function getOctokitForWorkspace(userId: string, owner: string): Pro
  */
 export function buildFixPrompt(result: PRCheckResult): string {
   if (result.state === "conflict") {
-    return `The pull request #${result.prNumber} in ${result.owner}/${result.repo} has merge conflicts.
+    return `The PR (#${result.prNumber}) created from the branch you are on (${result.headBranch}) in ${result.owner}/${result.repo} has merge conflicts.
 
 Please:
 1. Fetch the latest changes from the base branch (${result.problemDetails?.includes("with") ? result.problemDetails.split("with ")[1] : "main"})
