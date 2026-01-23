@@ -3,7 +3,7 @@ import { generateObject } from "ai";
 import { getApiKeyForProvider, getModel, Provider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
 
-export async function generateCommitMessage(taskId: string) {
+export async function generateCommitMessage(taskId: string, baseUrl?: string) {
   // Load conversation history from the task and get workspace slug
   const task = await db.task.findUnique({
     where: { id: taskId },
@@ -62,7 +62,9 @@ Generate a commit message that describes the changes made and a branch name that
   });
 
   // Append the Hive task link to the commit message
-  const hiveTaskUrl = `https://hive.sphinx.chat/w/${task.workspace.slug}/task/${taskId}`;
+  // Use provided baseUrl or fall back to NEXTAUTH_URL or localhost
+  const origin = baseUrl || process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const hiveTaskUrl = `${origin}/w/${task.workspace.slug}/task/${taskId}`;
   const commitMessageWithLink = `${result.object.commit_message}\n\nPR was created and opened at ${hiveTaskUrl}`;
 
   return {
