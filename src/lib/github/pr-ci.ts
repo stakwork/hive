@@ -233,6 +233,8 @@ export async function fetchCIStatus(
   const failedCheckIds: Array<{ name: string; id: number }> = [];
   let totalChecks = 0;
   let passedChecks = 0;
+  let skippedChecks = 0;
+  let failedChecksCount = 0;
   let pendingChecks = 0;
 
   // Process check runs (GitHub Actions)
@@ -240,9 +242,12 @@ export async function fetchCIStatus(
     totalChecks++;
     if (check.status !== "completed") {
       pendingChecks++;
-    } else if (check.conclusion === "success" || check.conclusion === "skipped") {
+    } else if (check.conclusion === "success") {
       passedChecks++;
+    } else if (check.conclusion === "skipped") {
+      skippedChecks++;
     } else if (check.conclusion === "failure" || check.conclusion === "timed_out") {
+      failedChecksCount++;
       failedChecks.push(check.name);
       failedCheckIds.push({ name: check.name, id: check.id });
     }
@@ -256,6 +261,7 @@ export async function fetchCIStatus(
     } else if (status.state === "success") {
       passedChecks++;
     } else if (status.state === "failure" || status.state === "error") {
+      failedChecksCount++;
       failedChecks.push(status.context);
       // Legacy statuses don't have downloadable logs
     }
@@ -273,10 +279,20 @@ export async function fetchCIStatus(
     status = "success";
   }
 
-  const summary =
-    totalChecks === 0
-      ? "No checks configured"
-      : `${passedChecks}/${totalChecks} passed${pendingChecks > 0 ? ` (${pendingChecks} pending)` : ""}`;
+  // Build summary with passed/total and additional details
+  // Note: Failed checks are displayed separately, so we only show skipped and pending here
+  let summary = "";
+  if (totalChecks === 0) {
+    summary = "No checks configured";
+  } else {
+    summary = `${passedChecks}/${totalChecks} passed`;
+    const details: string[] = [];
+    if (skippedChecks > 0) details.push(`${skippedChecks} skipped`);
+    if (pendingChecks > 0) details.push(`${pendingChecks} pending`);
+    if (details.length > 0) {
+      summary += ` (${details.join(", ")})`;
+    }
+  }
 
   // Limit failedChecks to first 10 to avoid storing too much data
   const limitedFailedChecks = failedChecks.slice(0, 10);
