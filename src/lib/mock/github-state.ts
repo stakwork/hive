@@ -148,6 +148,42 @@ interface MockAuthCode {
   used: boolean;
 }
 
+export interface MockPullRequest {
+  number: number;
+  state: "open" | "closed";
+  title: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  merged_at: string | null;
+  closed_at: string | null;
+  head: {
+    ref: string;
+    sha: string;
+    repo: {
+      name: string;
+      full_name: string;
+    };
+  };
+  base: {
+    ref: string;
+    sha: string;
+    repo: {
+      name: string;
+      full_name: string;
+    };
+  };
+  user: {
+    login: string;
+    id: number;
+    avatar_url: string;
+  };
+  html_url: string;
+  merged: boolean;
+  mergeable: boolean | null;
+  draft: boolean;
+}
+
 class MockGitHubStateManager {
   private users: Map<string, MockGitHubUser> = new Map();
   private installations: Map<number, MockInstallation> = new Map();
@@ -157,6 +193,7 @@ class MockGitHubStateManager {
   private branches: Map<string, MockBranch[]> = new Map();
   private commits: Map<string, MockCommit[]> = new Map();
   private authCodes: Map<string, MockAuthCode> = new Map();
+  private pullRequests: Map<string, MockPullRequest[]> = new Map();
   private authCodeCounter = 1000;
 
   private userIdCounter = 1000;
@@ -164,6 +201,7 @@ class MockGitHubStateManager {
   private repositoryIdCounter = 1000;
   private webhookIdCounter = 1000;
   private commitCounter = 1000;
+  private prCounter = 1000;
 
   /**
    * Create or get a user. Auto-creates if doesn't exist.
@@ -566,6 +604,246 @@ class MockGitHubStateManager {
   }
 
   /**
+   * Create pull request for a repository
+   */
+  createPullRequest(
+    owner: string,
+    repo: string,
+    params: {
+      title: string;
+      body?: string;
+      head: string;
+      base: string;
+      state?: "open" | "closed";
+      merged?: boolean;
+      draft?: boolean;
+      created_at?: string;
+      merged_at?: string | null;
+      closed_at?: string | null;
+    }
+  ): MockPullRequest {
+    const repoKey = `${owner}/${repo}`;
+    const prs = this.pullRequests.get(repoKey) || [];
+    const user = this.createUser(owner);
+    const repository = this.createRepository(owner, repo);
+
+    const now = new Date().toISOString();
+    const prNumber = this.prCounter++;
+    const state = params.state || "open";
+
+    const pr: MockPullRequest = {
+      number: prNumber,
+      state,
+      title: params.title,
+      body: params.body || "",
+      created_at: params.created_at || now,
+      updated_at: now,
+      merged_at: params.merged_at !== undefined ? params.merged_at : (params.merged ? now : null),
+      closed_at: params.closed_at !== undefined ? params.closed_at : (state === "closed" ? now : null),
+      head: {
+        ref: params.head,
+        sha: this.generateSha(),
+        repo: {
+          name: repository.name,
+          full_name: repository.full_name,
+        },
+      },
+      base: {
+        ref: params.base,
+        sha: this.generateSha(),
+        repo: {
+          name: repository.name,
+          full_name: repository.full_name,
+        },
+      },
+      user: {
+        login: user.login,
+        id: user.id,
+        avatar_url: user.avatar_url,
+      },
+      html_url: `https://github.com/${repoKey}/pull/${prNumber}`,
+      merged: params.merged || false,
+      mergeable: state === "open" ? true : null,
+      draft: params.draft || false,
+    };
+
+    prs.push(pr);
+    this.pullRequests.set(repoKey, prs);
+    return pr;
+  }
+
+  /**
+   * Get pull requests for a repository with filtering
+   */
+  getPullRequests(
+    owner: string,
+    repo: string,
+    filters?: {
+      state?: "open" | "closed" | "all";
+      sort?: "created" | "updated";
+      direction?: "asc" | "desc";
+    }
+  ): MockPullRequest[] {
+    const repoKey = `${owner}/${repo}`;
+    let prs = this.pullRequests.get(repoKey);
+
+    // Auto-seed PRs on first access
+    if (!prs) {
+      this.seedPullRequests(owner, repo);
+      prs = this.pullRequests.get(repoKey) || [];
+    }
+
+    // Filter by state
+    const state = filters?.state || "open";
+    let filtered = prs;
+    if (state !== "all") {
+      filtered = prs.filter((pr) => pr.state === state);
+    }
+
+    // Sort
+    const sort = filters?.sort || "created";
+    const direction = filters?.direction || "desc";
+    filtered.sort((a, b) => {
+      const dateA = sort === "created" ? a.created_at : a.updated_at;
+      const dateB = sort === "created" ? b.created_at : b.updated_at;
+      const comparison = new Date(dateA).getTime() - new Date(dateB).getTime();
+      return direction === "asc" ? comparison : -comparison;
+    });
+
+    return filtered;
+  }
+
+  /**
+   * Seed diverse pull requests spanning 4+ days with mixed states
+   */
+  private seedPullRequests(owner: string, repo: string): void {
+    const now = Date.now();
+    const oneHour = 3600000;
+    const oneDay = 86400000;
+
+    // PR 1: Merged quickly (2 hours after creation), 5 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Add user authentication",
+      body: "Implements JWT-based authentication",
+      head: "feature/auth",
+      base: "main",
+      state: "closed",
+      merged: true,
+      created_at: new Date(now - 5 * oneDay).toISOString(),
+      merged_at: new Date(now - 5 * oneDay + 2 * oneHour).toISOString(),
+      closed_at: new Date(now - 5 * oneDay + 2 * oneHour).toISOString(),
+    });
+
+    // PR 2: Merged after 1 day, 4.5 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Refactor database queries",
+      body: "Optimize slow queries",
+      head: "refactor/db",
+      base: "main",
+      state: "closed",
+      merged: true,
+      created_at: new Date(now - 4.5 * oneDay - oneDay).toISOString(),
+      merged_at: new Date(now - 4.5 * oneDay).toISOString(),
+      closed_at: new Date(now - 4.5 * oneDay).toISOString(),
+    });
+
+    // PR 3: Merged after 3 days, 4 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Update dependencies",
+      body: "Security updates",
+      head: "chore/deps",
+      base: "main",
+      state: "closed",
+      merged: true,
+      created_at: new Date(now - 7 * oneDay).toISOString(),
+      merged_at: new Date(now - 4 * oneDay).toISOString(),
+      closed_at: new Date(now - 4 * oneDay).toISOString(),
+    });
+
+    // PR 4: Closed without merge, 3.5 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Experimental feature",
+      body: "Testing new approach",
+      head: "experimental/feature",
+      base: "main",
+      state: "closed",
+      merged: false,
+      created_at: new Date(now - 4 * oneDay).toISOString(),
+      closed_at: new Date(now - 3.5 * oneDay).toISOString(),
+    });
+
+    // PR 5: Merged quickly (4 hours), 3 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Fix critical bug",
+      body: "Hotfix for production issue",
+      head: "hotfix/critical",
+      base: "main",
+      state: "closed",
+      merged: true,
+      created_at: new Date(now - 3 * oneDay).toISOString(),
+      merged_at: new Date(now - 3 * oneDay + 4 * oneHour).toISOString(),
+      closed_at: new Date(now - 3 * oneDay + 4 * oneHour).toISOString(),
+    });
+
+    // PR 6: Merged after 2 days, 2 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Add API documentation",
+      body: "Complete API docs with examples",
+      head: "docs/api",
+      base: "main",
+      state: "closed",
+      merged: true,
+      created_at: new Date(now - 4 * oneDay).toISOString(),
+      merged_at: new Date(now - 2 * oneDay).toISOString(),
+      closed_at: new Date(now - 2 * oneDay).toISOString(),
+    });
+
+    // PR 7: Open, created 2.5 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Feature: User profiles",
+      body: "Add user profile pages",
+      head: "feature/profiles",
+      base: "main",
+      state: "open",
+      created_at: new Date(now - 2.5 * oneDay).toISOString(),
+    });
+
+    // PR 8: Merged quickly (6 hours), 1.5 days ago
+    this.createPullRequest(owner, repo, {
+      title: "Update README",
+      body: "Improve documentation",
+      head: "docs/readme",
+      base: "main",
+      state: "closed",
+      merged: true,
+      created_at: new Date(now - 1.5 * oneDay).toISOString(),
+      merged_at: new Date(now - 1.5 * oneDay + 6 * oneHour).toISOString(),
+      closed_at: new Date(now - 1.5 * oneDay + 6 * oneHour).toISOString(),
+    });
+
+    // PR 9: Open draft, created 1 day ago
+    this.createPullRequest(owner, repo, {
+      title: "WIP: New dashboard",
+      body: "Work in progress",
+      head: "feature/dashboard",
+      base: "main",
+      state: "open",
+      draft: true,
+      created_at: new Date(now - oneDay).toISOString(),
+    });
+
+    // PR 10: Open, created 12 hours ago
+    this.createPullRequest(owner, repo, {
+      title: "Fix typos in documentation",
+      body: "Minor documentation fixes",
+      head: "docs/typos",
+      base: "main",
+      state: "open",
+      created_at: new Date(now - 12 * oneHour).toISOString(),
+    });
+  }
+
+  /**
    * Search users by query
    */
   searchUsers(query: string): MockGitHubUser[] {
@@ -589,12 +867,14 @@ class MockGitHubStateManager {
     this.branches.clear();
     this.commits.clear();
     this.authCodes.clear();
+    this.pullRequests.clear();
     this.userIdCounter = 1000;
     this.installationIdCounter = 1000;
     this.repositoryIdCounter = 1000;
     this.webhookIdCounter = 1000;
     this.commitCounter = 1000;
     this.authCodeCounter = 1000;
+    this.prCounter = 1000;
   }
 
   /**
