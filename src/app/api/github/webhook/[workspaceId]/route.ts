@@ -8,8 +8,7 @@ import { RepositoryStatus, Prisma, TaskStatus, WorkflowStatus } from "@prisma/cl
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 import { releaseTaskPod } from "@/lib/pods/utils";
-import type { PullRequestContent } from "@/lib/chat";
-import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
@@ -311,6 +310,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 error: pusherError,
               });
               // Continue processing - don't fail webhook on Pusher error
+            }
+
+            // Also send to task-specific channel for real-time updates on task chat page
+            try {
+              const taskChannelName = getTaskChannelName(task.task_id);
+              await pusherServer.trigger(taskChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
+                taskId: task.task_id,
+                prNumber: payload.pull_request.number,
+                prUrl: prUrl,
+                state: "merged",
+                artifactStatus: "DONE",
+                timestamp: new Date(),
+              });
+
+              console.log("[GithubWebhook] PR merged - task channel event broadcasted", {
+                delivery,
+                taskId: task.task_id,
+                channel: taskChannelName,
+              });
+            } catch (taskPusherError) {
+              console.error("[GithubWebhook] PR merged - task channel broadcast failed", {
+                delivery,
+                taskId: task.task_id,
+                error: taskPusherError,
+              });
             }
           }
 
