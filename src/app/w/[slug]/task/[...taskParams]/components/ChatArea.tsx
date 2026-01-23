@@ -2,9 +2,8 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ExternalLink, Monitor, Server, ServerOff } from "lucide-react";
+import { ArrowLeft, Monitor, Server, ServerOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -33,7 +32,6 @@ interface ChatAreaProps {
   onRemoveStepAttachment?: () => void;
   workflowStatus?: WorkflowStatus | null;
   taskTitle?: string | null;
-  stakworkProjectId?: number | null;
   workspaceSlug?: string;
   showPreviewToggle?: boolean;
   showPreview?: boolean;
@@ -62,7 +60,6 @@ export function ChatArea({
   onRemoveStepAttachment,
   workflowStatus,
   taskTitle,
-  stakworkProjectId,
   workspaceSlug,
   showPreviewToggle = false,
   showPreview = false,
@@ -214,19 +211,6 @@ export function ChatArea({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
-
-            {/* Stakwork Project Link - Outside AnimatePresence to prevent flickering */}
-            {stakworkProjectId && (
-              <Link
-                href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors flex-shrink-0"
-              >
-                Workflow
-                <ExternalLink className="w-3 h-3" />
-              </Link>
             )}
           </div>
         </div>

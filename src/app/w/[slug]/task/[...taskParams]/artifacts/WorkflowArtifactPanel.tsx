@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import { Artifact, WorkflowContent } from "@/lib/chat";
 import { useWorkflowPolling } from "@/hooks/useWorkflowPolling";
 import WorkflowComponent from "@/components/workflow";
 import { StepDetailsModal } from "@/components/StepDetailsModal";
 import { WorkflowTransition } from "@/types/stakwork/workflow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { PromptsPanel } from "@/components/prompts";
 import { WorkflowChangesPanel } from "./WorkflowChangesPanel";
 
@@ -141,6 +144,18 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
 
     return (
       <div className="h-full w-full flex flex-col overflow-hidden relative">
+        {projectId && (
+          <Button variant="outline" size="sm" asChild className="mb-2 self-start ml-2 mt-2">
+            <Link
+              href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View on Stakwork
+              <ExternalLink className="w-4 h-4 ml-1" />
+            </Link>
+          </Button>
+        )}
         <Tabs
           value={activeDisplayTab}
           onValueChange={(v) => setActiveDisplayTab(v as "editor" | "changes" | "prompts" | "stakwork")}
@@ -266,6 +281,18 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden relative">
+      {projectId && (
+        <Button variant="outline" size="sm" asChild className="mb-2 self-start ml-2 mt-2">
+          <Link
+            href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on Stakwork
+            <ExternalLink className="w-4 h-4 ml-1" />
+          </Link>
+        </Button>
+      )}
       <WorkflowComponent
         props={{
           workflowData: workflowData,
