@@ -4,11 +4,13 @@ import { EncryptionService } from "@/lib/encryption";
 import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
-import { RepositoryStatus, Prisma } from "@prisma/client";
+import { RepositoryStatus, Prisma, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 import { releaseTaskPod } from "@/lib/pods/utils";
 import type { PullRequestContent } from "@/lib/chat";
+import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   try {
@@ -182,23 +184,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       // Check if PR was merged (closed + merged=true)
       if (action === "closed" && merged === true && prUrl) {
-        console.log("[GithubWebhook] PR merged - checking for pod release", {
+        console.log("[GithubWebhook] PR merged - processing task updates", {
           delivery,
           workspaceId: repository.workspaceId,
           prUrl,
         });
 
         try {
-          // Query database for tasks with matching PR artifact
+          // Query database for ALL tasks with matching PR artifact (not just those with pods)
           const tasks = await db.$queryRaw<
             Array<{
               task_id: string;
               pod_id: string | null;
               workspace_id: string;
+              status: TaskStatus;
+              feature_id: string | null;
+              artifact_id: string;
+              workflow_status: WorkflowStatus | null;
             }>
           >(
             Prisma.sql`
-              SELECT t.id as task_id, t.pod_id, t.workspace_id
+              SELECT t.id as task_id, t.pod_id, t.workspace_id, t.status, t.feature_id, 
+                     a.id as artifact_id, t.workflow_status
               FROM artifacts a
               JOIN chat_messages m ON a.message_id = m.id
               JOIN tasks t ON m.task_id = t.id
@@ -206,12 +213,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 AND a.content->>'url' = ${prUrl}
                 AND t.deleted = false
                 AND t.archived = false
-                AND t.pod_id IS NOT NULL
             `,
           );
 
           if (tasks.length === 0) {
-            console.log("[GithubWebhook] PR merged - no tasks with pods found", {
+            console.log("[GithubWebhook] PR merged - no tasks found", {
               delivery,
               prUrl,
             });
@@ -219,7 +225,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           }
 
           if (tasks.length > 1) {
-            console.warn("[GithubWebhook] PR merged - multiple tasks with pods found, manual resolution needed", {
+            console.warn("[GithubWebhook] PR merged - multiple tasks found, manual resolution needed", {
               delivery,
               prUrl,
               taskIds: tasks.map((t) => t.task_id),
@@ -227,59 +233,167 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             return NextResponse.json({ success: true }, { status: 202 });
           }
 
-          // Exactly one task found - attempt pod release
+          // Exactly one task found - update task, artifact, broadcast, and release pod if applicable
           const task = tasks[0];
-          console.log("[GithubWebhook] PR merged - releasing pod for task", {
+          console.log("[GithubWebhook] PR merged - updating task status and artifact", {
             delivery,
             prUrl,
             taskId: task.task_id,
-            podId: task.pod_id,
+            currentStatus: task.status,
+            hasPod: !!task.pod_id,
+            hasFeature: !!task.feature_id,
           });
 
-          const result = await releaseTaskPod({
+          // Update task status to DONE
+          await db.task.update({
+            where: { id: task.task_id },
+            data: { status: TaskStatus.DONE },
+          });
+
+          console.log("[GithubWebhook] PR merged - task status updated to DONE", {
+            delivery,
             taskId: task.task_id,
-            podId: task.pod_id!,
-            workspaceId: task.workspace_id,
-            verifyOwnership: true,
-            clearTaskFields: true,
-            newWorkflowStatus: null, // Don't change workflow status - PR merged but task may not be complete
           });
 
-          if (result.success) {
-            if (result.reassigned) {
-              console.log("[GithubWebhook] PR merged - pod release: pod was reassigned", {
-                delivery,
-                prUrl,
-                taskId: task.task_id,
-                podId: task.pod_id,
+          // Update PR artifact content status to "DONE"
+          try {
+            const artifact = await db.artifact.findUnique({
+              where: { id: task.artifact_id },
+              select: { content: true },
+            });
+
+            if (artifact?.content && typeof artifact.content === 'object') {
+              const updatedContent = {
+                ...artifact.content,
+                status: "DONE",
+              };
+
+              await db.artifact.update({
+                where: { id: task.artifact_id },
+                data: { content: updatedContent as Prisma.InputJsonValue },
               });
-            } else if (result.podDropped) {
-              console.log("[GithubWebhook] PR merged - pod release: success", {
+
+              console.log("[GithubWebhook] PR merged - artifact status updated to DONE", {
                 delivery,
-                prUrl,
-                taskId: task.task_id,
-                podId: task.pod_id,
-              });
-            } else {
-              console.log("[GithubWebhook] PR merged - pod release: partial success (task cleared)", {
-                delivery,
-                prUrl,
-                taskId: task.task_id,
-                taskCleared: result.taskCleared,
+                artifactId: task.artifact_id,
               });
             }
-            return NextResponse.json({ success: true }, { status: result.podDropped ? 200 : 202 });
-          } else {
-            console.error("[GithubWebhook] PR merged - pod release: failed", {
+          } catch (artifactError) {
+            console.error("[GithubWebhook] PR merged - failed to update artifact status", {
+              delivery,
+              artifactId: task.artifact_id,
+              error: artifactError,
+            });
+            // Continue processing - don't fail webhook on artifact update error
+          }
+
+          // Broadcast Pusher event for real-time UI updates
+          if (workspace?.slug) {
+            try {
+              const channelName = getWorkspaceChannelName(workspace.slug);
+              await pusherServer.trigger(channelName, PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, {
+                taskId: task.task_id,
+                status: TaskStatus.DONE,
+                workflowStatus: task.workflow_status,
+                archived: false,
+                timestamp: new Date(),
+              });
+
+              console.log("[GithubWebhook] PR merged - Pusher event broadcasted", {
+                delivery,
+                taskId: task.task_id,
+                channel: channelName,
+              });
+            } catch (pusherError) {
+              console.error("[GithubWebhook] PR merged - Pusher broadcast failed (non-blocking)", {
+                delivery,
+                taskId: task.task_id,
+                error: pusherError,
+              });
+              // Continue processing - don't fail webhook on Pusher error
+            }
+          }
+
+          // Trigger feature status cascade if task belongs to a feature
+          if (task.feature_id) {
+            try {
+              await updateFeatureStatusFromTasks(task.feature_id);
+              console.log("[GithubWebhook] PR merged - feature status cascade triggered", {
+                delivery,
+                featureId: task.feature_id,
+              });
+            } catch (featureError) {
+              console.error("[GithubWebhook] PR merged - feature status cascade failed (non-blocking)", {
+                delivery,
+                featureId: task.feature_id,
+                error: featureError,
+              });
+              // Continue processing - don't fail webhook on feature sync error
+            }
+          }
+
+          // Release pod if task has one assigned
+          if (task.pod_id) {
+            console.log("[GithubWebhook] PR merged - releasing pod for task", {
               delivery,
               prUrl,
               taskId: task.task_id,
-              error: result.error,
+              podId: task.pod_id,
+            });
+
+            const result = await releaseTaskPod({
+              taskId: task.task_id,
+              podId: task.pod_id,
+              workspaceId: task.workspace_id,
+              verifyOwnership: true,
+              clearTaskFields: true,
+              newWorkflowStatus: null, // Don't change workflow status - we already set task to DONE
+            });
+
+            if (result.success) {
+              if (result.reassigned) {
+                console.log("[GithubWebhook] PR merged - pod release: pod was reassigned", {
+                  delivery,
+                  prUrl,
+                  taskId: task.task_id,
+                  podId: task.pod_id,
+                });
+              } else if (result.podDropped) {
+                console.log("[GithubWebhook] PR merged - pod release: success", {
+                  delivery,
+                  prUrl,
+                  taskId: task.task_id,
+                  podId: task.pod_id,
+                });
+              } else {
+                console.log("[GithubWebhook] PR merged - pod release: partial success (task cleared)", {
+                  delivery,
+                  prUrl,
+                  taskId: task.task_id,
+                  taskCleared: result.taskCleared,
+                });
+              }
+              return NextResponse.json({ success: true }, { status: result.podDropped ? 200 : 202 });
+            } else {
+              console.error("[GithubWebhook] PR merged - pod release: failed (non-blocking)", {
+                delivery,
+                prUrl,
+                taskId: task.task_id,
+                error: result.error,
+              });
+              // Still return success - task status was updated
+              return NextResponse.json({ success: true }, { status: 202 });
+            }
+          } else {
+            // No pod to release - task status and artifact updated successfully
+            console.log("[GithubWebhook] PR merged - task updated successfully (no pod)", {
+              delivery,
+              taskId: task.task_id,
             });
             return NextResponse.json({ success: true }, { status: 202 });
           }
         } catch (error) {
-          console.error("[GithubWebhook] PR merged - pod release error", {
+          console.error("[GithubWebhook] PR merged - error processing task updates", {
             delivery,
             prUrl,
             error,
