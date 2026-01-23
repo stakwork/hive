@@ -66,6 +66,9 @@ export async function GET(
         messages: true,
         provenanceData: true,
         followUpQuestions: true,
+        isShared: true,
+        lastMessageAt: true,
+        source: true,
         createdAt: true,
         updatedAt: true,
         user: {
@@ -103,6 +106,9 @@ export async function GET(
       messages: sharedConversation.messages,
       provenanceData: sharedConversation.provenanceData,
       followUpQuestions: sharedConversation.followUpQuestions,
+      isShared: sharedConversation.isShared,
+      lastMessageAt: sharedConversation.lastMessageAt?.toISOString() ?? null,
+      source: sharedConversation.source,
       createdAt: sharedConversation.createdAt.toISOString(),
       updatedAt: sharedConversation.updatedAt.toISOString(),
       createdBy: {
