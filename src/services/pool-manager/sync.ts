@@ -205,10 +205,13 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
       {} as Record<string, string>,
     );
 
-    // Save regenerated container files to database (merge with existing)
+    // Save regenerated container files to database
+    // Preserve user-modified files (Dockerfile, docker-compose.yml, devcontainer.json)
+    // Only regenerate pm2.config.js which is based on services
     const mergedContainerFiles = {
-      ...existingContainerFiles,
-      ...base64ContainerFiles,
+      ...base64ContainerFiles, // defaults first
+      ...existingContainerFiles, // user modifications take precedence
+      "pm2.config.js": base64ContainerFiles["pm2.config.js"], // always regenerate pm2
     };
     await db.swarm.update({
       where: { id: swarmId },
