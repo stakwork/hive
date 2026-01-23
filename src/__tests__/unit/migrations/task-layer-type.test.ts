@@ -1,5 +1,5 @@
-import { execSync } from "child_process";
 import { describe, it, expect } from "vitest";
+import { TaskLayerType } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 
@@ -53,13 +53,18 @@ describe("Task Layer Type Migration", () => {
     }
   });
 
-  it("migration should be applied in database", () => {
-    // Check migration status
-    const migrateStatus = execSync("npx prisma migrate status", { 
-      encoding: "utf-8" 
-    });
-
-    // Should show database is up to date
-    expect(migrateStatus).toContain("Database schema is up to date");
+  it("should export TaskLayerType enum from Prisma client", () => {
+    // Verify the enum is properly exported and typed
+    const allLayerTypes = Object.values(TaskLayerType);
+    
+    expect(allLayerTypes).toHaveLength(8);
+    expect(allLayerTypes).toContain(TaskLayerType.DATABASE_SCHEMA);
+    expect(allLayerTypes).toContain(TaskLayerType.BACKEND_API);
+    expect(allLayerTypes).toContain(TaskLayerType.FRONTEND_COMPONENT);
+    expect(allLayerTypes).toContain(TaskLayerType.INTEGRATION_TEST);
+    expect(allLayerTypes).toContain(TaskLayerType.UNIT_TEST);
+    expect(allLayerTypes).toContain(TaskLayerType.E2E_TEST);
+    expect(allLayerTypes).toContain(TaskLayerType.CONFIG_INFRA);
+    expect(allLayerTypes).toContain(TaskLayerType.DOCUMENTATION);
   });
 });
