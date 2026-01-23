@@ -32,7 +32,9 @@ export interface TaskTitleUpdateEvent {
 export interface PRStatusChangeEvent {
   taskId: string;
   prNumber: number;
-  state: "healthy" | "conflict" | "ci_failure" | "checking";
+  prUrl?: string;
+  state: "healthy" | "conflict" | "ci_failure" | "checking" | "merged" | "closed";
+  artifactStatus?: "IN_PROGRESS" | "DONE" | "CANCELLED";
   problemDetails?: string;
   timestamp: Date;
 }
