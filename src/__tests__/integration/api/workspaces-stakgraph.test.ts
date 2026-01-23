@@ -390,8 +390,8 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         expect(pm2Content).toContain("9999");
       });
 
-      it("merges services by name - updating existing service", async () => {
-        // Update existing "frontend" service with new port
+      it("replaces services array when services sent (enables deletion)", async () => {
+        // Sending only frontend means sidekiq is deleted
         const updatedFrontend = {
           name: "frontend",
           port: 8080, // Changed from 3000
@@ -413,13 +413,14 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         const services = swarm?.services as any[];
 
-        // Frontend should be updated
+        // Only frontend should exist (sidekiq was not included, so it's deleted)
+        expect(services).toHaveLength(1);
         const frontend = services.find((s) => s.name === "frontend");
         expect(frontend.port).toBe(8080);
         expect(frontend.scripts.start).toBe("npm run dev");
 
-        // Sidekiq should still exist (preserved)
-        expect(services.find((s) => s.name === "sidekiq")).toBeDefined();
+        // Sidekiq should NOT exist (replace behavior, not merge)
+        expect(services.find((s) => s.name === "sidekiq")).toBeUndefined();
       });
     });
 
@@ -521,7 +522,7 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         );
       });
 
-      it("handles empty services array gracefully", async () => {
+      it("handles empty services array - clears all services", async () => {
         const req = createPutRequest(
           `http://localhost:3000/api/workspaces/${testData.workspace.slug}/stakgraph`,
           { services: [] }
@@ -532,13 +533,13 @@ describe("/api/workspaces/[slug]/stakgraph", () => {
         });
         await expectSuccess(res, 200);
 
-        // Empty services array should not change existing services
-        // (treated as "not sent" for merge purposes)
+        // Empty services array explicitly clears all services
+        // (enables deleting all services from UI)
         const swarm = await db.swarm.findUnique({
           where: { workspaceId: testData.workspace.id },
         });
         const services = swarm?.services as any[];
-        expect(services).toHaveLength(2);
+        expect(services).toHaveLength(0);
       });
 
       it("handles empty containerFiles object gracefully", async () => {
