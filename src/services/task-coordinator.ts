@@ -16,6 +16,7 @@ export interface FeatureContext {
       title: string;
       description: string | null;
       status: string;
+      summary: string | null;
     }>;
   };
 }
@@ -48,6 +49,7 @@ export async function buildFeatureContext(
           title: true,
           description: true,
           status: true,
+          summary: true,
         },
       },
     },

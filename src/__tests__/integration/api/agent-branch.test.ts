@@ -610,9 +610,12 @@ describe("POST /api/agent/branch Integration Tests", () => {
         },
       });
 
-      // Verify generateCommitMessage was called with correct taskId
-      expect(generateCommitMessage).toHaveBeenCalledWith(task.id);
-      expect(generateCommitMessage).toHaveBeenCalledTimes(1);
+      // Verify generateCommitMessage was called with correct taskId and baseUrl
+      // In tests, baseUrl may be undefined since mock requests don't set host headers
+      const calls = vi.mocked(generateCommitMessage).mock.calls;
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0]).toBe(task.id);
+      // Second parameter is baseUrl - can be undefined in test environment
 
       // Verify branch name format
       expect(data.data.branch_name).toMatch(/^feat\/[a-z-]+$/);

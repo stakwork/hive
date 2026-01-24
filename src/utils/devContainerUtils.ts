@@ -31,10 +31,12 @@ export const generatePM2Apps = (
     // Build env object with merged variables
     const env: Record<string, string> = {};
 
-    // 1. First apply global env vars
+    // 1. First apply global env vars (skip empty names)
     if (globalEnvVars) {
       globalEnvVars.forEach((envVar) => {
-        env[envVar.name] = envVar.value;
+        if (envVar.name.trim()) {
+          env[envVar.name] = envVar.value;
+        }
       });
     }
 
@@ -78,10 +80,12 @@ export const generatePM2Apps = (
     };
 
     // Environment variable merging with correct precedence:
-    // 1. Global env vars (lowest priority)
+    // 1. Global env vars (lowest priority, skip empty names)
     if (globalEnvVars) {
       globalEnvVars.forEach((envVar) => {
-        appConfig.env[envVar.name] = envVar.value;
+        if (envVar.name.trim()) {
+          appConfig.env[envVar.name] = envVar.value;
+        }
       });
     }
 

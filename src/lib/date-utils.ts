@@ -72,3 +72,30 @@ export function isRelativeFormat(date: string | Date): boolean {
   // At exactly 48 hours or more, return false (use absolute format)
   return diffHours >= 0 && diffHours <= 48;
 }
+
+/**
+ * Format duration in hours to a human-readable string.
+ * - Less than 24 hours: "2.5h"
+ * - 24 hours or more: "1.3d" (days with 1 decimal)
+ * - Edge cases: 0 → "0h", null/undefined/negative → "—"
+ */
+export function formatDuration(hours: number | null | undefined): string {
+  // Handle null, undefined, and negative values
+  if (hours == null || hours < 0) {
+    return '—';
+  }
+
+  // Handle zero
+  if (hours === 0) {
+    return '0h';
+  }
+
+  // Less than 24 hours: format as hours
+  if (hours < 24) {
+    return `${hours.toFixed(1)}h`;
+  }
+
+  // 24 hours or more: format as days
+  const days = hours / 24;
+  return `${days.toFixed(1)}d`;
+}

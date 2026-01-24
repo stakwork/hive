@@ -446,7 +446,7 @@ export function buildFixPrompt(result: PRCheckResult): string {
 Please:
 1. Fetch the latest changes from the base branch (${result.problemDetails?.includes("with") ? result.problemDetails.split("with ")[1] : "main"})
 2. Resolve any merge conflicts
-3. Push the resolved changes
+3. Changes will be pushed to the PR automatically, you don't need to push manually.
 
 ${result.problemDetails || ""}`;
   }
@@ -459,7 +459,7 @@ Failed checks: ${result.failedChecks?.join(", ") || "unknown"}
 Please:
 1. Review the CI failure logs below
 2. Fix the issues causing the failures
-3. Push the fixes
+3. Changes will be pushed to the PR automatically, you don't need to push manually.
 
 ${result.problemDetails || ""}`;
 

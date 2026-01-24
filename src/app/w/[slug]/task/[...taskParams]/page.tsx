@@ -16,7 +16,7 @@ import {
   PullRequestContent,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
-import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
+import { usePusherConnection, WorkflowStatusUpdate, TaskTitleUpdateEvent, PRStatusChangeEvent } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
@@ -163,12 +163,47 @@ export default function TaskChatPage() {
     [currentTaskId],
   );
 
+  const handlePRStatusChange = useCallback((event: PRStatusChangeEvent) => {
+    // Update PR artifact status when merged/closed
+    if (!event.prUrl) return;
+
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (!msg.artifacts) return msg;
+
+        const hasPR = msg.artifacts.some(
+          (a) => a.type === "PULL_REQUEST" && (a.content as PullRequestContent).url === event.prUrl
+        );
+
+        if (!hasPR) return msg;
+
+        return {
+          ...msg,
+          artifacts: msg.artifacts.map((a) => {
+            if (a.type !== "PULL_REQUEST") return a;
+            const content = a.content as PullRequestContent;
+            if (content.url !== event.prUrl) return a;
+
+            return {
+              ...a,
+              content: {
+                ...content,
+                status: event.artifactStatus || content.status,
+              },
+            };
+          }),
+        };
+      })
+    );
+  }, []);
+
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
     onMessage: handleSSEMessage,
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onTaskTitleUpdate: handleTaskTitleUpdate,
+    onPRStatusChange: handlePRStatusChange,
   });
 
   // Show connection errors as toasts
