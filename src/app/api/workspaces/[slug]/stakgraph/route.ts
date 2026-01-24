@@ -636,7 +636,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Use merged values for pool name check (convert null to undefined)
-    const mergedPoolName = settings.poolName ?? existingSwarm?.poolName ?? undefined;
+    // Fall back to swarm.id for consistency with other code paths (stakwork-run, task-workflow, chat/message)
+    const mergedPoolName = settings.poolName ?? existingSwarm?.poolName ?? swarm?.id ?? undefined;
     const mergedPoolCpu = settings.poolCpu ?? existingSwarm?.poolCpu ?? undefined;
     const mergedPoolMemory = settings.poolMemory ?? existingSwarm?.poolMemory ?? undefined;
 
