@@ -55,11 +55,13 @@ function createDbMock() {
   const model = () => createModelMock(register);
 
   const $transaction = register(vi.fn());
+  const $use = register(vi.fn());
 
   const db = {
     workspace: model(),
     workspaceMember: model(),
     swarm: model(),
+    pod: model(),
     gitHubAuth: model(),
     user: model(),
     account: model(),
@@ -78,6 +80,7 @@ function createDbMock() {
     feature: model(),
     phase: model(),
     $transaction,
+    $use,
   } satisfies Record<string, ReturnType<typeof model> | MockFn>;
 
   const reset = () => {
