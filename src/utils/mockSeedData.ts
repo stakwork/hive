@@ -667,6 +667,9 @@ async function seedTasks(
   // Add chat messages with artifacts to some tasks
   await seedChatMessagesWithArtifacts(createdTasks.slice(0, 5));
 
+  // Add diverse PR artifacts for last 72 hours testing
+  await seedPullRequestArtifacts(userId, workspaceId, features);
+
   // Second pass: Add task dependencies
   // Create diverse dependency scenarios as specified in requirements
   const dependencyUpdates = [];
@@ -940,15 +943,17 @@ async function seedChatMessagesWithArtifacts(
         },
       });
 
+      const prNum = Math.floor(Math.random() * 1000) + 1;
       await db.artifact.create({
         data: {
           messageId: prMsg.id,
           type: ArtifactType.PULL_REQUEST,
           content: {
-            number: Math.floor(Math.random() * 1000) + 1,
+            repo: "stakwork/hive",
+            url: `https://github.com/stakwork/hive/pull/${prNum}`,
+            status: "DONE",
+            number: prNum,
             title: `feat: ${task.title}`,
-            state: "merged",
-            url: `https://github.com/stakwork/hive/pull/${Math.floor(Math.random() * 1000) + 1}`,
             additions: 125,
             deletions: 45,
             changedFiles: 8,
@@ -1208,6 +1213,303 @@ Deployed via Docker containers on AWS ECS with auto-scaling enabled.`,
   }
 
   console.log(`[MockSeed] Created chat messages with artifacts for ${tasks.length} tasks`);
+}
+
+/**
+ * Seeds diverse PR artifacts for last 72 hours testing
+ * Creates 10+ tasks with PR artifacts:
+ * - 6-8 with status='DONE' (merged PRs within last 72 hours)
+ * - 2-3 with status='open' (open PRs within last 72 hours)
+ * - 2-3 with status='closed' (closed PRs within last 72 hours)
+ * - 3-4 with PRs older than 72 hours
+ * Varied createdAt and updatedAt timestamps simulate realistic PR timelines
+ */
+async function seedPullRequestArtifacts(
+  userId: string,
+  workspaceId: string,
+  features: Array<{ id: string; title: string; phaseId: string }>
+): Promise<void> {
+  const now = Date.now();
+  const HOUR_MS = 3600000;
+  const HOURS_72_MS = 72 * HOUR_MS;
+
+  // PR templates with varied statuses and timestamps
+  const prTemplates = [
+    // MERGED PRs within last 72 hours (6-8 tasks)
+    {
+      title: "Add user profile page with avatar upload",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 48,
+      mergedHoursAgo: 46,
+      additions: 245,
+      deletions: 32,
+      changedFiles: 12,
+    },
+    {
+      title: "Implement real-time notifications with WebSocket",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 68,
+      mergedHoursAgo: 65,
+      additions: 520,
+      deletions: 78,
+      changedFiles: 18,
+    },
+    {
+      title: "Fix memory leak in data polling service",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 24,
+      mergedHoursAgo: 22,
+      additions: 65,
+      deletions: 98,
+      changedFiles: 4,
+    },
+    {
+      title: "Add dark mode theme support",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 56,
+      mergedHoursAgo: 54,
+      additions: 380,
+      deletions: 145,
+      changedFiles: 22,
+    },
+    {
+      title: "Optimize database queries for user dashboard",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 36,
+      mergedHoursAgo: 34,
+      additions: 112,
+      deletions: 87,
+      changedFiles: 8,
+    },
+    {
+      title: "Implement password reset flow with email verification",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 12,
+      mergedHoursAgo: 10,
+      additions: 295,
+      deletions: 41,
+      changedFiles: 14,
+    },
+    {
+      title: "Add integration tests for webhook handlers",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 60,
+      mergedHoursAgo: 58,
+      additions: 450,
+      deletions: 22,
+      changedFiles: 10,
+    },
+    {
+      title: "Refactor authentication middleware for better error handling",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 40,
+      mergedHoursAgo: 38,
+      additions: 180,
+      deletions: 165,
+      changedFiles: 6,
+    },
+
+    // OPEN PRs within last 72 hours (2-3 tasks)
+    {
+      title: "Add GraphQL API support for advanced queries",
+      status: "IN_PROGRESS" as const,
+      prStatus: "open" as const,
+      createdHoursAgo: 18,
+      additions: 680,
+      deletions: 95,
+      changedFiles: 28,
+    },
+    {
+      title: "Implement rate limiting for public API endpoints",
+      status: "IN_PROGRESS" as const,
+      prStatus: "open" as const,
+      createdHoursAgo: 32,
+      additions: 215,
+      deletions: 48,
+      changedFiles: 11,
+    },
+    {
+      title: "Add file upload progress indicators",
+      status: "IN_PROGRESS" as const,
+      prStatus: "open" as const,
+      createdHoursAgo: 52,
+      additions: 340,
+      deletions: 62,
+      changedFiles: 9,
+    },
+
+    // CLOSED PRs within last 72 hours (2-3 tasks)
+    {
+      title: "Experiment with new caching strategy (abandoned)",
+      status: "CANCELLED" as const,
+      prStatus: "closed" as const,
+      createdHoursAgo: 44,
+      closedHoursAgo: 42,
+      additions: 425,
+      deletions: 280,
+      changedFiles: 16,
+    },
+    {
+      title: "Alternative approach to user permissions (superseded)",
+      status: "CANCELLED" as const,
+      prStatus: "closed" as const,
+      createdHoursAgo: 28,
+      closedHoursAgo: 26,
+      additions: 310,
+      deletions: 195,
+      changedFiles: 13,
+    },
+
+    // PRs older than 72 hours (3-4 tasks)
+    {
+      title: "Legacy feature migration to new architecture",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 168, // 7 days ago
+      mergedHoursAgo: 165,
+      additions: 1250,
+      deletions: 980,
+      changedFiles: 45,
+    },
+    {
+      title: "Initial CI/CD pipeline setup",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 240, // 10 days ago
+      mergedHoursAgo: 235,
+      additions: 520,
+      deletions: 120,
+      changedFiles: 18,
+    },
+    {
+      title: "Add comprehensive E2E test suite",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 120, // 5 days ago
+      mergedHoursAgo: 117,
+      additions: 850,
+      deletions: 45,
+      changedFiles: 32,
+    },
+    {
+      title: "Database schema migration for multi-tenancy",
+      status: "DONE" as const,
+      prStatus: "DONE" as const,
+      createdHoursAgo: 192, // 8 days ago
+      mergedHoursAgo: 188,
+      additions: 680,
+      deletions: 420,
+      changedFiles: 25,
+    },
+  ];
+
+  let prNumber = 100; // Starting PR number
+
+  for (let i = 0; i < prTemplates.length; i++) {
+    const template = prTemplates[i];
+    const featureIndex = i % features.length;
+    const linkedFeature = features[featureIndex];
+
+    // Calculate timestamps
+    const createdAt = new Date(now - template.createdHoursAgo * HOUR_MS);
+    let updatedAt: Date;
+
+    if (template.prStatus === "DONE" && template.mergedHoursAgo) {
+      updatedAt = new Date(now - template.mergedHoursAgo * HOUR_MS);
+    } else if (template.prStatus === "closed" && template.closedHoursAgo) {
+      updatedAt = new Date(now - template.closedHoursAgo * HOUR_MS);
+    } else {
+      // For open PRs, updatedAt is recent (last update)
+      updatedAt = new Date(now - Math.random() * 2 * HOUR_MS);
+    }
+
+    // Create task
+    const task = await db.task.create({
+      data: {
+        title: template.title,
+        description: `Implementation of ${template.title.toLowerCase()}. PR #${prNumber} - ${template.prStatus}`,
+        workspaceId,
+        createdById: userId,
+        updatedById: userId,
+        status: template.status,
+        workflowStatus:
+          template.status === "DONE"
+            ? WorkflowStatus.COMPLETED
+            : template.status === "IN_PROGRESS"
+            ? WorkflowStatus.IN_PROGRESS
+            : WorkflowStatus.HALTED,
+        priority: Priority.MEDIUM,
+        sourceType: TaskSourceType.USER,
+        featureId: linkedFeature.id,
+        phaseId: linkedFeature.phaseId,
+        createdAt,
+        updatedAt,
+      },
+      select: { id: true, title: true },
+    });
+
+    // Create chat message
+    const prMsg = await db.chatMessage.create({
+      data: {
+        taskId: task.id,
+        message:
+          template.prStatus === "DONE"
+            ? "Pull request has been successfully merged!"
+            : template.prStatus === "open"
+            ? "Pull request is ready for review. Please check the changes."
+            : "Pull request was closed without merging.",
+        role: "ASSISTANT",
+        createdAt,
+        updatedAt,
+      },
+    });
+
+    // Create PR artifact with proper PullRequestContent interface
+    await db.artifact.create({
+      data: {
+        messageId: prMsg.id,
+        type: ArtifactType.PULL_REQUEST,
+        content: {
+          repo: "stakwork/hive",
+          url: `https://github.com/stakwork/hive/pull/${prNumber}`,
+          status: template.prStatus,
+          number: prNumber,
+          title: `feat: ${template.title}`,
+          additions: template.additions,
+          deletions: template.deletions,
+          changedFiles: template.changedFiles,
+        },
+        createdAt,
+        updatedAt,
+      },
+    });
+
+    prNumber++;
+  }
+
+  console.log(
+    `[MockSeed] Created ${prTemplates.length} tasks with PR artifacts for last 72 hours testing`
+  );
+  console.log(
+    `  - ${prTemplates.filter((t) => t.prStatus === "DONE" && t.createdHoursAgo <= 72).length} merged within 72h`
+  );
+  console.log(
+    `  - ${prTemplates.filter((t) => t.prStatus === "open").length} open PRs`
+  );
+  console.log(
+    `  - ${prTemplates.filter((t) => t.prStatus === "closed").length} closed PRs`
+  );
+  console.log(
+    `  - ${prTemplates.filter((t) => t.createdHoursAgo > 72).length} older than 72h`
+  );
 }
 
 /**
