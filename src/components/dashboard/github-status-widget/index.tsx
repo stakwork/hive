@@ -10,14 +10,34 @@ import {
 import { toast } from "sonner";
 import { useGithubApp } from "@/hooks/useGithubApp";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { formatRelativeOrDate } from "@/lib/date-utils";
+import { formatDuration } from "@/lib/date-utils";
 import { ExternalLink, Github, Loader2 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+interface PRMetricsResponse {
+  successRate: number | null;
+  avgTimeToMerge: number | null;
+  prCount: number;
+  mergedCount: number;
+}
 
 export function GitHubStatusWidget() {
   const { workspace, slug } = useWorkspace();
   const { hasTokens: hasGithubAppTokens, isLoading: isGithubAppLoading } = useGithubApp(slug);
   const [isInstalling, setIsInstalling] = useState(false);
+
+  // Fetch PR metrics when connected
+  const { data: prMetrics, isLoading: isMetricsLoading, isError } = useQuery<PRMetricsResponse>({
+    queryKey: ["pr-metrics", workspace?.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/github/pr-metrics?workspaceId=${workspace?.id}`);
+      if (!response.ok) throw new Error("Failed to fetch PR metrics");
+      return response.json();
+    },
+    enabled: !!workspace?.id && hasGithubAppTokens,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   const handleGithubAppInstall = async () => {
     if (!slug) return;
@@ -72,12 +92,63 @@ export function GitHubStatusWidget() {
     );
   }
 
-  const repository = workspace?.repositories?.[0];
-  const status = repository?.status || "PENDING";
-  const lastUpdated = repository?.updatedAt;
+  // Loading metrics
+  if (isMetricsLoading) {
+    return (
+      <div className="flex items-center justify-center w-10 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm">
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
-  // Determine status color
-  const statusColor = status === "SYNCED" ? "bg-green-500" : status === "PENDING" ? "bg-yellow-500" : "bg-red-500";
+  // Error state - show red indicator
+  if (isError || !prMetrics) {
+    return (
+      <TooltipProvider>
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm hover:bg-accent/95 transition-colors cursor-default">
+              <Github className="w-5 h-5 text-foreground" />
+              <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="text-xs text-red-600">Failed to load PR metrics</div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Zero state - no PR activity
+  if (prMetrics.prCount === 0) {
+    return (
+      <TooltipProvider>
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-lg border border-border bg-card/95 backdrop-blur-sm hover:bg-accent/95 transition-colors cursor-default">
+              <Github className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <div className="text-xs text-muted-foreground">No PR activity</div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Determine color based on success rate
+  const getStatusColor = (rate: number | null) => {
+    if (rate === null) return "bg-red-500";
+    if (rate > 70) return "bg-green-500";
+    if (rate >= 50) return "bg-yellow-500";
+    return "bg-red-500";
+  };
+
+  const statusColor = getStatusColor(prMetrics.successRate);
+  const successRateDisplay = prMetrics.successRate !== null ? `${Math.round(prMetrics.successRate)}%` : "N/A";
+  const avgTimeDisplay = formatDuration(prMetrics.avgTimeToMerge);
 
   return (
     <TooltipProvider>
@@ -90,17 +161,12 @@ export function GitHubStatusWidget() {
         </TooltipTrigger>
         <TooltipContent side="bottom" className="max-w-xs">
           <div className="space-y-1.5 text-xs">
-            <div className={`font-medium ${status === "SYNCED" ? "text-green-600" : status === "PENDING" ? "text-yellow-600" : "text-red-600"}`}>
-              {status}
+            <div className="font-medium">
+              72h PR Activity: {prMetrics.mergedCount} merged / {prMetrics.prCount} opened • Avg: {avgTimeDisplay}
             </div>
-            {lastUpdated && (
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>{formatRelativeOrDate(lastUpdated)}</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span>Success Rate: {successRateDisplay}</span>
+            </div>
           </div>
         </TooltipContent>
       </Tooltip>
