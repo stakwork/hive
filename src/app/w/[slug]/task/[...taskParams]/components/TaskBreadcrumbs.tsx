@@ -29,7 +29,7 @@ export default function TaskBreadcrumbs({
     <div className="text-sm text-muted-foreground">
       <span
         className="hover:underline cursor-pointer"
-        onClick={() => router.push(`/w/${workspaceSlug}/plan/${featureId}`)}
+        onClick={() => router.push(`/w/${workspaceSlug}/plan/${featureId}?tab=tasks`)}
         title={featureTitle}
       >
         {truncatedTitle}
