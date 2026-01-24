@@ -367,12 +367,16 @@ model Pod {
   flaggedAt            DateTime?      @map("flagged_at")
   flaggedReason        PodFlagReason? @map("flagged_reason")
 
+  // Soft delete
+  deletedAt DateTime? @map("deleted_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([swarmId])
   @@index([status])
   @@index([usageStatus])
+  @@index([deletedAt])
   @@map("pods")
 }
 
@@ -771,10 +775,15 @@ enum PodState {
 // Pod status enums (for Pod table - migrated from ConfigMaps)
 enum PodStatus {
   PENDING
+  STARTING
+  CREATING
   RUNNING
   FAILED
   STOPPED
   TERMINATING
+  MOTHBALLED
+  CRASHING
+  UNSTABLE
 }
 
 enum PodUsageStatus {
