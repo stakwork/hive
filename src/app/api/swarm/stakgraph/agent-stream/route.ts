@@ -1,11 +1,11 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
+import { EncryptionService, encryptEnvVars } from "@/lib/encryption";
 import { parseEnv } from "@/lib/env-parser";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
 import { pollAgentProgress } from "@/services/swarm/stakgraph-services";
-import { devcontainerJsonContent, parsePM2Content } from "@/utils/devContainerUtils";
+import { devcontainerJsonContent, extractEnvVarsFromPM2Config, parsePM2Content } from "@/utils/devContainerUtils";
 import { parseGithubOwnerRepo } from "@/utils/repositoryParser";
 import { getServerSession } from "next-auth/next";
 import { NextRequest } from "next/server";
@@ -239,6 +239,47 @@ export async function GET(request: NextRequest) {
                   environmentVariables,
                   containerFiles,
                 });
+
+                // Extract and save service-specific env vars from PM2 config to environment_variables table
+                if (pm2Content) {
+                  try {
+                    const envVarsPerService = extractEnvVarsFromPM2Config(pm2Content);
+
+                    for (const [serviceName, envVars] of envVarsPerService) {
+                      // Delete existing service-specific env vars for this service
+                      await db.environmentVariable.deleteMany({
+                        where: {
+                          swarmId: swarm.id,
+                          serviceName: serviceName,
+                        },
+                      });
+
+                      // Encrypt and insert new env vars
+                      if (envVars.length > 0) {
+                        const encrypted = encryptEnvVars(envVars);
+                        await db.environmentVariable.createMany({
+                          data: encrypted.map((ev) => ({
+                            swarmId: swarm.id,
+                            serviceName: serviceName,
+                            name: ev.name,
+                            value: JSON.stringify(ev.value),
+                          })),
+                        });
+                      }
+                    }
+
+                    console.log("[agent-stream] Saved service-specific env vars from PM2 config", {
+                      ...logContext,
+                      serviceCount: envVarsPerService.size,
+                      serviceNames: Array.from(envVarsPerService.keys()),
+                    });
+                  } catch (error) {
+                    console.warn("[agent-stream] Failed to extract env vars from PM2 config:", {
+                      ...logContext,
+                      error: error instanceof Error ? error.message : String(error),
+                    });
+                  }
+                }
 
                 // Update agent status to completed and mark container files as set up
                 await db.swarm.update({
