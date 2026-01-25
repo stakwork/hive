@@ -900,10 +900,10 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
 
     test("should handle database constraint violations", async () => {
       const testUser = await createTestUser({
-        email: "constraint-test@example.com",
+        email: `constraint-test-${generateUniqueId()}@example.com`,
       });
 
-      const providerAccountId = "constraint-test-id";
+      const providerAccountId = `constraint-test-id-${generateUniqueId()}`;
 
       // Create first account
       const encryptedToken = encryptionService.encryptField(
@@ -940,7 +940,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
     test("should handle encryption service unavailable", async () => {
       // Create account with plaintext token (simulating encryption failure)
       const testUser = await createTestUser({
-        email: "encryption-fail@example.com",
+        email: `encryption-fail-${generateUniqueId()}@example.com`,
       });
 
       const plaintextToken = "plaintext_token_not_encrypted";
@@ -951,7 +951,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
           userId: testUser.id,
           type: "oauth",
           provider: "github",
-          providerAccountId: "encryption-fail-id",
+          providerAccountId: `encryption-fail-id-${generateUniqueId()}`,
           access_token: plaintextToken, // Not encrypted
           scope: "read:user",
         },
@@ -1021,13 +1021,13 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
       const result = await signInCallback!({
         user: {
           id: generateUniqueId("incomplete"),
-          email: "incomplete@example.com",
+          email: `incomplete-${generateUniqueId()}@example.com`,
           name: "Incomplete User",
         },
         account: {
           provider: "github",
           type: "oauth",
-          providerAccountId: "999999",
+          providerAccountId: `incomplete-${generateUniqueId()}`,
           access_token: "incomplete_token",
           refresh_token: null,
           expires_at: null,
@@ -1049,7 +1049,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
   describe("Security & CSRF Protection", () => {
     test("should verify OAuth tokens are never exposed to client", async () => {
       const testUser = await createTestUser({
-        email: "security-test@example.com",
+        email: `security-test-${generateUniqueId()}@example.com`,
       });
 
       const encryptedToken = encryptionService.encryptField(
@@ -1062,7 +1062,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
           userId: testUser.id,
           type: "oauth",
           provider: "github",
-          providerAccountId: "security-test-id",
+          providerAccountId: `security-test-id-${generateUniqueId()}`,
           access_token: JSON.stringify(encryptedToken),
           scope: "read:user",
         },
@@ -1105,7 +1105,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
 
     test("should enforce encrypted storage for all OAuth tokens", async () => {
       const testUser = await createTestUser({
-        email: "encryption-enforcement@example.com",
+        email: `encryption-enforcement-${generateUniqueId()}@example.com`,
       });
 
       const accessToken = "gho_enforce_encryption";
@@ -1119,7 +1119,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
           userId: testUser.id,
           type: "oauth",
           provider: "github",
-          providerAccountId: "enforcement-id",
+          providerAccountId: `enforcement-id-${generateUniqueId()}`,
           access_token: JSON.stringify(encryptedToken),
           scope: "read:user",
         },

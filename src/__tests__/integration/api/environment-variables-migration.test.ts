@@ -326,13 +326,14 @@ describe("Environment Variables Migration", () => {
   });
 
   it("should enforce unique constraint on (swarmId, serviceName, name)", async () => {
-    // First create a record
-    const encrypted = encryptEnvVars([{ name: "TEST_VAR", value: "value1" }]);
+    // First create a record with unique variable name per test
+    const uniqueVarName = `TEST_VAR_${generateUniqueId()}`;
+    const encrypted = encryptEnvVars([{ name: uniqueVarName, value: "value1" }]);
     await db.environmentVariable.create({
       data: {
         swarmId,
         serviceName: "",
-        name: "TEST_VAR",
+        name: uniqueVarName,
         value: JSON.stringify(encrypted[0].value),
       },
     });
@@ -343,7 +344,7 @@ describe("Environment Variables Migration", () => {
         data: {
           swarmId,
           serviceName: "",
-          name: "TEST_VAR",
+          name: uniqueVarName,
           value: JSON.stringify(encrypted[0].value),
         },
       });
