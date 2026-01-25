@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { startTaskWorkflow } from "@/services/task-workflow";
 import { TaskStatus, WorkflowStatus } from "@prisma/client";
 import { sanitizeTask } from "@/lib/helpers/tasks";
-import { pusherServer, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getWorkspaceChannelName, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 export async function PATCH(
@@ -182,6 +182,20 @@ export async function PATCH(
             workspaceChannelName,
             PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, // Reuse existing event for task updates
             statusUpdatePayload,
+          );
+        }
+
+        // Broadcast workflowStatus changes to task channel (for chat page)
+        if (workflowStatus) {
+          const taskChannelName = getTaskChannelName(taskId);
+          await pusherServer.trigger(
+            taskChannelName,
+            PUSHER_EVENTS.WORKFLOW_STATUS_UPDATE,
+            {
+              taskId: updatedTask.id,
+              workflowStatus: updatedTask.workflowStatus,
+              timestamp: new Date(),
+            },
           );
         }
 
