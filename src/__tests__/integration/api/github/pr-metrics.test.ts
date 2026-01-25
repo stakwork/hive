@@ -20,11 +20,19 @@ describe('GET /api/github/pr-metrics', () => {
   let testWorkspace: { id: string; slug: string };
   let testTask: { id: string };
   let testMessage: { id: string };
+  let mockNow: Date;
 
   beforeEach(async () => {
     await resetDatabase();
     vi.clearAllMocks();
     
+<<<<<<< HEAD
+=======
+    // Mock current time to ensure tests don't create items in the past
+    mockNow = new Date('2026-01-25T12:00:00Z');
+    vi.setSystemTime(mockNow);
+
+>>>>>>> 79b04c60 (Compute expectedSuccessRate using expectedPrCount and expectedMergedCount and update test mock time handling)
     // Create test user
     testUser = await db.user.create({
       data: {
