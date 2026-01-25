@@ -658,6 +658,12 @@ model JanitorConfig {
   recommendationSweepEnabled Boolean @default(false) @map("recommendation_sweep_enabled")
   ticketSweepEnabled         Boolean @default(false) @map("ticket_sweep_enabled")
 
+  // PR Monitor automation
+  prMonitorEnabled           Boolean @default(false) @map("pr_monitor_enabled")
+  prConflictFixEnabled       Boolean @default(false) @map("pr_conflict_fix_enabled")
+  prCiFailureFixEnabled      Boolean @default(false) @map("pr_ci_failure_fix_enabled")
+  prOutOfDateFixEnabled      Boolean @default(false) @map("pr_out_of_date_fix_enabled")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
