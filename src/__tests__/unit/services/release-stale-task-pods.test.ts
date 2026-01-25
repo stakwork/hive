@@ -326,6 +326,11 @@ describe("releaseStaleTaskPods", () => {
         workflowStatus: "HALTED",
         workflowCompletedAt: expect.any(Date),
       },
+      select: {
+        workflowStartedAt: true,
+        workflowCompletedAt: true,
+        featureId: true,
+      },
     });
 
     // Verify result
@@ -572,6 +577,11 @@ describe("haltTask", () => {
         workflowStatus: "HALTED",
         workflowCompletedAt: expect.any(Date),
       },
+      select: {
+        workflowStartedAt: true,
+        workflowCompletedAt: true,
+        featureId: true,
+      },
     });
   });
 
@@ -589,6 +599,11 @@ describe("haltTask", () => {
         agentUrl: null,
         agentPassword: null,
       },
+      select: {
+        workflowStartedAt: true,
+        workflowCompletedAt: true,
+        featureId: true,
+      },
     });
   });
 
@@ -602,6 +617,11 @@ describe("haltTask", () => {
       data: {
         workflowStatus: "HALTED",
         workflowCompletedAt: expect.any(Date),
+      },
+      select: {
+        workflowStartedAt: true,
+        workflowCompletedAt: true,
+        featureId: true,
       },
     });
   });

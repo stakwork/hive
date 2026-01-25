@@ -496,6 +496,11 @@ describe("POST /api/chat/message", () => {
           workflowStartedAt: expect.any(Date),
           stakworkProjectId: 123,
         },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
+        },
       });
     });
 
@@ -516,6 +521,11 @@ describe("POST /api/chat/message", () => {
         where: { id: mockTaskId },
         data: {
           workflowStatus: WorkflowStatus.FAILED,
+        },
+        select: {
+          workflowStartedAt: true,
+          workflowCompletedAt: true,
+          featureId: true,
         },
       });
     });
