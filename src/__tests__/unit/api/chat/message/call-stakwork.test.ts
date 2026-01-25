@@ -236,6 +236,11 @@ describe("callStakwork Function - Chat Message Processing", () => {
             workflowStartedAt: expect.any(Date),
             stakworkProjectId: 67890,
           },
+          select: {
+            workflowStartedAt: true,
+            workflowCompletedAt: true,
+            featureId: true,
+          },
         });
       });
 
@@ -287,12 +292,17 @@ describe("callStakwork Function - Chat Message Processing", () => {
         const response = await POST(request);
 
         expect(response.status).toBe(201); // Message still created
-        
+
         // Verify task was marked as FAILED
         expect(vi.mocked(db.task.update)).toHaveBeenCalledWith({
           where: { id: mockTaskId },
           data: {
             workflowStatus: WorkflowStatus.FAILED,
+          },
+          select: {
+            workflowStartedAt: true,
+            workflowCompletedAt: true,
+            featureId: true,
           },
         });
       });
@@ -1098,6 +1108,11 @@ describe("callStakwork Function - Chat Message Processing", () => {
           where: { id: mockTaskId },
           data: {
             workflowStatus: WorkflowStatus.FAILED,
+          },
+          select: {
+            workflowStartedAt: true,
+            workflowCompletedAt: true,
+            featureId: true,
           },
         });
       });
