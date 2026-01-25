@@ -72,15 +72,24 @@ export const cleanup = {
 
 export async function resetDatabase() {
   try {
+    // Delete in order respecting foreign key constraints
     await db.screenshot.deleteMany();
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
     await db.chatMessage.deleteMany();
+    await db.sharedConversation.deleteMany();
+    await db.userStory.deleteMany();
+    await db.phase.deleteMany();
+    await db.feature.deleteMany();
+    await db.whiteboard.deleteMany();
+    await db.stakworkRun.deleteMany();
     await db.task.deleteMany();
     await db.janitorRecommendation.deleteMany();
     await db.janitorRun.deleteMany();
     await db.janitorConfig.deleteMany();
     await db.repository.deleteMany();
+    await db.environmentVariable.deleteMany();
+    await db.pod.deleteMany();
     await db.swarm.deleteMany();
     await db.workspaceMember.deleteMany();
     await db.workspace.deleteMany();
@@ -104,20 +113,28 @@ async function aggressiveReset() {
       "attachments",
       "artifacts",
       "chat_messages",
+      "shared_conversations",
+      "user_stories",
+      "phases",
+      "features",
+      "whiteboards",
+      "stakwork_runs",
       "tasks",
       "janitor_recommendations",
       "janitor_runs",
       "janitor_configs",
       "repositories",
+      "environment_variables",
+      "pods",
       "swarms",
       "workspace_members",
       "workspaces",
       "sessions",
       "accounts",
       "github_auth",
-      "users",
       "source_control_tokens",
       "source_control_orgs",
+      "users",
     ];
 
     for (const table of tables) {

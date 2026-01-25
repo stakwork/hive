@@ -528,7 +528,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         email: "duplicate-test@example.com",
       });
 
-      const providerAccountId = "duplicate-github-id";
+      const providerAccountId = `duplicate-github-${generateUniqueId()}`;
 
       // Create first GitHub account
       const encryptedToken = encryptionService.encryptField(
@@ -903,7 +903,7 @@ describe("GitHub OAuth Callback Flow Integration Tests", () => {
         email: "constraint-test@example.com",
       });
 
-      const providerAccountId = "constraint-test-id";
+      const providerAccountId = `constraint-test-${generateUniqueId()}`;
 
       // Create first account
       const encryptedToken = encryptionService.encryptField(
