@@ -1,11 +1,4 @@
-import { 
-  JanitorType,
-  JanitorStatus,
-  JanitorTrigger,
-  RecommendationStatus,
-  Priority
-} from "@prisma/client";
-
+import { JanitorType, JanitorStatus, JanitorTrigger, RecommendationStatus, Priority } from "@prisma/client";
 
 export interface JanitorConfigUpdate {
   unitTestsEnabled?: boolean;
@@ -17,6 +10,21 @@ export interface JanitorConfigUpdate {
   taskCoordinatorEnabled?: boolean;
   recommendationSweepEnabled?: boolean;
   ticketSweepEnabled?: boolean;
+  // PR Monitor settings
+  prMonitorEnabled?: boolean;
+  prConflictFixEnabled?: boolean;
+  prCiFailureFixEnabled?: boolean;
+  prOutOfDateFixEnabled?: boolean;
+}
+
+/**
+ * PR Monitor configuration fields from JanitorConfig
+ */
+export interface PRMonitorConfigFields {
+  prMonitorEnabled: boolean;
+  prConflictFixEnabled: boolean;
+  prCiFailureFixEnabled: boolean;
+  prOutOfDateFixEnabled: boolean;
 }
 
 export interface AcceptRecommendationRequest {
@@ -46,8 +54,6 @@ export interface StakworkWebhookPayload {
   };
   error?: string;
 }
-
-
 
 export interface JanitorRunFilters {
   type?: JanitorType;
