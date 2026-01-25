@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ExternalLink, Monitor, Server, ServerOff } from "lucide-react";
+import { ArrowLeft, ExternalLink, Monitor, Server, ServerOff, Workflow } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChatMessage as ChatMessageType, Option, Artifact, WorkflowStatus } from "@/lib/chat";
@@ -216,15 +216,25 @@ export function ChatArea({
 
             {/* Stakwork Project Link - Outside AnimatePresence to prevent flickering */}
             {stakworkProjectId && (
-              <Link
-                href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors flex-shrink-0"
-              >
-                Workflow
-                <ExternalLink className="w-3 h-3" />
-              </Link>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href={`https://jobs.stakwork.com/admin/projects/${stakworkProjectId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-muted transition-colors flex-shrink-0 relative group"
+                      aria-label="Open workflow in new tab"
+                    >
+                      <Workflow className="w-4 h-4 text-foreground" />
+                      <ExternalLink className="w-2.5 h-2.5 text-muted-foreground absolute -top-0.5 -right-0.5" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Open workflow in Stakwork</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         </div>

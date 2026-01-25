@@ -90,6 +90,13 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/tooltip", () => ({
+  TooltipProvider: ({ children }: any) => <>{children}</>,
+  Tooltip: ({ children }: any) => <>{children}</>,
+  TooltipTrigger: ({ children, asChild }: any) => <>{children}</>,
+  TooltipContent: ({ children }: any) => <div data-testid="tooltip-content">{children}</div>,
+}));
+
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: any) => (
     <a href={href} {...props}>{children}</a>
@@ -101,6 +108,9 @@ vi.mock("lucide-react", () => ({
   ArrowLeft: () => <span data-testid="arrow-left-icon">←</span>,
   ExternalLink: () => <span data-testid="external-link-icon">↗</span>,
   Monitor: () => <span data-testid="monitor-icon">🖥</span>,
+  Workflow: () => <span data-testid="workflow-icon">⚙</span>,
+  Server: () => <span data-testid="server-icon">🖥</span>,
+  ServerOff: () => <span data-testid="server-off-icon">🚫</span>,
 }));
 
 // Mock useIsMobile hook
