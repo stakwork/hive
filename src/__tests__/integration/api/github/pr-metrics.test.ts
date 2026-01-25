@@ -20,10 +20,15 @@ describe('GET /api/github/pr-metrics', () => {
   let testWorkspace: { id: string; slug: string };
   let testTask: { id: string };
   let testMessage: { id: string };
+  let mockNow: Date;
 
   beforeEach(async () => {
     await resetDatabase();
     vi.clearAllMocks();
+    
+    // Mock current time to ensure tests don't create items in the past
+    mockNow = new Date('2026-01-25T12:00:00Z');
+    vi.setSystemTime(mockNow);
 
     // Create test user
     testUser = await db.user.create({
@@ -428,7 +433,7 @@ describe('GET /api/github/pr-metrics', () => {
       
       const expectedPrsInWindow = 3; // Only PRs 1, 2, 3
       const expectedMergedInWindow = 2; // Only PRs 1, 2
-      const expectedSuccessRate = 66.67; // 2/3 * 100
+      const expectedSuccessRate = Math.round((expectedMergedInWindow / expectedPrsInWindow) * 100 * 100) / 100; // 2/3 * 100 = 66.67
 
       // Create PRs inside and outside the 72-hour window
       await db.artifact.createMany({
@@ -569,7 +574,7 @@ describe('GET /api/github/pr-metrics', () => {
       
       const expectedPrCount = 3; // Only test workspace PRs
       const expectedMergedCount = 2; // Only test workspace merged PRs
-      const expectedSuccessRate = 66.67; // 2/3 * 100
+      const expectedSuccessRate = Math.round((expectedMergedCount / expectedPrCount) * 100 * 100) / 100; // 2/3 * 100 = 66.67
 
       // Create PRs in both workspaces
       await db.artifact.createMany({
