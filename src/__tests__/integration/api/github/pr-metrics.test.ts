@@ -20,16 +20,11 @@ describe('GET /api/github/pr-metrics', () => {
   let testWorkspace: { id: string; slug: string };
   let testTask: { id: string };
   let testMessage: { id: string };
-  let mockNow: Date;
 
   beforeEach(async () => {
     await resetDatabase();
     vi.clearAllMocks();
     
-    // Mock current time to ensure tests don't create items in the past
-    mockNow = new Date('2026-01-25T12:00:00Z');
-    vi.setSystemTime(mockNow);
-
     // Create test user
     testUser = await db.user.create({
       data: {
