@@ -64,11 +64,12 @@ describe("Features API - Integration Tests", () => {
 
       // Assert
       const data = await expectSuccess(response, 200);
-      expect(data.data).toHaveLength(2);
+      const expectedFeaturesCount = 2; // Based on features created above
+      expect(data.data).toHaveLength(expectedFeaturesCount);
       expect(data.pagination).toMatchObject({
         page: 1,
         limit: 10,
-        totalCount: 2,
+        totalCount: expectedFeaturesCount,
         totalPages: 1,
         hasMore: false,
       });

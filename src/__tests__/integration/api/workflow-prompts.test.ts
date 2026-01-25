@@ -1059,6 +1059,7 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
         { id: "p1", name: "Prompt 1", value: "Value 1" },
         { id: "p2", name: "Prompt 2", value: "Value 2" },
       ];
+      const expectedPromptsCount = mockPrompts.length; // Should match the mocked response
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -1067,7 +1068,7 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
           success: true,
           data: {
             prompts: mockPrompts,
-            total: 2,
+            total: expectedPromptsCount,
             size: 10,
           },
         }),
@@ -1079,8 +1080,8 @@ describe("GET /api/workflow/prompts Integration Tests", () => {
       const data = await expectSuccess(response, 200);
 
       expect(data.success).toBe(true);
-      expect(data.data.prompts).toHaveLength(2);
-      expect(data.data.total).toBe(2);
+      expect(data.data.prompts).toHaveLength(expectedPromptsCount);
+      expect(data.data.total).toBe(expectedPromptsCount);
     });
 
     test("handles Stakwork API error responses", async () => {

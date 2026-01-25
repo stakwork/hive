@@ -107,7 +107,8 @@ describe("GET /api/tasks - Status and Pod Filtering", () => {
         const response = await GET(request);
 
         const data = await expectSuccess(response, 200);
-        expect(data.data).toHaveLength(2);
+        const expectedRunningTasksCount = 2; // Created above with IN_PROGRESS status
+        expect(data.data).toHaveLength(expectedRunningTasksCount);
         expect(data.data.every((t: any) => t.title.includes("Running"))).toBe(true);
       } finally {
         await cleanup([testWorkspace.id], [testUser.id]);

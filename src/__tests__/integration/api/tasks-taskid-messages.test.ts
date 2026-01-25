@@ -63,6 +63,14 @@ describe("GET /api/tasks/[taskId]/messages", () => {
         },
       });
 
+      // Use dynamic timestamps for message ordering
+      const baseTime = Date.now();
+      const firstMessageTime = new Date(baseTime - 5 * 60 * 1000); // 5 minutes ago
+      const firstArtifactTime = new Date(baseTime - 4 * 60 * 1000 - 59 * 1000); // 1 second after first message
+      const secondMessageTime = new Date(baseTime - 0 * 60 * 1000); // Now
+      const secondArtifact1Time = new Date(baseTime + 1000); // 1 second after second message (earlier)
+      const secondArtifact2Time = new Date(baseTime + 2000); // 2 seconds after second message (later)
+
       // Create first message with artifacts and attachments
       const message1 = await tx.chatMessage.create({
         data: {
@@ -70,7 +78,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
           role: ChatRole.USER,
           status: ChatStatus.SENT,
           taskId: task.id,
-          timestamp: new Date("2024-01-01T10:00:00Z"),
+          timestamp: firstMessageTime,
           contextTags: JSON.stringify([
             { type: "FEATURE_BRIEF", id: "feature-1" },
             { type: "PRODUCT_BRIEF", id: "product-1" },
@@ -87,7 +95,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
             code: "console.log('test artifact 1');",
           },
           messageId: message1.id,
-          createdAt: new Date("2024-01-01T10:00:01Z"),
+          createdAt: firstArtifactTime,
         },
       });
 
@@ -109,7 +117,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
           role: ChatRole.ASSISTANT,
           status: ChatStatus.SENT,
           taskId: task.id,
-          timestamp: new Date("2024-01-01T10:05:00Z"),
+          timestamp: secondMessageTime,
           contextTags: JSON.stringify([]),
           replyId: message1.id, // Threading reference
         },
@@ -121,7 +129,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
           type: ArtifactType.CODE,
           content: { code: "console.log('artifact 2a');" },
           messageId: message2.id,
-          createdAt: new Date("2024-01-01T10:05:02Z"),
+          createdAt: secondArtifact2Time, // Later
         },
       });
 
@@ -130,7 +138,7 @@ describe("GET /api/tasks/[taskId]/messages", () => {
           type: ArtifactType.FORM,
           content: { actionText: "Submit", options: [] },
           messageId: message2.id,
-          createdAt: new Date("2024-01-01T10:05:01Z"), // Earlier than 2a
+          createdAt: secondArtifact1Time, // Earlier
         },
       });
 
