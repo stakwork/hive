@@ -347,10 +347,21 @@ export async function notifyPRStatusChange(
 }
 
 /**
+ * PR Monitor configuration for a workspace
+ */
+export interface PRMonitorConfig {
+  prMonitorEnabled: boolean;
+  prConflictFixEnabled: boolean;
+  prCiFailureFixEnabled: boolean;
+  prOutOfDateFixEnabled: boolean;
+}
+
+/**
  * Find open PR artifacts that need monitoring
  *
  * Uses raw SQL for efficient JSON filtering to avoid loading all PR artifacts.
  * Only fetches PRs where:
+ * - workspace has PR monitoring enabled
  * - status is not DONE or CANCELLED (open PRs)
  * - resolution status is not "in_progress" or "gave_up"
  * - task is not deleted/archived
@@ -364,6 +375,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
     ownerId: string;
     podId: string | null;
     progress: PullRequestProgress | undefined;
+    prMonitorConfig: PRMonitorConfig;
   }>
 > {
   // Use raw query for efficient JSON filtering at the database level
@@ -373,6 +385,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
   //   chat_messages (task_id)
   //   tasks (workspace_id, pod_id)
   //   workspaces (owner_id)
+  //   janitor_configs (workspace_id, pr_monitor_enabled, etc.)
   const artifacts = await db.$queryRaw<
     Array<{
       id: string;
@@ -381,6 +394,10 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       pod_id: string | null;
       workspace_id: string;
       owner_id: string;
+      pr_monitor_enabled: boolean;
+      pr_conflict_fix_enabled: boolean;
+      pr_ci_failure_fix_enabled: boolean;
+      pr_out_of_date_fix_enabled: boolean;
     }>
   >`
     SELECT 
@@ -389,16 +406,23 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       t.id as task_id,
       t.pod_id,
       t.workspace_id,
-      w.owner_id
+      w.owner_id,
+      COALESCE(jc.pr_monitor_enabled, false) as pr_monitor_enabled,
+      COALESCE(jc.pr_conflict_fix_enabled, false) as pr_conflict_fix_enabled,
+      COALESCE(jc.pr_ci_failure_fix_enabled, false) as pr_ci_failure_fix_enabled,
+      COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled
     FROM artifacts a
     JOIN chat_messages m ON a.message_id = m.id
     JOIN tasks t ON m.task_id = t.id
     JOIN workspaces w ON t.workspace_id = w.id
+    LEFT JOIN janitor_configs jc ON jc.workspace_id = w.id
     WHERE 
       -- Indexed filters first (fast)
       a.type = 'PULL_REQUEST'
       AND t.deleted = false
       AND t.archived = false
+      -- Only monitor workspaces with PR monitoring enabled
+      AND COALESCE(jc.pr_monitor_enabled, false) = true
       -- Simple JSON checks (moderate)
       AND a.content->>'url' IS NOT NULL
       AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
@@ -422,6 +446,12 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
     ownerId: artifact.owner_id,
     podId: artifact.pod_id,
     progress: artifact.content.progress,
+    prMonitorConfig: {
+      prMonitorEnabled: artifact.pr_monitor_enabled,
+      prConflictFixEnabled: artifact.pr_conflict_fix_enabled,
+      prCiFailureFixEnabled: artifact.pr_ci_failure_fix_enabled,
+      prOutOfDateFixEnabled: artifact.pr_out_of_date_fix_enabled,
+    },
   }));
 }
 
@@ -608,42 +638,52 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
       if (result.state === "out_of_date") {
         stats.outOfDate++;
 
-        log.info("PR is out of date, attempting auto-merge", {
-          taskId: pr.taskId,
-          prNumber: result.prNumber,
-          repo: `${result.owner}/${result.repo}`,
-          headBranch: result.headBranch,
-          baseBranch: result.baseBranch,
-        });
-
-        const mergeResult = await mergeBaseBranch(
-          octokit,
-          result.owner,
-          result.repo,
-          result.headBranch,
-          result.baseBranch,
-        );
-
-        if (mergeResult.success) {
-          stats.autoMerged++;
-          log.info("Auto-merged base branch into PR", {
+        // Check if out-of-date fix is enabled for this workspace
+        if (!pr.prMonitorConfig.prOutOfDateFixEnabled) {
+          log.info("PR is out of date but auto-fix disabled for workspace", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
-            sha: mergeResult.sha,
+            repo: `${result.owner}/${result.repo}`,
           });
-
-          // Update progress to checking (CI will run on new merge commit)
-          progress.state = "checking";
-          progress.problemDetails = undefined;
           await updatePRArtifactProgress(pr.artifactId, progress);
         } else {
-          // Auto-merge failed (likely conflicts appeared) - update state and let next check handle it
-          log.warn("Auto-merge failed", {
+          log.info("PR is out of date, attempting auto-merge", {
             taskId: pr.taskId,
             prNumber: result.prNumber,
-            error: mergeResult.error,
+            repo: `${result.owner}/${result.repo}`,
+            headBranch: result.headBranch,
+            baseBranch: result.baseBranch,
           });
-          await updatePRArtifactProgress(pr.artifactId, progress);
+
+          const mergeResult = await mergeBaseBranch(
+            octokit,
+            result.owner,
+            result.repo,
+            result.headBranch,
+            result.baseBranch,
+          );
+
+          if (mergeResult.success) {
+            stats.autoMerged++;
+            log.info("Auto-merged base branch into PR", {
+              taskId: pr.taskId,
+              prNumber: result.prNumber,
+              sha: mergeResult.sha,
+            });
+
+            // Update progress to checking (CI will run on new merge commit)
+            progress.state = "checking";
+            progress.problemDetails = undefined;
+            await updatePRArtifactProgress(pr.artifactId, progress);
+          } else {
+            // Auto-merge failed (likely conflicts appeared) - update state and let next check handle it
+            log.warn("Auto-merge failed", {
+              taskId: pr.taskId,
+              prNumber: result.prNumber,
+              error: mergeResult.error,
+            });
+            await updatePRArtifactProgress(pr.artifactId, progress);
+          }
         }
       } else if (needsAgentFix) {
         if (result.state === "conflict") {
@@ -693,11 +733,20 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         await notifyPRStatusChange(pr.taskId, result.prNumber, result.state, result.problemDetails);
         stats.notified++;
 
+        // Check if the specific fix type is enabled for this workspace
+        const isFixEnabledForState =
+          (result.state === "conflict" && pr.prMonitorConfig.prConflictFixEnabled) ||
+          (result.state === "ci_failure" && pr.prMonitorConfig.prCiFailureFixEnabled);
+
         // If pod is available and this is a new problem, trigger an automatic fix
         // The triggerFix function auto-detects whether to use agent mode or live mode
-        // Only trigger if: not gave_up, state changed, and cooldown elapsed
+        // Only trigger if: fix enabled for this state, not gave_up, state changed, and cooldown elapsed
         const shouldTriggerFix =
-          pr.podId && stateChanged && cooldownElapsed && progress.resolution?.status !== "gave_up";
+          isFixEnabledForState &&
+          pr.podId &&
+          stateChanged &&
+          cooldownElapsed &&
+          progress.resolution?.status !== "gave_up";
 
         if (shouldTriggerFix) {
           const fixPrompt = buildFixPrompt(result);
@@ -715,6 +764,14 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
           if (triggerResult.success) {
             stats.agentTriggered++;
           }
+        } else if (pr.podId && stateChanged && !isFixEnabledForState) {
+          log.info("Skipping PR fix - fix type disabled for workspace", {
+            taskId: pr.taskId,
+            prNumber: result.prNumber,
+            state: result.state,
+            conflictFixEnabled: pr.prMonitorConfig.prConflictFixEnabled,
+            ciFailureFixEnabled: pr.prMonitorConfig.prCiFailureFixEnabled,
+          });
         } else if (pr.podId && stateChanged && !cooldownElapsed) {
           log.info("Skipping PR fix due to cooldown", {
             taskId: pr.taskId,
