@@ -2,13 +2,55 @@
  * Integration tests for PR metrics API endpoint
  * Tests database queries, authentication, and metric calculations end-to-end
  */
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GET } from '@/app/api/github/pr-metrics/route';
 import { db } from '@/lib/db';
 import { resetDatabase } from '@/__tests__/support/utilities/database';
 import { createAuthenticatedSession, mockSessionAs } from '@/__tests__/support/helpers/auth';
 import { createGetRequest } from '@/__tests__/support/helpers/request-builders';
 import { generateUniqueId } from '@/__tests__/support/helpers';
+
+// Test constants to remove magic numbers
+const TEST_CONSTANTS = {
+  // Time window
+  TIME_WINDOW_HOURS: 72,
+  HOURS_TO_MS: 60 * 60 * 1000,
+  
+  // Thresholds
+  MIN_PRS_FOR_SUCCESS_RATE: 3,
+  
+  // PR merge times (in hours)
+  MERGE_TIME: {
+    ONE_HOUR: 1,
+    TWO_HOURS: 2,
+    THREE_HOURS: 3,
+    FOUR_HOURS: 4,
+    SIX_HOURS: 6,
+  },
+  
+  // Expected values
+  COUNTS: {
+    ZERO: 0,
+    ONE: 1,
+    TWO: 2,
+    THREE: 3,
+    FIVE: 5,
+  },
+  
+  // Success rates (percentage)
+  SUCCESS_RATE: {
+    FULL: 100,
+    TWO_OUT_OF_FIVE: 40,
+    TWO_OUT_OF_THREE: 66.67,
+  },
+  
+  // Average merge times (hours)
+  AVG_MERGE_TIME: {
+    ONE_HOUR: 1,
+    TWO_HOURS: 2,
+    FOUR_HOURS: 4, // (2 + 4 + 6) / 3
+  },
+};
 
 // Mock NextAuth session
 vi.mock('next-auth/next', () => ({
@@ -111,8 +153,8 @@ describe('GET /api/github/pr-metrics', () => {
       expect(data).toEqual({
         successRate: null,
         avgTimeToMerge: null,
-        prCount: 0,
-        mergedCount: 0,
+        prCount: TEST_CONSTANTS.COUNTS.ZERO,
+        mergedCount: TEST_CONSTANTS.COUNTS.ZERO,
       });
     });
   });
@@ -343,9 +385,11 @@ describe('GET /api/github/pr-metrics', () => {
 
   describe('Time Window Filtering', () => {
     test('should only include PRs from last 72 hours', async () => {
-      const now = new Date('2026-01-24T03:45:00Z'); // Current time
-      const seventyTwoHoursAgo = new Date('2026-01-21T03:45:00Z');
-      const beforeWindow = new Date('2026-01-21T03:00:00Z'); // Just before 72h window
+      // Mock Date.now() to ensure deterministic time window calculation
+      const mockNow = new Date('2026-01-24T03:45:00Z');
+      const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(mockNow.getTime());
+
+      const beforeWindow = new Date('2026-01-21T03:00:00Z'); // Before 72h window
 
       // Create PRs inside and outside the 72-hour window
       await db.artifact.createMany({
@@ -424,9 +468,12 @@ describe('GET /api/github/pr-metrics', () => {
 
       expect(response.status).toBe(200);
       // Only the 3 PRs within the window should be counted
-      expect(data.prCount).toBe(3);
-      expect(data.mergedCount).toBe(2);
-      expect(data.successRate).toBe(66.67);
+      expect(data.prCount).toBe(TEST_CONSTANTS.COUNTS.THREE);
+      expect(data.mergedCount).toBe(TEST_CONSTANTS.COUNTS.TWO);
+      expect(data.successRate).toBe(TEST_CONSTANTS.SUCCESS_RATE.TWO_OUT_OF_THREE);
+
+      // Cleanup
+      dateNowSpy.mockRestore();
     });
   });
 
