@@ -11,7 +11,7 @@ export const STAKLINK_PROXY_PROCESS = "staklink-proxy" as const;
 
 // jlist endpoint response types
 export interface JlistProcess {
-  pid: number | null;
+  pid?: number | null;
   name: string;
   status: string;
   pm_uptime?: number | null;
@@ -21,7 +21,7 @@ export interface JlistProcess {
 
 export const JlistResponseSchema = z.array(
   z.object({
-    pid: z.number().nullable(),
+    pid: z.number().nullable().optional(),
     name: z.string(),
     status: z.string(),
     pm_uptime: z.number().nullable().optional(),
