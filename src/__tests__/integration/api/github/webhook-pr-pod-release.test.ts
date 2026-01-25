@@ -17,6 +17,7 @@ import { pusherServer, PUSHER_EVENTS } from '@/lib/pusher';
 import { releaseTaskPod } from '@/lib/pods/utils';
 import { generateUniqueId } from '@/__tests__/support/helpers';
 import { EncryptionService } from '@/lib/encryption';
+import { updateFeatureStatusFromTasks } from '@/services/roadmap/feature-status-sync';
 
 // Mock external services
 vi.mock('@/services/swarm/stakgraph-actions');
@@ -26,8 +27,10 @@ vi.mock('@/lib/pusher', () => ({
     trigger: vi.fn(),
   },
   getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
+  getTaskChannelName: (taskId: string) => `task-${taskId}`,
   PUSHER_EVENTS: {
     WORKSPACE_TASK_TITLE_UPDATE: 'workspace-task-title-update',
+    PR_STATUS_CHANGE: 'pr-status-change',
   },
 }));
 vi.mock('@/services/roadmap/feature-status-sync', () => ({
@@ -527,7 +530,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       expect(releaseTaskPod).toHaveBeenCalled();
     });
 
-    test('should NOT release pod when PR is closed without merge', async () => {
+    test('should release pod and preserve task status when PR is closed without merge', async () => {
       const testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
@@ -570,6 +573,13 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         },
       });
 
+      // Mock successful pod release
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: true,
+        podDropped: true,
+        taskCleared: true,
+      });
+
       // Create PR closed WITHOUT merge payload
       const prPayload = createGitHubPullRequestPayload(
         'closed',
@@ -602,13 +612,27 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
       });
 
-      // Should return 202 (acknowledged but no action)
+      // Should return 202
       expect(response.status).toBe(202);
       const body = await response.json();
       expect(body.success).toBe(true);
 
-      // Verify releaseTaskPod was NOT called
-      expect(releaseTaskPod).not.toHaveBeenCalled();
+      // Verify releaseTaskPod WAS called with correct parameters
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task.id,
+        podId: 'test-pod-000',
+        workspaceId: testSetup.workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null, // Should preserve task status
+      });
+
+      // Verify task status was preserved (not changed)
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { status: true },
+      });
+      expect(updatedTask?.status).toBe(TaskStatus.IN_PROGRESS);
     });
 
     test('should handle PR opened action gracefully', async () => {
@@ -830,6 +854,521 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
 
       // Verify releaseTaskPod was NOT called (archived task)
       expect(releaseTaskPod).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PR Closed Without Merge - Pod Release Logic', () => {
+    test('should release pod when PR closed without merge and task has pod assigned', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      // Create task with pod assigned and status IN_PROGRESS
+      const task = await db.task.create({
+        data: {
+          title: 'Test Task with Pod',
+          description: 'Task description',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: 'test-pod-closed-123',
+          agentUrl: 'https://test-pod.example.com',
+          agentPassword: JSON.stringify(
+            encryptionService.encryptField('agentPassword', 'test-password')
+          ),
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      // Create chat message
+      const message = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          role: 'ASSISTANT',
+          message: 'PR created',
+          status: 'SENT',
+        },
+      });
+
+      // Create PR artifact with status 'open'
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/1001';
+      const artifact = await db.artifact.create({
+        data: {
+          messageId: message.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            repo: 'test-owner/test-repo',
+            url: prUrl,
+            status: 'open',
+          },
+        },
+      });
+
+      // Mock successful pod release
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: true,
+        podDropped: true,
+        taskCleared: true,
+      });
+
+      // Create PR closed WITHOUT merge webhook payload
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false, // NOT merged
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+
+      const signature = computeValidWebhookSignature(
+        testSetup.webhookSecret,
+        JSON.stringify(prPayload)
+      );
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-1001',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      // Should return 202
+      expect(response.status).toBe(202);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+
+      // Verify task status was NOT changed (remains IN_PROGRESS)
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { status: true },
+      });
+      expect(updatedTask?.status).toBe(TaskStatus.IN_PROGRESS);
+
+      // Verify PR artifact status was updated to "CANCELLED"
+      const updatedArtifact = await db.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact?.content).toMatchObject({
+        repo: 'test-owner/test-repo',
+        url: prUrl,
+        status: 'CANCELLED',
+      });
+
+      // Verify PR_STATUS_CHANGE event was broadcasted to task channel
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `task-${task.id}`,
+        'pr-status-change',
+        expect.objectContaining({
+          taskId: task.id,
+          prUrl: prUrl,
+          state: 'closed',
+          artifactStatus: 'CANCELLED',
+        })
+      );
+
+      // Verify WORKSPACE_TASK_TITLE_UPDATE was NOT broadcasted
+      expect(pusherServer.trigger).not.toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        'workspace-task-title-update',
+        expect.anything()
+      );
+
+      // Verify releaseTaskPod was called with newWorkflowStatus=null
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task.id,
+        podId: 'test-pod-closed-123',
+        workspaceId: testSetup.workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+    });
+
+    test('should handle closed PR when pod reassigned to another task', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      // Create task with pod assigned
+      const task = await db.task.create({
+        data: {
+          title: 'Test Task with Reassigned Pod',
+          description: 'Task description',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: 'test-pod-reassigned',
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      const message = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          role: 'ASSISTANT',
+          message: 'PR created',
+          status: 'SENT',
+        },
+      });
+
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/1002';
+      const artifact = await db.artifact.create({
+        data: {
+          messageId: message.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            repo: 'test-owner/test-repo',
+            url: prUrl,
+            status: 'open',
+          },
+        },
+      });
+
+      // Mock pod reassigned (ownership verification fails)
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: true,
+        podDropped: false, // Pod NOT dropped (reassigned)
+        taskCleared: true,
+        reassigned: true,
+      });
+
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false,
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+
+      const signature = computeValidWebhookSignature(
+        testSetup.webhookSecret,
+        JSON.stringify(prPayload)
+      );
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-1002',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      expect(response.status).toBe(202);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+
+      // Verify artifact status updated to CANCELLED
+      const updatedArtifact = await db.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact?.content).toMatchObject({
+        status: 'CANCELLED',
+      });
+
+      // Verify releaseTaskPod was called
+      expect(releaseTaskPod).toHaveBeenCalled();
+    });
+
+    test('should handle closed PR when task has no pod', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      // Create task WITHOUT pod
+      const task = await db.task.create({
+        data: {
+          title: 'Test Task without Pod',
+          description: 'Task description',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.TODO,
+          workflowStatus: WorkflowStatus.PENDING,
+          podId: null, // No pod
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      const message = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          role: 'ASSISTANT',
+          message: 'PR created',
+          status: 'SENT',
+        },
+      });
+
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/1003';
+      const artifact = await db.artifact.create({
+        data: {
+          messageId: message.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            repo: 'test-owner/test-repo',
+            url: prUrl,
+            status: 'open',
+          },
+        },
+      });
+
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false,
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+
+      const signature = computeValidWebhookSignature(
+        testSetup.webhookSecret,
+        JSON.stringify(prPayload)
+      );
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-1003',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      expect(response.status).toBe(202);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+
+      // Verify artifact status updated to CANCELLED
+      const updatedArtifact = await db.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact?.content).toMatchObject({
+        status: 'CANCELLED',
+      });
+
+      // Verify releaseTaskPod was NOT called (no pod)
+      expect(releaseTaskPod).not.toHaveBeenCalled();
+    });
+
+    test('should preserve task status when PR closed without merge', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      // Create task with status IN_PROGRESS
+      const task = await db.task.create({
+        data: {
+          title: 'Test Task',
+          description: 'Task description',
+          workspaceId: testSetup.workspace.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: 'test-pod-preserve',
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      const message = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          role: 'ASSISTANT',
+          message: 'PR created',
+          status: 'SENT',
+        },
+      });
+
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/1004';
+      await db.artifact.create({
+        data: {
+          messageId: message.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            repo: 'test-owner/test-repo',
+            url: prUrl,
+            status: 'open',
+          },
+        },
+      });
+
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: true,
+        podDropped: true,
+        taskCleared: true,
+      });
+
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false,
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+
+      const signature = computeValidWebhookSignature(
+        testSetup.webhookSecret,
+        JSON.stringify(prPayload)
+      );
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-1004',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      expect(response.status).toBe(202);
+
+      // Verify task status remains IN_PROGRESS
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { status: true },
+      });
+      expect(updatedTask?.status).toBe(TaskStatus.IN_PROGRESS);
+    });
+
+    test('should NOT trigger feature status cascade when PR closed without merge', async () => {
+      const testSetup = await createWebhookTestScenario({
+        branch: 'main',
+        status: RepositoryStatus.SYNCED,
+      });
+
+      // Create feature
+      const feature = await db.feature.create({
+        data: {
+          title: 'Test Feature',
+          workspaceId: testSetup.workspace.id,
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      // Create task linked to feature with pod
+      const task = await db.task.create({
+        data: {
+          title: 'Test Task with Feature',
+          description: 'Task description',
+          workspaceId: testSetup.workspace.id,
+          featureId: feature.id,
+          status: TaskStatus.IN_PROGRESS,
+          workflowStatus: WorkflowStatus.IN_PROGRESS,
+          podId: 'test-pod-feature',
+          createdById: testSetup.user.id,
+          updatedById: testSetup.user.id,
+        },
+      });
+
+      const message = await db.chatMessage.create({
+        data: {
+          taskId: task.id,
+          role: 'ASSISTANT',
+          message: 'PR created',
+          status: 'SENT',
+        },
+      });
+
+      const prUrl = 'https://github.com/test-owner/test-repo/pull/1005';
+      await db.artifact.create({
+        data: {
+          messageId: message.id,
+          type: ArtifactType.PULL_REQUEST,
+          content: {
+            repo: 'test-owner/test-repo',
+            url: prUrl,
+            status: 'open',
+          },
+        },
+      });
+
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: true,
+        podDropped: true,
+        taskCleared: true,
+      });
+
+      const prPayload = createGitHubPullRequestPayload(
+        'closed',
+        false,
+        prUrl,
+        testSetup.repository.repositoryUrl
+      );
+
+      const signature = computeValidWebhookSignature(
+        testSetup.webhookSecret,
+        JSON.stringify(prPayload)
+      );
+
+      const request = new Request(
+        `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signature,
+            'x-github-event': 'pull_request',
+            'x-github-delivery': 'pr-delivery-1005',
+            'x-github-hook-id': testSetup.repository.githubWebhookId!,
+          },
+          body: JSON.stringify(prPayload),
+        }
+      );
+
+      const response = await POST(request, {
+        params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
+      });
+
+      expect(response.status).toBe(202);
+
+      // Verify updateFeatureStatusFromTasks was NOT called
+      expect(updateFeatureStatusFromTasks).not.toHaveBeenCalled();
     });
   });
 });

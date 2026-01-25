@@ -426,6 +426,200 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
       }
 
+      // Handle PR closed without merge - release pod but preserve task status
+      if (action === "closed" && merged === false && prUrl) {
+        console.log("[GithubWebhook] PR closed without merge - processing", {
+          delivery,
+          prUrl,
+        });
+
+        try {
+          // Query tasks with matching PR artifact using same SQL query as merged handler
+          const tasks = await db.$queryRaw<
+            Array<{
+              task_id: string;
+              pod_id: string | null;
+              workspace_id: string;
+              status: TaskStatus;
+              feature_id: string | null;
+              artifact_id: string;
+              workflow_status: WorkflowStatus | null;
+            }>
+          >(
+            Prisma.sql`
+              SELECT t.id as task_id, t.pod_id, t.workspace_id, t.status, t.feature_id, 
+                     a.id as artifact_id, t.workflow_status
+              FROM artifacts a
+              JOIN chat_messages m ON a.message_id = m.id
+              JOIN tasks t ON m.task_id = t.id
+              WHERE a.type = 'PULL_REQUEST'
+                AND a.content->>'url' = ${prUrl}
+                AND t.deleted = false
+                AND t.archived = false
+            `,
+          );
+
+          if (tasks.length === 0) {
+            console.log("[GithubWebhook] PR closed - no tasks found", {
+              delivery,
+              prUrl,
+            });
+            return NextResponse.json({ success: true }, { status: 202 });
+          }
+
+          if (tasks.length > 1) {
+            console.warn("[GithubWebhook] PR closed - multiple tasks found, manual resolution needed", {
+              delivery,
+              prUrl,
+              taskIds: tasks.map((t) => t.task_id),
+            });
+            return NextResponse.json({ success: true }, { status: 202 });
+          }
+
+          // Exactly one task found - update artifact and release pod if applicable
+          const task = tasks[0];
+          console.log("[GithubWebhook] PR closed - updating artifact (preserving task status)", {
+            delivery,
+            prUrl,
+            taskId: task.task_id,
+            currentStatus: task.status,
+            hasPod: !!task.pod_id,
+          });
+
+          // Update PR artifact content status to "CANCELLED" (not "DONE")
+          try {
+            const artifact = await db.artifact.findUnique({
+              where: { id: task.artifact_id },
+              select: { content: true },
+            });
+
+            if (artifact?.content && typeof artifact.content === 'object') {
+              const updatedContent = {
+                ...artifact.content,
+                status: "CANCELLED",
+              };
+
+              await db.artifact.update({
+                where: { id: task.artifact_id },
+                data: { content: updatedContent as Prisma.InputJsonValue },
+              });
+
+              console.log("[GithubWebhook] PR closed - artifact status updated to CANCELLED", {
+                delivery,
+                artifactId: task.artifact_id,
+              });
+            }
+          } catch (artifactError) {
+            console.error("[GithubWebhook] PR closed - failed to update artifact status", {
+              delivery,
+              artifactId: task.artifact_id,
+              error: artifactError,
+            });
+            // Continue processing - don't fail webhook on artifact update error
+          }
+
+          // Broadcast Pusher event for real-time UI updates (only to task channel)
+          const workspace = await db.workspace.findUnique({
+            where: { id: task.workspace_id },
+            select: { slug: true },
+          });
+
+          if (workspace?.slug) {
+            try {
+              const taskChannelName = getTaskChannelName(task.task_id);
+              await pusherServer.trigger(taskChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
+                taskId: task.task_id,
+                prNumber: payload.pull_request.number,
+                prUrl: prUrl,
+                state: "closed",
+                artifactStatus: "CANCELLED",
+                timestamp: new Date(),
+              });
+
+              console.log("[GithubWebhook] PR closed - task channel event broadcasted", {
+                delivery,
+                taskId: task.task_id,
+                channel: taskChannelName,
+              });
+            } catch (taskPusherError) {
+              console.error("[GithubWebhook] PR closed - task channel broadcast failed", {
+                delivery,
+                taskId: task.task_id,
+                error: taskPusherError,
+              });
+            }
+          }
+
+          // Release pod if task has one assigned
+          if (task.pod_id) {
+            console.log("[GithubWebhook] PR closed - releasing pod for task", {
+              delivery,
+              prUrl,
+              taskId: task.task_id,
+              podId: task.pod_id,
+            });
+
+            const result = await releaseTaskPod({
+              taskId: task.task_id,
+              podId: task.pod_id,
+              workspaceId: task.workspace_id,
+              verifyOwnership: true,
+              clearTaskFields: true,
+              newWorkflowStatus: null, // Don't change workflow status - preserve task status
+            });
+
+            if (result.success) {
+              if (result.reassigned) {
+                console.log("[GithubWebhook] PR closed - pod release: pod was reassigned", {
+                  delivery,
+                  prUrl,
+                  taskId: task.task_id,
+                  podId: task.pod_id,
+                });
+              } else if (result.podDropped) {
+                console.log("[GithubWebhook] PR closed - pod release: success", {
+                  delivery,
+                  prUrl,
+                  taskId: task.task_id,
+                  podId: task.pod_id,
+                });
+              } else {
+                console.log("[GithubWebhook] PR closed - pod release: partial success (task cleared)", {
+                  delivery,
+                  prUrl,
+                  taskId: task.task_id,
+                  taskCleared: result.taskCleared,
+                });
+              }
+              return NextResponse.json({ success: true }, { status: 202 });
+            } else {
+              console.error("[GithubWebhook] PR closed - pod release: failed (non-blocking)", {
+                delivery,
+                prUrl,
+                taskId: task.task_id,
+                error: result.error,
+              });
+              // Still return success - artifact was updated
+              return NextResponse.json({ success: true }, { status: 202 });
+            }
+          } else {
+            // No pod to release - artifact updated successfully
+            console.log("[GithubWebhook] PR closed - artifact updated successfully (no pod)", {
+              delivery,
+              taskId: task.task_id,
+            });
+            return NextResponse.json({ success: true }, { status: 202 });
+          }
+        } catch (error) {
+          console.error("[GithubWebhook] PR closed - error processing task updates", {
+            delivery,
+            prUrl,
+            error,
+          });
+          return NextResponse.json({ success: true }, { status: 202 });
+        }
+      }
+
       console.log("[GithubWebhook] PR action not handled, skipping", {
         delivery,
         workspaceId: repository.workspaceId,
