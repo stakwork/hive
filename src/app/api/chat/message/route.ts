@@ -11,6 +11,7 @@ import { transformSwarmUrlToRepo2Graph } from "@/lib/utils/swarm";
 import { callStakworkAPI } from "@/services/task-workflow";
 import { EncryptionService } from "@/lib/encryption";
 import { buildFeatureContext } from "@/services/task-coordinator";
+import { updateTaskWorkflowStatus } from "@/lib/helpers/workflow-status";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -347,30 +348,18 @@ export async function POST(request: NextRequest) {
       });
 
       if (stakworkData.success) {
-        const updateData: {
-          workflowStatus: WorkflowStatus;
-          workflowStartedAt: Date;
-          stakworkProjectId?: number;
-        } = {
+        await updateTaskWorkflowStatus({
+          taskId,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           workflowStartedAt: new Date(),
-        };
-
-        // Store the Stakwork project ID if available
-        if (stakworkData.data?.project_id) {
-          updateData.stakworkProjectId = stakworkData.data.project_id;
-        }
-
-        await db.task.update({
-          where: { id: taskId },
-          data: updateData,
+          additionalData: stakworkData.data?.project_id
+            ? { stakworkProjectId: stakworkData.data.project_id }
+            : undefined,
         });
       } else {
-        await db.task.update({
-          where: { id: taskId },
-          data: {
-            workflowStatus: WorkflowStatus.FAILED,
-          },
+        await updateTaskWorkflowStatus({
+          taskId,
+          workflowStatus: WorkflowStatus.FAILED,
         });
       }
     } else {
