@@ -75,6 +75,7 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run integration tests
+        id: integration-tests
         env:
           TEST_SUITE: integration
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
@@ -95,4 +96,13 @@ jobs:
           STAKWORK_CUSTOMERS_PASSWORD: ${{ secrets.STAKWORK_CUSTOMERS_PASSWORD}}
           SWARM_SUPER_ADMIN_URL: placeholder
           LIVEKIT_CALL_BASE_URL: "https://call-link"
-        run: npm run test:integration
+        run: npm run test:integration > integration-test.log 2>&1
+        continue-on-error: true
+
+      - name: Display logs on failure
+        if: steps.integration-tests.outcome == 'failure'
+        run: cat integration-test.log
+
+      - name: Fail job if tests failed
+        if: steps.integration-tests.outcome == 'failure'
+        run: exit 1
