@@ -73,6 +73,7 @@ export const cleanup = {
 export async function resetDatabase() {
   try {
     // Delete in order respecting foreign key constraints
+    // Children first, then parents
     await db.screenshot.deleteMany();
     await db.attachment.deleteMany();
     await db.artifact.deleteMany();
@@ -88,6 +89,7 @@ export async function resetDatabase() {
     await db.janitorRun.deleteMany();
     await db.janitorConfig.deleteMany();
     await db.repository.deleteMany();
+    // Environment variables must be deleted before swarms due to FK constraint
     await db.environmentVariable.deleteMany();
     await db.pod.deleteMany();
     await db.swarm.deleteMany();
@@ -99,7 +101,8 @@ export async function resetDatabase() {
     await db.sourceControlToken.deleteMany();
     await db.sourceControlOrg.deleteMany();
     await db.user.deleteMany();
-  } catch {
+  } catch (error) {
+    console.error("resetDatabase failed, falling back to aggressive reset:", error);
     await aggressiveReset();
   }
 }

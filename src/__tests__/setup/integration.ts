@@ -48,15 +48,28 @@ beforeAll(async () => {
 });
 
 // Reset database before each test to ensure clean state.
-// No afterEach needed - beforeEach provides full isolation.
 beforeEach(async () => {
   fetchState.push(globalThis.fetch);
-  await resetDatabase();
+  try {
+    await resetDatabase();
+  } catch (error) {
+    console.error("Failed to reset database in beforeEach:", error);
+    throw error;
+  }
 });
 
-afterEach(() => {
+// Also cleanup after each test to handle test failures
+afterEach(async () => {
   const previousFetch = fetchState.pop();
   globalThis.fetch = previousFetch ?? initialFetch;
+  
+  // Additional cleanup after test to ensure no state leaks
+  try {
+    await resetDatabase();
+  } catch (error) {
+    console.error("Failed to reset database in afterEach:", error);
+    // Don't throw here to avoid masking test failures
+  }
 });
 
 afterAll(async () => {
