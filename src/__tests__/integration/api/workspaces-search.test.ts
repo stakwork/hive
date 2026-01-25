@@ -236,13 +236,17 @@ describe("Workspace Search API - Integration Tests", () => {
         slug: "test-workspace",
       });
 
+      // Create tasks with a time gap to ensure ordering
+      const olderDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000); // 2 days ago
+      const newerDate = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 day ago
+
       const oldTask = await db.task.create({
         data: {
           title: "Old test task",
           workspaceId: workspace.id,
           createdById: user.id,
           updatedById: user.id,
-          updatedAt: new Date("2023-01-01"),
+          updatedAt: olderDate,
         },
       });
 
@@ -252,7 +256,7 @@ describe("Workspace Search API - Integration Tests", () => {
           workspaceId: workspace.id,
           createdById: user.id,
           updatedById: user.id,
-          updatedAt: new Date("2024-01-01"),
+          updatedAt: newerDate,
         },
       });
 
