@@ -48,11 +48,23 @@ export async function POST(request: NextRequest) {
     // Generate a unique bounty code
     const bountyCode = await ensureUniqueBountyCode();
 
+    // Build description with source link and account info
+    const sourceUrl = `https://hive.sphinx.chat/w/${sourceWorkspaceSlug}/task/${sourceTaskId}`;
+    const descriptionParts = [
+      description?.trim() || "",
+      "",
+      `---`,
+      `Source: ${sourceUrl}`,
+      "",
+      `If you don't have an account, [click here](https://hive.sphinx.chat) to sign up.`,
+    ].filter(Boolean);
+    const fullDescription = descriptionParts.join("\n");
+
     // Create the bounty task in leetbox workspace
     const task = await db.task.create({
       data: {
         title: title.trim(),
-        description: description?.trim() || `Bounty request from ${sourceWorkspaceSlug} task ${sourceTaskId}`,
+        description: fullDescription,
         workspaceId: leetboxWorkspace.id,
         status: TaskStatus.TODO,
         bountyCode,
