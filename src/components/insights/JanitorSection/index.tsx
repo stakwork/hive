@@ -18,6 +18,9 @@ export interface JanitorItem {
   description: string;
   configKey?: string;
   comingSoon?: boolean;
+  childOptions?: JanitorItem[]; // Child options that depend on this parent being enabled
+  parentKey?: string; // Reference to parent configKey (for child options)
+  exclusiveGroup?: string; // For mutually exclusive options (radio-button behavior)
 }
 
 export interface JanitorSectionProps {
@@ -77,7 +80,7 @@ export function JanitorSection({
     return runningJanitors.has(janitor.id);
   };
 
-  const handleToggle = async (janitor: JanitorItem) => {
+  const handleToggle = async (janitor: JanitorItem, parentJanitor?: JanitorItem) => {
 
     if (workspace?.poolState !== "COMPLETE") {
       open("ServicesWizard");
@@ -86,6 +89,35 @@ export function JanitorSection({
 
     if (comingSoon || janitor.comingSoon || !janitor.configKey || !workspace?.slug) return;
 
+    // Handle mutually exclusive options (radio-button behavior)
+    if (janitor.exclusiveGroup && parentJanitor?.childOptions) {
+      const isCurrentlyOn = getJanitorState(janitor);
+      
+      // If turning on this option, turn off all others in the same exclusive group
+      if (!isCurrentlyOn) {
+        const siblingsToDisable = parentJanitor.childOptions.filter(
+          (child) => child.exclusiveGroup === janitor.exclusiveGroup && child.configKey !== janitor.configKey
+        );
+
+        try {
+          // Turn off all siblings first
+          for (const sibling of siblingsToDisable) {
+            if (sibling.configKey && getJanitorState(sibling)) {
+              await toggleJanitor(workspace.slug, sibling.configKey);
+            }
+          }
+          // Then turn on the selected option
+          await toggleJanitor(workspace.slug, janitor.configKey);
+        } catch {
+          toast.error("Failed to update janitor configuration", { description: "Please try again." });
+        }
+        return;
+      }
+      // Don't allow turning off a radio button option (at least one must be selected)
+      return;
+    }
+
+    // Normal toggle behavior
     try {
       await toggleJanitor(workspace.slug, janitor.configKey);
     } catch {
@@ -122,68 +154,117 @@ export function JanitorSection({
             const isItemComingSoon = janitor.comingSoon || comingSoon;
 
             return (
-              <div
-                key={janitor.id}
-                data-testid={`janitor-item-${janitor.id}`}
-                className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${isItemComingSoon ? 'opacity-60' : ''
-                  }`}
-              >
-                <div className="flex items-center space-x-3 flex-1">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${isOn
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-background border-gray-200'
-                    }`}>
-                    <Icon className={`h-4 w-4 ${isOn
-                      ? 'text-green-600'
-                      : 'text-muted-foreground'
-                      }`} />
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="font-medium text-sm" data-testid={`janitor-name-${janitor.id}`}>{janitor.name}</span>
-                      {getStatusBadge(isOn, janitor.comingSoon || false, comingSoon || false)}
+              <div key={janitor.id}>
+                <div
+                  data-testid={`janitor-item-${janitor.id}`}
+                  className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${isItemComingSoon ? 'opacity-60' : ''
+                    }`}
+                >
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full border ${isOn
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-background border-gray-200'
+                      }`}>
+                      <Icon className={`h-4 w-4 ${isOn
+                        ? 'text-green-600'
+                        : 'text-muted-foreground'
+                        }`} />
                     </div>
-                    <p className="text-xs text-muted-foreground">{janitor.description}</p>
+
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="font-medium text-sm" data-testid={`janitor-name-${janitor.id}`}>{janitor.name}</span>
+                        {getStatusBadge(isOn, janitor.comingSoon || false, comingSoon || false)}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{janitor.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    {isItemComingSoon ? (
+                      <Clock className="h-4 w-4 text-gray-400" />
+                    ) : (
+                      isOn && canManuallyRun(janitor.id) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              data-testid={`janitor-run-button-${janitor.id}`}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => handleManualRun(janitor)}
+                              disabled={isRunning || loading}
+                            >
+                              {isRunning ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Play className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Manually run</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )
+                    )}
+                    <Switch
+                      data-testid={`janitor-toggle-${janitor.id}`}
+                      checked={isItemComingSoon ? false : isOn}
+                      onCheckedChange={() => handleToggle(janitor)}
+                      className="data-[state=checked]:bg-green-500"
+                      disabled={isItemComingSoon || loading}
+                    />
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  {isItemComingSoon ? (
-                    <Clock className="h-4 w-4 text-gray-400" />
-                  ) : (
-                    isOn && canManuallyRun(janitor.id) && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            data-testid={`janitor-run-button-${janitor.id}`}
-                            variant="outline"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleManualRun(janitor)}
-                            disabled={isRunning || loading}
-                          >
-                            {isRunning ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Play className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Manually run</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )
-                  )}
-                  <Switch
-                    data-testid={`janitor-toggle-${janitor.id}`}
-                    checked={isItemComingSoon ? false : isOn}
-                    onCheckedChange={() => handleToggle(janitor)}
-                    className="data-[state=checked]:bg-green-500"
-                    disabled={isItemComingSoon || loading}
-                  />
-                </div>
+                {/* Render child options if parent is enabled */}
+                {isOn && janitor.childOptions && janitor.childOptions.length > 0 && (
+                  <div className="ml-11 mt-2 space-y-2">
+                    {janitor.childOptions.map((childOption) => {
+                      const ChildIcon = childOption.icon;
+                      const isChildOn = getJanitorState(childOption);
+                      const isChildComingSoon = childOption.comingSoon || comingSoon;
+
+                      return (
+                        <div
+                          key={childOption.id}
+                          data-testid={`janitor-item-${childOption.id}`}
+                          className={`flex items-center justify-between p-2 rounded-lg border border-dashed bg-card/50 hover:bg-accent/30 transition-colors ${isChildComingSoon ? 'opacity-60' : ''
+                            }`}
+                        >
+                          <div className="flex items-center space-x-3 flex-1">
+                            <div className={`flex items-center justify-center w-6 h-6 rounded-full border ${isChildOn
+                              ? 'bg-blue-50 border-blue-200'
+                              : 'bg-background border-gray-200'
+                              }`}>
+                              <ChildIcon className={`h-3 w-3 ${isChildOn
+                                ? 'text-blue-600'
+                                : 'text-muted-foreground'
+                                }`} />
+                            </div>
+
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <span className="font-medium text-xs" data-testid={`janitor-name-${childOption.id}`}>{childOption.name}</span>
+                                {isChildOn && <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">Strategy</Badge>}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{childOption.description}</p>
+                            </div>
+                          </div>
+
+                          <Switch
+                            data-testid={`janitor-toggle-${childOption.id}`}
+                            checked={isChildComingSoon ? false : isChildOn}
+                            onCheckedChange={() => handleToggle(childOption, janitor)}
+                            className="data-[state=checked]:bg-blue-500"
+                            disabled={isChildComingSoon || loading}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
