@@ -32,6 +32,7 @@ export function BrowserArtifactPanel({
   ide,
   workspaceId,
   taskId,
+  podId,
   onDebugMessage,
   onUserJourneySave,
   externalTestCode,
@@ -42,6 +43,7 @@ export function BrowserArtifactPanel({
   ide?: boolean;
   workspaceId?: string;
   taskId?: string;
+  podId?: string | null;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   onUserJourneySave?: (testName: string, generatedCode: string) => void;
   externalTestCode?: string | null;
@@ -472,6 +474,13 @@ export function BrowserArtifactPanel({
                     <div className="flex flex-col items-center gap-3">
                       <Loader2 className="w-8 h-8 animate-spin text-primary" />
                       <p className="text-sm text-muted-foreground">Waiting for server to be ready...</p>
+                    </div>
+                  </div>
+                )}
+                {isActive && isUrlReady && !podId && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-3">
+                      <p className="text-sm text-muted-foreground">Development environment has been released</p>
                     </div>
                   </div>
                 )}
