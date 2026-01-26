@@ -1162,6 +1162,7 @@ export default function TaskChatPage() {
                     artifacts={[browserArtifact]}
                     workspaceId={effectiveWorkspaceId || undefined}
                     taskId={currentTaskId || undefined}
+                    podId={podId}
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
@@ -1229,6 +1230,7 @@ export default function TaskChatPage() {
                       artifacts={artifactsWithoutOldDiffs}
                       workspaceId={effectiveWorkspaceId || undefined}
                       taskId={currentTaskId || undefined}
+                      podId={podId}
                       onDebugMessage={handleDebugMessage}
                     />
                   </div>
@@ -1268,6 +1270,7 @@ export default function TaskChatPage() {
                     artifacts={[browserArtifact]}
                     workspaceId={effectiveWorkspaceId || undefined}
                     taskId={currentTaskId || undefined}
+                    podId={podId}
                     onDebugMessage={handleDebugMessage}
                     isMobile={isMobile}
                     onTogglePreview={() => setShowPreview(!showPreview)}
@@ -1342,6 +1345,7 @@ export default function TaskChatPage() {
                       artifacts={artifactsWithoutOldDiffs}
                       workspaceId={effectiveWorkspaceId || undefined}
                       taskId={currentTaskId || undefined}
+                      podId={podId}
                       onDebugMessage={handleDebugMessage}
                       onStepSelect={taskMode === "workflow_editor" ? handleStepSelect : undefined}
                     />
