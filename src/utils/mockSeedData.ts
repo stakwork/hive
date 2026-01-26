@@ -1321,7 +1321,7 @@ async function seedPullRequestArtifacts(
     {
       title: "Add GraphQL API support for advanced queries",
       status: "IN_PROGRESS" as const,
-      prStatus: "open" as const,
+      prStatus: "IN_PROGRESS" as const,
       createdHoursAgo: 18,
       additions: 680,
       deletions: 95,
@@ -1330,7 +1330,7 @@ async function seedPullRequestArtifacts(
     {
       title: "Implement rate limiting for public API endpoints",
       status: "IN_PROGRESS" as const,
-      prStatus: "open" as const,
+      prStatus: "IN_PROGRESS" as const,
       createdHoursAgo: 32,
       additions: 215,
       deletions: 48,
@@ -1339,7 +1339,7 @@ async function seedPullRequestArtifacts(
     {
       title: "Add file upload progress indicators",
       status: "IN_PROGRESS" as const,
-      prStatus: "open" as const,
+      prStatus: "IN_PROGRESS" as const,
       createdHoursAgo: 52,
       additions: 340,
       deletions: 62,
@@ -1350,7 +1350,7 @@ async function seedPullRequestArtifacts(
     {
       title: "Experiment with new caching strategy (abandoned)",
       status: "CANCELLED" as const,
-      prStatus: "closed" as const,
+      prStatus: "CANCELLED" as const,
       createdHoursAgo: 44,
       closedHoursAgo: 42,
       additions: 425,
@@ -1360,7 +1360,7 @@ async function seedPullRequestArtifacts(
     {
       title: "Alternative approach to user permissions (superseded)",
       status: "CANCELLED" as const,
-      prStatus: "closed" as const,
+      prStatus: "CANCELLED" as const,
       createdHoursAgo: 28,
       closedHoursAgo: 26,
       additions: 310,
@@ -1424,7 +1424,7 @@ async function seedPullRequestArtifacts(
 
     if (template.prStatus === "DONE" && template.mergedHoursAgo) {
       updatedAt = new Date(now - template.mergedHoursAgo * HOUR_MS);
-    } else if (template.prStatus === "closed" && template.closedHoursAgo) {
+    } else if (template.prStatus === "CANCELLED" && template.closedHoursAgo) {
       updatedAt = new Date(now - template.closedHoursAgo * HOUR_MS);
     } else {
       // For open PRs, updatedAt is recent (last update)
@@ -1463,7 +1463,7 @@ async function seedPullRequestArtifacts(
         message:
           template.prStatus === "DONE"
             ? "Pull request has been successfully merged!"
-            : template.prStatus === "open"
+            : template.prStatus === "IN_PROGRESS"
             ? "Pull request is ready for review. Please check the changes."
             : "Pull request was closed without merging.",
         role: "ASSISTANT",
@@ -1502,10 +1502,10 @@ async function seedPullRequestArtifacts(
     `  - ${prTemplates.filter((t) => t.prStatus === "DONE" && t.createdHoursAgo <= 72).length} merged within 72h`
   );
   console.log(
-    `  - ${prTemplates.filter((t) => t.prStatus === "open").length} open PRs`
+    `  - ${prTemplates.filter((t) => t.prStatus === "IN_PROGRESS").length} open PRs`
   );
   console.log(
-    `  - ${prTemplates.filter((t) => t.prStatus === "closed").length} closed PRs`
+    `  - ${prTemplates.filter((t) => t.prStatus === "CANCELLED").length} closed PRs`
   );
   console.log(
     `  - ${prTemplates.filter((t) => t.createdHoursAgo > 72).length} older than 72h`
