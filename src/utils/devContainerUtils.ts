@@ -351,10 +351,11 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
         if (!block.trim()) continue;
 
         // Extract fields using regex
-        const nameMatch = block.match(/name:\s*["']([^"']+)["']/);
-        const scriptMatch = block.match(/script:\s*["']([^"']+)["']/);
-        const cwdMatch = block.match(/cwd:\s*["']([^"']+)["']/);
-        const interpreterMatch = block.match(/interpreter:\s*["']([^"']+)["']/);
+        // Use separate patterns for double-quoted and single-quoted values to handle nested quotes
+        const nameMatch = block.match(/name:\s*"([^"]+)"/) || block.match(/name:\s*'([^']+)'/);
+        const scriptMatch = block.match(/script:\s*"([^"]+)"/) || block.match(/script:\s*'([^']+)'/);
+        const cwdMatch = block.match(/cwd:\s*"([^"]+)"/) || block.match(/cwd:\s*'([^']+)'/);
+        const interpreterMatch = block.match(/interpreter:\s*"([^"]+)"/) || block.match(/interpreter:\s*'([^']+)'/);
 
         // Extract env variables
         const envMatch = block.match(/env:\s*\{([\s\S]*?)\}/);
@@ -370,13 +371,14 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
         if (envMatch) {
           const envContent = envMatch[1];
           const portMatch = envContent.match(/PORT:\s*["'](\d+)["']/);
-          const installMatch = envContent.match(/INSTALL_COMMAND:\s*["']([^"']+)["']/);
-          const buildMatch = envContent.match(/BUILD_COMMAND:\s*["']([^"']+)["']/);
-          const testMatch = envContent.match(/TEST_COMMAND:\s*["']([^"']+)["']/);
-          const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*["']([^"']+)["']/);
-          const postStartMatch = envContent.match(/POST_START_COMMAND:\s*["']([^"']+)["']/);
-          const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*["']([^"']+)["']/);
-          const resetMatch = envContent.match(/RESET_COMMAND:\s*["']([^"']+)["']/);
+          // For command values, match double-quoted strings (which may contain single quotes) or single-quoted strings (which may contain double quotes)
+          const installMatch = envContent.match(/INSTALL_COMMAND:\s*"([^"]+)"/) || envContent.match(/INSTALL_COMMAND:\s*'([^']+)'/);
+          const buildMatch = envContent.match(/BUILD_COMMAND:\s*"([^"]+)"/) || envContent.match(/BUILD_COMMAND:\s*'([^']+)'/);
+          const testMatch = envContent.match(/TEST_COMMAND:\s*"([^"]+)"/) || envContent.match(/TEST_COMMAND:\s*'([^']+)'/);
+          const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/PRE_START_COMMAND:\s*'([^']+)'/);
+          const postStartMatch = envContent.match(/POST_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/POST_START_COMMAND:\s*'([^']+)'/);
+          const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*"([^"]+)"/) || envContent.match(/REBUILD_COMMAND:\s*'([^']+)'/);
+          const resetMatch = envContent.match(/RESET_COMMAND:\s*"([^"]+)"/) || envContent.match(/RESET_COMMAND:\s*'([^']+)'/;
 
           if (portMatch) port = parseInt(portMatch[1]);
           if (installMatch) installCmd = installMatch[1];
