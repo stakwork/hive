@@ -19,6 +19,8 @@ const updateJanitorConfigSchema = z.object({
   prConflictFixEnabled: z.boolean().optional(),
   prCiFailureFixEnabled: z.boolean().optional(),
   prOutOfDateFixEnabled: z.boolean().optional(),
+  prUseMergeForUpdates: z.boolean().optional(),
+  prUseRebaseForUpdates: z.boolean().optional(),
 });
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
