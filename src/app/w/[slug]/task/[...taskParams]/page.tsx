@@ -21,7 +21,7 @@ import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
 import { useTaskMode } from "@/hooks/useTaskMode";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
-import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal } from "./components";
+import { TaskStartInput, ChatArea, AgentChatArea, ArtifactsPanel, CommitModal, BountyRequestModal } from "./components";
 import { useWorkflowNodes, WorkflowNode } from "@/hooks/useWorkflowNodes";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useStreamProcessor } from "@/lib/streaming";
@@ -29,6 +29,8 @@ import { agentToolProcessors } from "./lib/streaming-config";
 import type { AgentStreamingMessage } from "@/types/agent";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
 import { archiveTaskAndRedirect } from "./lib/archive-task";
 
@@ -41,6 +43,7 @@ export default function TaskChatPage() {
   const params = useParams();
   const { id: workspaceId, workspace } = useWorkspace();
   const isMobile = useIsMobile();
+  const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST);
 
   // Fallback: use workspace.id if workspaceId (from context) is null
   const effectiveWorkspaceId = workspaceId || workspace?.id;
@@ -89,6 +92,7 @@ export default function TaskChatPage() {
   //   currentTaskId,
   // });
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
+  const [taskDescription, setTaskDescription] = useState<string | null>(null);
   const [stakworkProjectId, setStakworkProjectId] = useState<number | null>(null);
   const [podId, setPodId] = useState<string | null>(null);
   const [featureId, setFeatureId] = useState<string | null>(null);
@@ -111,6 +115,7 @@ export default function TaskChatPage() {
   const [branchName, setBranchName] = useState("");
   const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showBountyModal, setShowBountyModal] = useState(false);
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -269,9 +274,12 @@ export default function TaskChatPage() {
           }
         }
 
-        // Set task title from API response
+        // Set task title and description from API response
         if (result.data.task?.title) {
           setTaskTitle(result.data.task.title);
+        }
+        if (result.data.task?.description) {
+          setTaskDescription(result.data.task.description);
         }
 
         // Set podId from API response
@@ -1182,6 +1190,7 @@ export default function TaskChatPage() {
                     prUrl={prLink}
                     featureId={featureId}
                     featureTitle={featureTitle}
+                    onOpenBountyRequest={canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined}
                   />
                 )}
               </div>
@@ -1209,6 +1218,7 @@ export default function TaskChatPage() {
                       prUrl={prLink}
                       featureId={featureId}
                       featureTitle={featureTitle}
+                      onOpenBountyRequest={canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined}
                     />
                   </div>
                 </ResizablePanel>
@@ -1247,6 +1257,7 @@ export default function TaskChatPage() {
                 prUrl={prLink}
                 featureId={featureId}
                 featureTitle={featureTitle}
+                onOpenBountyRequest={canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined}
               />
             </div>
           ) : hasNonFormArtifacts ? (
@@ -1290,6 +1301,7 @@ export default function TaskChatPage() {
                     isReleasingPod={isReleasingPod}
                     featureId={featureId}
                     featureTitle={featureTitle}
+                    onOpenBountyRequest={canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined}
                   />
                 )}
               </div>
@@ -1321,6 +1333,7 @@ export default function TaskChatPage() {
                       isReleasingPod={isReleasingPod}
                       featureId={featureId}
                       featureTitle={featureTitle}
+                      onOpenBountyRequest={canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined}
                     />
                   </div>
                 </ResizablePanel>
@@ -1364,6 +1377,7 @@ export default function TaskChatPage() {
                 isReleasingPod={isReleasingPod}
                 featureId={featureId}
                 featureTitle={featureTitle}
+                onOpenBountyRequest={canRequestBounty && prUrl?.status !== "merged" ? () => setShowBountyModal(true) : undefined}
               />
             </div>
           )}
@@ -1379,6 +1393,18 @@ export default function TaskChatPage() {
         initialBranchName={branchName}
         isCommitting={isCommitting}
       />
+
+      {/* Bounty Request Modal */}
+      {currentTaskId && taskTitle && (
+        <BountyRequestModal
+          isOpen={showBountyModal}
+          onClose={() => setShowBountyModal(false)}
+          sourceTaskId={currentTaskId}
+          sourceWorkspaceSlug={slug}
+          sourceTaskTitle={taskTitle}
+          sourceTaskDescription={taskDescription}
+        />
+      )}
     </AnimatePresence>
   );
 }

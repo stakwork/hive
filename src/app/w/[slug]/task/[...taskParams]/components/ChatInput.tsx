@@ -30,6 +30,7 @@ interface ChatInputProps {
   hasPrArtifact?: boolean;
   workspaceSlug?: string;
   taskMode?: string;
+  onOpenBountyRequest?: () => void;
 }
 
 export function ChatInput({
@@ -44,6 +45,7 @@ export function ChatInput({
   hasPrArtifact = false,
   workspaceSlug,
   taskMode,
+  onOpenBountyRequest,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("live");
@@ -268,6 +270,20 @@ export function ChatInput({
           </Button>
         </div>
       </form>
+
+      {/* Bounty request link */}
+      {onOpenBountyRequest && (
+        <div className="flex justify-end px-4 pb-2 md:px-6">
+          <button
+            type="button"
+            onClick={onOpenBountyRequest}
+            className="text-xs"
+          >
+            <span className="text-muted-foreground">Stuck? </span>
+            <span className="text-blue-600 hover:underline">Post a bounty</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
