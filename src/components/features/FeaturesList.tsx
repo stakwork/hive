@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff } from "lucide-react";
+import { Lightbulb, List, LayoutGrid, Trash2, X, Search, Eye, EyeOff, Bell } from "lucide-react";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -31,6 +31,7 @@ import {
   PaginationNext,
 } from "@/components/ui/pagination";
 import { SortableColumnHeader, FilterDropdownHeader } from "./TableColumnHeaders";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FEATURE_STATUS_LABELS } from "@/types/roadmap";
 import { formatRelativeOrDate } from "@/lib/date-utils";
 
@@ -63,12 +64,30 @@ function FeatureRow({
   onDelete: (featureId: string) => Promise<void>;
   onClick: () => void;
 }) {
+  const needsReview = feature._count.stakworkRuns > 0;
+
   return (
     <TableRow
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      <TableCell className="w-[280px] font-medium truncate">{feature.title}</TableCell>
+      <TableCell className="w-[280px] font-medium truncate">
+        <div className="flex items-center gap-2">
+          <span className="truncate">{feature.title}</span>
+          {needsReview && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex-shrink-0">
+                  <Bell className="h-4 w-4 text-amber-500" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Awaiting your feedback</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </TableCell>
       <TableCell className="w-[120px]" onClick={(e) => e.stopPropagation()}>
         <StatusPopover
           statusType="feature"
@@ -236,6 +255,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     return false;
   });
 
+  // State for filtering features that need attention (pending StakworkRuns)
+  const [needsAttentionFilter, setNeedsAttentionFilter] = useState<boolean>(false);
+
   // Debounce search query to reduce API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -307,6 +329,11 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
         params.append("search", debouncedSearchQuery.trim());
       }
 
+      // Add needs attention filter if active
+      if (needsAttentionFilter) {
+        params.append("needsAttention", "true");
+      }
+
       const response = await fetch(`/api/features?${params.toString()}`);
 
       if (!response.ok) {
@@ -332,7 +359,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   };
 
   // Check if any filters are active (excluding default sort)
-  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "";
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "" || needsAttentionFilter;
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -364,7 +391,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery]);
+  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery, needsAttentionFilter]);
 
   // Auto-open creation form when no features exist AND no filters are active (only on initial load)
   useEffect(() => {
@@ -464,6 +491,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     setSortBy("updatedAt");
     setSortOrder("desc");
     setSearchQuery("");
+    setNeedsAttentionFilter(false);
     setPage(1);
   };
 
@@ -748,6 +776,18 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                   </button>
                 )}
               </div>
+              <Button
+                variant={needsAttentionFilter ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setNeedsAttentionFilter(!needsAttentionFilter);
+                  setPage(1);
+                }}
+                className="whitespace-nowrap"
+              >
+                <Bell className="h-4 w-4 mr-2" />
+                Needs input
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
