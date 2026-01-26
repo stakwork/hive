@@ -38,6 +38,7 @@ interface AgentChatAreaProps {
   prUrl?: string | null;
   featureId?: string | null;
   featureTitle?: string | null;
+  onOpenBountyRequest?: () => void;
 }
 
 export function AgentChatArea({
@@ -63,6 +64,7 @@ export function AgentChatArea({
   prUrl = null,
   featureId,
   featureTitle,
+  onOpenBountyRequest,
 }: AgentChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -282,6 +284,7 @@ export function AgentChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         workspaceSlug={workspaceSlug}
+        onOpenBountyRequest={onOpenBountyRequest}
       />
     </motion.div>
   );
