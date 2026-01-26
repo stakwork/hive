@@ -112,17 +112,31 @@ describe('signIn callback', () => {
         },
       });
       // The user ID is mutated in the callback, so workspace operations use the new ID
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith(expect.any(String));
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith(expect.any(String), undefined);
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { ownerId: expect.any(String), deleted: false },
+        where: {
+          OR: [
+            { ownerId: expect.any(String), deleted: false },
+            {
+              deleted: false,
+              members: {
+                some: {
+                  userId: expect.any(String),
+                  leftAt: null,
+                },
+              },
+            },
+          ],
+        },
         select: { slug: true },
       });
       expect(logger.authInfo).toHaveBeenCalledWith(
-        'Mock workspace created successfully',
+        'Mock workspace access created successfully',
         'SIGNIN_MOCK_SUCCESS',
         {
           userId: expect.any(String),
           workspaceSlug: 'test-workspace',
+          role: undefined,
         }
       );
     });
@@ -158,13 +172,14 @@ describe('signIn callback', () => {
       // Assert
       expect(result).toBe(true);
       expect(db.user.create).not.toHaveBeenCalled();
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('existing-user-456');
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('existing-user-456', undefined);
       expect(logger.authInfo).toHaveBeenCalledWith(
-        'Mock workspace created successfully',
+        'Mock workspace access created successfully',
         'SIGNIN_MOCK_SUCCESS',
         {
           userId: 'existing-user-456',
           workspaceSlug: 'existing-workspace',
+          role: undefined,
         }
       );
     });
@@ -261,9 +276,9 @@ describe('signIn callback', () => {
       // Assert
       expect(result).toBe(false);
       expect(logger.authError).toHaveBeenCalledWith(
-        'Mock workspace created but not found on verification - possible transaction issue',
+        'Mock workspace created but user has no access - possible transaction issue',
         'SIGNIN_MOCK_VERIFICATION_FAILED',
-        { userId: expect.any(String), expectedSlug: 'test-workspace' } // User ID mutation timing varies
+        { userId: expect.any(String), expectedSlug: 'test-workspace', role: undefined } // User ID mutation timing varies
       );
     });
 
@@ -723,9 +738,22 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('new-user-id-123');
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('new-user-id-123', undefined);
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { ownerId: 'new-user-id-123', deleted: false },
+        where: {
+          OR: [
+            { ownerId: 'new-user-id-123', deleted: false },
+            {
+              deleted: false,
+              members: {
+                some: {
+                  userId: 'new-user-id-123',
+                  leftAt: null,
+                },
+              },
+            },
+          ],
+        },
         select: { slug: true },
       });
     });
@@ -885,11 +913,24 @@ describe('signIn callback', () => {
       // Assert
       expect(result).toBe(true);
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { ownerId: 'user-123', deleted: false },
+        where: {
+          OR: [
+            { ownerId: 'user-123', deleted: false },
+            {
+              deleted: false,
+              members: {
+                some: {
+                  userId: 'user-123',
+                  leftAt: null,
+                },
+              },
+            },
+          ],
+        },
         select: { slug: true },
       });
       expect(logger.authInfo).toHaveBeenCalledWith(
-        'Mock workspace created successfully',
+        'Mock workspace access created successfully',
         'SIGNIN_MOCK_SUCCESS',
         expect.any(Object)
       );
@@ -1148,7 +1189,7 @@ describe('signIn callback', () => {
       expect(logger.authError).toHaveBeenCalledWith(
         'Failed to create mock workspace - workspace slug is empty',
         'SIGNIN_MOCK_WORKSPACE_FAILED',
-        { userId: expect.any(String) }
+        { userId: expect.any(String), role: undefined }
       );
     });
 
@@ -1181,13 +1222,26 @@ describe('signIn callback', () => {
       // Assert - authentication should fail due to verification failure
       expect(result).toBe(false);
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { ownerId: expect.any(String), deleted: false },
+        where: {
+          OR: [
+            { ownerId: expect.any(String), deleted: false },
+            {
+              deleted: false,
+              members: {
+                some: {
+                  userId: expect.any(String),
+                  leftAt: null,
+                },
+              },
+            },
+          ],
+        },
         select: { slug: true },
       });
       expect(logger.authError).toHaveBeenCalledWith(
-        'Mock workspace created but not found on verification - possible transaction issue',
+        'Mock workspace created but user has no access - possible transaction issue',
         'SIGNIN_MOCK_VERIFICATION_FAILED',
-        { userId: expect.any(String), expectedSlug: 'test-workspace' }
+        { userId: expect.any(String), expectedSlug: 'test-workspace', role: undefined }
       );
     });
   });
