@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import { JanitorType } from "@prisma/client";
 import { Clock, Loader2, LucideIcon, Play } from "lucide-react";
@@ -49,6 +50,7 @@ export function JanitorSection({
   comingSoon = false
 }: JanitorSectionProps) {
   const { workspace } = useWorkspace();
+  const { permissions } = useWorkspaceAccess();
   const open = useModal();
 
   // Get state and actions from store
@@ -60,6 +62,9 @@ export function JanitorSection({
     toggleJanitor,
     runJanitor
   } = useInsightsStore();
+
+  // Check if user has permission to manage janitor settings
+  const canManageJanitors = permissions.canManageSettings;
 
   // Fetch janitor config for real janitors
   useEffect(() => {
@@ -81,6 +86,13 @@ export function JanitorSection({
   };
 
   const handleToggle = async (janitor: JanitorItem, parentJanitor?: JanitorItem) => {
+    // Check permissions first
+    if (!canManageJanitors) {
+      toast.error("Permission denied", { 
+        description: "You need Admin or Owner permissions to manage janitor settings." 
+      });
+      return;
+    }
 
     if (workspace?.poolState !== "COMPLETE") {
       open("ServicesWizard");
@@ -213,7 +225,7 @@ export function JanitorSection({
                       checked={isItemComingSoon ? false : isOn}
                       onCheckedChange={() => handleToggle(janitor)}
                       className="data-[state=checked]:bg-green-500"
-                      disabled={isItemComingSoon || loading}
+                      disabled={isItemComingSoon || loading || !canManageJanitors}
                     />
                   </div>
                 </div>
@@ -258,7 +270,7 @@ export function JanitorSection({
                             checked={isChildComingSoon ? false : isChildOn}
                             onCheckedChange={() => handleToggle(childOption, janitor)}
                             className="data-[state=checked]:bg-blue-500"
-                            disabled={isChildComingSoon || loading}
+                            disabled={isChildComingSoon || loading || !canManageJanitors}
                           />
                         </div>
                       );
