@@ -86,6 +86,7 @@ export async function listFeatures({
   }
 
   // Handle needsAttention filter - features with pending StakworkRuns awaiting user decision
+  // Exclude features that are already COMPLETED
   if (needsAttention) {
     whereClause.stakworkRuns = {
       some: {
@@ -94,6 +95,17 @@ export async function listFeatures({
         type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
       },
     };
+    // If status filter is already set, merge with COMPLETED exclusion
+    // Otherwise, just exclude COMPLETED status
+    if (whereClause.status && whereClause.status.in) {
+      // Filter out COMPLETED from the status list if present
+      const filteredStatuses = whereClause.status.in.filter((s: string) => s !== "COMPLETED");
+      whereClause.status = { in: filteredStatuses };
+    } else {
+      whereClause.status = {
+        not: "COMPLETED",
+      };
+    }
   }
 
   // Build orderBy clause
