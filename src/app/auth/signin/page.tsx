@@ -4,12 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
+import { WorkspaceRole, RoleLabels } from "@/lib/auth/roles";
 
 function SignInContent() {
   const { data: session, status } = useSession();
@@ -18,6 +26,7 @@ function SignInContent() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isMockSigningIn, setIsMockSigningIn] = useState(false);
   const [mockUsername, setMockUsername] = useState("");
+  const [mockRole, setMockRole] = useState<WorkspaceRole>(WorkspaceRole.DEVELOPER);
   const [providers, setProviders] = useState<Record<string, ClientSafeProvider> | null>(null);
 
   // Check if there's a redirect parameter
@@ -88,6 +97,7 @@ function SignInContent() {
       setIsMockSigningIn(true);
       const result = await signIn("mock", {
         username: mockUsername || "dev-user",
+        role: mockRole,
         redirect: false,
         callbackUrl: redirectPath || "/",
       });
@@ -164,6 +174,38 @@ function SignInContent() {
                       onChange={(e) => setMockUsername(e.target.value)}
                       disabled={isMockSigningIn || isSigningIn}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mock-role">Permission Level</Label>
+                    <Select
+                      value={mockRole}
+                      onValueChange={(value) => setMockRole(value as WorkspaceRole)}
+                      disabled={isMockSigningIn || isSigningIn}
+                    >
+                      <SelectTrigger id="mock-role" data-testid="mock-role-select">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={WorkspaceRole.VIEWER}>
+                          {RoleLabels[WorkspaceRole.VIEWER]}
+                        </SelectItem>
+                        <SelectItem value={WorkspaceRole.STAKEHOLDER}>
+                          {RoleLabels[WorkspaceRole.STAKEHOLDER]}
+                        </SelectItem>
+                        <SelectItem value={WorkspaceRole.DEVELOPER}>
+                          {RoleLabels[WorkspaceRole.DEVELOPER]}
+                        </SelectItem>
+                        <SelectItem value={WorkspaceRole.PM}>
+                          {RoleLabels[WorkspaceRole.PM]}
+                        </SelectItem>
+                        <SelectItem value={WorkspaceRole.ADMIN}>
+                          {RoleLabels[WorkspaceRole.ADMIN]}
+                        </SelectItem>
+                        <SelectItem value={WorkspaceRole.OWNER}>
+                          {RoleLabels[WorkspaceRole.OWNER]}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <Button
                     data-testid="mock-signin-button"

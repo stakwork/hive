@@ -19,9 +19,12 @@ let mockGitHubIdCounter = 100000;
  * to enable full GitHub feature testing in mock mode.
  * Returns the workspace slug.
  * All DB operations wrapped in transaction for atomicity.
+ * @param userId - The user ID to create the workspace for
+ * @param role - The role to assign to the user (defaults to OWNER for workspace owner)
  */
 export async function ensureMockWorkspaceForUser(
   userId: string,
+  role: string = "OWNER"
 ): Promise<string> {
   const existing = await db.workspace.findFirst({
     where: { ownerId: userId, deleted: false },
@@ -146,6 +149,16 @@ export async function ensureMockWorkspaceForUser(
         logoKey: null,
       },
       select: { id: true, slug: true },
+    });
+
+    // 5. Create WorkspaceMember with the selected role
+    // This allows users to test different permission levels in mock mode
+    await tx.workspaceMember.create({
+      data: {
+        workspaceId: workspace.id,
+        userId,
+        role: role as any, // Role passed from signin form
+      },
     });
 
     // Optional repository seed to satisfy UIs expecting a repository

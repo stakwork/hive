@@ -62,6 +62,10 @@ const getProviders = () => {
             type: "text",
             placeholder: "Enter any username",
           },
+          role: {
+            label: "Role",
+            type: "text",
+          },
         },
         async authorize(credentials) {
           // Mock authentication - accept any username in development
@@ -72,6 +76,7 @@ const getProviders = () => {
               name: username,
               email: `${username}@mock.dev`,
               image: `https://avatars.githubusercontent.com/u/1?v=4`, // Generic avatar
+              role: credentials.role || "DEVELOPER", // Store role for use in signIn callback
             };
           }
           return null;
@@ -117,7 +122,9 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Create workspace atomically - this MUST succeed for auth to work
-          const workspaceSlug = await ensureMockWorkspaceForUser(user.id as string);
+          // Extract role from user object (set by authorize function)
+          const role = (user as any).role || "DEVELOPER";
+          const workspaceSlug = await ensureMockWorkspaceForUser(user.id as string, role);
 
           if (!workspaceSlug) {
             logger.authError(
