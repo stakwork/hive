@@ -48,29 +48,40 @@ export async function POST(request: NextRequest) {
     // Generate a unique bounty code
     const bountyCode = await ensureUniqueBountyCode();
 
-    // Build description with source link and account info
-    const sourceUrl = `https://hive.sphinx.chat/w/${sourceWorkspaceSlug}/task/${sourceTaskId}`;
-    const descriptionParts = [
-      description?.trim() || "",
-      "",
-      `---`,
-      `Source: ${sourceUrl}`,
-      "",
-      `If you don't have an account, [click here](https://hive.sphinx.chat) to sign up.`,
-    ].filter(Boolean);
-    const fullDescription = descriptionParts.join("\n");
-
     // Create the bounty task in leetbox workspace
     const task = await db.task.create({
       data: {
         title: title.trim(),
-        description: fullDescription,
+        description: description?.trim() || "",
         workspaceId: leetboxWorkspace.id,
         status: TaskStatus.TODO,
         bountyCode,
         createdById: userId,
         updatedById: userId,
       },
+      select: {
+        id: true,
+        title: true,
+        bountyCode: true,
+      },
+    });
+
+    // Build description with task link and account info (now that we have the task ID)
+    const taskUrl = `https://hive.sphinx.chat/w/leetbox/task/${task.id}`;
+    const descriptionParts = [
+      description?.trim() || "",
+      "",
+      `---`,
+      `Task: ${taskUrl}`,
+      "",
+      `If you don't have an account, [click here](https://hive.sphinx.chat) to sign up.`,
+    ].filter(Boolean);
+    const fullDescription = descriptionParts.join("\n");
+
+    // Update task with full description
+    const updatedTask = await db.task.update({
+      where: { id: task.id },
+      data: { description: fullDescription },
       select: {
         id: true,
         title: true,
@@ -81,16 +92,16 @@ export async function POST(request: NextRequest) {
 
     // Generate the Sphinx Tribes URL
     const bountyUrl = generateSphinxBountyUrl({
-      id: task.id,
-      title: task.title,
-      description: task.description || undefined,
-      bountyCode: task.bountyCode || undefined,
+      id: updatedTask.id,
+      title: updatedTask.title,
+      description: updatedTask.description || undefined,
+      bountyCode: updatedTask.bountyCode || undefined,
     });
 
     return NextResponse.json(
       {
         success: true,
-        taskId: task.id,
+        taskId: updatedTask.id,
         bountyUrl,
       },
       { status: 201 }
