@@ -33,6 +33,7 @@ interface TicketsListProps {
   featureId: string;
   feature: FeatureDetail;
   onUpdate: (feature: FeatureDetail) => void;
+  onDecisionMade?: () => void;
 }
 
 interface GeneratedTask {
@@ -53,7 +54,7 @@ interface GeneratedContent {
   phases: GeneratedPhase[];
 }
 
-export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) {
+export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: TicketsListProps) {
   const router = useRouter();
   const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
 
@@ -358,6 +359,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
       if (featureResult.success) {
         onUpdate(featureResult.data);
       }
+      onDecisionMade?.();
     } catch (error) {
       console.error("Failed to accept generated tickets:", error);
       // Refetch on error
@@ -377,6 +379,7 @@ export function TicketsList({ featureId, feature, onUpdate }: TicketsListProps) 
     }
     setGeneratedContent(null);
     aiGeneration.clear();
+    onDecisionMade?.();
   };
 
   const handleProvideFeedback = async (feedback: string) => {
