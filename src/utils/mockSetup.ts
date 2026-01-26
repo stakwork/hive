@@ -235,7 +235,7 @@ async function ensureMockWorkspaceMember(
     },
     include: {
       workspace: {
-        select: { slug: true, deleted: false },
+        select: { slug: true, deleted: true },
       },
     },
   });

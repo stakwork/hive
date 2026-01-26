@@ -3,6 +3,7 @@ import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import type { WorkspaceRole } from "@prisma/client";
 import axios from "axios";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -298,7 +299,7 @@ export const authOptions: NextAuthOptions = {
                   },
                   include: {
                     workspace: {
-                      select: { slug: true, deleted: false },
+                      select: { slug: true, deleted: true },
                     },
                   },
                 });
