@@ -2,22 +2,84 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
+import { ArrowLeft, Github, Loader2, Crown, Shield, Code, Users, Eye, Briefcase } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
-import { WorkspaceRole, RoleLabels } from "@/lib/auth/roles";
+import { WorkspaceRole } from "@/lib/auth/roles";
+import { cn } from "@/lib/utils";
+
+// Predefined mock users for testing different permission levels
+const MOCK_USERS = [
+  {
+    username: "olivia-owner",
+    name: "Olivia Owner",
+    role: WorkspaceRole.OWNER,
+    icon: Crown,
+    description: "Full system access",
+    color: "text-purple-600 dark:text-purple-400",
+    bgColor: "bg-purple-50 dark:bg-purple-950/50",
+    borderColor: "border-purple-200 dark:border-purple-800",
+    hoverBg: "hover:bg-purple-100 dark:hover:bg-purple-900/50",
+  },
+  {
+    username: "adam-admin",
+    name: "Adam Admin",
+    role: WorkspaceRole.ADMIN,
+    icon: Shield,
+    description: "Manage settings & users",
+    color: "text-red-600 dark:text-red-400",
+    bgColor: "bg-red-50 dark:bg-red-950/50",
+    borderColor: "border-red-200 dark:border-red-800",
+    hoverBg: "hover:bg-red-100 dark:hover:bg-red-900/50",
+  },
+  {
+    username: "petra-pm",
+    name: "Petra PM",
+    role: WorkspaceRole.PM,
+    icon: Briefcase,
+    description: "Manage products & features",
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-50 dark:bg-blue-950/50",
+    borderColor: "border-blue-200 dark:border-blue-800",
+    hoverBg: "hover:bg-blue-100 dark:hover:bg-blue-900/50",
+  },
+  {
+    username: "dave-developer",
+    name: "Dave Developer",
+    role: WorkspaceRole.DEVELOPER,
+    icon: Code,
+    description: "Create & edit tasks",
+    color: "text-green-600 dark:text-green-400",
+    bgColor: "bg-green-50 dark:bg-green-950/50",
+    borderColor: "border-green-200 dark:border-green-800",
+    hoverBg: "hover:bg-green-100 dark:hover:bg-green-900/50",
+  },
+  {
+    username: "sam-stakeholder",
+    name: "Sam Stakeholder",
+    role: WorkspaceRole.STAKEHOLDER,
+    icon: Users,
+    description: "View & comment",
+    color: "text-orange-600 dark:text-orange-400",
+    bgColor: "bg-orange-50 dark:bg-orange-950/50",
+    borderColor: "border-orange-200 dark:border-orange-800",
+    hoverBg: "hover:bg-orange-100 dark:hover:bg-orange-900/50",
+  },
+  {
+    username: "vic-viewer",
+    name: "Vic Viewer",
+    role: WorkspaceRole.VIEWER,
+    icon: Eye,
+    description: "Read-only access",
+    color: "text-gray-600 dark:text-gray-400",
+    bgColor: "bg-gray-50 dark:bg-gray-950/50",
+    borderColor: "border-gray-200 dark:border-gray-800",
+    hoverBg: "hover:bg-gray-100 dark:hover:bg-gray-900/50",
+  },
+] as const;
 
 function SignInContent() {
   const { data: session, status } = useSession();
@@ -25,8 +87,7 @@ function SignInContent() {
   const searchParams = useSearchParams();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isMockSigningIn, setIsMockSigningIn] = useState(false);
-  const [mockUsername, setMockUsername] = useState("");
-  const [mockRole, setMockRole] = useState<WorkspaceRole>(WorkspaceRole.DEVELOPER);
+  const [selectedMockUser, setSelectedMockUser] = useState<typeof MOCK_USERS[number] | null>(null);
   const [providers, setProviders] = useState<Record<string, ClientSafeProvider> | null>(null);
 
   // Check if there's a redirect parameter
@@ -92,12 +153,15 @@ function SignInContent() {
     }
   };
 
-  const handleMockSignIn = async () => {
+  const handleMockUserSignIn = async (mockUser: typeof MOCK_USERS[number]) => {
+    if (isMockSigningIn || isSigningIn) return;
+    
     try {
       setIsMockSigningIn(true);
+      setSelectedMockUser(mockUser);
       const result = await signIn("mock", {
-        username: mockUsername || "dev-user",
-        role: mockRole,
+        username: mockUser.username,
+        role: mockUser.role,
         redirect: false,
         callbackUrl: redirectPath || "/",
       });
@@ -105,11 +169,13 @@ function SignInContent() {
       if (result?.error) {
         console.error("Mock sign in error:", result.error);
         setIsMockSigningIn(false);
+        setSelectedMockUser(null);
       }
       // Note: On success, the useEffect will handle the redirect based on session
     } catch (error) {
       console.error("Unexpected mock sign in error:", error);
       setIsMockSigningIn(false);
+      setSelectedMockUser(null);
     }
   };
 
@@ -158,73 +224,70 @@ function SignInContent() {
                       <span className="w-full border-t" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">Or for development</span>
+                      <span className="bg-background px-2 text-muted-foreground">Or sign in as a mock user</span>
                     </div>
                   </div>
                 )}
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="mock-username">Username (optional)</Label>
-                    <Input
-                      id="mock-username"
-                      type="text"
-                      placeholder="Enter username (defaults to 'dev-user')"
-                      value={mockUsername}
-                      onChange={(e) => setMockUsername(e.target.value)}
-                      disabled={isMockSigningIn || isSigningIn}
-                    />
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Select a user to test different permission levels
+                  </p>
+                  
+                  <div className="grid grid-cols-1 gap-2">
+                    {MOCK_USERS.map((mockUser) => {
+                      const Icon = mockUser.icon;
+                      const isSelected = selectedMockUser?.username === mockUser.username;
+                      const isSigningInAsThis = isMockSigningIn && isSelected;
+                      
+                      return (
+                        <button
+                          key={mockUser.username}
+                          onClick={() => handleMockUserSignIn(mockUser)}
+                          disabled={isMockSigningIn || isSigningIn}
+                          data-testid={`mock-user-${mockUser.username}`}
+                          className={cn(
+                            "w-full p-3 rounded-lg border-2 transition-all text-left",
+                            "flex items-center gap-3",
+                            "disabled:opacity-50 disabled:cursor-not-allowed",
+                            mockUser.bgColor,
+                            mockUser.borderColor,
+                            mockUser.hoverBg,
+                            isSelected && "ring-2 ring-offset-2 ring-blue-500"
+                          )}
+                        >
+                          <div className={cn(
+                            "flex items-center justify-center w-10 h-10 rounded-full",
+                            mockUser.bgColor
+                          )}>
+                            {isSigningInAsThis ? (
+                              <Loader2 className={cn("w-5 h-5 animate-spin", mockUser.color)} />
+                            ) : (
+                              <Icon className={cn("w-5 h-5", mockUser.color)} />
+                            )}
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-sm text-foreground">
+                                {mockUser.name}
+                              </p>
+                              <span className={cn(
+                                "text-xs px-2 py-0.5 rounded-full font-medium",
+                                mockUser.bgColor,
+                                mockUser.color
+                              )}>
+                                {mockUser.role}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {mockUser.description}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="mock-role">Permission Level</Label>
-                    <Select
-                      value={mockRole}
-                      onValueChange={(value) => setMockRole(value as WorkspaceRole)}
-                      disabled={isMockSigningIn || isSigningIn}
-                    >
-                      <SelectTrigger id="mock-role" data-testid="mock-role-select">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={WorkspaceRole.VIEWER}>
-                          {RoleLabels[WorkspaceRole.VIEWER]}
-                        </SelectItem>
-                        <SelectItem value={WorkspaceRole.STAKEHOLDER}>
-                          {RoleLabels[WorkspaceRole.STAKEHOLDER]}
-                        </SelectItem>
-                        <SelectItem value={WorkspaceRole.DEVELOPER}>
-                          {RoleLabels[WorkspaceRole.DEVELOPER]}
-                        </SelectItem>
-                        <SelectItem value={WorkspaceRole.PM}>
-                          {RoleLabels[WorkspaceRole.PM]}
-                        </SelectItem>
-                        <SelectItem value={WorkspaceRole.ADMIN}>
-                          {RoleLabels[WorkspaceRole.ADMIN]}
-                        </SelectItem>
-                        <SelectItem value={WorkspaceRole.OWNER}>
-                          {RoleLabels[WorkspaceRole.OWNER]}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    data-testid="mock-signin-button"
-                    onClick={handleMockSignIn}
-                    disabled={isMockSigningIn || isSigningIn}
-                    className="w-full h-12 text-base font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
-                  >
-                    {isMockSigningIn ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="w-5 h-5 mr-3" />
-                        Mock Sign In (Dev)
-                      </>
-                    )}
-                  </Button>
                 </div>
               </>
             )}
