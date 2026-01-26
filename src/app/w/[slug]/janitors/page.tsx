@@ -110,13 +110,15 @@ const prMonitorJanitors: JanitorItem[] = [
     icon: RefreshCw,
     description: "Automatically update PR branches when behind base branch",
     configKey: "prOutOfDateFixEnabled",
-  },
-  {
-    id: "pr-use-rebase",
-    name: "Use Rebase for Updates",
-    icon: RefreshCw,
-    description: "Use rebase instead of merge when updating out-of-date PRs (cleaner commit history)",
-    configKey: "prUseRebaseForUpdates",
+    childOptions: [
+      {
+        id: "pr-use-rebase",
+        name: "Use Rebase Strategy",
+        icon: RefreshCw,
+        description: "Use rebase instead of merge for cleaner commit history",
+        configKey: "prUseRebaseForUpdates",
+      },
+    ],
   },
 ];
 
