@@ -15,6 +15,7 @@ interface DependenciesComboboxProps {
   allTickets: TicketListItem[];
   selectedDependencyIds: string[];
   onUpdate: (dependencyIds: string[]) => Promise<void>;
+  maxVisibleDependencies?: number; // Maximum number of dependency badges to show
 }
 
 export function DependenciesCombobox({
@@ -23,6 +24,7 @@ export function DependenciesCombobox({
   allTickets,
   selectedDependencyIds,
   onUpdate,
+  maxVisibleDependencies = 2, // Default to showing 2 dependencies
 }: DependenciesComboboxProps) {
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -90,6 +92,10 @@ export function DependenciesCombobox({
     );
   }
 
+  // Split selected tickets into visible and overflow
+  const visibleTickets = selectedTickets.slice(0, maxVisibleDependencies);
+  const overflowCount = selectedTickets.length - maxVisibleDependencies;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -97,25 +103,39 @@ export function DependenciesCombobox({
           variant="ghost"
           role="combobox"
           aria-expanded={open}
-          className="w-auto min-w-[120px] justify-start h-auto min-h-8 px-2 py-1 text-sm font-normal hover:bg-muted"
+          className="w-full justify-start h-auto min-h-8 px-2 py-1 text-sm font-normal hover:bg-muted"
           onClick={(e) => e.stopPropagation()}
           disabled={updating}
         >
           {selectedTickets.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-1">
-              {selectedTickets.map((ticket) => (
+            <div className="flex flex-wrap items-center gap-1 w-full">
+              {visibleTickets.map((ticket) => (
                 <Badge
                   key={ticket.id}
                   variant="secondary"
-                  className="text-xs px-1.5 py-0 h-5 hover:bg-secondary"
+                  className={`text-xs px-1.5 py-0 h-5 hover:bg-secondary truncate ${
+                    selectedTickets.length === 1 
+                      ? "max-w-full" // Full width for single dependency
+                      : "max-w-[100px]" // Limited width for multiple
+                  }`}
+                  title={ticket.title}
                 >
-                  {ticket.title}
+                  <span className="truncate">{ticket.title}</span>
                   <X
-                    className="h-3 w-3 ml-1 hover:text-destructive"
+                    className="h-3 w-3 ml-1 hover:text-destructive flex-shrink-0"
                     onClick={(e) => handleRemoveDependency(ticket.id, e)}
                   />
                 </Badge>
               ))}
+              {overflowCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="text-xs px-1.5 py-0 h-5 cursor-pointer hover:bg-secondary/80"
+                  title={`${overflowCount} more ${overflowCount === 1 ? 'dependency' : 'dependencies'}`}
+                >
+                  +{overflowCount}
+                </Badge>
+              )}
             </div>
           ) : (
             <span className="text-muted-foreground">None</span>
