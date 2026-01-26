@@ -34,12 +34,30 @@ interface ChatMessageProps {
 
 // Custom comparison function for React.memo
 function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps): boolean {
-  // Compare message objects by id and updatedAt
+  const prevArtifacts = prevProps.message.artifacts;
+  const nextArtifacts = nextProps.message.artifacts;
+
+  // Check artifact length first (quick check)
+  if (prevArtifacts?.length !== nextArtifacts?.length) {
+    return false;
+  }
+
+  // Check if any artifact content has changed (for PR status updates)
+  const artifactsEqual = !prevArtifacts || prevArtifacts.every((prev, i) => {
+    const next = nextArtifacts?.[i];
+    if (!next) return false;
+    if (prev.id !== next.id) return false;
+    // Compare content status for artifacts that have it (PR artifacts)
+    const prevStatus = (prev.content as { status?: string })?.status;
+    const nextStatus = (next.content as { status?: string })?.status;
+    return prevStatus === nextStatus;
+  });
+
   const messageEqual =
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.updatedAt === nextProps.message.updatedAt &&
-    prevProps.message.artifacts?.length === nextProps.message.artifacts?.length &&
-    prevProps.message.workflowUrl === nextProps.message.workflowUrl;
+    prevProps.message.workflowUrl === nextProps.message.workflowUrl &&
+    artifactsEqual;
 
   // Compare replyMessage if present
   const replyMessageEqual = prevProps.replyMessage?.id === nextProps.replyMessage?.id;
