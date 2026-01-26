@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, User } from "lucide-react";
+import { Calendar, User, Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { formatRelativeOrDate } from "@/lib/date-utils";
 import type { FeatureWithDetails } from "@/types/roadmap";
 import { FEATURE_STATUS_LABELS, FEATURE_STATUS_COLORS } from "@/types/roadmap";
 import { PriorityBadge } from "@/components/ui/priority-selector";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface FeatureCardProps {
   feature: FeatureWithDetails;
@@ -17,6 +18,7 @@ interface FeatureCardProps {
 
 export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: FeatureCardProps) {
   const router = useRouter();
+  const needsReview = feature._count.stakworkRuns > 0;
 
   const handleClick = () => {
     router.push(`/w/${workspaceSlug}/plan/${feature.id}`);
@@ -32,6 +34,18 @@ export function FeatureCard({ feature, workspaceSlug, hideStatus = false }: Feat
       <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h4 className="text-sm font-medium line-clamp-1 min-w-0">{feature.title}</h4>
+          {needsReview && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex-shrink-0">
+                  <Bell className="h-4 w-4 text-amber-500" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Awaiting your feedback</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <PriorityBadge priority={feature.priority} />
