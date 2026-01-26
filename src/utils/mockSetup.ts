@@ -137,13 +137,47 @@ export async function ensureMockWorkspaceForUser(
       });
     }
 
-    // 4. Create workspace linked to the SourceControlOrg
+    // 4. Create workspace with appropriate owner based on selected role
+    // If role is not OWNER, create a separate mock owner user
+    let workspaceOwnerId = userId;
+    let mockOwnerId: string | null = null;
+    
+    if (role !== "OWNER") {
+      // Create a mock owner user for the workspace
+      const mockOwner = await tx.user.create({
+        data: {
+          name: "Mock Workspace Owner",
+          email: `mock-owner-${slugCandidate}@mock.dev`,
+          emailVerified: new Date(),
+          image: `https://avatars.githubusercontent.com/u/${mockGitHubIdCounter}?v=4`,
+        },
+      });
+      workspaceOwnerId = mockOwner.id;
+      mockOwnerId = mockOwner.id;
+
+      // Create GitHubAuth for the mock owner
+      await tx.gitHubAuth.create({
+        data: {
+          userId: mockOwner.id,
+          githubUserId: String(mockGitHubIdCounter++),
+          githubUsername: `mock-owner-${slugCandidate}`,
+          githubNodeId: `MDQ6VXNlcjEwMDAwMA==`,
+          name: "Mock Workspace Owner",
+          accountType: "User",
+          publicRepos: 10,
+          followers: 5,
+          following: 3,
+          scopes: ["repo", "user", "read:org"],
+        },
+      });
+    }
+
     const workspace = await tx.workspace.create({
       data: {
         name: "Mock Workspace",
         description: "Development workspace (mock)",
         slug: slugCandidate,
-        ownerId: userId,
+        ownerId: workspaceOwnerId,
         sourceControlOrgId: sourceControlOrg.id,
         logoUrl: `https://api.dicebear.com/7.x/identicons/svg?seed=${encodeURIComponent(slugCandidate)}`,
         logoKey: null,
@@ -151,7 +185,18 @@ export async function ensureMockWorkspaceForUser(
       select: { id: true, slug: true },
     });
 
-    // 5. Create WorkspaceMember with the selected role
+    // Create WorkspaceMember for the mock owner if we created one
+    if (mockOwnerId) {
+      await tx.workspaceMember.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: mockOwnerId,
+          role: "OWNER",
+        },
+      });
+    }
+
+    // 5. Create WorkspaceMember with the selected role for the signing-in user
     // This allows users to test different permission levels in mock mode
     await tx.workspaceMember.create({
       data: {
