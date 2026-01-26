@@ -663,6 +663,7 @@ model JanitorConfig {
   prConflictFixEnabled       Boolean @default(false) @map("pr_conflict_fix_enabled")
   prCiFailureFixEnabled      Boolean @default(false) @map("pr_ci_failure_fix_enabled")
   prOutOfDateFixEnabled      Boolean @default(false) @map("pr_out_of_date_fix_enabled")
+  prUseMergeForUpdates       Boolean @default(true) @map("pr_use_merge_for_updates")
   prUseRebaseForUpdates      Boolean @default(false) @map("pr_use_rebase_for_updates")
 
   createdAt DateTime @default(now()) @map("created_at")

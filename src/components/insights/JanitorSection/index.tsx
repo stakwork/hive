@@ -20,6 +20,7 @@ export interface JanitorItem {
   comingSoon?: boolean;
   childOptions?: JanitorItem[]; // Child options that depend on this parent being enabled
   parentKey?: string; // Reference to parent configKey (for child options)
+  exclusiveGroup?: string; // For mutually exclusive options (radio-button behavior)
 }
 
 export interface JanitorSectionProps {
@@ -79,7 +80,7 @@ export function JanitorSection({
     return runningJanitors.has(janitor.id);
   };
 
-  const handleToggle = async (janitor: JanitorItem) => {
+  const handleToggle = async (janitor: JanitorItem, parentJanitor?: JanitorItem) => {
 
     if (workspace?.poolState !== "COMPLETE") {
       open("ServicesWizard");
@@ -88,6 +89,35 @@ export function JanitorSection({
 
     if (comingSoon || janitor.comingSoon || !janitor.configKey || !workspace?.slug) return;
 
+    // Handle mutually exclusive options (radio-button behavior)
+    if (janitor.exclusiveGroup && parentJanitor?.childOptions) {
+      const isCurrentlyOn = getJanitorState(janitor);
+      
+      // If turning on this option, turn off all others in the same exclusive group
+      if (!isCurrentlyOn) {
+        const siblingsToDisable = parentJanitor.childOptions.filter(
+          (child) => child.exclusiveGroup === janitor.exclusiveGroup && child.configKey !== janitor.configKey
+        );
+
+        try {
+          // Turn off all siblings first
+          for (const sibling of siblingsToDisable) {
+            if (sibling.configKey && getJanitorState(sibling)) {
+              await toggleJanitor(workspace.slug, sibling.configKey);
+            }
+          }
+          // Then turn on the selected option
+          await toggleJanitor(workspace.slug, janitor.configKey);
+        } catch {
+          toast.error("Failed to update janitor configuration", { description: "Please try again." });
+        }
+        return;
+      }
+      // Don't allow turning off a radio button option (at least one must be selected)
+      return;
+    }
+
+    // Normal toggle behavior
     try {
       await toggleJanitor(workspace.slug, janitor.configKey);
     } catch {
@@ -226,7 +256,7 @@ export function JanitorSection({
                           <Switch
                             data-testid={`janitor-toggle-${childOption.id}`}
                             checked={isChildComingSoon ? false : isChildOn}
-                            onCheckedChange={() => handleToggle(childOption)}
+                            onCheckedChange={() => handleToggle(childOption, janitor)}
                             className="data-[state=checked]:bg-blue-500"
                             disabled={isChildComingSoon || loading}
                           />
