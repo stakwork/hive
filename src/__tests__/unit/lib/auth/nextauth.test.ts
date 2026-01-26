@@ -156,7 +156,7 @@ describe("nextauth.ts - signIn callback", () => {
           emailVerified: expect.any(Date),
         },
       });
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("new-user-id");
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("new-user-id", "DEVELOPER");
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
         where: { ownerId: "new-user-id", deleted: false },
         select: { slug: true },
@@ -219,7 +219,7 @@ describe("nextauth.ts - signIn callback", () => {
       expect(result).toBe(true);
       expect(db.user.findUnique).toHaveBeenCalled();
       expect(db.user.create).not.toHaveBeenCalled();
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("existing-user-id");
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("existing-user-id", "DEVELOPER");
     });
 
     test("should return false if workspace creation fails", async () => {

@@ -112,7 +112,7 @@ describe('signIn callback', () => {
         },
       });
       // The user ID is mutated in the callback, so workspace operations use the new ID
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith(expect.any(String));
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith(expect.any(String), "DEVELOPER");
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
         where: { ownerId: expect.any(String), deleted: false },
         select: { slug: true },
@@ -158,7 +158,7 @@ describe('signIn callback', () => {
       // Assert
       expect(result).toBe(true);
       expect(db.user.create).not.toHaveBeenCalled();
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('existing-user-456');
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('existing-user-456', "DEVELOPER");
       expect(logger.authInfo).toHaveBeenCalledWith(
         'Mock workspace created successfully',
         'SIGNIN_MOCK_SUCCESS',
@@ -723,7 +723,7 @@ describe('signIn callback', () => {
 
       // Assert
       expect(result).toBe(true);
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('new-user-id-123');
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith('new-user-id-123', "DEVELOPER");
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
         where: { ownerId: 'new-user-id-123', deleted: false },
         select: { slug: true },
