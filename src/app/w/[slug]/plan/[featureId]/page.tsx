@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, Check, Trash2, Bot } from "lucide-react";
+import type { StakworkRunType } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -48,6 +49,9 @@ export default function FeatureDetailPage() {
   const [creatingStory, setCreatingStory] = useState(false);
   const storyFocusRef = useRef(false);
 
+  // Pending StakworkRuns state (for tab indicators)
+  const [pendingRunTypes, setPendingRunTypes] = useState<Set<StakworkRunType>>(new Set());
+
   const fetchFeature = useCallback(async (id: string) => {
     const response = await fetch(`/api/features/${id}`);
     if (!response.ok) {
@@ -66,6 +70,39 @@ export default function FeatureDetailPage() {
     resourceId: featureId,
     fetchFn: fetchFeature,
   });
+
+  // Fetch pending StakworkRuns for this feature (for tab indicators)
+  const fetchPendingRuns = useCallback(async () => {
+    if (!workspaceId || !featureId) return;
+
+    try {
+      const params = new URLSearchParams({
+        workspaceId,
+        featureId,
+        status: "COMPLETED",
+      });
+      const response = await fetch(`/api/stakwork/runs?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        // Filter for runs that need attention (decision is null)
+        const pendingTypes = new Set<StakworkRunType>(
+          data.runs
+            .filter((run: { decision: string | null; type: StakworkRunType }) =>
+              run.decision === null &&
+              ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"].includes(run.type)
+            )
+            .map((run: { type: StakworkRunType }) => run.type)
+        );
+        setPendingRunTypes(pendingTypes);
+      }
+    } catch (err) {
+      console.error("Failed to fetch pending runs:", err);
+    }
+  }, [workspaceId, featureId]);
+
+  useEffect(() => {
+    fetchPendingRuns();
+  }, [fetchPendingRuns]);
 
   const handleSave = useCallback(
     async (updates: Partial<FeatureDetail> | { assigneeId: string | null }) => {
@@ -227,6 +264,17 @@ export default function FeatureDetailPage() {
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
     window.history.pushState({}, "", url.toString());
+  };
+
+  // Map tabs to their associated StakworkRun types
+  const TAB_RUN_TYPES: Record<string, StakworkRunType[]> = {
+    overview: ["REQUIREMENTS", "USER_STORIES"],
+    architecture: ["ARCHITECTURE"],
+    tasks: ["TASK_GENERATION"],
+  };
+
+  const tabNeedsAttention = (tab: string): boolean => {
+    return TAB_RUN_TYPES[tab]?.some((type) => pendingRunTypes.has(type)) ?? false;
   };
 
   const handleDeleteFeature = async () => {
@@ -450,9 +498,14 @@ export default function FeatureDetailPage() {
               return (
                 <div className="flex items-center gap-4 mb-6">
                   <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="architecture">Architecture</TabsTrigger>
-                    <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                    {["overview", "architecture", "tasks"].map((tab) => (
+                      <TabsTrigger key={tab} value={tab}>
+                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        {tabNeedsAttention(tab) && (
+                          <span className="ml-1.5 w-1.5 h-1.5 bg-amber-500 rounded-full inline-block" />
+                        )}
+                      </TabsTrigger>
+                    ))}
                   </TabsList>
 
                   {/* Task Coordinator Progress */}
@@ -537,6 +590,7 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ requirements: value })}
                 onBlur={(value) => handleFieldBlur("requirements", value)}
+                onDecisionMade={fetchPendingRuns}
               />
 
               {/* Navigation buttons */}
@@ -558,6 +612,7 @@ export default function FeatureDetailPage() {
                 onChange={(value) => updateFeature({ architecture: value })}
                 onBlur={(value) => handleFieldBlur("architecture", value)}
                 initialDiagramUrl={feature.diagramUrl}
+                onDecisionMade={fetchPendingRuns}
               />
 
               {/* Whiteboard Section */}
@@ -577,7 +632,7 @@ export default function FeatureDetailPage() {
             </TabsContent>
 
             <TabsContent value="tasks" className="space-y-6 pt-0">
-              <TicketsList featureId={featureId} feature={feature} onUpdate={setFeature} />
+              <TicketsList featureId={featureId} feature={feature} onUpdate={setFeature} onDecisionMade={fetchPendingRuns} />
 
               {/* Navigation buttons */}
               <div className="flex justify-start pt-4">
