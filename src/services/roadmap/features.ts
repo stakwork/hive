@@ -21,6 +21,7 @@ export async function listFeatures({
   search,
   sortBy,
   sortOrder,
+  needsAttention,
 }: {
   workspaceId: string;
   userId: string;
@@ -33,6 +34,7 @@ export async function listFeatures({
   search?: string; // Text search for feature title
   sortBy?: "title" | "createdAt" | "updatedAt";
   sortOrder?: "asc" | "desc";
+  needsAttention?: boolean; // Filter features that have pending StakworkRuns awaiting user decision
 }) {
   const workspaceAccess = await validateWorkspaceAccessById(workspaceId, userId);
   if (!workspaceAccess.hasAccess) {
@@ -83,6 +85,29 @@ export async function listFeatures({
     };
   }
 
+  // Handle needsAttention filter - features with pending StakworkRuns awaiting user decision
+  // Exclude features that are already COMPLETED
+  if (needsAttention) {
+    whereClause.stakworkRuns = {
+      some: {
+        status: "COMPLETED",
+        decision: null,
+        type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
+      },
+    };
+    // If status filter is already set, merge with COMPLETED exclusion
+    // Otherwise, just exclude COMPLETED status
+    if (whereClause.status && whereClause.status.in) {
+      // Filter out COMPLETED from the status list if present
+      const filteredStatuses = whereClause.status.in.filter((s: string) => s !== "COMPLETED");
+      whereClause.status = { in: filteredStatuses };
+    } else {
+      whereClause.status = {
+        not: "COMPLETED",
+      };
+    }
+  }
+
   // Build orderBy clause
   const orderByClause: any = sortBy
     ? { [sortBy]: sortOrder || "asc" }
@@ -107,6 +132,13 @@ export async function listFeatures({
         _count: {
           select: {
             userStories: true,
+            stakworkRuns: {
+              where: {
+                status: "COMPLETED",
+                decision: null,
+                type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
+              },
+            },
           },
         },
       },

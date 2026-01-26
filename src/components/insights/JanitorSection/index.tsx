@@ -7,9 +7,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useWorkspaceAccess } from "@/hooks/useWorkspaceAccess";
+import { WorkspaceRole } from "@/lib/auth/roles";
 import { useInsightsStore } from "@/stores/useInsightsStore";
 import { JanitorType } from "@prisma/client";
-import { Clock, Loader2, LucideIcon, Play } from "lucide-react";
+import { Clock, Loader2, Lock, LucideIcon, Play } from "lucide-react";
 import { ReactNode, useEffect } from "react";
 
 export interface JanitorItem {
@@ -50,8 +51,11 @@ export function JanitorSection({
   comingSoon = false
 }: JanitorSectionProps) {
   const { workspace } = useWorkspace();
-  const { permissions } = useWorkspaceAccess();
+  const { permissions, checkPermission } = useWorkspaceAccess();
   const open = useModal();
+
+  // Check if user has PM role or higher to manage janitors
+  const canManageJanitors = checkPermission(WorkspaceRole.PM);
 
   // Get state and actions from store
   const {
@@ -62,9 +66,6 @@ export function JanitorSection({
     toggleJanitor,
     runJanitor
   } = useInsightsStore();
-
-  // Check if user has permission to manage janitor settings
-  const canManageJanitors = permissions.canManageSettings;
 
   // Fetch janitor config for real janitors
   useEffect(() => {
@@ -196,29 +197,41 @@ export function JanitorSection({
                     {isItemComingSoon ? (
                       <Clock className="h-4 w-4 text-gray-400" />
                     ) : (
-                      isOn && canManuallyRun(janitor.id) && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              data-testid={`janitor-run-button-${janitor.id}`}
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => handleManualRun(janitor)}
-                              disabled={isRunning || loading}
-                            >
-                              {isRunning ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Play className="h-3 w-3" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Manually run</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )
+                      <>
+                        {isOn && canManuallyRun(janitor.id) && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                data-testid={`janitor-run-button-${janitor.id}`}
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                onClick={() => handleManualRun(janitor)}
+                                disabled={isRunning || loading}
+                              >
+                                {isRunning ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Play className="h-3 w-3" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Manually run</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {!canManageJanitors && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Lock className="h-4 w-4 text-muted-foreground" data-testid={`janitor-lock-${janitor.id}`} />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>PM role or higher required to manage janitors</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </>
                     )}
                     <Switch
                       data-testid={`janitor-toggle-${janitor.id}`}
@@ -265,13 +278,25 @@ export function JanitorSection({
                             </div>
                           </div>
 
-                          <Switch
-                            data-testid={`janitor-toggle-${childOption.id}`}
-                            checked={isChildComingSoon ? false : isChildOn}
-                            onCheckedChange={() => handleToggle(childOption, janitor)}
-                            className="data-[state=checked]:bg-blue-500"
-                            disabled={isChildComingSoon || loading || !canManageJanitors}
-                          />
+                          <div className="flex items-center space-x-2">
+                            {!canManageJanitors && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Lock className="h-3 w-3 text-muted-foreground" data-testid={`janitor-lock-${childOption.id}`} />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>PM role or higher required to manage janitors</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <Switch
+                              data-testid={`janitor-toggle-${childOption.id}`}
+                              checked={isChildComingSoon ? false : isChildOn}
+                              onCheckedChange={() => handleToggle(childOption, janitor)}
+                              className="data-[state=checked]:bg-blue-500"
+                              disabled={isChildComingSoon || loading || !canManageJanitors}
+                            />
+                          </div>
                         </div>
                       );
                     })}

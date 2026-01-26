@@ -208,7 +208,7 @@ export function useAIGeneration({
         await reject("Retrying after failure");
       }
 
-      // Create new run
+      // Create new run with history if retrying
       const response = await fetch("/api/stakwork/ai/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,6 +216,7 @@ export function useAIGeneration({
           type,
           featureId,
           workspaceId,
+          includeHistory: isRetry, // Include history on retry
         }),
       });
 

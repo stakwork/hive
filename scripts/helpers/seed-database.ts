@@ -4,6 +4,10 @@ import {
   TaskLayerType,
   TaskStatus,
   Priority,
+  FeatureStatus,
+  FeaturePriority,
+  StakworkRunType,
+  WorkflowStatus,
 } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
 
@@ -359,12 +363,130 @@ async function seedTasksWithLayerTypes(
   );
 }
 
+async function seedFeaturesWithStakworkRuns(
+  users: Array<{ id: string; email: string }>,
+) {
+  // Get all workspaces
+  const workspaces = await prisma.workspace.findMany();
+  if (workspaces.length === 0) {
+    console.log("No workspaces found, skipping feature seeding");
+    return;
+  }
+
+  const workspace = workspaces[0];
+  const userId = users[0].id;
+
+  console.log("Creating features with StakworkRuns for testing needs attention...");
+
+  // Create features with various states
+  const featuresData = [
+    {
+      title: "User Authentication System",
+      brief: "Implement user authentication with OAuth",
+      status: FeatureStatus.IN_PROGRESS,
+      priority: FeaturePriority.HIGH,
+      needsAttention: true, // Has pending architecture review
+    },
+    {
+      title: "Dashboard Analytics",
+      brief: "Build analytics dashboard with charts",
+      status: FeatureStatus.PLANNED,
+      priority: FeaturePriority.MEDIUM,
+      needsAttention: true, // Has pending requirements review
+    },
+    {
+      title: "Notification Service",
+      brief: "Real-time notifications via websockets",
+      status: FeatureStatus.BACKLOG,
+      priority: FeaturePriority.LOW,
+      needsAttention: false, // No pending reviews
+    },
+    {
+      title: "API Rate Limiting",
+      brief: "Implement rate limiting for API endpoints",
+      status: FeatureStatus.IN_PROGRESS,
+      priority: FeaturePriority.HIGH,
+      needsAttention: true, // Has pending task generation review
+    },
+    {
+      title: "Search Functionality",
+      brief: "Full-text search across all content",
+      status: FeatureStatus.PLANNED,
+      priority: FeaturePriority.MEDIUM,
+      needsAttention: false, // No pending reviews (decision already made)
+    },
+  ];
+
+  for (const featureData of featuresData) {
+    // Create the feature with a Phase
+    const feature = await prisma.feature.create({
+      data: {
+        title: featureData.title,
+        brief: featureData.brief,
+        status: featureData.status,
+        priority: featureData.priority,
+        workspaceId: workspace.id,
+        createdById: userId,
+        updatedById: userId,
+        phases: {
+          create: {
+            name: "Phase 1",
+            description: null,
+            status: "NOT_STARTED",
+            order: 0,
+          },
+        },
+      },
+    });
+
+    if (featureData.needsAttention) {
+      // Create a StakworkRun with status=COMPLETED and decision=null (needs attention)
+      const runTypes = [
+        StakworkRunType.ARCHITECTURE,
+        StakworkRunType.REQUIREMENTS,
+        StakworkRunType.TASK_GENERATION,
+      ];
+      const randomType = runTypes[Math.floor(Math.random() * runTypes.length)];
+
+      await prisma.stakworkRun.create({
+        data: {
+          webhookUrl: `https://example.com/webhook/${feature.id}`,
+          type: randomType,
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          status: WorkflowStatus.COMPLETED,
+          result: JSON.stringify({ generated: "Sample AI-generated content for review" }),
+          dataType: "json",
+          decision: null, // User hasn't made a decision yet
+        },
+      });
+    } else {
+      // Create a StakworkRun with decision already made
+      await prisma.stakworkRun.create({
+        data: {
+          webhookUrl: `https://example.com/webhook/${feature.id}`,
+          type: StakworkRunType.ARCHITECTURE,
+          featureId: feature.id,
+          workspaceId: workspace.id,
+          status: WorkflowStatus.COMPLETED,
+          result: JSON.stringify({ generated: "Sample accepted content" }),
+          dataType: "json",
+          decision: "ACCEPTED", // User already accepted
+        },
+      });
+    }
+  }
+
+  console.log(`✓ Created ${featuresData.length} features with StakworkRuns`);
+}
+
 async function main() {
   await prisma.$connect();
 
   const users = await seedUsersWithAccounts();
   await seedWorkspacesAndSwarms(users);
   await seedTasksWithLayerTypes(users);
+  await seedFeaturesWithStakworkRuns(users);
 
   console.log("Seed completed.");
 }
