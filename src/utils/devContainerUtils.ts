@@ -378,7 +378,7 @@ export function parsePM2Content(content: string | undefined): ServiceConfig[] {
           const preStartMatch = envContent.match(/PRE_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/PRE_START_COMMAND:\s*'([^']+)'/);
           const postStartMatch = envContent.match(/POST_START_COMMAND:\s*"([^"]+)"/) || envContent.match(/POST_START_COMMAND:\s*'([^']+)'/);
           const rebuildMatch = envContent.match(/REBUILD_COMMAND:\s*"([^"]+)"/) || envContent.match(/REBUILD_COMMAND:\s*'([^']+)'/);
-          const resetMatch = envContent.match(/RESET_COMMAND:\s*"([^"]+)"/) || envContent.match(/RESET_COMMAND:\s*'([^']+)'/;
+          const resetMatch = envContent.match(/RESET_COMMAND:\s*"([^"]+)"/) || envContent.match(/RESET_COMMAND:\s*'([^']+)'/);
 
           if (portMatch) port = parseInt(portMatch[1]);
           if (installMatch) installCmd = installMatch[1];
