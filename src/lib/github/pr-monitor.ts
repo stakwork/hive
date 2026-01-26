@@ -181,6 +181,68 @@ export async function mergeBaseBranch(
 }
 
 /**
+ * Rebase PR branch onto the base branch using GitHub's update branch API
+ * This provides a cleaner commit history compared to merge
+ * 
+ * Note: This uses GitHub's "Update branch" API which performs a rebase operation
+ * when the PR's expected_head_sha matches the current head SHA.
+ */
+export async function rebaseOntoBaseBranch(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  headBranch: string,
+  baseBranch: string,
+  prNumber: number,
+): Promise<{ success: boolean; sha?: string; error?: string }> {
+  try {
+    // GitHub's updateBranch API performs a rebase when possible
+    // It's the same as clicking "Update branch" in the GitHub UI
+    const { data } = await octokit.pulls.updateBranch({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+
+    log.info("Successfully rebased PR branch onto base branch", {
+      owner,
+      repo,
+      headBranch,
+      baseBranch,
+      prNumber,
+      message: data.message,
+    });
+
+    return { success: true, sha: data.message };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // GitHub returns 422 if there are merge conflicts or branch restrictions
+    if (errorMessage.includes("422") || errorMessage.includes("conflict")) {
+      log.info("Cannot rebase: conflicts exist or branch protected", {
+        owner,
+        repo,
+        headBranch,
+        baseBranch,
+        prNumber,
+      });
+      return { success: false, error: "Cannot rebase: conflicts exist or branch is protected" };
+    }
+
+    log.error("Failed to rebase onto base branch", {
+      owner,
+      repo,
+      headBranch,
+      baseBranch,
+      prNumber,
+      error: errorMessage,
+    });
+
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
  * Check a single PR and return its current state
  */
 export async function checkPR(
@@ -354,6 +416,7 @@ export interface PRMonitorConfig {
   prConflictFixEnabled: boolean;
   prCiFailureFixEnabled: boolean;
   prOutOfDateFixEnabled: boolean;
+  prUseRebaseForUpdates: boolean;
 }
 
 /**
@@ -398,6 +461,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       pr_conflict_fix_enabled: boolean;
       pr_ci_failure_fix_enabled: boolean;
       pr_out_of_date_fix_enabled: boolean;
+      pr_use_rebase_for_updates: boolean;
     }>
   >`
     SELECT 
@@ -410,7 +474,8 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       COALESCE(jc.pr_monitor_enabled, false) as pr_monitor_enabled,
       COALESCE(jc.pr_conflict_fix_enabled, false) as pr_conflict_fix_enabled,
       COALESCE(jc.pr_ci_failure_fix_enabled, false) as pr_ci_failure_fix_enabled,
-      COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled
+      COALESCE(jc.pr_out_of_date_fix_enabled, false) as pr_out_of_date_fix_enabled,
+      COALESCE(jc.pr_use_rebase_for_updates, false) as pr_use_rebase_for_updates
     FROM artifacts a
     JOIN chat_messages m ON a.message_id = m.id
     JOIN tasks t ON m.task_id = t.id
@@ -451,6 +516,7 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       prConflictFixEnabled: artifact.pr_conflict_fix_enabled,
       prCiFailureFixEnabled: artifact.pr_ci_failure_fix_enabled,
       prOutOfDateFixEnabled: artifact.pr_out_of_date_fix_enabled,
+      prUseRebaseForUpdates: artifact.pr_use_rebase_for_updates,
     },
   }));
 }
@@ -647,40 +713,53 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
           });
           await updatePRArtifactProgress(pr.artifactId, progress);
         } else {
-          log.info("PR is out of date, attempting auto-merge", {
+          const useRebase = pr.prMonitorConfig.prUseRebaseForUpdates;
+          log.info(`PR is out of date, attempting ${useRebase ? 'rebase' : 'merge'}`, {
             taskId: pr.taskId,
             prNumber: result.prNumber,
             repo: `${result.owner}/${result.repo}`,
             headBranch: result.headBranch,
             baseBranch: result.baseBranch,
+            useRebase,
           });
 
-          const mergeResult = await mergeBaseBranch(
-            octokit,
-            result.owner,
-            result.repo,
-            result.headBranch,
-            result.baseBranch,
-          );
+          const updateResult = useRebase
+            ? await rebaseOntoBaseBranch(
+                octokit,
+                result.owner,
+                result.repo,
+                result.headBranch,
+                result.baseBranch,
+                result.prNumber,
+              )
+            : await mergeBaseBranch(
+                octokit,
+                result.owner,
+                result.repo,
+                result.headBranch,
+                result.baseBranch,
+              );
 
-          if (mergeResult.success) {
+          if (updateResult.success) {
             stats.autoMerged++;
-            log.info("Auto-merged base branch into PR", {
+            log.info(`Auto-${useRebase ? 'rebased' : 'merged'} base branch into PR`, {
               taskId: pr.taskId,
               prNumber: result.prNumber,
-              sha: mergeResult.sha,
+              sha: updateResult.sha,
+              strategy: useRebase ? 'rebase' : 'merge',
             });
 
-            // Update progress to checking (CI will run on new merge commit)
+            // Update progress to checking (CI will run on new commit)
             progress.state = "checking";
             progress.problemDetails = undefined;
             await updatePRArtifactProgress(pr.artifactId, progress);
           } else {
-            // Auto-merge failed (likely conflicts appeared) - update state and let next check handle it
-            log.warn("Auto-merge failed", {
+            // Auto-update failed (likely conflicts appeared) - update state and let next check handle it
+            log.warn(`Auto-${useRebase ? 'rebase' : 'merge'} failed`, {
               taskId: pr.taskId,
               prNumber: result.prNumber,
-              error: mergeResult.error,
+              error: updateResult.error,
+              strategy: useRebase ? 'rebase' : 'merge',
             });
             await updatePRArtifactProgress(pr.artifactId, progress);
           }

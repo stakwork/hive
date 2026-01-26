@@ -108,8 +108,26 @@ const prMonitorJanitors: JanitorItem[] = [
     id: "pr-out-of-date-fix",
     name: "Auto-update Branches",
     icon: RefreshCw,
-    description: "Automatically merge base branch when PR is behind",
+    description: "Automatically update PR branches when behind base branch",
     configKey: "prOutOfDateFixEnabled",
+    childOptions: [
+      {
+        id: "pr-use-merge",
+        name: "Merge Strategy",
+        icon: GitMerge,
+        description: "Merge base branch into PR branch (creates merge commit)",
+        configKey: "prUseMergeForUpdates",
+        exclusiveGroup: "pr-update-strategy",
+      },
+      {
+        id: "pr-use-rebase",
+        name: "Rebase Strategy",
+        icon: RefreshCw,
+        description: "Rebase PR branch onto base branch (cleaner linear history)",
+        configKey: "prUseRebaseForUpdates",
+        exclusiveGroup: "pr-update-strategy",
+      },
+    ],
   },
 ];
 

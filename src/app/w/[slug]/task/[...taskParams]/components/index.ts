@@ -8,3 +8,4 @@ export { ArtifactsPanel } from "./ArtifactsPanel";
 export { WorkflowStatusBadge } from "./WorkflowStatusBadge";
 export { WorkflowUrlLink } from "./WorkflowUrlLink";
 export { CommitModal } from "./CommitModal";
+export { BountyRequestModal } from "./BountyRequestModal";
