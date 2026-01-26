@@ -15,6 +15,7 @@ export interface JanitorConfigUpdate {
   prConflictFixEnabled?: boolean;
   prCiFailureFixEnabled?: boolean;
   prOutOfDateFixEnabled?: boolean;
+  prUseRebaseForUpdates?: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export interface PRMonitorConfigFields {
   prConflictFixEnabled: boolean;
   prCiFailureFixEnabled: boolean;
   prOutOfDateFixEnabled: boolean;
+  prUseRebaseForUpdates: boolean;
 }
 
 export interface AcceptRecommendationRequest {
