@@ -1726,6 +1726,7 @@ async function seedJanitorData(
 /**
  * Seeds StakworkRuns for AI generation history
  * Creates 2-3 runs per feature with realistic types and statuses
+ * Some runs have decision=null to test "needs attention" feature
  */
 async function seedStakworkRuns(
   workspaceId: string,
@@ -1734,7 +1735,10 @@ async function seedStakworkRuns(
   const mockWebhookUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
 
   for (const feature of features) {
-    // Architecture run (completed)
+    // Determine if this feature should need attention (first 2 features)
+    const needsAttention = features.indexOf(feature) < 2;
+
+    // Architecture run (completed - needs attention for some features)
     await db.stakworkRun.create({
       data: {
         workspaceId,
@@ -1749,7 +1753,7 @@ async function seedStakworkRuns(
           technologies: ["Node.js", "PostgreSQL", "Redis", "Docker"],
         }),
         dataType: "json",
-        decision: StakworkRunDecision.ACCEPTED,
+        decision: needsAttention ? null : StakworkRunDecision.ACCEPTED, // null = needs attention
         createdAt: new Date(Date.now() - 86400000 * 2), // 2 days ago
         updatedAt: new Date(Date.now() - 86400000 * 2),
       },

@@ -1290,7 +1290,6 @@ export default function TaskChatPage() {
                     onRemoveStepAttachment={() => setSelectedStep(null)}
                     workflowStatus={workflowStatus}
                     taskTitle={taskTitle}
-                    stakworkProjectId={stakworkProjectId}
                     workspaceSlug={slug}
                     showPreviewToggle={!!browserArtifact}
                     showPreview={showPreview}
@@ -1325,7 +1324,6 @@ export default function TaskChatPage() {
                       onRemoveStepAttachment={() => setSelectedStep(null)}
                       workflowStatus={workflowStatus}
                       taskTitle={taskTitle}
-                      stakworkProjectId={stakworkProjectId}
                       workspaceSlug={slug}
                       taskMode={taskMode}
                       podId={podId}
@@ -1369,7 +1367,6 @@ export default function TaskChatPage() {
                 onRemoveStepAttachment={() => setSelectedStep(null)}
                 workflowStatus={workflowStatus}
                 taskTitle={taskTitle}
-                stakworkProjectId={stakworkProjectId}
                 workspaceSlug={slug}
                 taskMode={taskMode}
                 podId={podId}
