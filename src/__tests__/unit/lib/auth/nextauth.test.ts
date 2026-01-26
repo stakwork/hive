@@ -22,6 +22,9 @@ vi.mock("@/lib/db", () => ({
     workspace: {
       findFirst: vi.fn(),
     },
+    workspaceMember: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -156,13 +159,26 @@ describe("nextauth.ts - signIn callback", () => {
           emailVerified: expect.any(Date),
         },
       });
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("new-user-id");
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("new-user-id", undefined);
       expect(db.workspace.findFirst).toHaveBeenCalledWith({
-        where: { ownerId: "new-user-id", deleted: false },
+        where: {
+          OR: [
+            { ownerId: "new-user-id", deleted: false },
+            {
+              deleted: false,
+              members: {
+                some: {
+                  userId: "new-user-id",
+                  leftAt: null,
+                },
+              },
+            },
+          ],
+        },
         select: { slug: true },
       });
       expect(logger.authInfo).toHaveBeenCalledWith(
-        "Mock workspace created successfully",
+        "Mock workspace access created successfully",
         "SIGNIN_MOCK_SUCCESS",
         expect.objectContaining({
           userId: "new-user-id",
@@ -219,7 +235,7 @@ describe("nextauth.ts - signIn callback", () => {
       expect(result).toBe(true);
       expect(db.user.findUnique).toHaveBeenCalled();
       expect(db.user.create).not.toHaveBeenCalled();
-      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("existing-user-id");
+      expect(ensureMockWorkspaceForUser).toHaveBeenCalledWith("existing-user-id", undefined);
     });
 
     test("should return false if workspace creation fails", async () => {
@@ -311,11 +327,12 @@ describe("nextauth.ts - signIn callback", () => {
 
       expect(result).toBe(false);
       expect(logger.authError).toHaveBeenCalledWith(
-        "Mock workspace created but not found on verification - possible transaction issue",
+        "Mock workspace created but user has no access - possible transaction issue",
         "SIGNIN_MOCK_VERIFICATION_FAILED",
         expect.objectContaining({
           userId: "new-user-id",
           expectedSlug: "test-workspace",
+          role: undefined,
         })
       );
     });
@@ -951,6 +968,7 @@ describe("nextauth.ts - session callback", () => {
       };
 
       (db.workspace.findFirst as any).mockResolvedValue(null);
+      (db.workspaceMember.findFirst as any).mockResolvedValue(null);
 
       const sessionCallback = authOptions.callbacks?.session;
       const result = await sessionCallback!({
