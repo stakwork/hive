@@ -225,6 +225,21 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     return "desc";
   });
 
+  const [createdByFilter, setCreatedByFilter] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("features-filters-sort-preference");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return parsed.createdByFilter || "ALL";
+        } catch {
+          return "ALL";
+        }
+      }
+    }
+    return "ALL";
+  });
+
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // State for showing/hiding canceled features with localStorage persistence
@@ -295,6 +310,9 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       if (assigneeFilter !== "ALL") {
         params.append("assigneeId", assigneeFilter);
       }
+      if (createdByFilter !== "ALL") {
+        params.append("createdById", createdByFilter);
+      }
 
       // Add sort params if set
       if (sortBy) {
@@ -332,7 +350,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   };
 
   // Check if any filters are active (excluding default sort)
-  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "";
+  const hasActiveFilters = statusFilters.length > 0 || priorityFilters.length > 0 || assigneeFilter !== "ALL" || createdByFilter !== "ALL" || (sortBy !== null && sortBy !== "updatedAt") || debouncedSearchQuery.trim() !== "";
 
   // Calculate visible page numbers (show 3 pages on each side of current page)
   const getPageRange = (current: number, total: number): number[] => {
@@ -364,7 +382,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   useEffect(() => {
     fetchFeatures(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder, debouncedSearchQuery]);
+  }, [workspaceId, viewType, page, statusFilters, priorityFilters, assigneeFilter, createdByFilter, sortBy, sortOrder, debouncedSearchQuery]);
 
   // Auto-open creation form when no features exist AND no filters are active (only on initial load)
   useEffect(() => {
@@ -389,12 +407,13 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
         statusFilters,
         priorityFilters,
         assigneeFilter,
+        createdByFilter,
         sortBy,
         sortOrder,
       };
       localStorage.setItem("features-filters-sort-preference", JSON.stringify(preferences));
     }
-  }, [statusFilters, priorityFilters, assigneeFilter, sortBy, sortOrder]);
+  }, [statusFilters, priorityFilters, assigneeFilter, createdByFilter, sortBy, sortOrder]);
 
   // Save show canceled preference to localStorage
   useEffect(() => {
@@ -461,9 +480,16 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
     setStatusFilters([]);
     setPriorityFilters([]);
     setAssigneeFilter("ALL");
+    setCreatedByFilter("ALL");
     setSortBy("updatedAt");
     setSortOrder("desc");
     setSearchQuery("");
+    setPage(1);
+  };
+
+  const handleCreatedByFilterChange = (value: string | string[]) => {
+    const creatorId = Array.isArray(value) ? value[0] : value;
+    setCreatedByFilter(creatorId);
     setPage(1);
   };
 
@@ -629,6 +655,16 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const assigneeOptions = [
     { value: "ALL", label: "All Assignees", image: null, name: null },
     { value: "UNASSIGNED", label: "Unassigned", image: null, name: null },
+    ...members.map((member) => ({
+      value: member.user.id,
+      label: member.user.name || member.user.email || "Unknown",
+      image: member.user.image,
+      name: member.user.name,
+    })),
+  ];
+
+  const creatorOptions = [
+    { value: "ALL", label: "All Creators", image: null, name: null },
     ...members.map((member) => ({
       value: member.user.id,
       label: member.user.name || member.user.email || "Unknown",
@@ -879,7 +915,16 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
                       showPriorityBadges={true}
                     />
                   </TableHead>
-                  <TableHead className="w-[150px]">Created by</TableHead>
+                  <TableHead className="w-[150px]">
+                    <FilterDropdownHeader
+                      label="Created by"
+                      options={creatorOptions}
+                      value={createdByFilter}
+                      onChange={handleCreatedByFilterChange}
+                      showSearch={true}
+                      showAvatars={true}
+                    />
+                  </TableHead>
                   <TableHead className="w-[180px]">
                     <FilterDropdownHeader
                       label="Assigned"
