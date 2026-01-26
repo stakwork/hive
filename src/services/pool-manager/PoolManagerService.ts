@@ -99,7 +99,7 @@ export class PoolManagerService extends BaseServiceClass implements IPoolManager
     try {
       const decryptedApiKey = encryptionService.decryptField("poolApiKey", poolApiKey);
 
-      const response = await fetch(`${this.config.baseURL}/pools/${poolId}`, {
+      const response = await fetch(`${this.config.baseURL}/pools/${poolId}/status?simple=true`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
