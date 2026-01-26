@@ -26,8 +26,10 @@ vi.mock('@/lib/pusher', () => ({
     trigger: vi.fn(),
   },
   getWorkspaceChannelName: (slug: string) => `workspace-${slug}`,
+  getTaskChannelName: (taskId: string) => `task-${taskId}`,
   PUSHER_EVENTS: {
     WORKSPACE_TASK_TITLE_UPDATE: 'workspace-task-title-update',
+    PR_STATUS_CHANGE: 'pr-status-change',
   },
 }));
 vi.mock('@/services/roadmap/feature-status-sync', () => ({
@@ -278,10 +280,12 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
       });
 
-      // Should return 202 (acknowledged, task updated but no pod to release)
-      expect(response.status).toBe(202);
+      // Should return 200 (task processed successfully, no pod to release)
+      expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(1);
+      expect(body.podsReleased).toBe(0);
 
       // Verify task status was updated to DONE
       const updatedTask = await db.task.findUnique({
@@ -316,7 +320,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       expect(releaseTaskPod).not.toHaveBeenCalled();
     });
 
-    test('should return 202 when multiple tasks with same PR URL found', async () => {
+    test('should handle multiple tasks with same PR URL and release all pods', async () => {
       const testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
@@ -333,6 +337,10 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
           status: TaskStatus.IN_PROGRESS,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           podId: 'test-pod-111',
+          agentUrl: 'https://test-pod-111.example.com',
+          agentPassword: JSON.stringify(
+            encryptionService.encryptField('agentPassword', 'test-password-1')
+          ),
           createdById: testSetup.user.id,
           updatedById: testSetup.user.id,
         },
@@ -348,7 +356,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         },
       });
 
-      await db.artifact.create({
+      const artifact1 = await db.artifact.create({
         data: {
           messageId: message1.id,
           type: ArtifactType.PULL_REQUEST,
@@ -369,6 +377,10 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
           status: TaskStatus.IN_PROGRESS,
           workflowStatus: WorkflowStatus.IN_PROGRESS,
           podId: 'test-pod-222',
+          agentUrl: 'https://test-pod-222.example.com',
+          agentPassword: JSON.stringify(
+            encryptionService.encryptField('agentPassword', 'test-password-2')
+          ),
           createdById: testSetup.user.id,
           updatedById: testSetup.user.id,
         },
@@ -384,7 +396,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         },
       });
 
-      await db.artifact.create({
+      const artifact2 = await db.artifact.create({
         data: {
           messageId: message2.id,
           type: ArtifactType.PULL_REQUEST,
@@ -394,6 +406,13 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
             status: 'open',
           },
         },
+      });
+
+      // Mock successful pod releases for both tasks
+      vi.mocked(releaseTaskPod).mockResolvedValue({
+        success: true,
+        podDropped: true,
+        taskCleared: true,
       });
 
       const prPayload = createGitHubPullRequestPayload(
@@ -427,13 +446,79 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
       });
 
-      // Should return 202 (manual resolution needed)
-      expect(response.status).toBe(202);
+      // Should return 200 (all tasks processed successfully)
+      expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(2);
+      expect(body.podsReleased).toBe(2);
 
-      // Verify releaseTaskPod was NOT called (ambiguous scenario)
-      expect(releaseTaskPod).not.toHaveBeenCalled();
+      // Verify both tasks' status updated to DONE
+      const updatedTask1 = await db.task.findUnique({
+        where: { id: task1.id },
+        select: { status: true },
+      });
+      expect(updatedTask1?.status).toBe(TaskStatus.DONE);
+
+      const updatedTask2 = await db.task.findUnique({
+        where: { id: task2.id },
+        select: { status: true },
+      });
+      expect(updatedTask2?.status).toBe(TaskStatus.DONE);
+
+      // Verify both artifacts updated
+      const updatedArtifact1 = await db.artifact.findUnique({
+        where: { id: artifact1.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact1?.content).toMatchObject({
+        status: 'DONE',
+      });
+
+      const updatedArtifact2 = await db.artifact.findUnique({
+        where: { id: artifact2.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact2?.content).toMatchObject({
+        status: 'DONE',
+      });
+
+      // Verify releaseTaskPod was called for both tasks
+      expect(releaseTaskPod).toHaveBeenCalledTimes(2);
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task1.id,
+        podId: 'test-pod-111',
+        workspaceId: testSetup.workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+      expect(releaseTaskPod).toHaveBeenCalledWith({
+        taskId: task2.id,
+        podId: 'test-pod-222',
+        workspaceId: testSetup.workspace.id,
+        verifyOwnership: true,
+        clearTaskFields: true,
+        newWorkflowStatus: null,
+      });
+
+      // Verify Pusher triggers for both tasks
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+        expect.objectContaining({
+          taskId: task1.id,
+          status: TaskStatus.DONE,
+        })
+      );
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `workspace-${testSetup.workspace.slug}`,
+        PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+        expect.objectContaining({
+          taskId: task2.id,
+          status: TaskStatus.DONE,
+        })
+      );
     });
 
     test('should handle pod reassignment gracefully', async () => {
@@ -518,10 +603,12 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
       });
 
-      // Should return 202 (pod was reassigned)
-      expect(response.status).toBe(202);
+      // Should return 200 (task processed, pod was reassigned so not dropped)
+      expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(1);
+      expect(body.podsReleased).toBe(0); // Pod was reassigned, not dropped
 
       // Verify releaseTaskPod was called
       expect(releaseTaskPod).toHaveBeenCalled();
@@ -739,10 +826,12 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
       });
 
-      // Should return 202 (acknowledged despite failure)
-      expect(response.status).toBe(202);
+      // Should return 200 (task processed despite pod release failure)
+      expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(1);
+      expect(body.podsReleased).toBe(0); // Pod release failed
 
       // Verify releaseTaskPod was called
       expect(releaseTaskPod).toHaveBeenCalled();
