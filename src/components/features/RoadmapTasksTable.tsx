@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { DependenciesCombobox } from "@/components/features/DependenciesCombobox";
-import { ActionMenu } from "@/components/ui/action-menu";
+import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
 import { PriorityPopover } from "@/components/ui/priority-popover";
 import { StatusPopover } from "@/components/ui/status-popover";
@@ -32,6 +32,9 @@ interface RoadmapTasksTableProps {
   onTasksReordered?: (tasks: TicketListItem[]) => void;
   onTaskUpdate?: (taskId: string, updates: Partial<TicketListItem>) => void;
 }
+
+// Maximum number of dependencies to show inline before using "+N more"
+const maxVisibleDependencies = 2;
 
 function SortableTableRow({
   task,
@@ -72,6 +75,54 @@ function SortableTableRow({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  // Build action menu items
+  const actionMenuItems: ActionMenuItem[] = [
+    ...(task.status === "TODO"
+      ? [
+          {
+            label: "Start Task",
+            icon: Play,
+            variant: "default" as const,
+            onClick: onStartTask,
+          },
+        ]
+      : []),
+    ...(task.status !== "TODO"
+      ? [
+          {
+            label: "View Task",
+            icon: ExternalLink,
+            variant: "default" as const,
+            onClick: () => router.push(`/w/${workspaceSlug}/task/${task.id}`),
+          },
+        ]
+      : []),
+    ...(task.assignee?.id === "system:bounty-hunter" && task.bountyCode
+      ? [
+          {
+            label: "View Bounty",
+            icon: ExternalLink,
+            variant: "default" as const,
+            onClick: () => {
+              const sphinxUrl = process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL || "https://bounties.sphinx.chat";
+              window.open(`${sphinxUrl}/bounty/${task.bountyCode}`, "_blank");
+            },
+          },
+        ]
+      : [
+          {
+            label: "Delete",
+            icon: Trash2,
+            variant: "destructive" as const,
+            confirmation: {
+              title: "Delete Task",
+              description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
+              onConfirm: onDelete,
+            },
+          },
+        ]),
+  ];
 
   return (
     <TableRow
@@ -127,57 +178,11 @@ function SortableTableRow({
           allTickets={allTasks}
           selectedDependencyIds={task.dependsOnTaskIds}
           onUpdate={onDependenciesUpdate}
+          maxVisibleDependencies={maxVisibleDependencies}
         />
       </TableCell>
       <TableCell className="w-[50px]">
-        <ActionMenu
-          actions={[
-            ...(task.status === "TODO"
-              ? [
-                {
-                  label: "Start Task",
-                  icon: Play,
-                  variant: "default" as const,
-                  onClick: onStartTask,
-                },
-              ]
-              : []),
-            ...(task.status !== "TODO"
-              ? [
-                {
-                  label: "View Task",
-                  icon: ExternalLink,
-                  variant: "default" as const,
-                  onClick: () => router.push(`/w/${workspaceSlug}/task/${task.id}`),
-                },
-              ]
-              : []),
-            ...(task.assignee?.id === "system:bounty-hunter" && task.bountyCode
-              ? [
-                {
-                  label: "View Bounty",
-                  icon: ExternalLink,
-                  variant: "default" as const,
-                  onClick: () => {
-                    const sphinxUrl = process.env.NEXT_PUBLIC_SPHINX_TRIBES_URL || "https://bounties.sphinx.chat";
-                    window.open(`${sphinxUrl}/bounty/${task.bountyCode}`, "_blank");
-                  },
-                },
-              ]
-              : [
-                {
-                  label: "Delete",
-                  icon: Trash2,
-                  variant: "destructive" as const,
-                  confirmation: {
-                    title: "Delete Task",
-                    description: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
-                    onConfirm: onDelete,
-                  },
-                },
-              ]),
-          ]}
-        />
+        <ActionMenu actions={actionMenuItems} />
       </TableCell>
     </TableRow>
   );
