@@ -1,3 +1,4 @@
+import React from 'react'
 import { useDataStore } from '@/stores/useStores'
 import { GraphViewControl } from './GraphViewControl'
 import { CameraRecenterControl } from './CameraRecenterControl'
@@ -11,7 +12,7 @@ export const ActionsToolbar = () => {
     }
 
     return (
-        <div className="absolute right-5 bottom-5 pointer-events-auto flex flex-col items-end" id="actions-toolbar">
+        <div className="absolute right-5 bottom-4 pointer-events-auto flex flex-col items-end" id="actions-toolbar">
             <div className="flex flex-col gap-1">
                 <CameraRecenterControl />
             </div>
