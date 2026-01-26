@@ -13,13 +13,14 @@ interface ArtifactsPanelProps {
   artifacts: Artifact[];
   workspaceId?: string;
   taskId?: string;
+  podId?: string | null;
   onDebugMessage?: (message: string, debugArtifact?: Artifact) => Promise<void>;
   isMobile?: boolean;
   onTogglePreview?: () => void;
   onStepSelect?: (step: WorkflowTransition) => void;
 }
 
-export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect }: ArtifactsPanelProps) {
+export function ArtifactsPanel({ artifacts, workspaceId, taskId, podId, onDebugMessage, isMobile = false, onTogglePreview, onStepSelect }: ArtifactsPanelProps) {
   const [activeTab, setActiveTab] = useState<ArtifactType | null>(null);
 
   // Separate artifacts by type
@@ -111,6 +112,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 artifacts={browserArtifacts}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />
@@ -123,6 +125,7 @@ export function ArtifactsPanel({ artifacts, workspaceId, taskId, onDebugMessage,
                 ide={true}
                 workspaceId={workspaceId}
                 taskId={taskId}
+                podId={podId}
                 onDebugMessage={onDebugMessage}
                 isMobile={isMobile}
               />

@@ -22,9 +22,9 @@ export function FormArtifact({
   const content = artifact.content as FormContent;
 
   // Only show buttons for actionType="button" options
-  const buttonOptions = content.options.filter(
+  const buttonOptions = content.options?.filter(
     (option) => option.actionType === "button",
-  );
+  ) || [];
 
   const handleSubmit = (action: Option) => {
     if (isDisabled) return;
