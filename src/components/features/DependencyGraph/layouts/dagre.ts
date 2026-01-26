@@ -3,9 +3,9 @@ import { Node, Edge, Position } from "@xyflow/react";
 import type { LayoutConfig, LayoutResult } from "../types";
 import { detectCollisions } from "./collisionDetection";
 
-const MAX_LAYOUT_ATTEMPTS = 3;
-const RANKSEP_INCREMENT = 50;
-const NODESEP_INCREMENT = 25;
+const MAX_LAYOUT_ATTEMPTS = 5;
+const RANKSEP_INCREMENT = 100;
+const NODESEP_INCREMENT = 75;
 
 export function getLayoutedElements(
   nodes: Node[],
@@ -16,8 +16,8 @@ export function getLayoutedElements(
     nodeWidth,
     nodeHeight,
     direction = "TB",
-    ranksep: initialRanksep = 100,
-    nodesep: initialNodesep = 50,
+    ranksep: initialRanksep = 200,
+    nodesep: initialNodesep = 100,
   } = config;
 
   let currentRanksep = initialRanksep;
@@ -70,7 +70,7 @@ export function getLayoutedElements(
       layoutedNodes,
       nodeWidth,
       nodeHeight,
-      25 // minSpacing for collision detection
+      50 // minSpacing for collision detection (buffer on each side)
     );
 
     // If no collisions, return the result

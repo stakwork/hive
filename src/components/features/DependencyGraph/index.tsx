@@ -16,8 +16,10 @@ import { getLayoutedElements } from "./layouts/dagre";
 import type { DependencyGraphProps, GraphEntity } from "./types";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
-const DEFAULT_NODE_WIDTH = 250;
-const DEFAULT_NODE_HEIGHT = 80;
+// Account for actual rendered size including padding, borders, and shadows
+// The RoadmapTaskNode has min-w-[250px] but renders larger with content
+const DEFAULT_NODE_WIDTH = 300;
+const DEFAULT_NODE_HEIGHT = 100;
 
 export function DependencyGraph<T extends GraphEntity>({
   entities,
@@ -66,8 +68,8 @@ export function DependencyGraph<T extends GraphEntity>({
       nodeWidth: DEFAULT_NODE_WIDTH,
       nodeHeight: DEFAULT_NODE_HEIGHT,
       direction,
-      ranksep: 100,
-      nodesep: 50,
+      ranksep: 200,
+      nodesep: 150,
     });
   }, [entities, getDependencies, direction]);
 
