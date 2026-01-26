@@ -44,6 +44,7 @@ interface ChatAreaProps {
   isReleasingPod?: boolean;
   featureId?: string | null;
   featureTitle?: string | null;
+  onOpenBountyRequest?: () => void;
 }
 
 export function ChatArea({
@@ -72,6 +73,7 @@ export function ChatArea({
   isReleasingPod = false,
   featureId,
   featureTitle,
+  onOpenBountyRequest,
 }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -301,6 +303,7 @@ export function ChatArea({
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
         workspaceSlug={workspaceSlug}
+        onOpenBountyRequest={onOpenBountyRequest}
       />
     </motion.div>
   );
