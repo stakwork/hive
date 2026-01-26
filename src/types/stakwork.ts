@@ -74,6 +74,7 @@ export const CreateStakworkRunSchema = z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string(),
   })).optional(),
+  includeHistory: z.boolean().optional(),
 });
 
 export const StakworkRunWebhookSchema = z.object({
