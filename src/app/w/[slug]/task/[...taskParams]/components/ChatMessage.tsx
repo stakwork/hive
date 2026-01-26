@@ -38,7 +38,7 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
   const messageEqual =
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.updatedAt === nextProps.message.updatedAt &&
-    prevProps.message.artifacts?.length === nextProps.message.artifacts?.length &&
+    prevProps.message.artifacts === nextProps.message.artifacts &&
     prevProps.message.workflowUrl === nextProps.message.workflowUrl;
 
   // Compare replyMessage if present
@@ -54,7 +54,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
   // Parse logs from message content
   const { content: messageContent, logs } = useMemo(
     () => (message.message ? parseLogsFromMessage(message.message) : { content: "", logs: [] }),
-    [message.message],
+    [message.message]
   );
 
   return (
@@ -119,7 +119,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
           if (replyMessage && artifact.content) {
             const formContent = artifact.content as FormContent;
             selectedOption = formContent.options?.find(
-              (option: Option) => option.optionResponse === replyMessage.message,
+              (option: Option) => option.optionResponse === replyMessage.message
             );
           }
 
