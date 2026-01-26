@@ -130,6 +130,7 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 };
 
 // Feature with relations (matches GET /api/features list query)
+// Note: stakworkRuns count is added manually since Prisma types don't support conditional counts
 export type FeatureWithDetails = Prisma.FeatureGetPayload<{
   select: {
     id: true;
@@ -157,6 +158,7 @@ export type FeatureWithDetails = Prisma.FeatureGetPayload<{
     _count: {
       select: {
         userStories: true;
+        stakworkRuns: true;
       };
     };
   };

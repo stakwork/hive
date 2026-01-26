@@ -38,6 +38,7 @@ interface AITextareaSectionProps {
   rows?: number;
   className?: string;
   initialDiagramUrl?: string | null;
+  onDecisionMade?: () => void;
 }
 
 /**
@@ -62,6 +63,7 @@ export function AITextareaSection({
   rows = 8,
   className,
   initialDiagramUrl = null,
+  onDecisionMade,
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
@@ -121,10 +123,12 @@ export function AITextareaSection({
 
     await aiGeneration.accept();
     setMode("preview");
+    onDecisionMade?.();
   };
 
   const handleReject = async () => {
     await aiGeneration.reject();
+    onDecisionMade?.();
   };
 
   const handleProvideFeedback = async (feedback: string) => {
