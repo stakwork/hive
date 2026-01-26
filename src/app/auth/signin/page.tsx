@@ -18,7 +18,18 @@ function SignInContent() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isMockSigningIn, setIsMockSigningIn] = useState(false);
   const [mockUsername, setMockUsername] = useState("");
+  const [mockRole, setMockRole] = useState<string>("OWNER");
   const [providers, setProviders] = useState<Record<string, ClientSafeProvider> | null>(null);
+
+  // Mock role options
+  const mockRoleOptions = [
+    { value: "OWNER", label: "Owner", description: "Full access" },
+    { value: "ADMIN", label: "Admin", description: "Manage workspace" },
+    { value: "PM", label: "Product Manager", description: "Manage products" },
+    { value: "DEVELOPER", label: "Developer", description: "Code access" },
+    { value: "STAKEHOLDER", label: "Stakeholder", description: "View only with insights" },
+    { value: "VIEWER", label: "Viewer", description: "Read only" },
+  ];
 
   // Check if there's a redirect parameter
   const redirectPath = searchParams.get("redirect");
@@ -88,6 +99,7 @@ function SignInContent() {
       setIsMockSigningIn(true);
       const result = await signIn("mock", {
         username: mockUsername || "dev-user",
+        role: mockRole,
         redirect: false,
         callbackUrl: redirectPath || "/",
       });
@@ -155,6 +167,27 @@ function SignInContent() {
 
                 <div className="space-y-4">
                   <div className="space-y-2">
+                    <Label htmlFor="mock-role">Role</Label>
+                    <select
+                      id="mock-role"
+                      value={mockRole}
+                      onChange={(e) => setMockRole(e.target.value)}
+                      disabled={isMockSigningIn || isSigningIn}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {mockRoleOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label} - {option.description}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      {mockRole === "OWNER" 
+                        ? "Creates your own workspace as the owner"
+                        : "Joins a shared workspace with the selected role"}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="mock-username">Username (optional)</Label>
                     <Input
                       id="mock-username"
@@ -179,7 +212,7 @@ function SignInContent() {
                     ) : (
                       <>
                         <UserCheck className="w-5 h-5 mr-3" />
-                        Mock Sign In (Dev)
+                        Mock Sign In as {mockRoleOptions.find(r => r.value === mockRole)?.label}
                       </>
                     )}
                   </Button>

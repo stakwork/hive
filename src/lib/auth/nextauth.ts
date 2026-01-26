@@ -62,16 +62,23 @@ const getProviders = () => {
             type: "text",
             placeholder: "Enter any username",
           },
+          role: {
+            label: "Role",
+            type: "text",
+            placeholder: "Role",
+          },
         },
         async authorize(credentials) {
           // Mock authentication - accept any username in development
           if (credentials?.username) {
             const username = credentials.username.trim();
+            const role = credentials.role || "OWNER"; // Default to OWNER if not specified
             return {
-              id: `mock-${username}`,
+              id: `mock-${username}-${role}`,
               name: username,
               email: `${username}@mock.dev`,
               image: `https://avatars.githubusercontent.com/u/1?v=4`, // Generic avatar
+              role, // Store role for later use
             };
           }
           return null;
@@ -116,37 +123,53 @@ export const authOptions: NextAuthOptions = {
             user.id = existingUser.id;
           }
 
+          // Extract role from user object (passed from authorize)
+          const role = (user as any).role as WorkspaceRole | undefined;
+
           // Create workspace atomically - this MUST succeed for auth to work
-          const workspaceSlug = await ensureMockWorkspaceForUser(user.id as string);
+          const workspaceSlug = await ensureMockWorkspaceForUser(user.id as string, role);
 
           if (!workspaceSlug) {
             logger.authError(
               "Failed to create mock workspace - workspace slug is empty",
               "SIGNIN_MOCK_WORKSPACE_FAILED",
-              { userId: user.id }
+              { userId: user.id, role }
             );
             return false;
           }
 
-          // Verify workspace was committed to DB before proceeding
-          // This ensures subsequent queries in middleware/pages will find it
-          const verifyWorkspace = await db.workspace.findFirst({
-            where: { ownerId: user.id as string, deleted: false },
+          // Verify workspace was committed to DB (or user was added as member)
+          const verifyAccess = await db.workspace.findFirst({
+            where: {
+              OR: [
+                { ownerId: user.id as string, deleted: false },
+                {
+                  deleted: false,
+                  members: {
+                    some: {
+                      userId: user.id as string,
+                      leftAt: null,
+                    },
+                  },
+                },
+              ],
+            },
             select: { slug: true },
           });
 
-          if (!verifyWorkspace) {
+          if (!verifyAccess) {
             logger.authError(
-              "Mock workspace created but not found on verification - possible transaction issue",
+              "Mock workspace created but user has no access - possible transaction issue",
               "SIGNIN_MOCK_VERIFICATION_FAILED",
-              { userId: user.id, expectedSlug: workspaceSlug }
+              { userId: user.id, expectedSlug: workspaceSlug, role }
             );
             return false;
           }
 
-          logger.authInfo("Mock workspace created successfully", "SIGNIN_MOCK_SUCCESS", {
+          logger.authInfo("Mock workspace access created successfully", "SIGNIN_MOCK_SUCCESS", {
             userId: user.id,
             workspaceSlug,
+            role,
           });
         } catch (error) {
           logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
@@ -260,10 +283,30 @@ export const authOptions: NextAuthOptions = {
           const uid = (session.user as { id?: string }).id;
           if (uid) {
             try {
-              const workspace = await db.workspace.findFirst({
+              // Check if user owns a workspace or is a member of one
+              let workspace = await db.workspace.findFirst({
                 where: { ownerId: uid, deleted: false },
                 select: { slug: true },
               });
+
+              // If not an owner, check for workspace membership
+              if (!workspace) {
+                const membership = await db.workspaceMember.findFirst({
+                  where: {
+                    userId: uid,
+                    leftAt: null,
+                  },
+                  include: {
+                    workspace: {
+                      select: { slug: true, deleted: false },
+                    },
+                  },
+                });
+
+                if (membership?.workspace && !membership.workspace.deleted) {
+                  workspace = { slug: membership.workspace.slug };
+                }
+              }
 
               if (workspace?.slug) {
                 (session.user as { defaultWorkspaceSlug?: string }).defaultWorkspaceSlug = workspace.slug;
