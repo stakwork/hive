@@ -26,6 +26,7 @@ interface WorkflowEditorRequest {
   stepType: string;
   stepData: Record<string, unknown>;
   webhook?: string;
+  workflowJson?: string; // Current workflow JSON to store as original for diff comparison
 }
 
 export async function POST(request: NextRequest) {
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
       stepType,
       stepData,
       webhook,
+      workflowJson,
     } = body;
 
     // Validate required fields
@@ -254,6 +256,7 @@ export async function POST(request: NextRequest) {
                       workflowId: workflowId,
                       workflowName: workflowName || `Workflow ${workflowId}`,
                       workflowRefId: workflowRefId || "",
+                      originalWorkflowJson: workflowJson || "",
                     },
                   },
                 ],
