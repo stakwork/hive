@@ -848,7 +848,7 @@ export default function TaskChatPage() {
         setIsLoading(false);
       }
     },
-    [taskMode, currentTaskId, effectiveWorkspaceId, processStream, clearLogs],
+    [taskMode, currentTaskId, processStream, clearLogs],
   );
 
   const handleArtifactAction = useCallback(
