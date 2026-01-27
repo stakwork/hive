@@ -169,7 +169,7 @@ export function RecommendationsSection() {
           </div>
         )}
 
-        {!loading && recommendations.length > 3 && !showAll && (
+        {!loading && hasEnabledJanitors && recommendations.length > 3 && !showAll && (
           <div className="pt-2 text-center">
             <Button
               variant="ghost"
