@@ -97,6 +97,17 @@ export async function GET(
           },
         },
         attachments: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            githubAuth: {
+              select: { githubUsername: true },
+            },
+          },
+        },
       },
       orderBy: {
         timestamp: "asc", // Show messages in chronological order
@@ -104,7 +115,7 @@ export async function GET(
     });
 
     // Convert to client-side types with proper JSON parsing
-    const clientMessages: ChatMessage[] = chatMessages.map((msg) => {
+    const clientMessages = chatMessages.map((msg) => {
       let contextTags: ContextTag[] = [];
 
       // Handle contextTags - may be string, object, or null
@@ -127,7 +138,7 @@ export async function GET(
           ...artifact,
           content: artifact.content as unknown,
         })) as Artifact[],
-      };
+      } as ChatMessage;
     });
 
     return NextResponse.json(

@@ -55,6 +55,17 @@ export async function GET(
           orderBy: { createdAt: "asc" },
         },
         attachments: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            githubAuth: {
+              select: { githubUsername: true },
+            },
+          },
+        },
       },
     });
 
@@ -68,7 +79,7 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const clientMessage: ChatMessage = {
+    const clientMessage = {
       ...chatMessage,
       contextTags: JSON.parse(
         chatMessage.contextTags as string,
@@ -77,7 +88,7 @@ export async function GET(
         ...artifact,
         content: artifact.content as unknown,
       })) as Artifact[],
-    };
+    } as ChatMessage;
 
     return NextResponse.json(
       { success: true, data: clientMessage },
