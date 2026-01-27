@@ -69,66 +69,92 @@ async function fetchJobDetails(
 /**
  * Extract logs for a specific step from the full job logs.
  *
- * GitHub Actions logs have step markers in the format:
- * "2024-01-15T10:30:00.0000000Z ##[group]Step Name"
- * Each step section ends when the next step begins or at EOF.
+ * GitHub Actions log format:
+ * - Lines start with timestamps: "2024-01-15T10:30:00.0000000Z ..."
+ * - Step sections marked by: "##[group]Run <command>" (note: contains COMMAND, not step NAME)
+ * - Errors marked by: "##[error]<message>"
+ *
+ * Strategy:
+ * 1. Find step section using ##[group] markers (step name won't match, use command patterns)
+ * 2. Find ##[error] markers within section (GitHub adds these for any failure)
+ * 3. Extract N lines before ##[error] (error details appear before the marker)
  */
 function extractStepLogs(fullLogs: string, stepNumber: number, stepName: string): string | null {
   const lines = fullLogs.split("\n");
+  const MAX_LINES = 150;
 
-  // GitHub Actions log format: each line starts with timestamp, step markers use ##[group]
-  // Steps are numbered, and we can identify them by the pattern or by step name
-  // Format: "TIMESTAMP ##[group]STEP_NAME" starts a step
-  // Format: "TIMESTAMP ##[endgroup]" ends a step section
+  // Step 1: Find all ##[group] markers
+  const groupMarkers: { lineNum: number; content: string }[] = [];
+  lines.forEach((line, idx) => {
+    if (line.includes("##[group]")) {
+      groupMarkers.push({ lineNum: idx, content: line });
+    }
+  });
 
-  let inTargetStep = false;
-  let stepLines: string[] = [];
-  let foundStep = false;
+  // Step 2: Find the target step's section
+  let stepStartLine = -1;
+  let stepEndLine = lines.length;
 
-  // Pattern to match step group markers - the step name follows ##[group]
-  const groupPattern = /##\[group\]/;
-  const endGroupPattern = /##\[endgroup\]/;
+  // Try direct name match first (rarely works - step name != command in logs)
+  let targetIdx = groupMarkers.findIndex(
+    (m) => m.content.includes(stepName) || m.content.includes(`Step ${stepNumber}`),
+  );
 
-  for (const line of lines) {
-    if (groupPattern.test(line)) {
-      // Check if this is our target step by name (more reliable than number)
-      const isTargetStep = line.includes(stepName) || line.includes(`Step ${stepNumber}`);
+  if (targetIdx >= 0) {
+    stepStartLine = groupMarkers[targetIdx].lineNum;
+    stepEndLine = groupMarkers[targetIdx + 1]?.lineNum ?? lines.length;
+  }
 
-      if (inTargetStep) {
-        // We were in the target step and hit a new step, we're done
-        break;
-      }
+  // Fallback: Find "Run" markers and use the last one before "Post" steps
+  // (Failed step is usually the last actual step before cleanup)
+  if (targetIdx < 0 && stepName.startsWith("Run ")) {
+    const postIdx = groupMarkers.findIndex((m) => m.content.includes("Post "));
+    const searchMarkers = postIdx >= 0 ? groupMarkers.slice(0, postIdx) : groupMarkers;
+    const runMarkers = searchMarkers.filter((m) => /##\[group\]Run\s/.test(m.content));
 
-      if (isTargetStep) {
-        inTargetStep = true;
-        foundStep = true;
-        stepLines.push(line);
-      }
-    } else if (endGroupPattern.test(line) && inTargetStep) {
-      // End of the target step's group section, but continue collecting
-      // as there may be more output after the group ends
-      stepLines.push(line);
-    } else if (inTargetStep) {
-      stepLines.push(line);
+    if (runMarkers.length > 0) {
+      const lastRunMarker = runMarkers[runMarkers.length - 1];
+      targetIdx = groupMarkers.findIndex((m) => m.lineNum === lastRunMarker.lineNum);
+      stepStartLine = lastRunMarker.lineNum;
+      stepEndLine = groupMarkers[targetIdx + 1]?.lineNum ?? lines.length;
     }
   }
 
-  // If we didn't find the step by name, use all lines
-  if (!foundStep) {
-    stepLines = lines;
+  // Step 3: Find ##[error] markers (within step section or globally)
+  const errorMarkers: { lineNum: number }[] = [];
+  const searchStart = stepStartLine >= 0 ? stepStartLine : 0;
+  const searchEnd = stepStartLine >= 0 ? stepEndLine : lines.length;
+
+  for (let i = searchStart; i < searchEnd; i++) {
+    if (lines[i].includes("##[error]")) {
+      errorMarkers.push({ lineNum: i });
+    }
   }
 
-  if (stepLines.length === 0) {
-    return null;
+  // Step 4: Extract logs
+  if (errorMarkers.length > 0) {
+    // Take MAX_LINES before first ##[error], through last ##[error] + 5
+    const firstErrorLine = errorMarkers[0].lineNum;
+    const lastErrorLine = errorMarkers[errorMarkers.length - 1].lineNum;
+
+    const extractStart = Math.max(stepStartLine >= 0 ? stepStartLine : 0, firstErrorLine - MAX_LINES);
+    const extractEnd = Math.min(lines.length, lastErrorLine + 5);
+
+    return lines.slice(extractStart, extractEnd).join("\n");
   }
 
-  // Always return the LAST portion of the logs - errors are at the end
-  const maxLines = 100;
-  if (stepLines.length > maxLines) {
-    return "...(earlier output truncated)\n" + stepLines.slice(-maxLines).join("\n");
+  // No ##[error] found - take last MAX_LINES of step (or entire log as last resort)
+  if (stepStartLine >= 0) {
+    const stepLines = lines.slice(stepStartLine, stepEndLine);
+    if (stepLines.length > MAX_LINES) {
+      return "...(truncated)\n" + stepLines.slice(-MAX_LINES).join("\n");
+    }
+    return stepLines.join("\n");
   }
 
-  return stepLines.join("\n");
+  // Last resort: end of entire log
+  log.warn("Could not find step section, using end of log", { stepName, stepNumber });
+  return "...(truncated)\n" + lines.slice(-MAX_LINES).join("\n");
 }
 
 /**
