@@ -98,6 +98,9 @@ model User {
   // Shared conversations
   sharedConversations SharedConversation[]
 
+  // Chat messages
+  chatMessages ChatMessage[] @relation("ChatMessageSender")
+
   @@index([createdAt])
   @@index([deleted])
   @@index([email])
@@ -560,6 +563,10 @@ model ChatMessage {
   sourceWebsocketID String?    @map("source_websocket_id")
   replyId           String?    @map("reply_id")
 
+  // User attribution for message sender
+  userId            String?    @map("user_id")
+  createdBy         User?      @relation("ChatMessageSender", fields: [userId], references: [id], onDelete: SetNull)
+
   artifacts   Artifact[]
   attachments Attachment[]
 
@@ -568,6 +575,7 @@ model ChatMessage {
 
   @@index([taskId])
   @@index([timestamp])
+  @@index([userId])
   @@map("chat_messages")
 }
 

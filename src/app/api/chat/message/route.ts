@@ -221,6 +221,7 @@ export async function POST(request: NextRequest) {
         taskId,
         message,
         role: ChatRole.USER,
+        userId,
         contextTags: JSON.stringify(contextTags),
         status: ChatStatus.SENT,
         sourceWebsocketID,
@@ -243,6 +244,17 @@ export async function POST(request: NextRequest) {
       include: {
         artifacts: true,
         attachments: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            githubAuth: {
+              select: { githubUsername: true },
+            },
+          },
+        },
         task: {
           select: {
             id: true,
@@ -253,7 +265,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Convert to client-side type
-    const clientMessage: ChatMessage = {
+    const clientMessage = {
       ...chatMessage,
       contextTags: JSON.parse(chatMessage.contextTags as string) as ContextTag[],
       artifacts: chatMessage.artifacts.map((artifact) => ({
@@ -261,7 +273,7 @@ export async function POST(request: NextRequest) {
         content: artifact.content as unknown,
       })) as Artifact[],
       attachments: chatMessage.attachments || [],
-    };
+    } as ChatMessage;
 
     console.log("clientMessage", clientMessage);
 

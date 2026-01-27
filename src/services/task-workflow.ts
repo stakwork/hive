@@ -344,6 +344,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
       taskId,
       message,
       role: "USER",
+      userId,
       contextTags: JSON.stringify(contextTags),
       status: "SENT",
     },
