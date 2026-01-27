@@ -89,7 +89,7 @@ export function GitHubStatusWidget() {
             <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${statusColor}`} />
           </div>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-xs bg-card border-border">
+        <TooltipContent side="bottom" className="max-w-xs">
           <div className="space-y-1.5 text-xs">
             <div className={`font-medium ${status === "SYNCED" ? "text-green-600" : status === "PENDING" ? "text-yellow-600" : "text-red-600"}`}>
               {status}

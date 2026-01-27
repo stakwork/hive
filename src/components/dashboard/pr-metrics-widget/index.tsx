@@ -58,7 +58,7 @@ export function PRMetricsWidget() {
             <BarChart3 className="w-5 h-5 text-foreground" />
           </div>
         </HoverCardTrigger>
-        <HoverCardContent side="bottom" align="end" className="w-auto bg-card border-border">
+        <HoverCardContent side="bottom" align="end" className="w-auto">
           <p className="text-sm text-muted-foreground">Failed to load PR metrics</p>
         </HoverCardContent>
       </HoverCard>
@@ -74,7 +74,7 @@ export function PRMetricsWidget() {
             <BarChart3 className="w-5 h-5 text-muted-foreground" />
           </div>
         </HoverCardTrigger>
-        <HoverCardContent side="bottom" align="end" className="w-auto bg-card border-border">
+        <HoverCardContent side="bottom" align="end" className="w-auto">
           <p className="text-sm text-muted-foreground">No PRs in last 72h</p>
         </HoverCardContent>
       </HoverCard>
@@ -91,7 +91,7 @@ export function PRMetricsWidget() {
           <BarChart3 className="w-5 h-5 text-foreground" />
         </div>
       </HoverCardTrigger>
-      <HoverCardContent side="bottom" align="end" className="w-auto bg-card border-border">
+      <HoverCardContent side="bottom" align="end" className="w-auto">
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
