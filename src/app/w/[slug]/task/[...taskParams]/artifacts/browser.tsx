@@ -477,10 +477,10 @@ export function BrowserArtifactPanel({
                     </div>
                   </div>
                 )}
-                {isActive && isUrlReady && !podId && (
+                {isActive && isUrlReady && !podId && !onUserJourneySave && (
                   <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
                     <div className="flex flex-col items-center gap-3">
-                      <p className="text-sm text-muted-foreground">Development environment has been released</p>
+                      <p className="text-sm text-muted-foreground">Pod has been released</p>
                     </div>
                   </div>
                 )}
