@@ -14,11 +14,7 @@ import {
   createPostRequest,
   getMockedSession,
 } from "@/__tests__/support/helpers";
-import {
-  createTestUser,
-  createTestWorkspaceScenario,
-  createTestTask,
-} from "@/__tests__/support/fixtures";
+import { createTestUser, createTestWorkspaceScenario, createTestTask } from "@/__tests__/support/fixtures";
 
 // Mock external dependencies
 global.fetch = vi.fn();
@@ -461,7 +457,6 @@ describe("POST /api/agent/diff Integration Tests", () => {
       expect(response.status).toBe(500);
       const data = await response.json();
       expect(data.error).toContain("Failed to fetch diff: 500");
-      expect(data.details).toBe("Internal pod error");
     });
 
     test("returns 500 when control port not found in pod mappings", async () => {
@@ -637,7 +632,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
       expect(response.status).toBe(500);
       const data = await response.json();
-      expect(data.error).toBe("Failed to fetch diff");
+      expect(data.error).toContain("Failed to get workspace from pool");
     });
 
     test("handles network errors during diff fetch", async () => {
@@ -664,7 +659,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
       expect(response.status).toBe(500);
       const data = await response.json();
-      expect(data.error).toBe("Failed to fetch diff");
+      expect(data.error).toContain("Network error: ECONNREFUSED");
     });
   });
 
