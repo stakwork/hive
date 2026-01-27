@@ -236,7 +236,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           // If PR was just closed (not merged), only update artifact status
           if (!isMerged) {
             for (const task of tasks) {
-              // Update PR artifact content status to "CLOSED"
+              // Update PR artifact content status to "CANCELLED" (matching UI expectations)
               try {
                 const artifact = await db.artifact.findUnique({
                   where: { id: task.artifact_id },
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 if (artifact?.content && typeof artifact.content === 'object') {
                   const updatedContent = {
                     ...artifact.content,
-                    status: "CLOSED",
+                    status: "CANCELLED",
                   };
 
                   await db.artifact.update({
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                     data: { content: updatedContent as Prisma.InputJsonValue },
                   });
 
-                  console.log("[GithubWebhook] PR closed - artifact status updated to CLOSED", {
+                  console.log("[GithubWebhook] PR closed - artifact status updated to CANCELLED", {
                     delivery,
                     artifactId: task.artifact_id,
                   });
@@ -277,7 +277,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                     prNumber: payload.pull_request.number,
                     prUrl: prUrl,
                     state: "closed",
-                    artifactStatus: "CLOSED",
+                    artifactStatus: "CANCELLED",
                     timestamp: new Date(),
                   });
 
