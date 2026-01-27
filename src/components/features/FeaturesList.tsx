@@ -156,7 +156,7 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
   const [_hasMore, setHasMore] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Read page from URL on mount
+  // Read page and needsAttention from URL on mount
   useEffect(() => {
     const pageParam = searchParams?.get("page");
     if (pageParam) {
@@ -164,6 +164,10 @@ const FeaturesListComponent = forwardRef<{ triggerCreate: () => void }, Features
       if (!isNaN(pageNum) && pageNum > 0) {
         setPage(pageNum);
       }
+    }
+    const needsAttentionParam = searchParams?.get("needsAttention");
+    if (needsAttentionParam === "true") {
+      setNeedsAttentionFilter(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
