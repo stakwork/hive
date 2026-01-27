@@ -614,7 +614,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       expect(releaseTaskPod).toHaveBeenCalled();
     });
 
-    test('should NOT release pod when PR is closed without merge', async () => {
+    test('should update artifact status to CLOSED when PR is closed without merge', async () => {
       const testSetup = await createWebhookTestScenario({
         branch: 'main',
         status: RepositoryStatus.SYNCED,
@@ -645,7 +645,7 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
       });
 
       const prUrl = 'https://github.com/test-owner/test-repo/pull/000';
-      await db.artifact.create({
+      const artifact = await db.artifact.create({
         data: {
           messageId: message.id,
           type: ArtifactType.PULL_REQUEST,
@@ -689,10 +689,41 @@ describe('POST /api/github/webhook/[workspaceId] - PR Merged Pod Release', () =>
         params: Promise.resolve({ workspaceId: testSetup.workspace.id }),
       });
 
-      // Should return 202 (acknowledged but no action)
-      expect(response.status).toBe(202);
+      // Should return 200 with success
+      expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.success).toBe(true);
+      expect(body.tasksProcessed).toBe(1);
+
+      // Verify task status was NOT changed
+      const updatedTask = await db.task.findUnique({
+        where: { id: task.id },
+        select: { status: true },
+      });
+      expect(updatedTask?.status).toBe(TaskStatus.IN_PROGRESS);
+
+      // Verify PR artifact status was updated to "CLOSED"
+      const updatedArtifact = await db.artifact.findUnique({
+        where: { id: artifact.id },
+        select: { content: true },
+      });
+      expect(updatedArtifact?.content).toMatchObject({
+        repo: 'test-owner/test-repo',
+        url: prUrl,
+        status: 'CLOSED',
+      });
+
+      // Verify Pusher event was sent to task channel
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        `task-${task.id}`,
+        PUSHER_EVENTS.PR_STATUS_CHANGE,
+        expect.objectContaining({
+          taskId: task.id,
+          prUrl: prUrl,
+          state: 'closed',
+          artifactStatus: 'CLOSED',
+        })
+      );
 
       // Verify releaseTaskPod was NOT called
       expect(releaseTaskPod).not.toHaveBeenCalled();

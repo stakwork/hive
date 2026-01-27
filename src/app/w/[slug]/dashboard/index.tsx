@@ -2,6 +2,8 @@
 
 import { DashboardChat } from "@/components/dashboard/DashboardChat";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
+import { NeedsInputDropdownWidget } from "@/components/dashboard/needs-input-dropdown-widget";
+import { PRMetricsWidget } from "@/components/dashboard/pr-metrics-widget";
 import { IngestionStatusWidget } from "@/components/dashboard/ingestion-status-widget";
 import { PoolStatusWidget } from "@/components/dashboard/pool-status-widget";
 import { TestCoverageStats } from "@/components/dashboard/TestCoverageStats";
@@ -76,6 +78,8 @@ function DashboardInner() {
             />
           )}
           <TestFilterDropdown />
+          <NeedsInputDropdownWidget />
+          <PRMetricsWidget />
           <GitHubStatusWidget />
           <PoolStatusWidget />
         </div>

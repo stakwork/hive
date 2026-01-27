@@ -86,6 +86,31 @@ vi.mock('@/app/w/[slug]/task/[...taskParams]/artifacts/longform', () => ({
   ),
 }));
 
+// Mock Avatar component
+vi.mock('@/components/ui/avatar', () => ({
+  Avatar: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div data-testid="avatar" className={className}>{children}</div>
+  ),
+  AvatarImage: ({ src }: { src?: string }) => (
+    <img data-testid="avatar-image" src={src} alt="" />
+  ),
+  AvatarFallback: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div data-testid="avatar-fallback" className={className}>{children}</div>
+  ),
+}));
+
+// Mock Tooltip component
+vi.mock('@/components/ui/tooltip', () => ({
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Tooltip: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  TooltipTrigger: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) => (
+    <div data-testid="tooltip-trigger">{children}</div>
+  ),
+  TooltipContent: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="tooltip-content">{children}</div>
+  ),
+}));
+
 // Helper function to create test message
 const createTestMessage = (overrides: Partial<ChatMessageType> = {}): ChatMessageType => ({
   id: 'test-message-1',
@@ -635,6 +660,195 @@ describe('ChatMessage', () => {
       // motion.div should be rendered (mocked as regular div)
       const motionContainer = screen.getByText('Test message content').closest('.space-y-3');
       expect(motionContainer).toBeInTheDocument();
+    });
+  });
+
+  describe('User Avatar Display', () => {
+    it('renders avatar for USER messages with createdBy data', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message with avatar',
+        createdBy: {
+          id: 'user-123',
+          name: 'John Doe',
+          email: 'john@example.com',
+          image: 'https://example.com/avatar.jpg',
+          githubAuth: null,
+        },
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('avatar')).toBeInTheDocument();
+      expect(screen.getByTestId('avatar-image')).toHaveAttribute('src', 'https://example.com/avatar.jpg');
+      expect(screen.getByTestId('tooltip-trigger')).toBeInTheDocument();
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
+    });
+
+    it('shows fallback avatar when image is not provided', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message without image',
+        createdBy: {
+          id: 'user-456',
+          name: 'Jane Smith',
+          email: 'jane@example.com',
+          image: null,
+          githubAuth: null,
+        },
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('avatar')).toBeInTheDocument();
+      expect(screen.getByTestId('avatar-fallback')).toBeInTheDocument();
+    });
+
+    it('displays github username in tooltip when name is not available', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message',
+        createdBy: {
+          id: 'user-789',
+          name: null,
+          email: 'dev@example.com',
+          image: null,
+          githubAuth: {
+            githubUsername: 'devuser123',
+          },
+        },
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('avatar')).toBeInTheDocument();
+      expect(screen.getByText('devuser123')).toBeInTheDocument();
+    });
+
+    it('displays "User" fallback when no name or github username available', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message',
+        createdBy: {
+          id: 'user-999',
+          name: null,
+          email: 'anonymous@example.com',
+          image: null,
+          githubAuth: null,
+        },
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByTestId('avatar')).toBeInTheDocument();
+      expect(screen.getByText('User')).toBeInTheDocument();
+    });
+
+    it('does not render avatar for USER messages without createdBy', () => {
+      const message = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message without creator',
+        createdBy: undefined,
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByTestId('avatar')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('tooltip-trigger')).not.toBeInTheDocument();
+    });
+
+    it('does not render avatar for ASSISTANT messages', () => {
+      const message = createTestMessage({
+        role: ChatRole.ASSISTANT,
+        message: 'Assistant message',
+        createdBy: {
+          id: 'user-123',
+          name: 'John Doe',
+          email: 'john@example.com',
+          image: 'https://example.com/avatar.jpg',
+          githubAuth: null,
+        },
+      });
+
+      render(
+        <ChatMessage 
+          message={message} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.queryByTestId('avatar')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('tooltip-trigger')).not.toBeInTheDocument();
+    });
+
+    it('re-renders when createdBy changes (memoization test)', () => {
+      const message1 = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message',
+        createdBy: {
+          id: 'user-1',
+          name: 'User One',
+          email: 'user1@example.com',
+          image: null,
+          githubAuth: null,
+        },
+      });
+
+      const { rerender } = render(
+        <ChatMessage 
+          message={message1} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText('User One')).toBeInTheDocument();
+
+      const message2 = createTestMessage({
+        role: ChatRole.USER,
+        message: 'User message',
+        createdBy: {
+          id: 'user-2',
+          name: 'User Two',
+          email: 'user2@example.com',
+          image: null,
+          githubAuth: null,
+        },
+      });
+
+      rerender(
+        <ChatMessage 
+          message={message2} 
+          onArtifactAction={mockOnArtifactAction}
+        />
+      );
+
+      expect(screen.getByText('User Two')).toBeInTheDocument();
+      expect(screen.queryByText('User One')).not.toBeInTheDocument();
     });
   });
 });

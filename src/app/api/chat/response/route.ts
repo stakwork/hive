@@ -90,6 +90,11 @@ export async function POST(request: NextRequest) {
     for (const dbArtifact of chatMessage.artifacts) {
       if (dbArtifact.type === ArtifactType.WORKFLOW) {
         const content = dbArtifact.content as WorkflowContent | null;
+        console.log("[chat/response] Processing WORKFLOW artifact:", {
+          workflowId: content?.workflowId,
+          workflowVersionId: content?.workflowVersionId,
+          taskMode,
+        });
         // If we have workflowVersionId and workflowId, fetch the updated workflow spec
         if (content?.workflowVersionId && content?.workflowId) {
           try {
@@ -169,6 +174,7 @@ export async function POST(request: NextRequest) {
                 include_properties: true,
                 limit: 1,
                 skip: 0,
+                skip_cache: true,
                 search_filters: [
                   {
                     attribute: "workflow_version_id",
@@ -181,9 +187,22 @@ export async function POST(request: NextRequest) {
 
             if (workflowResponse.ok) {
               const workflowResult = await workflowResponse.json();
+              console.log(
+                "[chat/response] Graph API response for workflowVersionId",
+                content.workflowVersionId,
+                ":",
+                JSON.stringify(workflowResult).substring(0, 500),
+              );
               const workflowVersionNode = workflowResult.nodes?.[0] || workflowResult.data?.[0];
               const updatedWorkflowJson =
                 workflowVersionNode?.properties?.workflow_json || workflowVersionNode?.workflow_json;
+
+              console.log(
+                "[chat/response] Found workflowVersionNode:",
+                !!workflowVersionNode,
+                "updatedWorkflowJson:",
+                !!updatedWorkflowJson,
+              );
 
               if (updatedWorkflowJson) {
                 const formattedUpdatedJson =
@@ -207,7 +226,12 @@ export async function POST(request: NextRequest) {
                 Object.assign(dbArtifact.content as WorkflowContent, updatedContent);
               }
             } else {
-              console.error("Failed to fetch workflow from Stakwork:", await workflowResponse.text());
+              const errorText = await workflowResponse.text();
+              console.error(
+                "[chat/response] Failed to fetch workflow from graph API:",
+                workflowResponse.status,
+                errorText,
+              );
             }
           } catch (fetchError) {
             console.error("Error fetching workflow spec:", fetchError);

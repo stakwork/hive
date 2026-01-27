@@ -183,10 +183,19 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
 // Using Prisma Attachment type directly (no additional fields needed)
 export type Attachment = PrismaAttachment;
 
-export interface ChatMessage extends Omit<PrismaChatMessage, "contextTags" | "artifacts" | "attachments"> {
+export interface ChatMessage extends Omit<PrismaChatMessage, "contextTags"> {
   contextTags?: ContextTag[];
   artifacts?: Artifact[];
   attachments?: Attachment[];
+  createdBy?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+    githubAuth?: {
+      githubUsername: string;
+    } | null;
+  };
 }
 
 // Helper functions to create client-side types with proper conversions
@@ -202,6 +211,15 @@ export function createChatMessage(data: {
   attachments?: Attachment[];
   sourceWebsocketID?: string;
   replyId?: string;
+  createdBy?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+    githubAuth?: {
+      githubUsername: string;
+    } | null;
+  };
 }): ChatMessage {
   return {
     id: data.id,
@@ -216,6 +234,8 @@ export function createChatMessage(data: {
     replyId: data.replyId || null,
     artifacts: data.artifacts || [],
     attachments: data.attachments || [],
+    createdBy: data.createdBy,
+    userId: data.createdBy?.id || null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
