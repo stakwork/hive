@@ -8,6 +8,16 @@
  *   npx tsx scripts/test-ci-logs.ts stakwork hive 21403376378
  *
  * Requires GITHUB_TOKEN environment variable (or uses .env.local)
+ *
+ * ---
+ * TODO: Current implementation only finds steps with `run:` commands (##[group]Run ...)
+ * Steps using `uses:` actions (e.g., docker/build-push-action) appear differently:
+ *   - `run:` step  -> ##[group]Run npm run test
+ *   - `uses:` step -> ##[group]Build Docker image (just the step name)
+ *
+ * To handle `uses:` failures, we'd need to look for the last ##[group] marker
+ * (of any kind) before "Post" steps, not just ##[group]Run markers.
+ * ---
  */
 
 import { config as dotenvConfig } from "dotenv";
