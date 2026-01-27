@@ -115,7 +115,7 @@ export function PoolStatusWidget() {
               <div className="text-xs font-medium text-muted-foreground">Setup failed</div>
             </div>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-xs">
+          <TooltipContent side="bottom">
             <div className="space-y-1 text-xs">
               <div className="font-medium">Pod Setup Failed</div>
               <div className="text-muted-foreground">
@@ -171,7 +171,7 @@ export function PoolStatusWidget() {
                 )}
               </div>
             </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-xs">
+            <TooltipContent side="bottom">
               <div className="space-y-1 text-xs">
                 <div className="font-medium">Pool Status</div>
                 <div className="flex items-center gap-2">

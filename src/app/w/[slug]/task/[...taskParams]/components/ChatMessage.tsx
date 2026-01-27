@@ -2,12 +2,14 @@
 
 import React, { memo, useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, User } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 /**
  * Parse message content to extract <logs> sections
@@ -39,7 +41,8 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.updatedAt === nextProps.message.updatedAt &&
     prevProps.message.artifacts === nextProps.message.artifacts &&
-    prevProps.message.workflowUrl === nextProps.message.workflowUrl;
+    prevProps.message.workflowUrl === nextProps.message.workflowUrl &&
+    prevProps.message.createdBy?.id === nextProps.message.createdBy?.id;
 
   // Compare replyMessage if present
   const replyMessageEqual = prevProps.replyMessage?.id === nextProps.replyMessage?.id;
@@ -67,7 +70,7 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={`flex items-end gap-3 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+      <div className={`flex items-end gap-2 ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
         {message.message && (
           <div
             className={`px-4 py-1 rounded-md max-w-full shadow-sm relative ${
@@ -107,6 +110,25 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
               <WorkflowUrlLink workflowUrl={message.workflowUrl} className={isHovered ? "opacity-100" : "opacity-0"} />
             )}
           </div>
+        )}
+
+        {/* Avatar for USER messages - positioned after bubble (right side) */}
+        {message.role === "USER" && message.createdBy && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Avatar className="size-6 shrink-0">
+                  <AvatarImage src={message.createdBy.image || undefined} />
+                  <AvatarFallback className="text-xs bg-muted">
+                    <User className="w-3 h-3" />
+                  </AvatarFallback>
+                </Avatar>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{message.createdBy.name || message.createdBy.githubAuth?.githubUsername || "User"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
 
