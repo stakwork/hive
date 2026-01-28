@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
@@ -15,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { PenLine, Plus, ExternalLink, Unlink, Loader2, CheckCircle2 } from "lucide-react";
+import { PenLine, Plus, Maximize2, Minimize2, Unlink, Loader2, CheckCircle2 } from "lucide-react";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -39,15 +38,12 @@ interface WhiteboardData {
 interface FeatureWhiteboardSectionProps {
   featureId: string;
   workspaceId: string;
-  workspaceSlug: string;
 }
 
 export function FeatureWhiteboardSection({
   featureId,
   workspaceId,
-  workspaceSlug,
 }: FeatureWhiteboardSectionProps) {
-  const router = useRouter();
   const [whiteboard, setWhiteboard] = useState<WhiteboardData | null>(null);
   const [availableWhiteboards, setAvailableWhiteboards] = useState<WhiteboardItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,8 +51,10 @@ export function FeatureWhiteboardSection({
   const [linking, setLinking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -233,6 +231,24 @@ export function FeatureWhiteboardSection({
     };
   }, []);
 
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
+  // Handle Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen]);
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -324,24 +340,43 @@ export function FeatureWhiteboardSection({
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              router.push(`/w/${workspaceSlug}/whiteboards/${whiteboard.id}`)
-            }
+            onClick={toggleFullscreen}
+            title="Enter fullscreen"
           >
-            <ExternalLink className="w-4 h-4 mr-2" />
+            <Maximize2 className="w-4 h-4 mr-2" />
             Full Screen
           </Button>
         </div>
       </div>
-      <Card className="h-[500px] overflow-hidden">
-        <Excalidraw
-          initialData={{
-            elements: (whiteboard.elements || []) as never,
-            appState: whiteboard.appState as never,
-          }}
-          onChange={handleChange}
-        />
-      </Card>
+      <div
+        ref={containerRef}
+        className={
+          isFullscreen
+            ? "fixed inset-0 z-50 bg-white"
+            : ""
+        }
+      >
+        {isFullscreen && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleFullscreen}
+            className="absolute top-4 right-4 z-50"
+            title="Exit fullscreen"
+          >
+            <Minimize2 className="w-4 h-4" />
+          </Button>
+        )}
+        <Card className={isFullscreen ? "h-full rounded-none border-0" : "h-[500px] overflow-hidden"}>
+          <Excalidraw
+            initialData={{
+              elements: (whiteboard.elements || []) as never,
+              appState: whiteboard.appState as never,
+            }}
+            onChange={handleChange}
+          />
+        </Card>
+      </div>
     </div>
   );
 }
