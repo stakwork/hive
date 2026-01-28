@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
-import { createWorkspace, getUserWorkspaces, softDeleteWorkspace } from "@/services/workspace";
+import {
+  createWorkspace,
+  ensureUniqueSlug,
+  extractRepoNameFromUrl,
+  getUserWorkspaces,
+  softDeleteWorkspace,
+} from "@/services/workspace";
+import { findUserByGitHubUsername } from "@/lib/helpers/workspace-member-queries";
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
 
@@ -19,25 +26,64 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as { id: string }).id;
+  const apiKey = request.headers.get("x-api-key");
   const body = await request.json();
-  const { name, description, slug, repositoryUrl } = body;
-  if (!name || !slug) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 },
-    );
+  let ownerId: string;
+
+  if (apiKey) {
+    if (apiKey !== process.env.API_TOKEN) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!body.githubUsername) {
+      return NextResponse.json(
+        { error: "githubUsername required for API key auth" },
+        { status: 400 },
+      );
+    }
+    const githubAuth = await findUserByGitHubUsername(body.githubUsername);
+    if (!githubAuth) {
+      return NextResponse.json(
+        { error: "User not found. They must sign up to Hive first." },
+        { status: 404 },
+      );
+    }
+    ownerId = githubAuth.userId;
+  } else {
+    const session = await getServerSession(authOptions);
+    if (!session?.user || !(session.user as { id?: string }).id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    ownerId = (session.user as { id: string }).id;
   }
+
+  const { name, description, slug, repositoryUrl } = body;
+  let finalName = name;
+  let finalSlug = slug;
+
+  // Auto-generate from repositoryUrl if not provided
+  if (repositoryUrl && (!finalSlug || !finalName)) {
+    const repoName = extractRepoNameFromUrl(repositoryUrl);
+    if (!repoName) {
+      return NextResponse.json({ error: "Invalid repository URL" }, { status: 400 });
+    }
+    if (!finalSlug) {
+      finalSlug = await ensureUniqueSlug(repoName);
+    }
+    if (!finalName) {
+      finalName = repoName.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+    }
+  }
+
+  if (!finalName || !finalSlug) {
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
   try {
     const workspace = await createWorkspace({
-      name,
+      name: finalName,
       description,
-      slug,
-      ownerId: userId,
+      slug: finalSlug,
+      ownerId,
       repositoryUrl,
     });
     return NextResponse.json({ workspace }, { status: 201 });

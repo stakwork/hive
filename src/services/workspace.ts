@@ -895,6 +895,38 @@ export async function recoverWorkspace(
 }
 
 /**
+ * Extracts repo name from a GitHub repository URL
+ */
+export function extractRepoNameFromUrl(url: string): string | null {
+  const match = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
+  return match ? match[2].toLowerCase() : null;
+}
+
+/**
+ * Ensures a slug is unique by finding max index and adding 1 (matches frontend logic)
+ */
+export async function ensureUniqueSlug(baseSlug: string): Promise<string> {
+  const workspaces = await db.workspace.findMany({
+    where: { deleted: false },
+    select: { slug: true },
+  });
+
+  const slugs = workspaces.map((w) => w.slug.toLowerCase());
+  const re = new RegExp(`^${baseSlug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:-(\\d+))?$`, "i");
+
+  let max = -1;
+  for (const slug of slugs) {
+    const m = slug.match(re);
+    if (!m) continue;
+    const idx = m[1] ? Number(m[1]) : 0;
+    if (idx > max) max = idx;
+  }
+
+  const next = max + 1;
+  return next === 0 ? baseSlug : `${baseSlug}-${next}`;
+}
+
+/**
  * Validates a workspace slug against reserved words and format requirements
  */
 export function validateWorkspaceSlug(slug: string): {
