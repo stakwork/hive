@@ -554,9 +554,9 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleSend = async (message: string) => {
-    // Allow sending if we have either text or a pending debug/step attachment
-    if (!message.trim() && !pendingDebugAttachment && !selectedStep) return;
+  const handleSend = async (message: string, attachments?: Array<{ file: File; s3Path: string }>) => {
+    // Allow sending if we have either text, attachments, or a pending debug/step attachment
+    if (!message.trim() && !attachments?.length && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
     // Handle workflow_editor mode - always use workflow editor endpoint
@@ -1301,6 +1301,7 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    taskId={currentTaskId}
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
@@ -1334,6 +1335,7 @@ export default function TaskChatPage() {
                       taskTitle={taskTitle}
                       workspaceSlug={slug}
                       taskMode={taskMode}
+                      taskId={currentTaskId}
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
@@ -1380,6 +1382,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
                 taskMode={taskMode}
+                taskId={currentTaskId}
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
