@@ -22,15 +22,28 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowNode } from "@/hooks/useWorkflowNodes";
 import { PromptsPanel } from "@/components/prompts";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+interface PendingImage {
+  id: string;
+  file: File;
+  preview: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
 
 interface TaskStartInputProps {
-  onStart: (task: string) => void;
+  onStart: (task: string, images?: File[]) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -61,8 +74,11 @@ export function TaskStartInput({
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
     useSpeechRecognition();
@@ -70,6 +86,12 @@ export function TaskStartInput({
   const devMode = isDevelopmentMode();
   const isWorkflowMode = taskMode === "workflow_editor";
   const isPromptsMode = taskMode === "prompts";
+  
+  // Image upload is disabled in agent mode and workflow mode
+  const isImageUploadEnabled = taskMode !== "agent" && !isWorkflowMode;
+  
+  const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
   // Check URL for prompt param and switch to prompts mode if present
   useEffect(() => {
