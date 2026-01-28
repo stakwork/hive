@@ -36,6 +36,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
 import { archiveTaskAndRedirect } from "./lib/archive-task";
 
@@ -47,6 +48,7 @@ function generateUniqueId() {
 export default function TaskChatPage() {
   const params = useParams();
   const { id: workspaceId, workspace } = useWorkspace();
+  const { data: session } = useSession();
   const isMobile = useIsMobile();
   const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST);
 
@@ -691,6 +693,14 @@ export default function TaskChatPage() {
         status: ChatStatus.SENDING,
         replyId: options?.replyId,
         artifacts,
+        createdBy: session?.user
+          ? {
+              id: session.user.id,
+              name: session.user.name || null,
+              email: session.user.email || null,
+              image: session.user.image || null,
+            }
+          : undefined,
       });
 
       setMessages((msgs) => [...msgs, newMessage]);
