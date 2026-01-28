@@ -456,7 +456,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string) => {
+  const handleStart = async (msg: string, images?: File[]) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -484,6 +484,56 @@ export default function TaskChatPage() {
         const result = await response.json();
         const newTaskId = result.data.id;
         setCurrentTaskId(newTaskId);
+
+        // Upload images to S3 if provided
+        let attachments: Array<{path: string, filename: string, mimeType: string, size: number}> | undefined;
+        if (images && images.length > 0) {
+          try {
+            attachments = [];
+            for (const image of images) {
+              // Request presigned URL
+              const presignedResponse = await fetch("/api/upload/presigned-url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  taskId: newTaskId,
+                  filename: image.name,
+                  contentType: image.type,
+                  size: image.size,
+                }),
+              });
+
+              if (!presignedResponse.ok) {
+                const error = await presignedResponse.json();
+                throw new Error(error.error || "Failed to get presigned URL");
+              }
+
+              const { presignedUrl, s3Path } = await presignedResponse.json();
+
+              // Upload to S3
+              const uploadResponse = await fetch(presignedUrl, {
+                method: "PUT",
+                headers: { "Content-Type": image.type },
+                body: image,
+              });
+
+              if (!uploadResponse.ok) {
+                throw new Error("Failed to upload image to S3");
+              }
+
+              attachments.push({
+                path: s3Path,
+                filename: image.name,
+                mimeType: image.type,
+                size: image.size,
+              });
+            }
+          } catch (uploadError) {
+            console.error("Error uploading images:", uploadError);
+            toast.error("Failed to upload one or more images");
+            // Continue with task creation even if image upload fails
+          }
+        }
 
         // Claim pod if agent mode is selected (AFTER task creation)
         let claimedPodUrls: { frontend: string; ide: string } | null = null;
@@ -542,7 +592,7 @@ export default function TaskChatPage() {
         window.history.replaceState({}, "", newUrl);
 
         setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls, attachments });
       } else {
         setStarted(true);
         await sendMessage(msg);
