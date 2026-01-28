@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/config/env";
 import { StakworkWorkflowPayload } from "@/types/stakwork";
+import { getBaseUrl } from "@/lib/utils";
 
 async function sendChunkToStakwork(chunk: string) {
   try {
@@ -12,9 +13,13 @@ async function sendChunkToStakwork(chunk: string) {
       throw new Error("STAKWORK_TRANSCRIPT_WORKFLOW_ID is required for this Stakwork integration");
     }
 
+    // Get base URL for sourceHiveUrl
+    const baseUrl = getBaseUrl();
+
     // stakwork workflow vars
     const vars = {
       chunk,
+      sourceHiveUrl: baseUrl,
     };
 
     const workflowId = config.STAKWORK_TRANSCRIPT_WORKFLOW_ID || "";
