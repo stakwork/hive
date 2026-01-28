@@ -554,9 +554,9 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleSend = async (message: string) => {
-    // Allow sending if we have either text or a pending debug/step attachment
-    if (!message.trim() && !pendingDebugAttachment && !selectedStep) return;
+  const handleSend = async (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => {
+    // Allow sending if we have either text, attachments, or a pending debug/step attachment
+    if (!message.trim() && !attachments?.length && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
     // Handle workflow_editor mode - always use workflow editor endpoint
@@ -640,12 +640,13 @@ export default function TaskChatPage() {
       return;
     }
 
-    // For artifact-only messages, provide a default message
-    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
+    // For artifact-only or attachment-only messages, provide a default message
+    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : (attachments?.length ? "" : ""));
 
     await sendMessage(messageText, {
       ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
       ...(chatWebhook && { webhook: chatWebhook }),
+      ...(attachments && { attachments }),
     });
     setPendingDebugAttachment(null); // Clear attachment after sending
   };
@@ -658,6 +659,7 @@ export default function TaskChatPage() {
         replyId?: string;
         webhook?: string;
         artifact?: Artifact;
+        attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>;
         podUrls?: { frontend: string; ide: string } | null;
       },
     ) => {
@@ -797,6 +799,7 @@ export default function TaskChatPage() {
           ...(options?.replyId && { replyId: options.replyId }),
           ...(options?.webhook && { webhook: options.webhook }),
           ...(options?.artifact && { artifacts: [options.artifact] }),
+          ...(options?.attachments && { attachments: options.attachments }),
         };
         const response = await fetch("/api/chat/message", {
           method: "POST",
@@ -1301,6 +1304,7 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    taskId={currentTaskId}
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
@@ -1334,6 +1338,7 @@ export default function TaskChatPage() {
                       taskTitle={taskTitle}
                       workspaceSlug={slug}
                       taskMode={taskMode}
+                      taskId={currentTaskId}
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
@@ -1380,6 +1385,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
                 taskMode={taskMode}
+                taskId={currentTaskId}
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
