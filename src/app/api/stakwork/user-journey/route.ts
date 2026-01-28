@@ -49,7 +49,6 @@ async function callStakwork(
       taskId,
       message,
       webhookUrl,
-      sourceHiveUrl: baseUrl,
       accessToken,
       username,
       swarmUrl,
