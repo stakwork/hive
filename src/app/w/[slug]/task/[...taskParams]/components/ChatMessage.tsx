@@ -2,7 +2,7 @@
 
 import React, { memo, useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, User } from "lucide-react";
+import { ChevronDown, ChevronRight, User, X } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -10,6 +10,7 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 /**
  * Parse message content to extract <logs> sections
@@ -53,6 +54,7 @@ function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps)
 export const ChatMessage = memo(function ChatMessage({ message, replyMessage, onArtifactAction }: ChatMessageProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
+  const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
 
   // Parse logs from message content
   const { content: messageContent, logs } = useMemo(
@@ -116,16 +118,23 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
         {message.attachments && message.attachments.length > 0 && (
           <div className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"} mt-2`}>
             <div className="grid grid-cols-2 gap-2 max-w-md">
-              {message.attachments.map((attachment) => (
-                <div key={attachment.id} className="relative rounded-lg overflow-hidden border">
-                  <img
-                    src={`/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.s3Key)}`}
-                    alt={attachment.fileName}
-                    className="w-full h-auto object-cover"
-                    loading="lazy"
-                  />
-                </div>
-              ))}
+              {message.attachments.map((attachment) => {
+                const imageUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.s3Key)}`;
+                return (
+                  <div 
+                    key={attachment.id} 
+                    className="relative rounded-lg overflow-hidden border cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setEnlargedImage({ url: imageUrl, alt: attachment.fileName })}
+                  >
+                    <img
+                      src={imageUrl}
+                      alt={attachment.fileName}
+                      className="w-full h-auto object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -223,6 +232,27 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             </div>
           </div>
         ))}
+      {/* Image Enlargement Dialog */}
+      <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
+          <div className="relative w-full h-full flex items-center justify-center bg-black/90">
+            <button
+              onClick={() => setEnlargedImage(null)}
+              className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            {enlargedImage && (
+              <img
+                src={enlargedImage.url}
+                alt={enlargedImage.alt}
+                className="max-w-full max-h-[90vh] object-contain"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }, arePropsEqual);
