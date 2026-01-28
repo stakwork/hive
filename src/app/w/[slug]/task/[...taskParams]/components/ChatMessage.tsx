@@ -112,6 +112,24 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
           </div>
         )}
 
+        {/* Image attachments */}
+        {message.attachments && message.attachments.length > 0 && (
+          <div className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"} mt-2`}>
+            <div className="grid grid-cols-2 gap-2 max-w-md">
+              {message.attachments.map((attachment) => (
+                <div key={attachment.id} className="relative rounded-lg overflow-hidden border">
+                  <img
+                    src={`/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.s3Key)}`}
+                    alt={attachment.fileName}
+                    className="w-full h-auto object-cover"
+                    loading="lazy"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Avatar for USER messages - positioned after bubble (right side) */}
         {message.role === "USER" && message.createdBy && (
           <TooltipProvider>

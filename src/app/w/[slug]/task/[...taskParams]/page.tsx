@@ -738,6 +738,20 @@ export default function TaskChatPage() {
         );
       }
 
+      // Convert attachment metadata to Attachment objects for UI
+      const attachments = options?.attachments?.map(att => ({
+        id: generateUniqueId(),
+        fileName: att.filename,
+        fileType: att.mimeType,
+        fileSize: att.size,
+        s3Key: att.path,
+        s3Bucket: '', // Will be set by backend
+        uploadedBy: session?.user?.id || '',
+        taskId: options?.taskId || currentTaskId || '',
+        chatMessageId: null,
+        createdAt: new Date(),
+      }));
+
       const newMessage: ChatMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -745,6 +759,7 @@ export default function TaskChatPage() {
         status: ChatStatus.SENDING,
         replyId: options?.replyId,
         artifacts,
+        attachments,
         createdBy: session?.user
           ? {
               id: session.user.id,
