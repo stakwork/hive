@@ -766,15 +766,13 @@ export default function TaskChatPage() {
       // Convert attachment metadata to Attachment objects for UI
       const attachments = options?.attachments?.map(att => ({
         id: generateUniqueId(),
-        fileName: att.filename,
-        fileType: att.mimeType,
-        fileSize: att.size,
-        s3Key: att.path,
-        s3Bucket: '', // Will be set by backend
-        uploadedBy: session?.user?.id || '',
-        taskId: options?.taskId || currentTaskId || '',
-        chatMessageId: null,
+        messageId: '', // Will be set by backend
+        path: att.path,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
         createdAt: new Date(),
+        updatedAt: new Date(),
       }));
 
       const newMessage: ChatMessage = createChatMessage({
