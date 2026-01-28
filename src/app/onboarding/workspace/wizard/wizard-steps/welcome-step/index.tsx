@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { SupportedLanguages } from "@/lib/constants";
+import { extractRepoNameFromUrl, nextIndexedName } from "@/lib/utils/slug";
 import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
@@ -14,35 +15,6 @@ import { useState, useRef } from "react";
 
 interface WelcomeStepProps {
   onNext: (repositoryUrl?: string) => void;
-}
-
-const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-function nextIndexedName(base: string, pool: string[]) {
-  const re = new RegExp(`^${escapeRegex(base)}(?:-(\\d+))?$`, "i");
-  let max = -1;
-  for (const name of pool) {
-    const m = name.match(re);
-    if (!m) continue;
-    const idx = m[1] ? Number(m[1]) : 0; // plain "base" => 0
-    if (idx > max) max = idx;
-  }
-  const next = max + 1;
-  return next === 0 ? base : `${base}-${next}`;
-}
-
-function extractRepoNameFromUrl(url: string): string | null {
-  try {
-    // Handle various GitHub URL formats
-    const githubMatch = url.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)(?:\.git)?/);
-    if (githubMatch) {
-      return githubMatch[2]; // Return the repository name
-    }
-    return null;
-  } catch (error) {
-    console.error("Error extracting repo name from URL:", error);
-    return null;
-  }
 }
 
 export const WelcomeStep = ({}: WelcomeStepProps) => {
