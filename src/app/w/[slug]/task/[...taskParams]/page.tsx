@@ -1405,12 +1405,13 @@ export default function TaskChatPage() {
       />
 
       {/* Bounty Request Modal */}
-      {currentTaskId && taskTitle && (
+      {currentTaskId && taskTitle && effectiveWorkspaceId && (
         <BountyRequestModal
           isOpen={showBountyModal}
           onClose={() => setShowBountyModal(false)}
           sourceTaskId={currentTaskId}
           sourceWorkspaceSlug={slug}
+          sourceWorkspaceId={effectiveWorkspaceId}
           sourceTaskTitle={taskTitle}
           sourceTaskDescription={taskDescription}
         />
