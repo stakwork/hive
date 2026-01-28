@@ -619,7 +619,6 @@ export default function FeatureDetailPage() {
               <FeatureWhiteboardSection
                 featureId={featureId}
                 workspaceId={workspaceId}
-                workspaceSlug={workspaceSlug}
               />
 
               {/* Navigation buttons */}

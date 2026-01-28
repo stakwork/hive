@@ -8,7 +8,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Pencil, Check, X, CheckCircle2 } from "lucide-react";
+import { Loader2, ArrowLeft, Pencil, Check, X, CheckCircle2, Maximize2, Minimize2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import "@excalidraw/excalidraw/index.css";
 
@@ -37,8 +37,10 @@ export default function WhiteboardDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -153,6 +155,24 @@ export default function WhiteboardDetailPage() {
     }
   };
 
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
+  // Handle Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen]);
+
   if (loading) {
     return (
       <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -221,23 +241,55 @@ export default function WhiteboardDetailPage() {
           </div>
         }
         actions={
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {saving && (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Saving...</span>
-              </>
-            )}
-            {saved && !saving && (
-              <>
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-                <span>Saved</span>
-              </>
-            )}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {saving && (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              )}
+              {saved && !saving && (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  <span>Saved</span>
+                </>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="w-4 h-4" />
+              ) : (
+                <Maximize2 className="w-4 h-4" />
+              )}
+            </Button>
           </div>
         }
       />
-      <div className="flex-1 mt-4 border rounded-lg overflow-hidden">
+      <div
+        ref={containerRef}
+        className={
+          isFullscreen
+            ? "fixed inset-0 z-50 bg-white"
+            : "flex-1 mt-4 border rounded-lg overflow-hidden bg-white"
+        }
+      >
+        {isFullscreen && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleFullscreen}
+            className="absolute top-4 right-4 z-50"
+            title="Exit fullscreen"
+          >
+            <Minimize2 className="w-4 h-4" />
+          </Button>
+        )}
         <Excalidraw
           initialData={{
             elements: (whiteboard.elements || []) as never,
