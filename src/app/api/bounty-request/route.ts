@@ -19,7 +19,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, sourceTaskId, sourceWorkspaceSlug } = body;
+    const {
+      title,
+      description,
+      sourceTaskId,
+      sourceWorkspaceSlug,
+      sourceWorkspaceId,
+      estimatedHours,
+      dueDate,
+      priceUsd,
+      priceSats,
+      staking,
+    } = body;
 
     // Validate required fields
     if (!title) {
@@ -96,6 +107,16 @@ export async function POST(request: NextRequest) {
       title: updatedTask.title,
       description: updatedTask.description || undefined,
       bountyCode: updatedTask.bountyCode || undefined,
+      estimatedHours,
+      dueDate,
+      priceUsd,
+      priceSats,
+      staking,
+      sourceTaskId,
+      sourceWorkspaceId,
+      sourceWorkspaceSlug,
+      sourceUserId: userId,
+      targetWorkspaceId: leetboxWorkspace.id,
     });
 
     return NextResponse.json(
