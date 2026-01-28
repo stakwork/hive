@@ -6,15 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { HelpCircle, Loader2, ExternalLink } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HelpCircle, Loader2, ExternalLink, CalendarIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { useBtcPrice, satsToUsd, formatSats, formatUsd } from "@/hooks/useBtcPrice";
+import BitcoinIcon from "@/components/Icons/BitcoinIcon";
+import { cn } from "@/lib/utils";
 
 interface BountyRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   sourceTaskId: string;
   sourceWorkspaceSlug: string;
+  sourceWorkspaceId: string;
   sourceTaskTitle: string;
   sourceTaskDescription?: string | null;
 }
@@ -24,13 +32,23 @@ export function BountyRequestModal({
   onClose,
   sourceTaskId,
   sourceWorkspaceSlug,
+  sourceWorkspaceId,
   sourceTaskTitle,
   sourceTaskDescription,
 }: BountyRequestModalProps) {
   const router = useRouter();
   const [title, setTitle] = useState(sourceTaskTitle);
   const [description, setDescription] = useState(sourceTaskDescription || "");
+  const [estimatedHours, setEstimatedHours] = useState<number | undefined>(undefined);
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [priceSats, setPriceSats] = useState<number | undefined>(undefined);
+  const [staking, setStaking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { priceUsd: btcPriceUsd } = useBtcPrice();
+
+  // Calculate USD from sats price
+  const priceUsd = priceSats ? satsToUsd(priceSats, btcPriceUsd) : null;
 
   // Update title when source task title changes
   useEffect(() => {
@@ -42,6 +60,10 @@ export function BountyRequestModal({
     if (isOpen) {
       setTitle(sourceTaskTitle);
       setDescription(sourceTaskDescription || "");
+      setEstimatedHours(undefined);
+      setDueDate(undefined);
+      setPriceSats(undefined);
+      setStaking(false);
     }
   }, [isOpen, sourceTaskTitle, sourceTaskDescription]);
 
@@ -64,6 +86,12 @@ export function BountyRequestModal({
           description: description.trim(),
           sourceTaskId,
           sourceWorkspaceSlug,
+          sourceWorkspaceId,
+          estimatedHours,
+          dueDate: dueDate?.toISOString(),
+          priceUsd: priceUsd ? Math.round(priceUsd * 100) : undefined, // Convert to cents
+          priceSats: priceSats ?? undefined,
+          staking,
         }),
       });
 
@@ -82,10 +110,8 @@ export function BountyRequestModal({
         window.open(result.bountyUrl, "_blank");
       }
 
-      // Navigate to new task in leetbox workspace
-      if (result.taskId) {
-        router.push(`/w/leetbox/task/${result.taskId}`);
-      }
+      // Navigate to leetbox workspace home
+      router.push(`/w/leetbox`);
 
       toast.success("Bounty request created successfully");
     } catch (error) {
@@ -109,7 +135,7 @@ export function BountyRequestModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-5 py-4 max-h-[60vh] overflow-y-auto -mr-6 pr-6">
           {/* Title */}
           <div className="space-y-2">
             <Label htmlFor="bounty-title" className="text-sm font-medium">
@@ -134,12 +160,128 @@ export function BountyRequestModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Provide more details about the help you need..."
-              className="min-h-[120px] resize-none"
+              className="min-h-[100px] resize-none"
               disabled={isSubmitting}
             />
             <p className="text-xs text-muted-foreground">
               Describe the problem, expected outcome, and any relevant context
             </p>
+          </div>
+
+          {/* Estimated Time */}
+          <div className="space-y-2">
+            <Label htmlFor="bounty-hours" className="text-sm font-medium">
+              Estimated Time (hours)
+            </Label>
+            <div className="flex gap-2 items-center">
+              <Input
+                id="bounty-hours"
+                type="text"
+                inputMode="decimal"
+                value={estimatedHours ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEstimatedHours(val ? parseFloat(val) || undefined : undefined);
+                }}
+                placeholder="0"
+                className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                disabled={isSubmitting}
+              />
+              <div className="flex gap-1">
+                {[1, 2, 4, 8].map((hours) => (
+                  <Button
+                    key={hours}
+                    type="button"
+                    variant={estimatedHours === hours ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEstimatedHours(hours)}
+                    disabled={isSubmitting}
+                  >
+                    {hours}h
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Due Date */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Due Date</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !dueDate && "text-muted-foreground"
+                  )}
+                  disabled={isSubmitting}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dueDate ? format(dueDate, "PPP") : "Select a date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={dueDate}
+                  onSelect={setDueDate}
+                  disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  autoFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Price (Sats) */}
+          <div className="space-y-2">
+            <Label htmlFor="bounty-price" className="text-sm font-medium">
+              Price (sats)
+            </Label>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                  <BitcoinIcon className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <Input
+                  id="bounty-price"
+                  type="text"
+                  inputMode="numeric"
+                  value={priceSats ? formatSats(priceSats) : ""}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/,/g, "");
+                    setPriceSats(raw ? parseInt(raw, 10) || undefined : undefined);
+                  }}
+                  placeholder="0"
+                  className="pl-9 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <span className="text-sm text-muted-foreground shrink-0">sats</span>
+            </div>
+            {priceSats && priceUsd !== null && (
+              <p className="text-xs text-muted-foreground">
+                {formatUsd(priceUsd)} USD
+              </p>
+            )}
+          </div>
+
+          {/* Staking Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="bounty-staking" className="text-sm font-medium">
+                Require Staking
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Bounty hunters must stake to claim this bounty
+              </p>
+            </div>
+            <Switch
+              id="bounty-staking"
+              checked={staking}
+              onCheckedChange={setStaking}
+              disabled={isSubmitting}
+            />
           </div>
         </div>
 
