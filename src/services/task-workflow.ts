@@ -549,6 +549,7 @@ export async function callStakworkAPI(params: {
     message,
     contextTags,
     webhookUrl,
+    sourceHiveUrl: appBaseUrl,
     alias: userName,
     username: userName,
     accessToken,
