@@ -894,6 +894,22 @@ export async function recoverWorkspace(
   };
 }
 
+// Re-export from shared utility
+export { extractRepoNameFromUrl } from "@/lib/utils/slug";
+import { nextIndexedName } from "@/lib/utils/slug";
+
+/**
+ * Ensures a slug is unique by finding max index and adding 1
+ */
+export async function ensureUniqueSlug(baseSlug: string): Promise<string> {
+  const workspaces = await db.workspace.findMany({
+    where: { deleted: false },
+    select: { slug: true },
+  });
+  const slugs = workspaces.map((w) => w.slug.toLowerCase());
+  return nextIndexedName(baseSlug, slugs);
+}
+
 /**
  * Validates a workspace slug against reserved words and format requirements
  */
