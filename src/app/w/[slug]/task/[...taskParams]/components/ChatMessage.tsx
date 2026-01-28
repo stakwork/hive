@@ -119,16 +119,16 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
           <div className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"} mt-2`}>
             <div className="grid grid-cols-2 gap-2 max-w-md">
               {message.attachments.map((attachment) => {
-                const imageUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.s3Key)}`;
+                const imageUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.path)}`;
                 return (
                   <div 
                     key={attachment.id} 
                     className="relative rounded-lg overflow-hidden border cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setEnlargedImage({ url: imageUrl, alt: attachment.fileName })}
+                    onClick={() => setEnlargedImage({ url: imageUrl, alt: attachment.filename })}
                   >
                     <img
                       src={imageUrl}
-                      alt={attachment.fileName}
+                      alt={attachment.filename}
                       className="w-full h-auto object-cover"
                       loading="lazy"
                     />
