@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/nextauth";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuthFromRequest } from "@/lib/api/auth-helpers";
 import {
   updateWorkspaceMemberRole,
   removeWorkspaceMember,
@@ -12,17 +11,14 @@ export const runtime = "nodejs";
 
 // PATCH /api/workspaces/[slug]/members/[userId] - Update member role
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string; userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { error, userId: requesterId } = requireAuthFromRequest(request);
+    if (error) return error;
 
     const { slug, userId: targetUserId } = await params;
-    const requesterId = (session.user as { id: string }).id;
     const body = await request.json();
 
     const { role } = body;
@@ -64,17 +60,14 @@ export async function PATCH(
 
 // DELETE /api/workspaces/[slug]/members/[userId] - Remove member from workspace
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ slug: string; userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { error, userId: requesterId } = requireAuthFromRequest(request);
+    if (error) return error;
 
     const { slug, userId: targetUserId } = await params;
-    const requesterId = (session.user as { id: string }).id;
 
     // Check workspace access and admin permissions
     const access = await validateWorkspaceAccess(slug, requesterId);

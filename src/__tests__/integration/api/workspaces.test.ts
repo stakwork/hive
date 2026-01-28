@@ -10,14 +10,12 @@ import {
   createTestWorkspace,
 } from "@/__tests__/support/fixtures";
 import {
-  createAuthenticatedSession,
-  mockUnauthenticatedSession,
-  getMockedSession,
   expectSuccess,
   expectUnauthorized,
   expectError,
   generateUniqueSlug,
   createPostRequest,
+  createAuthenticatedPostRequest,
 } from "@/__tests__/support/helpers";
 
 describe("Workspace API - Integration Tests", () => {
@@ -119,20 +117,20 @@ describe("Workspace API - Integration Tests", () => {
       const context = await setup();
       const slug = (context as any).slug || generateUniqueSlug(requestData.name.toLowerCase().replace(/\s+/g, "-"));
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(context.user));
-
-      const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        ...requestData,
-        slug,
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/workspaces",
+        context.user,
+        {
+          ...requestData,
+          slug,
+        }
+      );
 
       const response = await POST(request);
       await assertions(response, context);
     });
 
     test("rejects unauthenticated requests", async () => {
-      getMockedSession().mockResolvedValue(mockUnauthenticatedSession());
-
       const request = createPostRequest("http://localhost:3000/api/workspaces", {
         name: "Test Workspace",
         slug: "test-workspace",
@@ -146,11 +144,13 @@ describe("Workspace API - Integration Tests", () => {
     test("rejects missing required fields", async () => {
       const user = await createTestUser();
 
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/workspaces", {
-        description: "Missing name and slug",
-      });
+      const request = createAuthenticatedPostRequest(
+        "http://localhost:3000/api/workspaces",
+        user,
+        {
+          description: "Missing name and slug",
+        }
+      );
 
       const response = await POST(request);
 
