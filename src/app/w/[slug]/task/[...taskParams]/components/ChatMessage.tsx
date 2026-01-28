@@ -1,8 +1,8 @@
 "use client";
 
-import React, { memo, useState, useMemo } from "react";
+import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronRight, User, X } from "lucide-react";
+import { ChevronDown, ChevronRight, User, X, Image as ImageIcon } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
 import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
@@ -11,6 +11,7 @@ import { WorkflowUrlLink } from "./WorkflowUrlLink";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 /**
  * Parse message content to extract <logs> sections
@@ -55,12 +56,17 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
   const [isHovered, setIsHovered] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; alt: string } | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // Parse logs from message content
   const { content: messageContent, logs } = useMemo(
     () => (message.message ? parseLogsFromMessage(message.message) : { content: "", logs: [] }),
     [message.message]
   );
+
+  const handleImageError = useCallback((attachmentId: string) => {
+    setFailedImages(prev => new Set(prev).add(attachmentId));
+  }, []);
 
   return (
     <motion.div
@@ -120,18 +126,32 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             <div className="grid grid-cols-2 gap-2 max-w-md">
               {message.attachments.map((attachment) => {
                 const imageUrl = `/api/upload/presigned-url?s3Key=${encodeURIComponent(attachment.path)}`;
+                const hasFailed = failedImages.has(attachment.id);
+                
                 return (
                   <div 
                     key={attachment.id} 
-                    className="relative rounded-lg overflow-hidden border cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => setEnlargedImage({ url: imageUrl, alt: attachment.filename })}
+                    className={cn(
+                      "relative rounded-lg overflow-hidden border",
+                      !hasFailed && "cursor-pointer hover:opacity-90 transition-opacity"
+                    )}
+                    onClick={() => !hasFailed && setEnlargedImage({ url: imageUrl, alt: attachment.filename })}
                   >
-                    <img
-                      src={imageUrl}
-                      alt={attachment.filename}
-                      className="w-full h-auto object-cover"
-                      loading="lazy"
-                    />
+                    {hasFailed ? (
+                      <div className="w-full h-32 flex flex-col items-center justify-center bg-muted p-4 text-center">
+                        <ImageIcon className="w-8 h-8 text-muted-foreground mb-2" />
+                        <p className="text-xs text-muted-foreground font-medium">{attachment.filename}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">Failed to load image</p>
+                      </div>
+                    ) : (
+                      <img
+                        src={imageUrl}
+                        alt={attachment.filename}
+                        className="w-full h-auto object-cover"
+                        loading="lazy"
+                        onError={() => handleImageError(attachment.id)}
+                      />
+                    )}
                   </div>
                 );
               })}
