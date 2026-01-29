@@ -1141,7 +1141,7 @@ export default function TaskChatPage() {
     isLoading ||
     !isConnected ||
     isTerminalState ||
-    (taskMode !== "agent" && taskMode !== "workflow_editor" && (!podId || !liveModeSendAllowed));
+    (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
     <AnimatePresence mode="wait">
