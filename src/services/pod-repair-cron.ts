@@ -348,6 +348,7 @@ async function triggerPodRepair(
               history,
               failedServices,
               message: message || null,
+              searchApiKey: process.env.EXA_API_KEY,
             },
           },
         },
