@@ -85,6 +85,16 @@ Hierarchical structure: Users/Auth → Source Control → Workspaces → Tasks/J
 
 Encrypted fields use JSON format with `data`, `iv`, `tag`, `keyId`, `version`, and `encryptedAt` properties.
 
+### Task Modes
+
+Tasks support two primary execution modes, selected via `useTaskMode()` hook (persisted to localStorage):
+
+**Live Mode (default)**: Asynchronous workflow execution via Stakwork. User messages sent to `/api/chat/message` trigger Stakwork workflows, with AI responses delivered via webhooks to `/api/chat/response` and broadcast through Pusher for real-time UI updates. No dedicated pod required. Best for standard async task execution.
+
+**Agent Mode**: Direct streaming connection to a Goose agent running on a claimed pod. Messages sent to `/api/agent` establish a session, returning a stream URL for direct SSE communication. Pod credentials (URL, password) are stored encrypted and never exposed to the frontend. Supports interactive coding with live IDE/browser artifacts. Agent responses persisted via webhook callbacks to `/api/agent/webhook`.
+
+Key differences: Live mode is stateless per-message with Pusher-based updates; Agent mode maintains persistent sessions with direct streaming and requires pod provisioning via Pool Manager.
+
 ### Permission System
 
 Role hierarchy: OWNER > ADMIN > PM > DEVELOPER > STAKEHOLDER > VIEWER
