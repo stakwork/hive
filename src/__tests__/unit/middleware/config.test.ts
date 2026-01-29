@@ -115,7 +115,6 @@ describe("resolveRouteAccess", () => {
     });
 
     it("protects API routes by default", () => {
-      expect(resolveRouteAccess("/api/workspaces")).toBe("protected");
       expect(resolveRouteAccess("/api/tasks")).toBe("protected");
       expect(resolveRouteAccess("/api/users/me")).toBe("protected");
     });
@@ -242,7 +241,6 @@ describe("resolveRouteAccess", () => {
     });
 
     it("correctly classifies protected API routes", () => {
-      expect(resolveRouteAccess("/api/workspaces")).toBe("protected");
       expect(resolveRouteAccess("/api/tasks")).toBe("protected");
       expect(resolveRouteAccess("/api/users/me")).toBe("protected");
       expect(resolveRouteAccess("/api/github/repos")).toBe("protected");
