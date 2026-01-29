@@ -14,6 +14,8 @@ import {
   addArrowMarker,
   updatePositions,
   setupNodeHoverHighlight,
+  calculateLabelPositions,
+  applyLabelPositions,
 } from "./graphUtils";
 
 interface GraphVisualizationLayeredProps {
@@ -38,7 +40,7 @@ const LAYER_ORDER: Record<string, number> = {
   Function: 2,
   Endpoint: 2,
   Request: 2,
-  Topic: 3
+  Topic: 3,
 };
 
 const getNodeLayer = (type: string): number => {
@@ -81,22 +83,22 @@ export function GraphVisualizationLayered({
     addArrowMarker(svg);
 
     // Convert to D3 nodes with layer assignment
-    const d3Nodes: D3Node[] = nodes.map(node => ({
+    const d3Nodes: D3Node[] = nodes.map((node) => ({
       ...node,
       layer: getNodeLayer(node.type),
     }));
 
-    const d3Links: D3Link[] = edges.map(edge => ({ ...edge }));
-    const nodeIds = new Set(d3Nodes.map(n => n.id));
+    const d3Links: D3Link[] = edges.map((edge) => ({ ...edge }));
+    const nodeIds = new Set(d3Nodes.map((n) => n.id));
     const validLinks = filterValidLinks(d3Links, nodeIds);
 
     // Group nodes by layer
-    const nodesByLayer = d3.group(d3Nodes, d => d.layer ?? 0);
+    const nodesByLayer = d3.group(d3Nodes, (d) => d.layer ?? 0);
     const layers = Array.from(nodesByLayer.keys()).sort((a, b) => (a ?? 0) - (b ?? 0));
     const layerHeight = effectiveHeight / (layers.length + 1);
 
     // Set initial positions for nodes based on layer
-    d3Nodes.forEach(node => {
+    d3Nodes.forEach((node) => {
       const layer = node.layer ?? 0;
       const nodesInLayer = nodesByLayer.get(layer) || [];
       const indexInLayer = nodesInLayer.indexOf(node);
@@ -107,21 +109,32 @@ export function GraphVisualizationLayered({
     });
 
     // Create force simulation with layered constraints
-    const simulation = d3.forceSimulation<D3Node>(d3Nodes)
-      .force("link", d3.forceLink<D3Node, D3Link>(validLinks)
-        .id(d => d.id)
-        .distance(100)
-        .strength(0.5))
+    const simulation = d3
+      .forceSimulation<D3Node>(d3Nodes)
+      .force(
+        "link",
+        d3
+          .forceLink<D3Node, D3Link>(validLinks)
+          .id((d) => d.id)
+          .distance(100)
+          .strength(0.5),
+      )
       .force("charge", d3.forceManyBody().strength(-200))
       .force("collision", d3.forceCollide().radius(40))
-      .force("y", d3.forceY<D3Node>(d => {
-        const layer = d.layer ?? 0;
-        return layerHeight * (layer + 1);
-      }).strength(0.8)) // Strong Y force to keep nodes in their layers
+      .force(
+        "y",
+        d3
+          .forceY<D3Node>((d) => {
+            const layer = d.layer ?? 0;
+            return layerHeight * (layer + 1);
+          })
+          .strength(0.8),
+      ) // Strong Y force to keep nodes in their layers
       .force("x", d3.forceX<D3Node>(effectiveWidth / 2).strength(0.05)); // Weak X force for centering
 
     // Create drag behavior (keeps nodes locked to layer)
-    const dragBehavior = d3.drag<SVGGElement, D3Node>()
+    const dragBehavior = d3
+      .drag<SVGGElement, D3Node>()
       .on("start", (event, d) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
@@ -152,6 +165,12 @@ export function GraphVisualizationLayered({
       updatePositions(link, node);
     });
 
+    // Apply intelligent label positioning once simulation settles
+    simulation.on("end", () => {
+      const labelPositions = calculateLabelPositions(d3Nodes);
+      applyLabelPositions(node, labelPositions);
+    });
+
     return () => {
       simulation.stop();
       svg.on(".zoom", null);
@@ -159,7 +178,7 @@ export function GraphVisualizationLayered({
   }, [nodes, edges, width, height, colorMap, onNodeClick]);
 
   return (
-    <div ref={containerRef} className={`w-full ${height === undefined ? 'h-full' : ''}`}>
+    <div ref={containerRef} className={`w-full ${height === undefined ? "h-full" : ""}`}>
       <svg
         ref={svgRef}
         className="w-full h-full"

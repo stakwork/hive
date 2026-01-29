@@ -74,6 +74,38 @@ function generateMockNodes(): JarvisNode[] {
     });
   });
 
+  // Generate 15 endpoint nodes
+  const endpoints = [
+    { path: "/api/users", method: "GET", description: "List all users" },
+    { path: "/api/users", method: "POST", description: "Create a new user" },
+    { path: "/api/users/:id", method: "GET", description: "Get user by ID" },
+    { path: "/api/users/:id", method: "PUT", description: "Update user" },
+    { path: "/api/users/:id", method: "DELETE", description: "Delete user" },
+    { path: "/api/auth/login", method: "POST", description: "User login" },
+    { path: "/api/auth/logout", method: "POST", description: "User logout" },
+    { path: "/api/auth/refresh", method: "POST", description: "Refresh token" },
+    { path: "/api/tasks", method: "GET", description: "List all tasks" },
+    { path: "/api/tasks", method: "POST", description: "Create a new task" },
+    { path: "/api/tasks/:id", method: "GET", description: "Get task by ID" },
+    { path: "/api/tasks/:id", method: "PATCH", description: "Update task" },
+    { path: "/api/workspaces", method: "GET", description: "List workspaces" },
+    { path: "/api/workspaces/:slug", method: "GET", description: "Get workspace" },
+    { path: "/api/graph/nodes", method: "GET", description: "Get graph nodes" },
+  ];
+  endpoints.forEach((endpoint, i) => {
+    nodes.push({
+      ref_id: `endpoint-${i + 1}`,
+      node_type: "Endpoint",
+      date_added_to_graph: now - Math.random() * 86400 * 20,
+      properties: {
+        name: `${endpoint.method} ${endpoint.path}`,
+        path: endpoint.path,
+        method: endpoint.method,
+        description: endpoint.description,
+      },
+    });
+  });
+
   return nodes;
 }
 
@@ -106,6 +138,20 @@ function generateMockEdges() {
         source: `episode-${i}`,
         target: `person-${j}`,
         edge_type: "participant",
+      });
+    }
+  }
+
+  // Connect endpoints to functions (endpoints call functions)
+  for (let i = 1; i <= 15; i++) {
+    // Each endpoint calls 2-3 functions
+    const numFunctions = 2 + (i % 2);
+    for (let j = 0; j < numFunctions; j++) {
+      const functionId = (((i - 1) * 3 + j) % 50) + 1;
+      edges.push({
+        source: `endpoint-${i}`,
+        target: `function-${functionId}`,
+        edge_type: "calls",
       });
     }
   }
