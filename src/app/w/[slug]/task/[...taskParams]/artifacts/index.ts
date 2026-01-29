@@ -6,3 +6,4 @@ export { GraphArtifactPanel } from "./GraphArtifactPanel";
 export { WorkflowArtifactPanel } from "./WorkflowArtifactPanel";
 export { DiffArtifactPanel } from "./diff";
 export { PublishWorkflowArtifact } from "./publish-workflow";
+export { BountyArtifact } from "./bounty";

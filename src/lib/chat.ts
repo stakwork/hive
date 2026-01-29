@@ -163,6 +163,26 @@ export interface MediaContent {
   uploadedAt: string; // ISO timestamp
 }
 
+export interface BountyContent {
+  status: "PENDING" | "READY";
+  bountyTitle: string;
+  bountyDescription: string;
+  estimatedHours?: number;
+  dueDate?: string;
+  priceUsd?: number;
+  priceSats?: number;
+  staking?: boolean;
+  bountyCode: string;
+  sourceTaskId: string;
+  sourceWorkspaceId: string;
+  sourceWorkspaceSlug: string;
+  sourceUserId: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
+  repoUrl?: string;
+  targetWorkspaceId?: string;
+}
+
 // Client-side types that extend Prisma types with proper JSON field typing
 export interface Artifact extends Omit<PrismaArtifact, "content"> {
   content?:
@@ -177,7 +197,8 @@ export interface Artifact extends Omit<PrismaArtifact, "content"> {
     | PullRequestContent
     | DiffContent
     | MediaContent
-    | PublishWorkflowContent;
+    | PublishWorkflowContent
+    | BountyContent;
 }
 
 // Using Prisma Attachment type directly (no additional fields needed)
@@ -257,7 +278,8 @@ export function createArtifact(data: {
     | PullRequestContent
     | DiffContent
     | MediaContent
-    | PublishWorkflowContent;
+    | PublishWorkflowContent
+    | BountyContent;
   icon?: ArtifactIcon;
 }): Artifact {
   return {
