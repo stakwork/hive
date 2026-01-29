@@ -643,6 +643,7 @@ enum ArtifactType {
   PULL_REQUEST
   DIFF
   PUBLISH_WORKFLOW
+  BOUNTY
 }
 
 // =============================================

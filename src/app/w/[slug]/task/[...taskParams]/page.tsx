@@ -14,6 +14,7 @@ import {
   Artifact,
   ArtifactType,
   PullRequestContent,
+  BountyContent,
 } from "@/lib/chat";
 import { useParams } from "next/navigation";
 import {
@@ -21,6 +22,7 @@ import {
   WorkflowStatusUpdate,
   TaskTitleUpdateEvent,
   PRStatusChangeEvent,
+  BountyStatusChangeEvent,
 } from "@/hooks/usePusherConnection";
 import { useChatForm } from "@/hooks/useChatForm";
 import { useProjectLogWebSocket } from "@/hooks/useProjectLogWebSocket";
@@ -209,6 +211,28 @@ export default function TaskChatPage() {
     );
   }, []);
 
+  const handleBountyStatusChange = useCallback((event: BountyStatusChangeEvent) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (!msg.artifacts) return msg;
+
+        const hasBounty = msg.artifacts.some((a) => a.id === event.artifactId);
+        if (!hasBounty) return msg;
+
+        return {
+          ...msg,
+          artifacts: msg.artifacts.map((a) => {
+            if (a.id !== event.artifactId) return a;
+            return {
+              ...a,
+              content: event.content as unknown as BountyContent,
+            };
+          }),
+        };
+      }),
+    );
+  }, []);
+
   // Use the Pusher connection hook
   const { isConnected, error: connectionError } = usePusherConnection({
     taskId: currentTaskId,
@@ -216,6 +240,7 @@ export default function TaskChatPage() {
     onWorkflowStatusUpdate: handleWorkflowStatusUpdate,
     onTaskTitleUpdate: handleTaskTitleUpdate,
     onPRStatusChange: handlePRStatusChange,
+    onBountyStatusChange: handleBountyStatusChange,
   });
 
   // Show connection errors as toasts

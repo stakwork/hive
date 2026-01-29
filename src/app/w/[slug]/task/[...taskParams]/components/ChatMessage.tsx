@@ -4,7 +4,7 @@ import React, { memo, useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, User, X, Image as ImageIcon } from "lucide-react";
 import { ChatMessage as ChatMessageType, Option, FormContent } from "@/lib/chat";
-import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact } from "../artifacts";
+import { FormArtifact, LongformArtifactPanel, PublishWorkflowArtifact, BountyArtifact } from "../artifacts";
 import { PullRequestArtifact } from "../artifacts/pull-request";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { WorkflowUrlLink } from "./WorkflowUrlLink";
@@ -241,7 +241,6 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
             </div>
           </div>
         ))}
-
       {/* Image Enlargement Dialog */}
       <Dialog open={!!enlargedImage} onOpenChange={(open) => !open && setEnlargedImage(null)}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 overflow-hidden">
@@ -263,6 +262,17 @@ export const ChatMessage = memo(function ChatMessage({ message, replyMessage, on
           </div>
         </DialogContent>
       </Dialog>
+      {message.artifacts
+        ?.filter((a) => a.type === "BOUNTY")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <BountyArtifact artifact={artifact} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
     </motion.div>
   );
 }, arePropsEqual);

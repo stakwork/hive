@@ -332,7 +332,7 @@ export async function createChatMessageAndTriggerStakwork(params: {
         },
       },
     });
-    
+
     if (!task) {
       throw new Error("Task not found");
     }
@@ -549,6 +549,7 @@ export async function callStakworkAPI(params: {
     message,
     contextTags,
     webhookUrl,
+    sourceHiveUrl: appBaseUrl,
     alias: userName,
     username: userName,
     accessToken,
@@ -586,6 +587,9 @@ export async function callStakworkAPI(params: {
   }
   if (branch) {
     vars.branch = branch;
+  }
+  if (process.env.EXA_API_KEY) {
+    vars.searchApiKey = process.env.EXA_API_KEY;
   }
 
   // Get workflow ID (replicating workflow selection logic)
@@ -642,6 +646,73 @@ export async function callStakworkAPI(params: {
     return { success: result.success, data: result.data };
   } catch (error) {
     console.error("Error calling Stakwork:", error);
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Call Stackwork bounty workflow to generate a mini-app repo for a bounty.
+ * Fire-and-forget: Stackwork will call back to Hive when done.
+ */
+export async function callStakworkBountyAPI(params: {
+  taskId: string;
+  podId: string;
+  agentPassword: string;
+  username: string;
+  accessToken: string;
+  bountyTitle: string;
+  bountyDescription: string;
+  artifactId: string;
+}): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  const workflowId = config.STAKWORK_BOUNTY_WORKFLOW_ID;
+  if (!workflowId) {
+    console.error("STAKWORK_BOUNTY_WORKFLOW_ID is not configured");
+    return { success: false, error: "Bounty workflow ID not configured" };
+  }
+
+  const webhookUrl = `${getBaseUrl()}/api/bounty/webhook`;
+
+  const payload = {
+    name: "hive_bounty",
+    workflow_id: parseInt(workflowId),
+    workflow_params: {
+      set_var: {
+        attributes: {
+          vars: {
+            taskId: params.taskId,
+            podId: params.podId,
+            username: params.username,
+            accessToken: params.accessToken,
+            bountyTitle: params.bountyTitle,
+            bountyDescription: params.bountyDescription,
+            artifactId: params.artifactId,
+            podPassword: params.agentPassword,
+            webhookUrl,
+          },
+        },
+      },
+    },
+  };
+
+  try {
+    const response = await fetch(`${config.STAKWORK_BASE_URL}/projects`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        Authorization: `Token token=${config.STAKWORK_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`Failed to call Stakwork bounty API: ${response.statusText}`);
+      return { success: false, error: response.statusText };
+    }
+
+    const result = await response.json();
+    return { success: result.success, data: result.data };
+  } catch (error) {
+    console.error("Error calling Stakwork bounty API:", error);
     return { success: false, error: String(error) };
   }
 }

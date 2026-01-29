@@ -174,6 +174,7 @@ export async function POST(request: NextRequest) {
         sessionId: taskId, // taskId IS the sessionId
         webhookUrl,
         apiKey: process.env.ANTHROPIC_API_KEY,
+        searchApiKey: process.env.EXA_API_KEY,
       }),
     });
 

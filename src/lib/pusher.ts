@@ -44,4 +44,5 @@ export const PUSHER_EVENTS = {
   FOLLOW_UP_QUESTIONS: "follow-up-questions",
   PROVENANCE_DATA: "provenance-data",
   PR_STATUS_CHANGE: "pr-status-change",
+  BOUNTY_STATUS_CHANGE: "bounty-status-change",
 } as const;

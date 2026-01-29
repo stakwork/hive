@@ -1,10 +1,16 @@
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { ensureUniqueBountyCode } from "@/lib/bounty-code";
-import { generateSphinxBountyUrl } from "@/lib/sphinx-tribes";
-import { TaskStatus } from "@prisma/client";
+import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
+import { EncryptionService } from "@/lib/encryption";
+import { callStakworkBountyAPI } from "@/services/task-workflow";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { ChatRole, ChatStatus, ArtifactType, Prisma } from "@prisma/client";
+import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import type { BountyContent } from "@/lib/chat";
+
+const encryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,7 +38,6 @@ export async function POST(request: NextRequest) {
       staking,
     } = body;
 
-    // Validate required fields
     if (!title) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -41,89 +46,98 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Source task information is required" }, { status: 400 });
     }
 
-    // Look up the leetbox workspace
-    const leetboxWorkspace = await db.workspace.findFirst({
-      where: {
-        slug: "leetbox",
-        deleted: false,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!leetboxWorkspace) {
-      return NextResponse.json({ error: "Leetbox workspace not found" }, { status: 404 });
-    }
-
     // Generate a unique bounty code
     const bountyCode = await ensureUniqueBountyCode();
 
-    // Create the bounty task in leetbox workspace
-    const task = await db.task.create({
-      data: {
-        title: title.trim(),
-        description: description?.trim() || "",
-        workspaceId: leetboxWorkspace.id,
-        status: TaskStatus.TODO,
-        bountyCode,
-        createdById: userId,
-        updatedById: userId,
-      },
+    // Look up source task to get podId and agentPassword
+    const sourceTask = await db.task.findUnique({
+      where: { id: sourceTaskId },
       select: {
-        id: true,
-        title: true,
-        bountyCode: true,
+        podId: true,
+        agentPassword: true,
       },
     });
 
-    // Build description with task link and account info (now that we have the task ID)
-    const taskUrl = `https://hive.sphinx.chat/w/leetbox/task/${task.id}`;
-    const descriptionParts = [
-      description?.trim() || "",
-      "",
-      `---`,
-      `Task: ${taskUrl}`,
-      "",
-      `If you don't have an account, [click here](https://hive.sphinx.chat) to sign up.`,
-    ].filter(Boolean);
-    const fullDescription = descriptionParts.join("\n");
+    if (!sourceTask) {
+      return NextResponse.json({ error: "Source task not found" }, { status: 404 });
+    }
 
-    // Update task with full description
-    const updatedTask = await db.task.update({
-      where: { id: task.id },
-      data: { description: fullDescription },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        bountyCode: true,
-      },
-    });
-
-    // Generate the Sphinx Tribes URL
-    const bountyUrl = generateSphinxBountyUrl({
-      id: updatedTask.id,
-      title: updatedTask.title,
-      description: updatedTask.description || undefined,
-      bountyCode: updatedTask.bountyCode || undefined,
+    // Create PENDING bounty artifact
+    const bountyContent: BountyContent = {
+      status: "PENDING",
+      bountyTitle: title.trim(),
+      bountyDescription: description?.trim() || "",
       estimatedHours,
       dueDate,
       priceUsd,
       priceSats,
       staking,
+      bountyCode,
       sourceTaskId,
-      sourceWorkspaceId,
+      sourceWorkspaceId: sourceWorkspaceId || "",
       sourceWorkspaceSlug,
       sourceUserId: userId,
-      targetWorkspaceId: leetboxWorkspace.id,
+    };
+
+    const chatMessage = await db.chatMessage.create({
+      data: {
+        taskId: sourceTaskId,
+        message: "Generating bounty workspace...",
+        role: ChatRole.ASSISTANT,
+        status: ChatStatus.SENT,
+        contextTags: JSON.stringify([]),
+        artifacts: {
+          create: {
+            type: ArtifactType.BOUNTY,
+            content: bountyContent as unknown as Prisma.InputJsonValue,
+          },
+        },
+      },
+      include: {
+        artifacts: true,
+      },
+    });
+
+    const artifactId = chatMessage.artifacts[0].id;
+
+    // Broadcast to Pusher so the card appears in chat
+    try {
+      const channelName = getTaskChannelName(sourceTaskId);
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.NEW_MESSAGE, chatMessage.id);
+    } catch (pusherError) {
+      console.error("Failed to broadcast bounty artifact:", pusherError);
+    }
+
+    // Get GitHub credentials
+    const githubProfile = await getGithubUsernameAndPAT(userId, sourceWorkspaceSlug);
+    const username = githubProfile?.username || "";
+    const accessToken = githubProfile?.token || "";
+
+    // Decrypt agent password if available
+    const agentPassword = sourceTask.agentPassword
+      ? encryptionService.decryptField("agentPassword", sourceTask.agentPassword)
+      : "";
+
+    // Fire and forget — Stackwork will call back when done
+    callStakworkBountyAPI({
+      taskId: sourceTaskId,
+      podId: sourceTask.podId || "",
+      agentPassword: agentPassword || "",
+      username,
+      accessToken,
+      bountyTitle: title.trim(),
+      bountyDescription: description?.trim() || "",
+      artifactId,
+    }).then((result) => {
+      console.log("[bounty-request] Stakwork bounty API result:", result);
+    }).catch((err) => {
+      console.error("[bounty-request] Stakwork bounty API error:", err);
     });
 
     return NextResponse.json(
       {
         success: true,
-        taskId: updatedTask.id,
-        bountyUrl,
+        bountyCode,
       },
       { status: 201 }
     );

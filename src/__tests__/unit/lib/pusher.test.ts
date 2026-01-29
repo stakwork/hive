@@ -279,6 +279,7 @@ describe("pusher.ts", () => {
         HIGHLIGHT_NODES: "highlight-nodes",
         PROVENANCE_DATA: "provenance-data",
         PR_STATUS_CHANGE: "pr-status-change",
+        BOUNTY_STATUS_CHANGE: "bounty-status-change",
       });
     });
 

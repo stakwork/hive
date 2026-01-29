@@ -39,6 +39,12 @@ export interface PRStatusChangeEvent {
   timestamp: Date;
 }
 
+export interface BountyStatusChangeEvent {
+  taskId: string;
+  artifactId: string;
+  content: Record<string, unknown>;
+}
+
 interface UsePusherConnectionOptions {
   taskId?: string | null;
   workspaceSlug?: string | null;
@@ -48,6 +54,7 @@ interface UsePusherConnectionOptions {
   onRecommendationsUpdated?: (update: RecommendationsUpdatedEvent) => void;
   onTaskTitleUpdate?: (update: TaskTitleUpdateEvent) => void;
   onPRStatusChange?: (update: PRStatusChangeEvent) => void;
+  onBountyStatusChange?: (update: BountyStatusChangeEvent) => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
@@ -70,6 +77,7 @@ export function usePusherConnection({
   onRecommendationsUpdated,
   onTaskTitleUpdate,
   onPRStatusChange,
+  onBountyStatusChange,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -83,6 +91,7 @@ export function usePusherConnection({
   const onRecommendationsUpdatedRef = useRef(onRecommendationsUpdated);
   const onTaskTitleUpdateRef = useRef(onTaskTitleUpdate);
   const onPRStatusChangeRef = useRef(onPRStatusChange);
+  const onBountyStatusChangeRef = useRef(onBountyStatusChange);
   const currentChannelIdRef = useRef<string | null>(null);
   const currentChannelTypeRef = useRef<"task" | "workspace" | null>(null);
 
@@ -91,6 +100,7 @@ export function usePusherConnection({
   onRecommendationsUpdatedRef.current = onRecommendationsUpdated;
   onTaskTitleUpdateRef.current = onTaskTitleUpdate;
   onPRStatusChangeRef.current = onPRStatusChange;
+  onBountyStatusChangeRef.current = onBountyStatusChange;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
@@ -217,6 +227,20 @@ export function usePusherConnection({
             }
             if (onPRStatusChangeRef.current) {
               onPRStatusChangeRef.current(update);
+            }
+          });
+
+          // Bounty status change events
+          channel.bind(PUSHER_EVENTS.BOUNTY_STATUS_CHANGE, (update: BountyStatusChangeEvent) => {
+            if (LOGS) {
+              console.log("Received bounty status change:", {
+                taskId: update.taskId,
+                artifactId: update.artifactId,
+                channelName,
+              });
+            }
+            if (onBountyStatusChangeRef.current) {
+              onBountyStatusChangeRef.current(update);
             }
           });
         }
