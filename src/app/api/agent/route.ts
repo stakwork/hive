@@ -65,6 +65,39 @@ import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt"
 
 const encryptionService = EncryptionService.getInstance();
 
+interface ChatHistoryMessage {
+  role: string;
+  message: string;
+  timestamp: string;
+}
+
+async function fetchChatHistory(taskId: string): Promise<ChatHistoryMessage[]> {
+  const chatHistory = await db.chatMessage.findMany({
+    where: { taskId },
+    orderBy: { createdAt: "asc" },
+    select: {
+      message: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  return chatHistory.map((msg) => ({
+    role: msg.role,
+    message: msg.message,
+    timestamp: msg.createdAt.toISOString(),
+  }));
+}
+
+function formatChatHistoryForPrompt(history: ChatHistoryMessage[]): string {
+  const formattedMessages = history.map((msg) => {
+    const role = msg.role === "USER" ? "User" : "Assistant";
+    return `${role}: ${msg.message}`;
+  });
+
+  return `Here is the previous conversation history for context:\n\n${formattedMessages.join("\n\n")}\n\n---\n\nContinuing the conversation:`;
+}
+
 interface ArtifactRequest {
   type: ArtifactType;
   content?: Record<string, unknown>;
@@ -101,7 +134,7 @@ export async function POST(request: NextRequest) {
   ]);
 
   // If there are existing messages, this is a resume
-  const isResume = messageCount > 0;
+  let isResume = messageCount > 0;
 
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
@@ -127,6 +160,54 @@ export async function POST(request: NextRequest) {
 
   // 4. Decrypt agent password
   const agentPassword = task.agentPassword ? encryptionService.decryptField("agentPassword", task.agentPassword) : null;
+
+  // 4b. If resuming, validate session exists on the pod
+  let sessionExistsOnPod = false;
+  let chatHistoryForPrompt: string | null = null;
+
+  if (isResume) {
+    try {
+      const validateUrl = agentUrl.replace(/\/$/, "") + "/validate_session";
+      const validateHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (agentPassword) {
+        validateHeaders["Authorization"] = `Bearer ${agentPassword}`;
+      }
+
+      const validateResponse = await fetch(validateUrl, {
+        method: "POST",
+        headers: validateHeaders,
+        body: JSON.stringify({ session: taskId }),
+      });
+
+      if (validateResponse.ok) {
+        const validateData = await validateResponse.json();
+        sessionExistsOnPod = validateData.exists === true;
+      }
+
+      console.log("[Agent] Session validation result:", sessionExistsOnPod ? "exists" : "not found");
+
+      // If session doesn't exist on pod, fetch chat history to include in prompt
+      if (!sessionExistsOnPod) {
+        console.log("[Agent] Session not found on pod, fetching chat history for context");
+        const chatHistory = await fetchChatHistory(taskId);
+        if (chatHistory.length > 0) {
+          chatHistoryForPrompt = formatChatHistoryForPrompt(chatHistory);
+        }
+        // Reset isResume since the pod doesn't have the session
+        isResume = false;
+      }
+    } catch (error) {
+      console.error("[Agent] Error validating session:", error);
+      // On error, assume session doesn't exist and fetch history
+      const chatHistory = await fetchChatHistory(taskId);
+      if (chatHistory.length > 0) {
+        chatHistoryForPrompt = formatChatHistoryForPrompt(chatHistory);
+      }
+      isResume = false;
+    }
+  }
 
   // 5. Handle webhook secret (generate if not exists)
   let webhookSecret: string;
@@ -225,5 +306,7 @@ export async function POST(request: NextRequest) {
     streamToken,
     streamUrl,
     resume: isResume,
+    // Include chat history context if session was not found on pod
+    ...(chatHistoryForPrompt && { historyContext: chatHistoryForPrompt }),
   });
 }

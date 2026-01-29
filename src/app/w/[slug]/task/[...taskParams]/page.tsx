@@ -761,10 +761,14 @@ export default function TaskChatPage() {
             throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
           }
 
-          const { streamToken, streamUrl, resume } = await sessionResponse.json();
+          const { streamToken, streamUrl, resume, historyContext } = await sessionResponse.json();
 
           // 2. Connect directly to remote server for streaming
-          const streamBody: Record<string, unknown> = { prompt: messageText };
+          // If historyContext is provided, the session was not found on the pod
+          // so we prepend the chat history to help the agent understand the conversation
+          const promptWithContext = historyContext ? `${historyContext}\n\n${messageText}` : messageText;
+
+          const streamBody: Record<string, unknown> = { prompt: promptWithContext };
           if (resume) {
             streamBody.resume = true;
           }
