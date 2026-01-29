@@ -1,76 +1,76 @@
 import { NodeExtended } from "@Universe/types";
 
 export const CalloutLabel = ({
-    node,
-    title,
-    onHover,
-    onUnhover,
-    onClick
+  node,
+  title,
+  onHover,
+  onUnhover,
+  onClick,
+  yOffset = 0,
 }: {
-    node?: NodeExtended;
-    title: string;
-    baseColor?: string;
-    onHover?: (node: NodeExtended) => void;
-    onUnhover?: () => void;
-    onClick?: (nodeId: string) => void;
+  node?: NodeExtended;
+  title: string;
+  baseColor?: string;
+  onHover?: (node: NodeExtended) => void;
+  onUnhover?: () => void;
+  onClick?: (nodeId: string) => void;
+  yOffset?: number;
 }) => {
-    const labelHeight = 32;
-    const lineLength = 60;
-    const maxWidth = 250;
-    const minWidth = 80;
+  const labelHeight = 32;
+  const lineLength = 60;
+  const maxWidth = 250;
+  const minWidth = 80;
 
-    const displayTitle = title.slice(0, 60);
+  const displayTitle = title.slice(0, 60);
 
-    const onPointerOver = () => {
-        if (node && onHover) onHover(node);
-    }
+  // Total vertical offset: base label position + slot offset
+  const totalYOffset = labelHeight + yOffset;
 
-    const onPointerOut = () => {
-        if (onUnhover) onUnhover();
-    }
+  const onPointerOver = () => {
+    if (node && onHover) onHover(node);
+  };
 
-    const onPointerClick = () => {
-        if (node && onClick) onClick(node.ref_id);
-    }
+  const onPointerOut = () => {
+    if (onUnhover) onUnhover();
+  };
 
-    return (
-        <div
-            className="relative pointer-events-auto select-none"
-            onMouseEnter={onPointerOver}
-            onMouseLeave={onPointerOut}
-            onClick={onPointerClick}
-        >
-            {/* Simple line from center (node) to center-left of label */}
-            <svg
-                className="absolute top-0 left-0 overflow-visible pointer-events-none"
-                style={{ zIndex: -1 }}
-            >
-                <line
-                    x1="0"
-                    y1="0"
-                    x2={lineLength}
-                    y2={-labelHeight / 2}
-                    stroke="#666"
-                    strokeWidth="1"
-                    opacity="0.6"
-                />
-            </svg>
+  const onPointerClick = () => {
+    if (node && onClick) onClick(node.ref_id);
+  };
 
-            {/* Label box */}
-            <div
-                className="absolute bg-gray-900/20 rounded px-3 py-2 backdrop-blur-sm"
-                style={{
-                    left: `${lineLength}px`,
-                    top: `${-labelHeight}px`,
-                    minWidth: `${minWidth}px`,
-                    maxWidth: `${maxWidth}px`,
-                    minHeight: `${labelHeight}px`,
-                }}
-            >
-                <div className="text-[#fed106] text-xs font-medium whitespace-nowrap">
-                    {displayTitle}
-                </div>
-            </div>
-        </div>
-    );
+  return (
+    <div
+      className="relative pointer-events-auto select-none"
+      onMouseEnter={onPointerOver}
+      onMouseLeave={onPointerOut}
+      onClick={onPointerClick}
+    >
+      {/* Line from node (0,0) to the label box */}
+      <svg className="absolute top-0 left-0 overflow-visible pointer-events-none" style={{ zIndex: -1 }}>
+        <line
+          x1="0"
+          y1="0"
+          x2={lineLength}
+          y2={-totalYOffset + labelHeight / 2}
+          stroke="#666"
+          strokeWidth="1"
+          opacity="0.6"
+        />
+      </svg>
+
+      {/* Label box */}
+      <div
+        className="absolute bg-gray-900/20 rounded px-3 py-2 backdrop-blur-sm"
+        style={{
+          left: `${lineLength}px`,
+          top: `${-totalYOffset}px`,
+          minWidth: `${minWidth}px`,
+          maxWidth: `${maxWidth}px`,
+          minHeight: `${labelHeight}px`,
+        }}
+      >
+        <div className="text-[#fed106] text-xs font-medium whitespace-nowrap">{displayTitle}</div>
+      </div>
+    </div>
+  );
 };
