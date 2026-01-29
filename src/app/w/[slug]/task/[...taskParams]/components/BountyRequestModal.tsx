@@ -10,7 +10,6 @@ import { Switch } from "@/components/ui/switch";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HelpCircle, Loader2, ExternalLink, CalendarIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useBtcPrice, satsToUsd, formatSats, formatUsd } from "@/hooks/useBtcPrice";
@@ -36,7 +35,6 @@ export function BountyRequestModal({
   sourceTaskTitle,
   sourceTaskDescription,
 }: BountyRequestModalProps) {
-  const router = useRouter();
   const [title, setTitle] = useState(sourceTaskTitle);
   const [description, setDescription] = useState(sourceTaskDescription || "");
   const [estimatedHours, setEstimatedHours] = useState<number | undefined>(undefined);
@@ -100,20 +98,11 @@ export function BountyRequestModal({
         throw new Error(errorData.error || "Failed to create bounty request");
       }
 
-      const result = await response.json();
+      await response.json();
 
-      // Close modal
       onClose();
 
-      // Open Sphinx Tribes URL in new tab
-      if (result.bountyUrl) {
-        window.open(result.bountyUrl, "_blank");
-      }
-
-      // Navigate to leetbox workspace home
-      router.push(`/w/leetbox`);
-
-      toast.success("Bounty request created successfully");
+      toast.success("Bounty workspace is being generated. You'll see it here when ready.");
     } catch (error) {
       console.error("Error creating bounty request:", error);
       toast.error(error instanceof Error ? error.message : "Failed to create bounty request");

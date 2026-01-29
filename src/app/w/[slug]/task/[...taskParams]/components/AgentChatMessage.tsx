@@ -8,6 +8,7 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { StreamingMessage, StreamErrorBoundary } from "@/components/streaming";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { PullRequestArtifact } from "../artifacts/pull-request";
+import { BountyArtifact } from "../artifacts/bounty";
 import { FINAL_ANSWER_ID } from "../lib/streaming-config";
 
 interface AgentChatMessageProps {
@@ -82,6 +83,18 @@ export function AgentChatMessage({ message }: AgentChatMessageProps) {
             <div className="max-w-md w-full">
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                 <PullRequestArtifact artifact={artifact} />
+              </motion.div>
+            </div>
+          </div>
+        ))}
+      {/* Render BOUNTY artifacts */}
+      {chatMessage?.artifacts
+        ?.filter((a) => a.type === "BOUNTY")
+        .map((artifact) => (
+          <div key={artifact.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+            <div className="max-w-md w-full">
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <BountyArtifact artifact={artifact} />
               </motion.div>
             </div>
           </div>
