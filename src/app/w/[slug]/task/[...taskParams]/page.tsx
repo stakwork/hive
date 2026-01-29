@@ -52,7 +52,7 @@ export default function TaskChatPage() {
   const { id: workspaceId, workspace } = useWorkspace();
   const { data: session } = useSession();
   const isMobile = useIsMobile();
-  const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST);
+  const canRequestBounty = useFeatureFlag(FEATURE_FLAGS.BOUNTY_REQUEST) && workspace?.slug === "hive";
 
   // Fallback: use workspace.id if workspaceId (from context) is null
   const effectiveWorkspaceId = workspaceId || workspace?.id;
