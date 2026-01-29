@@ -46,6 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Source task information is required" }, { status: 400 });
     }
 
+    if (sourceWorkspaceSlug !== "hive") {
+      return NextResponse.json({ error: "Bounty requests are only available for the hive workspace" }, { status: 403 });
+    }
+
     // Generate a unique bounty code
     const bountyCode = await ensureUniqueBountyCode();
 
