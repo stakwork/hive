@@ -8,6 +8,7 @@ import {
   getUserWorkspaces,
   softDeleteWorkspace,
 } from "@/services/workspace";
+import { runWorkspaceSetup } from "@/services/workspace-setup";
 import { findUserByGitHubUsername } from "@/lib/helpers/workspace-member-queries";
 import { db } from "@/lib/db";
 import { getErrorMessage } from "@/lib/utils/error";
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     ownerId = (session.user as { id: string }).id;
   }
 
-  const { name, description, slug, repositoryUrl } = body;
+  const { name, description, slug, repositoryUrl, autoSetup } = body;
   let finalName = name;
   let finalSlug = slug;
 
@@ -86,6 +87,13 @@ export async function POST(request: NextRequest) {
       ownerId,
       repositoryUrl,
     });
+
+    if (autoSetup === true && workspace?.id) {
+      runWorkspaceSetup(workspace.id, ownerId).catch((err) => {
+        console.error("[workspace-setup] Fire-and-forget error:", err);
+      });
+    }
+
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error: unknown) {
     const message = getErrorMessage(error, "Failed to create workspace.");
