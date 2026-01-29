@@ -193,8 +193,55 @@ const getNodeColor = (type: string, nodeTypes: string[], colorPalette: string[])
   return "#6b7280";
 };
 
+// Calculate label offsets to avoid overlaps
+// Labels need to spread dramatically in Y - some almost reaching the next layer
+const calculateLabelOffsets = (nodes: D3Node[]): Map<string, { offsetX: number; offsetY: number }> => {
+  const offsets = new Map<string, { offsetX: number; offsetY: number }>();
+
+  if (nodes.length === 0) return offsets;
+
+  // Simple approach: just spread ALL labels based on their index
+  // Sort by type first (to group similar nodes), then by position
+  const sortedNodes = [...nodes].sort((a, b) => {
+    // Primary sort by type
+    const typeCompare = a.type.localeCompare(b.type);
+    if (typeCompare !== 0) return typeCompare;
+    // Secondary sort by position
+    return (a.x ?? 0) - (b.x ?? 0);
+  });
+
+  const count = sortedNodes.length;
+  const minOffset = 15; // Minimum distance above node
+  const maxOffset = 200; // Maximum - spread labels way up
+
+  sortedNodes.forEach((node, index) => {
+    // Spread labels from minOffset to maxOffset based on index
+    const normalizedIndex = count > 1 ? index / (count - 1) : 0;
+    const yOffset = minOffset + normalizedIndex * (maxOffset - minOffset);
+
+    // Alternate X offset for additional separation
+    const xOffset = ((index % 3) - 1) * 12; // -12, 0, 12
+
+    offsets.set(node.id, { offsetX: xOffset, offsetY: yOffset });
+  });
+
+  return offsets;
+};
+
 // --- NODE MESH COMPONENT ---
-const NodeMesh = ({ node, color, onClick, isSelected, isConnected, isDimmed }: NodeMeshProps) => {
+interface NodeMeshPropsWithOffset extends NodeMeshProps {
+  labelOffset: { offsetX: number; offsetY: number };
+}
+
+const NodeMesh = ({
+  node,
+  color,
+  onClick,
+  isSelected,
+  isConnected,
+  isDimmed,
+  labelOffset,
+}: NodeMeshPropsWithOffset) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
@@ -230,10 +277,10 @@ const NodeMesh = ({ node, color, onClick, isSelected, isConnected, isDimmed }: N
         />
       </mesh>
       <Text
-        position={[0, 12, 0]}
+        position={[labelOffset.offsetX, labelOffset.offsetY, 0]}
         fontSize={4}
         color={isSelected ? "#3b82f6" : "#ffffff"}
-        anchorX="center"
+        anchorX={labelOffset.offsetX > 5 ? "left" : labelOffset.offsetX < -5 ? "right" : "center"}
         anchorY="middle"
         outlineWidth={0.5}
         outlineColor="#000000"
@@ -394,6 +441,22 @@ const GraphScene = ({
     return connected;
   }, [selectedNode, links]);
 
+  // Calculate label offsets to avoid overlaps
+  const labelOffsets = useMemo(() => {
+    const offsets = calculateLabelOffsets(simulatedNodes);
+    if (simulatedNodes.length > 0) {
+      console.log(
+        "Label offsets calculated:",
+        simulatedNodes.length,
+        "nodes, sample offsets:",
+        Array.from(offsets.entries())
+          .slice(0, 5)
+          .map(([id, o]) => ({ id, ...o })),
+      );
+    }
+    return offsets;
+  }, [simulatedNodes]);
+
   return (
     <>
       <ambientLight intensity={isDarkMode ? 0.3 : 0.5} />
@@ -418,6 +481,7 @@ const GraphScene = ({
           const isSelected = selectedNode?.id === node.id;
           const isConnected = selectedNode !== null && connectedNodeIds.has(node.id);
           const isDimmed = selectedNode !== null && !isSelected && !isConnected;
+          const labelOffset = labelOffsets.get(node.id) || { offsetX: 0, offsetY: 12 };
 
           return (
             <NodeMesh
@@ -428,6 +492,7 @@ const GraphScene = ({
               isSelected={isSelected}
               isConnected={isConnected}
               isDimmed={isDimmed}
+              labelOffset={labelOffset}
             />
           );
         })}
