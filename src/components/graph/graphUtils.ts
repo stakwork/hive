@@ -68,10 +68,13 @@ export const getNodeColor = (type: string, colorMap?: Record<string, string>): s
   return colors[type] || "#6b7280";
 };
 
-export const filterValidLinks = (links: D3Link[], nodeIds: Set<string>): D3Link[] => {
-  return links.filter((link) => {
-    const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-    const targetId = typeof link.target === "string" ? link.target : link.target.id;
+export const filterValidLinks = (
+  links: D3Link[],
+  nodeIds: Set<string>
+): D3Link[] => {
+  return links.filter(link => {
+    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
     return nodeIds.has(sourceId) && nodeIds.has(targetId);
   });
 };
@@ -79,19 +82,20 @@ export const filterValidLinks = (links: D3Link[], nodeIds: Set<string>): D3Link[
 export const setupZoom = (
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   container: d3.Selection<SVGGElement, unknown, null, undefined>,
-  previousTransform: d3.ZoomTransform,
+  previousTransform: d3.ZoomTransform
 ): void => {
-  const zoom = d3
-    .zoom<SVGSVGElement, unknown>()
+  const zoom = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.1, 4])
     .on("zoom", (event) => {
       container.attr("transform", event.transform);
     });
 
+   
   svg.call(zoom as any);
 
   // Restore previous zoom/pan state
   try {
+     
     (svg as any).call(zoom.transform, previousTransform);
   } catch {
     // Ignore if transform can't be reapplied
@@ -103,10 +107,9 @@ export const createNodeElements = (
   nodes: D3Node[],
   colorMap: Record<string, string> | undefined,
   onNodeClick: ((node: GraphNode) => void) | undefined,
-  dragBehavior: d3.DragBehavior<SVGGElement, D3Node, unknown>,
+  dragBehavior: d3.DragBehavior<SVGGElement, D3Node, unknown>
 ): d3.Selection<SVGGElement, D3Node, SVGGElement, unknown> => {
-  const node = container
-    .append("g")
+  const node = container.append("g")
     .attr("class", "nodes")
     .selectAll("g")
     .data(nodes)
@@ -124,18 +127,16 @@ export const createNodeElements = (
   }
 
   // Add circles
-  node
-    .append("circle")
+  node.append("circle")
     .attr("r", 12)
-    .attr("fill", (d) => getNodeColor(d.type, colorMap))
+    .attr("fill", d => getNodeColor(d.type, colorMap))
     .attr("stroke", "#fff")
     .attr("stroke-width", 2)
     .style("filter", "drop-shadow(1px 1px 2px rgba(0,0,0,0.2))");
 
   // Add node labels
-  node
-    .append("text")
-    .text((d) => (d.name.length > 20 ? `${d.name.slice(0, 20)}...` : d.name))
+  node.append("text")
+    .text(d => d.name.length > 20 ? `${d.name.slice(0, 20)}...` : d.name)
     .attr("x", 0)
     .attr("y", -18)
     .attr("text-anchor", "middle")
@@ -145,9 +146,8 @@ export const createNodeElements = (
     .style("pointer-events", "none");
 
   // Add type labels
-  node
-    .append("text")
-    .text((d) => d.type)
+  node.append("text")
+    .text(d => d.type)
     .attr("x", 0)
     .attr("y", 25)
     .attr("text-anchor", "middle")
@@ -161,10 +161,9 @@ export const createNodeElements = (
 export const createLinkElements = (
   container: d3.Selection<SVGGElement, unknown, null, undefined>,
   links: D3Link[],
-  withArrows = false,
+  withArrows = false
 ): d3.Selection<SVGLineElement, D3Link, SVGGElement, unknown> => {
-  const link = container
-    .append("g")
+  const link = container.append("g")
     .attr("class", "links")
     .selectAll("line")
     .data(links)
@@ -181,10 +180,10 @@ export const createLinkElements = (
   return link;
 };
 
-export const addArrowMarker = (svg: d3.Selection<SVGSVGElement, unknown, null, undefined>): void => {
-  svg
-    .append("defs")
-    .append("marker")
+export const addArrowMarker = (
+  svg: d3.Selection<SVGSVGElement, unknown, null, undefined>
+): void => {
+  svg.append("defs").append("marker")
     .attr("id", "arrowhead")
     .attr("viewBox", "0 -5 10 10")
     .attr("refX", 20)
@@ -199,150 +198,27 @@ export const addArrowMarker = (svg: d3.Selection<SVGSVGElement, unknown, null, u
 
 export const updatePositions = (
   link: d3.Selection<SVGLineElement, D3Link, SVGGElement, unknown>,
-  node: d3.Selection<SVGGElement, D3Node, SVGGElement, unknown>,
+  node: d3.Selection<SVGGElement, D3Node, SVGGElement, unknown>
 ): void => {
   link
-    .attr("x1", (d) => (d.source as D3Node).x!)
-    .attr("y1", (d) => (d.source as D3Node).y!)
-    .attr("x2", (d) => (d.target as D3Node).x!)
-    .attr("y2", (d) => (d.target as D3Node).y!);
+    .attr("x1", d => (d.source as D3Node).x!)
+    .attr("y1", d => (d.source as D3Node).y!)
+    .attr("x2", d => (d.target as D3Node).x!)
+    .attr("y2", d => (d.target as D3Node).y!);
 
-  node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+  node.attr("transform", d => `translate(${d.x},${d.y})`);
 };
 
-interface LabelPosition {
-  nodeId: string;
-  x: number;
-  y: number;
-  nameOffsetX: number;
-  nameOffsetY: number;
-  typeOffsetX: number;
-  typeOffsetY: number;
-}
-
-// Calculate intelligent label positions to avoid overlaps
-export const calculateLabelPositions = (nodes: D3Node[]): Map<string, LabelPosition> => {
-  const positions = new Map<string, LabelPosition>();
-  const labelHeight = 14; // Approximate height of label text
-  const labelWidth = 80; // Approximate width for collision detection
-  const minVerticalGap = 20; // Minimum vertical gap between labels
-
-  // Sort nodes by Y position to process from top to bottom
-  const sortedNodes = [...nodes].sort((a, b) => (a.y ?? 0) - (b.y ?? 0));
-
-  // Track occupied label regions: { y: number, xMin: number, xMax: number }[]
-  const occupiedRegions: { y: number; xMin: number; xMax: number; isAbove: boolean }[] = [];
-
-  for (const node of sortedNodes) {
-    const nodeX = node.x ?? 0;
-    const nodeY = node.y ?? 0;
-
-    // Default positions
-    let nameOffsetX = 0;
-    let nameOffsetY = -18;
-    let typeOffsetX = 0;
-    let typeOffsetY = 25;
-
-    const nameLabelY = nodeY + nameOffsetY;
-    const typeLabelY = nodeY + typeOffsetY;
-
-    // Check for overlaps with existing labels
-    let hasTopOverlap = false;
-    let hasBottomOverlap = false;
-
-    for (const region of occupiedRegions) {
-      const horizontalOverlap = !(nodeX + labelWidth / 2 < region.xMin || nodeX - labelWidth / 2 > region.xMax);
-
-      if (horizontalOverlap) {
-        // Check if name label (above node) overlaps
-        if (Math.abs(nameLabelY - region.y) < minVerticalGap) {
-          hasTopOverlap = true;
-        }
-        // Check if type label (below node) overlaps
-        if (Math.abs(typeLabelY - region.y) < minVerticalGap) {
-          hasBottomOverlap = true;
-        }
-      }
-    }
-
-    // Adjust positions based on overlaps
-    if (hasTopOverlap && !hasBottomOverlap) {
-      // Move name label to bottom-right
-      nameOffsetX = 20;
-      nameOffsetY = 5;
-    } else if (hasBottomOverlap && !hasTopOverlap) {
-      // Move type label to bottom-right (offset from name)
-      typeOffsetX = 20;
-      typeOffsetY = 5;
-      // Name stays on top
-    } else if (hasTopOverlap && hasBottomOverlap) {
-      // Both overlap - put labels to the right of node
-      nameOffsetX = 20;
-      nameOffsetY = -8;
-      typeOffsetX = 20;
-      typeOffsetY = 8;
-    }
-
-    // Record occupied regions for this node's labels
-    occupiedRegions.push({
-      y: nodeY + nameOffsetY,
-      xMin: nodeX + nameOffsetX - labelWidth / 2,
-      xMax: nodeX + nameOffsetX + labelWidth / 2,
-      isAbove: nameOffsetY < 0,
-    });
-    occupiedRegions.push({
-      y: nodeY + typeOffsetY,
-      xMin: nodeX + typeOffsetX - labelWidth / 2,
-      xMax: nodeX + typeOffsetX + labelWidth / 2,
-      isAbove: false,
-    });
-
-    positions.set(node.id, {
-      nodeId: node.id,
-      x: nodeX,
-      y: nodeY,
-      nameOffsetX,
-      nameOffsetY,
-      typeOffsetX,
-      typeOffsetY,
-    });
-  }
-
-  return positions;
-};
-
-// Apply calculated label positions to the node elements
-export const applyLabelPositions = (
-  node: d3.Selection<SVGGElement, D3Node, SVGGElement, unknown>,
-  positions: Map<string, LabelPosition>,
-): void => {
-  node.each(function (d) {
-    const pos = positions.get(d.id);
-    if (!pos) return;
-
-    const g = d3.select(this);
-
-    // Update name label position
-    g.select("text:first-of-type")
-      .attr("x", pos.nameOffsetX)
-      .attr("y", pos.nameOffsetY)
-      .attr("text-anchor", pos.nameOffsetX !== 0 ? "start" : "middle");
-
-    // Update type label position
-    g.select("text:last-of-type")
-      .attr("x", pos.typeOffsetX)
-      .attr("y", pos.typeOffsetY)
-      .attr("text-anchor", pos.typeOffsetX !== 0 ? "start" : "middle");
-  });
-};
-
-export const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string> => {
+export const getConnectedNodeIds = (
+  nodeId: string,
+  links: D3Link[]
+): Set<string> => {
   const connected = new Set<string>();
 
   // Find all nodes connected to this node (both as source and target)
-  links.forEach((link) => {
-    const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-    const targetId = typeof link.target === "string" ? link.target : link.target.id;
+  links.forEach(link => {
+    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
 
     if (sourceId === nodeId) {
       connected.add(targetId);
@@ -358,15 +234,15 @@ export const getConnectedNodeIds = (nodeId: string, links: D3Link[]): Set<string
 export const setupNodeHoverHighlight = (
   node: d3.Selection<SVGGElement, D3Node, SVGGElement, unknown>,
   link: d3.Selection<SVGLineElement, D3Link, SVGGElement, unknown>,
-  links: D3Link[],
+  links: D3Link[]
 ): void => {
   node
-    .on("mouseenter", function (_, d) {
+    .on("mouseenter", function(_, d) {
       const hoveredId = d.id;
       const connectedIds = getConnectedNodeIds(hoveredId, links);
 
       // Dim all nodes except hovered and connected
-      node.style("opacity", (n) => {
+      node.style("opacity", n => {
         if (n.id === hoveredId || connectedIds.has(n.id)) {
           return 1;
         }
@@ -374,9 +250,9 @@ export const setupNodeHoverHighlight = (
       });
 
       // Dim all links except those connected to hovered node
-      link.style("opacity", (l) => {
-        const sourceId = typeof l.source === "string" ? l.source : l.source.id;
-        const targetId = typeof l.target === "string" ? l.target : l.target.id;
+      link.style("opacity", l => {
+        const sourceId = typeof l.source === 'string' ? l.source : l.source.id;
+        const targetId = typeof l.target === 'string' ? l.target : l.target.id;
 
         if (sourceId === hoveredId || targetId === hoveredId) {
           return 1;
@@ -384,7 +260,7 @@ export const setupNodeHoverHighlight = (
         return 0.15;
       });
     })
-    .on("mouseleave", function () {
+    .on("mouseleave", function() {
       // Reset all opacities
       node.style("opacity", 1);
       link.style("opacity", 0.6);
