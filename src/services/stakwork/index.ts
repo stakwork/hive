@@ -2,6 +2,7 @@ import { BaseServiceClass } from "@/lib/base-service";
 import { ServiceConfig } from "@/types";
 import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -176,5 +177,55 @@ export class StakworkService extends BaseServiceClass {
       workflowData: response.data,
       status: response.data.project.workflow_state,
     };
+  }
+
+  /**
+   * Stop a running workflow for a specific project
+   * @param projectId - The Stakwork project ID
+   * @returns void on success
+   */
+  async stopWorkflow(projectId: number): Promise<void> {
+    const endpoint = `${config.STAKWORK_BASE_URL}/projects/${projectId}/stop`;
+
+    const decryptedApiKey = encryptionService.decryptField(
+      "stakworkApiKey",
+      this.config.apiKey,
+    );
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Token token=${decryptedApiKey}`,
+    };
+
+    const client = this.getClient();
+    const requestFn = () => {
+      return client.post<{ success: boolean }>(
+        endpoint,
+        {},
+        headers,
+        this.serviceName,
+      );
+    };
+
+    try {
+      await this.handleRequest(requestFn, `stopWorkflow ${endpoint}`);
+      logger.info(`Workflow stopped successfully for project ${projectId}`);
+    } catch (error) {
+      // Handle errors gracefully - log but don't throw if workflow already stopped
+      if (error && typeof error === "object" && "status" in error) {
+        const status = (error as { status: number }).status;
+        if (status === 404 || status === 410) {
+          logger.info(
+            `Workflow for project ${projectId} already stopped or not found (status: ${status})`,
+          );
+          return;
+        }
+      }
+      // Log other errors but still return gracefully
+      logger.warn(
+        `Failed to stop workflow for project ${projectId}`,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 }
