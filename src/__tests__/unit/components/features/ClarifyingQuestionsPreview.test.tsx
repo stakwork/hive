@@ -748,4 +748,175 @@ describe('ClarifyingQuestionsPreview', () => {
       expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument();
     });
   });
+
+  describe('Cancel Functionality', () => {
+    const mockOnCancel = vi.fn();
+
+    beforeEach(() => {
+      mockOnCancel.mockClear();
+    });
+
+    it('should display Cancel button on first question', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      // Cancel button should be visible on first question
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      expect(cancelButton).toBeInTheDocument();
+      expect(screen.getByTestId('x-icon')).toBeInTheDocument();
+    });
+
+    it('should display Cancel button on middle questions', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      // Navigate to question 2
+      const textarea = screen.getByPlaceholderText(/type your answer/i);
+      await user.type(textarea, 'Answer 1');
+      await user.click(screen.getByRole('button', { name: /next/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('2 of 4')).toBeInTheDocument();
+      });
+
+      // Cancel button should still be visible
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      expect(cancelButton).toBeInTheDocument();
+    });
+
+    it('should display Cancel button on review screen', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      // Navigate to review
+      for (let i = 0; i < mockQuestions.length; i++) {
+        const textarea = screen.getByPlaceholderText(/type your answer/i);
+        await user.type(textarea, `Answer ${i + 1}`);
+        const nextButton = i < mockQuestions.length - 1
+          ? screen.getByRole('button', { name: /next/i })
+          : screen.getByRole('button', { name: /review/i });
+        await user.click(nextButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/review your answers/i)).toBeInTheDocument();
+      });
+
+      // Cancel button should be visible on review screen
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      expect(cancelButton).toBeInTheDocument();
+    });
+
+    it('should call onCancel when Cancel button is clicked', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      // Click Cancel button
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      await user.click(cancelButton);
+
+      // onCancel should be called
+      await waitFor(() => {
+        expect(mockOnCancel).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('should not call onSubmit when Cancel is clicked', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      // Type some answers
+      const textarea = screen.getByPlaceholderText(/type your answer/i);
+      await user.type(textarea, 'Answer 1');
+
+      // Click Cancel button instead of Next/Submit
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      await user.click(cancelButton);
+
+      // onCancel should be called, but NOT onSubmit
+      await waitFor(() => {
+        expect(mockOnCancel).toHaveBeenCalledTimes(1);
+        expect(mockOnSubmit).not.toHaveBeenCalled();
+      });
+    });
+
+    it('should disable Cancel button when isLoading is true', () => {
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+          isLoading={true}
+        />
+      );
+
+      // Cancel button should be disabled when loading
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      expect(cancelButton).toBeDisabled();
+    });
+
+    it('should not submit partial answers when canceling from review screen', async () => {
+      const user = userEvent.setup();
+      render(
+        <ClarifyingQuestionsPreview
+          questions={mockQuestions}
+          onSubmit={mockOnSubmit}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      // Navigate to review with partial answers
+      for (let i = 0; i < mockQuestions.length; i++) {
+        const textarea = screen.getByPlaceholderText(/type your answer/i);
+        await user.type(textarea, `Answer ${i + 1}`);
+        const nextButton = i < mockQuestions.length - 1
+          ? screen.getByRole('button', { name: /next/i })
+          : screen.getByRole('button', { name: /review/i });
+        await user.click(nextButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/review your answers/i)).toBeInTheDocument();
+      });
+
+      // Click Cancel instead of Submit
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
+      await user.click(cancelButton);
+
+      // onCancel should be called, NOT onSubmit
+      await waitFor(() => {
+        expect(mockOnCancel).toHaveBeenCalledTimes(1);
+        expect(mockOnSubmit).not.toHaveBeenCalled();
+      });
+    });
+  });
 });
