@@ -33,6 +33,15 @@ export async function POST(
       where: { id: featureId },
       select: {
         id: true,
+        workspace: {
+          select: {
+            id: true,
+            slug: true,
+            swarm: {
+              select: { id: true, poolApiKey: true },
+            },
+          },
+        },
         phases: {
           orderBy: { order: "asc" },
           take: 1,
@@ -97,25 +106,10 @@ export async function POST(
     });
 
     // Step 8: Eagerly start the highest-priority eligible task if a machine is available
-    try {
-      const featureWithWorkspace = await db.feature.findUnique({
-        where: { id: featureId },
-        select: {
-          workspace: {
-            select: {
-              id: true,
-              slug: true,
-              swarm: {
-                select: { id: true, poolApiKey: true },
-              },
-            },
-          },
-        },
-      });
-
-      const ws = featureWithWorkspace?.workspace;
-      const swarm = ws?.swarm;
-      if (ws && swarm?.id && swarm?.poolApiKey) {
+    const ws = feature.workspace;
+    const swarm = ws?.swarm;
+    if (ws && swarm?.id && swarm?.poolApiKey) {
+      try {
         const config = getServiceConfig("poolManager");
         const poolManagerService = new PoolManagerService(config);
         const poolStatus = await poolManagerService.getPoolStatus(
@@ -126,9 +120,9 @@ export async function POST(
         if (poolStatus.status.unusedVms > 1) {
           processTicketSweep(ws.id, ws.slug).catch(() => {});
         }
+      } catch {
+        // Pool service unreachable — skip eager start
       }
-    } catch {
-      // Pool service unreachable — skip eager start
     }
 
     // Step 9: Update feature status from tasks
