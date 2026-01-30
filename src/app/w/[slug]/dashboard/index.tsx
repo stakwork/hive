@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
 import { DashboardChat } from "@/components/dashboard/DashboardChat";
 import { GitHubStatusWidget } from "@/components/dashboard/github-status-widget";
 import { NeedsInputDropdownWidget } from "@/components/dashboard/needs-input-dropdown-widget";
@@ -51,51 +50,6 @@ function DashboardInner() {
     workspaceSlug: slug,
     enabled: !!slug,
   });
-
-  // Track "d d d" key sequence for mock highlight trigger
-  const keyTimestamps = useRef<number[]>([]);
-  const triggerDebugHighlight = useCallback(async () => {
-    if (!slug) return;
-    try {
-      await fetch(`/api/debug/highlight?workspace=${slug}`, { method: "POST" });
-    } catch (err) {
-      console.error("[Dashboard] Failed to trigger debug highlight:", err);
-    }
-  }, [slug]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input or if key is being held down
-      if (e.repeat) return;
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
-        return;
-      }
-
-      if (e.key.toLowerCase() !== "d") {
-        keyTimestamps.current = [];
-        return;
-      }
-
-      const now = Date.now();
-      keyTimestamps.current.push(now);
-
-      // Keep only timestamps within the last 500ms
-      keyTimestamps.current = keyTimestamps.current.filter((t) => now - t < 500);
-
-      console.log("[Dashboard] d pressed, count:", keyTimestamps.current.length);
-
-      // Trigger on 3 rapid "d" presses
-      if (keyTimestamps.current.length >= 3) {
-        console.log("[Dashboard] Triggering debug highlight");
-        keyTimestamps.current = [];
-        triggerDebugHighlight();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [triggerDebugHighlight]);
 
   const handleFilterChange = (value: FilterTab) => {
     setActiveFilterTab(value);
