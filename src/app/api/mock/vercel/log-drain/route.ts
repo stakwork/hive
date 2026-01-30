@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { db } from "@/lib/db";
+import { formatEndpointLabel } from "@/lib/format-endpoint";
+import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 
 export const runtime = "nodejs";
 
@@ -59,32 +60,7 @@ function generateMockLogEntry(index: number) {
   };
 }
 
-/**
- * Format endpoint path into a readable label
- */
-function formatEndpointLabel(endpoint: string): string {
-  const segments = endpoint.replace(/^\//, "").split("/");
-  const filteredSegments = segments.filter((s) => s.toLowerCase() !== "api");
 
-  if (filteredSegments.length === 0) {
-    return endpoint;
-  }
-
-  const segmentToWords = (segment: string): string[] =>
-    segment
-      .split("-")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .filter((w) => w.length > 0);
-
-  const finalSegmentWords = segmentToWords(filteredSegments[filteredSegments.length - 1]);
-
-  if (finalSegmentWords.length >= 3) {
-    return finalSegmentWords.join(" ");
-  }
-
-  const allWords = filteredSegments.flatMap(segmentToWords);
-  return allWords.join(" ");
-}
 
 /**
  * Map a request path to a mock endpoint node ref_id

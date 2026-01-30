@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
+import { formatEndpointLabel } from "@/lib/format-endpoint";
 import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/pusher";
 import { matchPathToEndpoint, type EndpointNode } from "@/lib/vercel/path-matcher";
 import type { VercelLogEntry } from "@/types/vercel";
@@ -236,50 +237,7 @@ async function fetchEndpointNodes(swarm: {
   }
 }
 
-/**
- * Generate a pretty label from an API endpoint path
- *
- * Examples:
- * - /api/system/signups-enabled => System Signups Enabled
- * - /api/cron/update-bitcoin-price => Update Bitcoin Price
- * - /api/travel-times => Travel Times
- *
- * Rules:
- * - Remove /api prefix
- * - If final segment has 3+ words, use only that segment
- * - Otherwise use more segments for context
- * - Capitalize each word intelligently
- */
-function formatEndpointLabel(endpoint: string): string {
-  // Remove leading slash and split into segments
-  const segments = endpoint.replace(/^\//, "").split("/");
 
-  // Remove "api" prefix if present
-  const filteredSegments = segments.filter((s) => s.toLowerCase() !== "api");
-
-  if (filteredSegments.length === 0) {
-    return endpoint; // fallback to original
-  }
-
-  // Convert a segment to words (split on dashes)
-  const segmentToWords = (segment: string): string[] =>
-    segment
-      .split("-")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .filter((w) => w.length > 0);
-
-  // Get words from the final segment
-  const finalSegmentWords = segmentToWords(filteredSegments[filteredSegments.length - 1]);
-
-  // If final segment has 3+ words, use only that
-  if (finalSegmentWords.length >= 3) {
-    return finalSegmentWords.join(" ");
-  }
-
-  // Otherwise, use all filtered segments
-  const allWords = filteredSegments.flatMap(segmentToWords);
-  return allWords.join(" ");
-}
 
 /**
  * Broadcast highlight event to workspace via Pusher

@@ -146,16 +146,14 @@ function generateMockEdges() {
     }
   }
 
-  // Connect endpoints to functions (each endpoint calls exactly 3 functions)
+  // Connect endpoints to functions (each endpoint calls 1 function, spread out)
   for (let i = 1; i <= 15; i++) {
-    for (let j = 0; j < 3; j++) {
-      const functionId = ((i - 1) * 3 + j) % 50 + 1; // spread across functions, no overlap
-      edges.push({
-        source: `endpoint-${i}`,
-        target: `function-${functionId}`,
-        edge_type: "calls",
-      });
-    }
+    const functionId = i; // endpoint-1 -> function-1, endpoint-2 -> function-2, etc.
+    edges.push({
+      source: `endpoint-${i}`,
+      target: `function-${functionId}`,
+      edge_type: "calls",
+    });
   }
 
   return edges;
