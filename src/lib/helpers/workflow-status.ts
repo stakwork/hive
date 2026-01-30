@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { WorkflowStatus } from "@prisma/client";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import {
+  pusherServer,
+  getTaskChannelName,
+  getWorkspaceChannelName,
+  PUSHER_EVENTS,
+} from "@/lib/pusher";
 import { updateFeatureStatusFromTasks } from "@/services/roadmap/feature-status-sync";
 
 interface UpdateWorkflowStatusOptions {
@@ -16,6 +21,7 @@ interface UpdateWorkflowStatusResult {
   workflowStartedAt: Date | null;
   workflowCompletedAt: Date | null;
   featureId: string | null;
+  workspace: { slug: string } | null;
 }
 
 /**
@@ -46,6 +52,7 @@ export async function updateTaskWorkflowStatus(
       workflowStartedAt: true,
       workflowCompletedAt: true,
       featureId: true,
+      workspace: { select: { slug: true } },
     },
   });
 
@@ -74,6 +81,29 @@ export async function updateTaskWorkflowStatus(
       );
     } catch (error) {
       console.error("Error broadcasting workflow status to Pusher:", error);
+    }
+
+    // Broadcast to workspace channel for feature page task lists
+    if (updatedTask.workspace?.slug) {
+      try {
+        await pusherServer.trigger(
+          getWorkspaceChannelName(updatedTask.workspace.slug),
+          PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE,
+          {
+            taskId,
+            workflowStatus,
+            ...(additionalData?.status != null
+              ? { status: additionalData.status }
+              : undefined),
+            timestamp: new Date(),
+          }
+        );
+      } catch (error) {
+        console.error(
+          "Error broadcasting workflow status to workspace channel:",
+          error
+        );
+      }
     }
   }
 

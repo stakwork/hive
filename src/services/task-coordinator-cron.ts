@@ -109,7 +109,7 @@ export async function areDependenciesSatisfied(
 /**
  * Process ticket sweep - find and process eligible tasks assigned to TASK_COORDINATOR
  */
-async function processTicketSweep(
+export async function processTicketSweep(
   workspaceId: string,
   workspaceSlug: string
 ): Promise<boolean> {
