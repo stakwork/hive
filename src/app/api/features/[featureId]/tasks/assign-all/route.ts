@@ -140,13 +140,12 @@ export async function POST(
     console.error("Error bulk assigning tasks:", error);
     const message =
       error instanceof Error ? error.message : "Failed to assign tasks";
-    const status = message.includes("not found")
-      ? 404
-      : message.includes("denied")
-        ? 403
-        : message.includes("required") || message.includes("Invalid")
-          ? 400
-          : 500;
+
+    let status = 500;
+    if (message.includes("not found")) status = 404;
+    else if (message.includes("denied")) status = 403;
+    else if (message.includes("required") || message.includes("Invalid"))
+      status = 400;
 
     return NextResponse.json({ error: message }, { status });
   }

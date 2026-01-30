@@ -92,9 +92,9 @@ export async function updateTaskWorkflowStatus(
           {
             taskId,
             workflowStatus,
-            ...(additionalData?.status != null
-              ? { status: additionalData.status }
-              : undefined),
+            ...(additionalData?.status != null && {
+              status: additionalData.status,
+            }),
             timestamp: new Date(),
           }
         );
