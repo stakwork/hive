@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { X, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -53,7 +53,12 @@ export function PersonasSection({
 
   const handleAddPersona = (persona: string) => {
     const trimmedPersona = persona.trim();
-    if (trimmedPersona && !personas.includes(trimmedPersona)) {
+    // Only allow personas from COMMON_PERSONAS list
+    if (
+      trimmedPersona &&
+      !personas.includes(trimmedPersona) &&
+      COMMON_PERSONAS.includes(trimmedPersona)
+    ) {
       const newPersonas = [...personas, trimmedPersona];
       onChange(newPersonas);
       onBlur(newPersonas);
@@ -87,6 +92,9 @@ export function PersonasSection({
   const filteredPersonas = availablePersonas.filter((p) =>
     p.toLowerCase().includes(inputValue.toLowerCase())
   );
+
+  // Check if input matches a valid COMMON_PERSONA
+  const isValidPersona = inputValue.trim() && COMMON_PERSONAS.includes(inputValue.trim());
 
   return (
     <div className="space-y-2">
@@ -193,9 +201,7 @@ export function PersonasSection({
                       </CommandGroup>
                     ) : (
                       <CommandEmpty>
-                        {inputValue.trim()
-                          ? `Press Enter to add "${inputValue.trim()}"`
-                          : "No suggestions available. Type to add a new persona."}
+                        No more personas available
                       </CommandEmpty>
                     )}
                   </CommandList>
@@ -207,7 +213,7 @@ export function PersonasSection({
           <Button
             size="sm"
             onClick={() => handleAddPersona(inputValue)}
-            disabled={!inputValue.trim()}
+            disabled={!isValidPersona}
           >
             Add
           </Button>
