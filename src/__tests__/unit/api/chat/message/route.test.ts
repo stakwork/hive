@@ -1057,6 +1057,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           workflowStartedAt: true,
           workflowCompletedAt: true,
           featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });
@@ -1090,6 +1091,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           workflowStartedAt: true,
           workflowCompletedAt: true,
           featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });
@@ -1251,6 +1253,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           workflowStartedAt: true,
           workflowCompletedAt: true,
           featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });
@@ -1287,6 +1290,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           workflowStartedAt: true,
           workflowCompletedAt: true,
           featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });
@@ -1328,6 +1332,7 @@ describe("POST /api/chat/message - callStakwork Unit Tests", () => {
           workflowStartedAt: true,
           workflowCompletedAt: true,
           featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });

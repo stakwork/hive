@@ -536,6 +536,7 @@ describe("POST /api/chat/message", () => {
           workflowStartedAt: true,
           workflowCompletedAt: true,
           featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });
@@ -562,6 +563,7 @@ describe("POST /api/chat/message", () => {
           workflowStartedAt: true,
           workflowCompletedAt: true,
           featureId: true,
+          workspace: { select: { slug: true } },
         },
       });
     });

@@ -330,6 +330,7 @@ describe("releaseStaleTaskPods", () => {
         workflowStartedAt: true,
         workflowCompletedAt: true,
         featureId: true,
+        workspace: { select: { slug: true } },
       },
     });
 
@@ -581,6 +582,7 @@ describe("haltTask", () => {
         workflowStartedAt: true,
         workflowCompletedAt: true,
         featureId: true,
+        workspace: { select: { slug: true } },
       },
     });
   });
@@ -603,6 +605,7 @@ describe("haltTask", () => {
         workflowStartedAt: true,
         workflowCompletedAt: true,
         featureId: true,
+        workspace: { select: { slug: true } },
       },
     });
   });
@@ -622,6 +625,7 @@ describe("haltTask", () => {
         workflowStartedAt: true,
         workflowCompletedAt: true,
         featureId: true,
+        workspace: { select: { slug: true } },
       },
     });
   });

@@ -240,6 +240,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
             workflowStartedAt: true,
             workflowCompletedAt: true,
             featureId: true,
+            workspace: { select: { slug: true } },
           },
         });
       });
@@ -303,6 +304,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
             workflowStartedAt: true,
             workflowCompletedAt: true,
             featureId: true,
+            workspace: { select: { slug: true } },
           },
         });
       });
@@ -1113,6 +1115,7 @@ describe("callStakwork Function - Chat Message Processing", () => {
             workflowStartedAt: true,
             workflowCompletedAt: true,
             featureId: true,
+            workspace: { select: { slug: true } },
           },
         });
       });

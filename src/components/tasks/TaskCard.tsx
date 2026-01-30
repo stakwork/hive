@@ -12,15 +12,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRelativeOrDate } from "@/lib/date-utils";
+import { toast } from "sonner";
 
 interface TaskCardProps {
   task: TaskData;
   workspaceSlug: string;
   hideWorkflowStatus?: boolean;
   isArchived?: boolean;
+  onUndoArchive?: () => void;
 }
 
-export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false }: TaskCardProps) {
+export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isArchived = false, onUndoArchive }: TaskCardProps) {
   const router = useRouter();
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -46,6 +48,34 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
 
       if (!response.ok) {
         throw new Error("Failed to update task");
+      }
+
+      if (!isArchived) {
+        toast.success("Task archived", {
+          description: task.title,
+          style: {
+            overflow: "hidden",
+          },
+          descriptionClassName: "line-clamp-2",
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                const res = await fetch(`/api/tasks/${task.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ archived: false }),
+                });
+                if (!res.ok) throw new Error("Failed to undo archive");
+                onUndoArchive?.();
+              } catch (error) {
+                console.error("Error undoing archive:", error);
+                toast.error("Failed to undo archive");
+              }
+            },
+          },
+        });
       }
     } catch (error) {
       console.error("Error updating task:", error);
