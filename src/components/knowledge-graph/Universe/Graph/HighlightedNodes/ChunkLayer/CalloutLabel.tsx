@@ -5,8 +5,7 @@ export const CalloutLabel = ({
     title,
     onHover,
     onUnhover,
-    onClick,
-    yOffset = 0,
+    onClick
 }: {
     node?: NodeExtended;
     title: string;
@@ -14,7 +13,6 @@ export const CalloutLabel = ({
     onHover?: (node: NodeExtended) => void;
     onUnhover?: () => void;
     onClick?: (nodeId: string) => void;
-    yOffset?: number;
 }) => {
     const labelHeight = 32;
     const lineLength = 60;
@@ -22,9 +20,6 @@ export const CalloutLabel = ({
     const minWidth = 80;
 
     const displayTitle = title.slice(0, 60);
-
-    // Total vertical offset: base label position + slot offset
-    const totalYOffset = labelHeight + yOffset;
 
     const onPointerOver = () => {
         if (node && onHover) onHover(node);
@@ -45,7 +40,7 @@ export const CalloutLabel = ({
             onMouseLeave={onPointerOut}
             onClick={onPointerClick}
         >
-            {/* Line from node (0,0) to the label box */}
+            {/* Simple line from center (node) to center-left of label */}
             <svg
                 className="absolute top-0 left-0 overflow-visible pointer-events-none"
                 style={{ zIndex: -1 }}
@@ -54,7 +49,7 @@ export const CalloutLabel = ({
                     x1="0"
                     y1="0"
                     x2={lineLength}
-                    y2={-totalYOffset + labelHeight / 2}
+                    y2={-labelHeight / 2}
                     stroke="#666"
                     strokeWidth="1"
                     opacity="0.6"
@@ -66,7 +61,7 @@ export const CalloutLabel = ({
                 className="absolute bg-gray-900/20 rounded px-3 py-2 backdrop-blur-sm"
                 style={{
                     left: `${lineLength}px`,
-                    top: `${-totalYOffset}px`,
+                    top: `${-labelHeight}px`,
                     minWidth: `${minWidth}px`,
                     maxWidth: `${maxWidth}px`,
                     minHeight: `${labelHeight}px`,
