@@ -394,6 +394,10 @@ describe("GET /api/workspaces/[slug]/tasks/notifications-count - Unit Tests", ()
           workflowStatus: {
             in: ["IN_PROGRESS", "PENDING"],
           },
+          OR: [
+            { featureId: null },
+            { feature: { status: { not: "CANCELLED" } } },
+          ],
         },
         select: {
           id: true,

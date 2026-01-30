@@ -73,6 +73,10 @@ export async function GET(
         workflowStatus: {
           in: ["IN_PROGRESS", "PENDING"],
         },
+        OR: [
+          { featureId: null },
+          { feature: { status: { not: "CANCELLED" } } },
+        ],
       },
       select: {
         id: true,

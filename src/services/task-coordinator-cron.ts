@@ -123,6 +123,10 @@ export async function processTicketSweep(
       status: "TODO",
       systemAssigneeType: "TASK_COORDINATOR",
       deleted: false,
+      OR: [
+        { featureId: null },
+        { feature: { status: { not: "CANCELLED" } } },
+      ],
     },
     include: {
       feature: {
