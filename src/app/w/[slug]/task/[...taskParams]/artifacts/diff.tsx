@@ -123,7 +123,8 @@ export function DiffArtifactPanel({ artifacts, viewType: initialViewType = "unif
     if (!diffArtifact) return [];
 
     const content = diffArtifact.content as DiffContent;
-    return content?.diffs || [];
+    const diffs = content?.diffs;
+    return Array.isArray(diffs) ? diffs : [];
   }, [artifacts]);
 
   // Parse all diffs and handle errors
