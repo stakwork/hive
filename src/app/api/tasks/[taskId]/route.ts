@@ -62,6 +62,17 @@ export async function PATCH(
 
     // Start workflow if requested
     if (startWorkflow) {
+      // Guard: prevent re-starting a task that already has an active workflow
+      if (
+        task.workflowStatus === WorkflowStatus.IN_PROGRESS ||
+        task.workflowStatus === WorkflowStatus.COMPLETED
+      ) {
+        return NextResponse.json(
+          { error: "Task has already been started" },
+          { status: 409 }
+        );
+      }
+
       const workflowResult = await startTaskWorkflow({
         taskId,
         userId: userOrResponse.id,
