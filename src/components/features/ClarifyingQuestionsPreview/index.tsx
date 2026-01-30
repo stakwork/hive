@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ClarifyingQuestion, QuestionArtifact } from "@/types/stakwork";
 import { ColorSwatch, CustomColorPicker, QuestionArtifactRenderer } from "./artifacts";
+import { ColorPickerWidget, ComponentPreviewWidget, SliderWidget, CodeSnippetWidget } from "./widgets";
 
 interface ColorSwatchItem {
   label: string;
@@ -110,9 +111,10 @@ interface Answer {
   selections: string[];
   text: string;
   customColor?: string;
+  widgetValue?: number | string;
 }
 
-const emptyAnswer: Answer = { selections: [], text: "", customColor: "" };
+const emptyAnswer: Answer = { selections: [], text: "", customColor: "", widgetValue: undefined };
 
 function getDisplayAnswer(
   question: ClarifyingQuestion,
@@ -128,6 +130,46 @@ function getDisplayAnswer(
     return answer.text.trim() || "Not answered";
   }
 
+  // Widget-specific display logic
+  if (question.type === "color_picker" && question.widgetOptions && answer.selections[0]) {
+    const selectedOption = question.widgetOptions.find(
+      (opt) => opt.value === answer.selections[0]
+    );
+    if (selectedOption) {
+      const parts = [`Color: ${selectedOption.value} (${selectedOption.label})`];
+      if (answer.text.trim()) parts.push(answer.text.trim());
+      return parts.join(" | ");
+    }
+  }
+
+  if (question.type === "component_preview" && question.widgetOptions && answer.selections[0]) {
+    const selectedOption = question.widgetOptions.find(
+      (opt) => opt.id === answer.selections[0]
+    );
+    if (selectedOption) {
+      const parts = [`Component: ${selectedOption.label}`];
+      if (answer.text.trim()) parts.push(answer.text.trim());
+      return parts.join(" | ");
+    }
+  }
+
+  if (question.type === "slider" && question.widgetOptions && answer.widgetValue !== undefined) {
+    const unit = question.widgetOptions.unit || "";
+    return `Value: ${answer.widgetValue}${unit}`;
+  }
+
+  if (question.type === "code_snippet" && question.widgetOptions && answer.selections[0]) {
+    const selectedOption = question.widgetOptions.find(
+      (opt) => opt.id === answer.selections[0]
+    );
+    if (selectedOption) {
+      const parts = [`Code Snippet: ${selectedOption.label}`];
+      if (answer.text.trim()) parts.push(answer.text.trim());
+      return parts.join(" | ");
+    }
+  }
+
+  // Default for single/multiple choice
   const parts = [...answer.selections];
   if (answer.text.trim()) {
     parts.push(answer.text.trim());
@@ -209,6 +251,22 @@ export function ClarifyingQuestionsPreview({
     });
   };
 
+  // Handler for widget selections (color_picker, component_preview, code_snippet)
+  const handleWidgetSelect = (value: string) => {
+    updateAnswer({
+      selections: [value],
+      widgetValue: undefined,
+    });
+  };
+
+  // Handler for slider value changes
+  const handleWidgetValueChange = (value: number) => {
+    updateAnswer({
+      widgetValue: value,
+      selections: [],
+    });
+  };
+
   const handlePrevious = () => {
     if (showReview) {
       setShowReview(false);
@@ -220,9 +278,11 @@ export function ClarifyingQuestionsPreview({
   const hasCurrentAnswer =
     currentQuestion?.type === "text"
       ? currentAnswer.text.trim().length > 0
-      : currentAnswer.selections.length > 0 ||
-        currentAnswer.text.trim().length > 0 ||
-        (currentAnswer.customColor?.length ?? 0) > 0;
+      : currentQuestion?.type === "slider"
+        ? currentAnswer.widgetValue !== undefined
+        : currentAnswer.selections.length > 0 ||
+          currentAnswer.text.trim().length > 0 ||
+          (currentAnswer.customColor?.length ?? 0) > 0;
 
   const handleNext = () => {
     if (showReview) {
@@ -386,6 +446,53 @@ export function ClarifyingQuestionsPreview({
               {currentQuestion.question}
             </h3>
 
+            {/* Color Picker Widget */}
+            {currentQuestion.type === "color_picker" && currentQuestion.widgetOptions && (
+              <ColorPickerWidget
+                options={currentQuestion.widgetOptions}
+                selectedColor={currentAnswer.selections[0] || null}
+                onSelect={handleWidgetSelect}
+                onFeedbackChange={(text) => updateAnswer({ text })}
+                feedbackText={currentAnswer.text}
+                disabled={isLoading}
+              />
+            )}
+
+            {/* Component Preview Widget */}
+            {currentQuestion.type === "component_preview" && currentQuestion.widgetOptions && (
+              <ComponentPreviewWidget
+                options={currentQuestion.widgetOptions}
+                selectedId={currentAnswer.selections[0] || null}
+                onSelect={handleWidgetSelect}
+                onFeedbackChange={(text) => updateAnswer({ text })}
+                feedbackText={currentAnswer.text}
+                disabled={isLoading}
+              />
+            )}
+
+            {/* Slider Widget */}
+            {currentQuestion.type === "slider" && currentQuestion.widgetOptions && (
+              <SliderWidget
+                option={currentQuestion.widgetOptions}
+                value={(currentAnswer.widgetValue as number) ?? currentQuestion.widgetOptions.defaultValue}
+                onChange={handleWidgetValueChange}
+                disabled={isLoading}
+              />
+            )}
+
+            {/* Code Snippet Widget */}
+            {currentQuestion.type === "code_snippet" && currentQuestion.widgetOptions && (
+              <CodeSnippetWidget
+                options={currentQuestion.widgetOptions}
+                selectedId={currentAnswer.selections[0] || null}
+                onSelect={handleWidgetSelect}
+                onFeedbackChange={(text) => updateAnswer({ text })}
+                feedbackText={currentAnswer.text}
+                disabled={isLoading}
+              />
+            )}
+
+            {/* Existing color swatch logic */}
             {isColorSwatchQuestion && options && (
               <div className="space-y-3 mb-3">
                 <div className="flex flex-wrap gap-3">
@@ -459,22 +566,27 @@ export function ClarifyingQuestionsPreview({
                 </div>
               )}
 
-            <Textarea
-              placeholder={
-                currentQuestion.type === "text"
-                  ? "Type your answer..."
-                  : "Add additional context or type a custom answer..."
-              }
-              value={currentAnswer.text}
-              onChange={(e) => updateAnswer({ text: e.target.value })}
-              onKeyDown={handleKeyDown}
-              disabled={isLoading}
-              rows={currentQuestion.type === "text" ? undefined : 3}
-              className={cn(
-                "resize-none",
-                currentQuestion.type === "text" && "flex-1 min-h-[200px]"
-              )}
-            />
+            {/* Show textarea only for text questions and non-widget questions */}
+            {(currentQuestion.type === "text" ||
+              (currentQuestion.type === "single_choice" && !isColorSwatchQuestion) ||
+              (currentQuestion.type === "multiple_choice" && !isColorSwatchQuestion)) && (
+              <Textarea
+                placeholder={
+                  currentQuestion.type === "text"
+                    ? "Type your answer..."
+                    : "Add additional context or type a custom answer..."
+                }
+                value={currentAnswer.text}
+                onChange={(e) => updateAnswer({ text: e.target.value })}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+                rows={currentQuestion.type === "text" ? undefined : 3}
+                className={cn(
+                  "resize-none",
+                  currentQuestion.type === "text" && "flex-1 min-h-[200px]"
+                )}
+              />
+            )}
           </div>
         )}
       </div>
