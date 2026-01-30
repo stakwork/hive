@@ -108,6 +108,15 @@ export async function GET(request: NextRequest) {
       archived: isShowingArchived,
       // Exclude user journey tasks - they have their own dedicated page
       sourceType: { not: TaskSourceType.USER_JOURNEY },
+      // Exclude tasks from cancelled features
+      AND: [
+        {
+          OR: [
+            { featureId: null },
+            { feature: { status: { not: "CANCELLED" } } },
+          ],
+        },
+      ],
     };
 
     // If showing non-archived tasks (Recent tab), apply visibility rules
@@ -208,7 +217,9 @@ export async function GET(request: NextRequest) {
 
       // If there's already an OR clause (from visibility rules), we need to combine them with AND
       if (existingOR && Array.isArray(existingOR)) {
+        const existingAND = Array.isArray(whereClause.AND) ? whereClause.AND : [];
         whereClause.AND = [
+          ...existingAND,
           { OR: existingOR },
           { OR: searchConditions },
         ];
