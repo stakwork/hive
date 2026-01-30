@@ -74,6 +74,38 @@ function generateMockNodes(): JarvisNode[] {
     });
   });
 
+  // Generate 15 endpoint nodes
+  const endpoints = [
+    { path: "/api/users", method: "GET", description: "List all users" },
+    { path: "/api/users", method: "POST", description: "Create a new user" },
+    { path: "/api/users/:id", method: "GET", description: "Get user by ID" },
+    { path: "/api/users/:id", method: "PUT", description: "Update user" },
+    { path: "/api/users/:id", method: "DELETE", description: "Delete user" },
+    { path: "/api/auth/login", method: "POST", description: "User login" },
+    { path: "/api/auth/logout", method: "POST", description: "User logout" },
+    { path: "/api/auth/refresh", method: "POST", description: "Refresh token" },
+    { path: "/api/tasks", method: "GET", description: "List all tasks" },
+    { path: "/api/tasks", method: "POST", description: "Create a new task" },
+    { path: "/api/tasks/:id", method: "GET", description: "Get task by ID" },
+    { path: "/api/tasks/:id", method: "PATCH", description: "Update task" },
+    { path: "/api/workspaces", method: "GET", description: "List workspaces" },
+    { path: "/api/workspaces/:slug", method: "GET", description: "Get workspace" },
+    { path: "/api/graph/nodes", method: "GET", description: "Get graph nodes" },
+  ];
+  endpoints.forEach((endpoint, i) => {
+    nodes.push({
+      ref_id: `endpoint-${i + 1}`,
+      node_type: "Endpoint",
+      date_added_to_graph: now - Math.random() * 86400 * 20,
+      properties: {
+        name: `${endpoint.method} ${endpoint.path}`,
+        path: endpoint.path,
+        method: endpoint.method,
+        description: endpoint.description,
+      },
+    });
+  });
+
   return nodes;
 }
 
@@ -89,25 +121,39 @@ function generateMockEdges() {
     });
   }
 
-  // Connect persons to functions (contributions)
-  for (let i = 1; i <= 30; i++) {
-    const personId = ((i - 1) % 3) + 1;
-    edges.push({
-      source: `person-${personId}`,
-      target: `function-${i}`,
-      edge_type: "authored",
-    });
+  // Connect persons to functions (each person authored 3 functions)
+  for (let personId = 1; personId <= 3; personId++) {
+    for (let j = 0; j < 3; j++) {
+      const functionId = (personId - 1) * 3 + j + 1; // person 1 -> functions 1-3, person 2 -> 4-6, etc.
+      edges.push({
+        source: `person-${personId}`,
+        target: `function-${functionId}`,
+        edge_type: "authored",
+      });
+    }
   }
 
-  // Connect episodes to persons
+  // Connect episodes to persons (each episode has 1-2 participants)
   for (let i = 1; i <= 5; i++) {
-    for (let j = 1; j <= 3; j++) {
+    const numParticipants = 1 + (i % 2); // alternates 1, 2, 1, 2, 1
+    for (let j = 0; j < numParticipants; j++) {
+      const personId = ((i + j - 1) % 3) + 1;
       edges.push({
         source: `episode-${i}`,
-        target: `person-${j}`,
+        target: `person-${personId}`,
         edge_type: "participant",
       });
     }
+  }
+
+  // Connect endpoints to functions (each endpoint calls 1 function, spread out)
+  for (let i = 1; i <= 15; i++) {
+    const functionId = i; // endpoint-1 -> function-1, endpoint-2 -> function-2, etc.
+    edges.push({
+      source: `endpoint-${i}`,
+      target: `function-${functionId}`,
+      edge_type: "calls",
+    });
   }
 
   return edges;

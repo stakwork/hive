@@ -22,6 +22,7 @@ export type GraphCallout = {
   nodeRefId: string
   addedAt: number
   expiresAt?: number
+  slot: number
 }
 
 export type TestLayerType = 'unitTests' | 'integrationTests' | 'e2eTests' | null
