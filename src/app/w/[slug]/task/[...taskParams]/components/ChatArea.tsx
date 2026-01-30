@@ -18,7 +18,7 @@ import TaskBreadcrumbs from "./TaskBreadcrumbs";
 
 interface ChatAreaProps {
   messages: ChatMessageType[];
-  onSend: (message: string) => Promise<void>;
+  onSend: (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => Promise<void>;
   onArtifactAction: (messageId: string, action: Option, webhook: string) => Promise<void>;
   inputDisabled?: boolean;
   isLoading?: boolean;
@@ -37,6 +37,7 @@ interface ChatAreaProps {
   showPreview?: boolean;
   onTogglePreview?: () => void;
   taskMode?: string;
+  taskId?: string | null;
   podId?: string | null;
   onReleasePod?: () => Promise<void>;
   isReleasingPod?: boolean;
@@ -65,6 +66,7 @@ export function ChatArea({
   showPreview = false,
   onTogglePreview,
   taskMode,
+  taskId,
   podId,
   onReleasePod,
   isReleasingPod = false,
@@ -286,6 +288,7 @@ export function ChatArea({
         workflowStatus={workflowStatus}
         hasPrArtifact={hasPrArtifact}
         taskMode={taskMode}
+        taskId={taskId ?? undefined}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
       />

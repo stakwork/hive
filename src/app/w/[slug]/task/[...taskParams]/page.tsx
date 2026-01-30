@@ -481,7 +481,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string) => {
+  const handleStart = async (msg: string, images?: File[]) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -509,6 +509,56 @@ export default function TaskChatPage() {
         const result = await response.json();
         const newTaskId = result.data.id;
         setCurrentTaskId(newTaskId);
+
+        // Upload images to S3 if provided
+        let attachments: Array<{path: string, filename: string, mimeType: string, size: number}> | undefined;
+        if (images && images.length > 0) {
+          try {
+            attachments = [];
+            for (const image of images) {
+              // Request presigned URL
+              const presignedResponse = await fetch("/api/upload/presigned-url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  taskId: newTaskId,
+                  filename: image.name,
+                  contentType: image.type,
+                  size: image.size,
+                }),
+              });
+
+              if (!presignedResponse.ok) {
+                const error = await presignedResponse.json();
+                throw new Error(error.error || "Failed to get presigned URL");
+              }
+
+              const { presignedUrl, s3Path } = await presignedResponse.json();
+
+              // Upload to S3
+              const uploadResponse = await fetch(presignedUrl, {
+                method: "PUT",
+                headers: { "Content-Type": image.type },
+                body: image,
+              });
+
+              if (!uploadResponse.ok) {
+                throw new Error("Failed to upload image to S3");
+              }
+
+              attachments.push({
+                path: s3Path,
+                filename: image.name,
+                mimeType: image.type,
+                size: image.size,
+              });
+            }
+          } catch (uploadError) {
+            console.error("Error uploading images:", uploadError);
+            toast.error("Failed to upload one or more images");
+            // Continue with task creation even if image upload fails
+          }
+        }
 
         // Claim pod if agent mode is selected (AFTER task creation)
         let claimedPodUrls: { frontend: string; ide: string } | null = null;
@@ -567,7 +617,7 @@ export default function TaskChatPage() {
         window.history.replaceState({}, "", newUrl);
 
         setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls, attachments });
       } else {
         setStarted(true);
         await sendMessage(msg);
@@ -579,9 +629,9 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleSend = async (message: string) => {
-    // Allow sending if we have either text or a pending debug/step attachment
-    if (!message.trim() && !pendingDebugAttachment && !selectedStep) return;
+  const handleSend = async (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => {
+    // Allow sending if we have either text, attachments, or a pending debug/step attachment
+    if (!message.trim() && !attachments?.length && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
     // Handle workflow_editor mode - always use workflow editor endpoint
@@ -665,12 +715,13 @@ export default function TaskChatPage() {
       return;
     }
 
-    // For artifact-only messages, provide a default message
-    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
+    // For artifact-only or attachment-only messages, provide a default message
+    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : (attachments?.length ? "" : ""));
 
     await sendMessage(messageText, {
       ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
       ...(chatWebhook && { webhook: chatWebhook }),
+      ...(attachments && { attachments }),
     });
     setPendingDebugAttachment(null); // Clear attachment after sending
   };
@@ -683,6 +734,7 @@ export default function TaskChatPage() {
         replyId?: string;
         webhook?: string;
         artifact?: Artifact;
+        attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>;
         podUrls?: { frontend: string; ide: string } | null;
       },
     ) => {
@@ -711,6 +763,18 @@ export default function TaskChatPage() {
         );
       }
 
+      // Convert attachment metadata to Attachment objects for UI
+      const attachments = options?.attachments?.map(att => ({
+        id: generateUniqueId(),
+        messageId: '', // Will be set by backend
+        path: att.path,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+
       const newMessage: ChatMessage = createChatMessage({
         id: generateUniqueId(),
         message: messageText,
@@ -718,6 +782,7 @@ export default function TaskChatPage() {
         status: ChatStatus.SENDING,
         replyId: options?.replyId,
         artifacts,
+        attachments,
         createdBy: session?.user
           ? {
               id: session.user.id,
@@ -826,6 +891,7 @@ export default function TaskChatPage() {
           ...(options?.replyId && { replyId: options.replyId }),
           ...(options?.webhook && { webhook: options.webhook }),
           ...(options?.artifact && { artifacts: [options.artifact] }),
+          ...(options?.attachments && { attachments: options.attachments }),
         };
         const response = await fetch("/api/chat/message", {
           method: "POST",
@@ -1330,6 +1396,7 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    taskId={currentTaskId}
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
@@ -1363,6 +1430,7 @@ export default function TaskChatPage() {
                       taskTitle={taskTitle}
                       workspaceSlug={slug}
                       taskMode={taskMode}
+                      taskId={currentTaskId}
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
@@ -1409,6 +1477,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
                 taskMode={taskMode}
+                taskId={currentTaskId}
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
