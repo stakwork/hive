@@ -47,7 +47,6 @@ export type GraphCallout = {
   nodeRefId: string
   addedAt: number
   expiresAt?: number
-  slot: number
 }
 
 export type TestLayerType = 'unitTests' | 'integrationTests' | 'e2eTests' | null
@@ -340,21 +339,9 @@ export const useGraphStore = create<GraphStore>()((set, get) => {
       const { callouts } = get()
       const addedTimestamp = addedAt || Date.now()
       const expiresAt = expiresInMs ? addedTimestamp + expiresInMs : undefined
-
-      // Find existing callout to preserve its slot, or find lowest available slot
-      const existingCallout = callouts.find((c) => c.id === calloutId)
-      let slot: number
-      if (existingCallout) {
-        slot = existingCallout.slot
-      } else {
-        const usedSlots = new Set(callouts.map((c) => c.slot))
-        slot = 0
-        while (usedSlots.has(slot)) slot++
-      }
-
       let nextCallouts: GraphCallout[] = [
         ...callouts.filter((callout) => callout.id !== calloutId),
-        { id: calloutId, title, nodeRefId, addedAt: addedTimestamp, expiresAt, slot }
+        { id: calloutId, title, nodeRefId, addedAt: addedTimestamp, expiresAt }
       ]
 
       if (nextCallouts.length > MAX_CALLOUTS) {
