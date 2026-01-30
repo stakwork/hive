@@ -33,6 +33,7 @@ export async function POST(
       where: { id: featureId },
       select: {
         id: true,
+        status: true,
         workspace: {
           select: {
             id: true,
@@ -56,6 +57,13 @@ export async function POST(
       return NextResponse.json(
         { error: "Feature not found" },
         { status: 404 }
+      );
+    }
+
+    if (feature.status === "CANCELLED") {
+      return NextResponse.json(
+        { error: "Cannot assign tasks for a cancelled feature" },
+        { status: 400 }
       );
     }
 
