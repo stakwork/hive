@@ -6,7 +6,7 @@ import { getWorkspaceChannelName, PUSHER_EVENTS, pusherServer } from "@/lib/push
 export const runtime = "nodejs";
 
 /**
- * POST /api/mock/vercel/highlight?workspace=<slug>
+ * POST /api/debug/highlight?workspace=<slug>
  *
  * Fetches real endpoint nodes from the workspace swarm, picks 3 random ones,
  * and highlights them with a 1-second gap between each.
@@ -83,13 +83,13 @@ export async function POST(request: NextRequest) {
       highlighted: highlights,
     });
   } catch (error) {
-    console.error("[Mock Highlight] Error:", error);
+    console.error("[Debug Highlight] Error:", error);
     return NextResponse.json({ error: "Failed to highlight endpoints" }, { status: 500 });
   }
 }
 
 /**
- * GET /api/mock/vercel/highlight?workspace=<slug>
+ * GET /api/debug/highlight?workspace=<slug>
  *
  * Returns info about the endpoint and available nodes
  */
@@ -98,10 +98,10 @@ export async function GET(request: NextRequest) {
   const workspaceSlug = searchParams.get("workspace");
 
   return NextResponse.json({
-    description: "Mock endpoint highlighter - fetches real nodes and highlights 3 random ones",
+    description: "Debug endpoint highlighter - fetches real nodes and highlights 3 random ones",
     usage: {
       method: "POST",
-      url: `/api/mock/vercel/highlight?workspace=${workspaceSlug || "<workspace-slug>"}`,
+      url: `/api/debug/highlight?workspace=${workspaceSlug || "<workspace-slug>"}`,
       queryParams: {
         workspace: "Required - workspace slug",
       },
