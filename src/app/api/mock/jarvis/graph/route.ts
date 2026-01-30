@@ -121,33 +121,35 @@ function generateMockEdges() {
     });
   }
 
-  // Connect persons to functions (contributions)
-  for (let i = 1; i <= 30; i++) {
-    const personId = ((i - 1) % 3) + 1;
-    edges.push({
-      source: `person-${personId}`,
-      target: `function-${i}`,
-      edge_type: "authored",
-    });
+  // Connect persons to functions (each person authored 3 functions)
+  for (let personId = 1; personId <= 3; personId++) {
+    for (let j = 0; j < 3; j++) {
+      const functionId = (personId - 1) * 3 + j + 1; // person 1 -> functions 1-3, person 2 -> 4-6, etc.
+      edges.push({
+        source: `person-${personId}`,
+        target: `function-${functionId}`,
+        edge_type: "authored",
+      });
+    }
   }
 
-  // Connect episodes to persons
+  // Connect episodes to persons (each episode has 1-2 participants)
   for (let i = 1; i <= 5; i++) {
-    for (let j = 1; j <= 3; j++) {
+    const numParticipants = 1 + (i % 2); // alternates 1, 2, 1, 2, 1
+    for (let j = 0; j < numParticipants; j++) {
+      const personId = ((i + j - 1) % 3) + 1;
       edges.push({
         source: `episode-${i}`,
-        target: `person-${j}`,
+        target: `person-${personId}`,
         edge_type: "participant",
       });
     }
   }
 
-  // Connect endpoints to functions (endpoints call functions)
+  // Connect endpoints to functions (each endpoint calls exactly 3 functions)
   for (let i = 1; i <= 15; i++) {
-    // Each endpoint calls 2-3 functions
-    const numFunctions = 2 + (i % 2);
-    for (let j = 0; j < numFunctions; j++) {
-      const functionId = (((i - 1) * 3 + j) % 50) + 1;
+    for (let j = 0; j < 3; j++) {
+      const functionId = ((i - 1) * 3 + j) % 50 + 1; // spread across functions, no overlap
       edges.push({
         source: `endpoint-${i}`,
         target: `function-${functionId}`,

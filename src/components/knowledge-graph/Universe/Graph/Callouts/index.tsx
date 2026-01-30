@@ -14,8 +14,8 @@ const CALLOUT_COLOR = '#7DDCFF'
 const CALLOUT_SWEEP_MS = 30 * 1000
 const getCalloutExpiry = (callout: GraphCallout) => callout.expiresAt ?? callout.addedAt + DEFAULT_CALLOUT_TTL_MS
 
-const LABEL_VERTICAL_SPACING = 40
-const MAX_LABEL_AREA_HEIGHT = 180 // Max vertical space for labels before they'd hit the next layer
+const LABEL_VERTICAL_SPACING = 35
+const MAX_LABEL_AREA_HEIGHT = 135 // Max vertical space for labels before they'd hit the next layer
 const MAX_SLOTS = Math.floor(MAX_LABEL_AREA_HEIGHT / LABEL_VERTICAL_SPACING)
 
 const CalloutInstance = memo(({ callout }: { callout: GraphCallout }) => {
