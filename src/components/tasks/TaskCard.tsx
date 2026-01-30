@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
 import { WorkflowStatusBadge } from "@/app/w/[slug]/task/[...taskParams]/components/WorkflowStatusBadge";
 import { PRStatusBadge } from "@/components/tasks/PRStatusBadge";
@@ -47,8 +48,36 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
       if (!response.ok) {
         throw new Error("Failed to update task");
       }
+
+      // Show toast with undo action only when archiving (not unarchiving)
+      if (!isArchived) {
+        toast.success("Task archived", {
+          description: task.title,
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                const undoResponse = await fetch(`/api/tasks/${task.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ archived: false }),
+                });
+
+                if (!undoResponse.ok) {
+                  throw new Error("Failed to undo archive");
+                }
+              } catch (undoError) {
+                console.error("Error undoing archive:", undoError);
+                toast.error("Failed to undo archive");
+              }
+            },
+          },
+        });
+      }
     } catch (error) {
       console.error("Error updating task:", error);
+      toast.error("Failed to archive task");
     } finally {
       setIsUpdating(false);
     }
