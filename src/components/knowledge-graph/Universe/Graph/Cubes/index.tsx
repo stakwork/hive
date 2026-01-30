@@ -1,3 +1,4 @@
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { useDataStore, useGraphStore, useHoveredNode, useSelectedNode } from '@/stores/useStores'
 import { NodeExtended } from '@Universe/types'
 import { ThreeEvent } from '@react-three/fiber'
@@ -21,6 +22,7 @@ export const Cubes = memo(() => {
 
   const { selectionGraphData, showSelectionGraph, setHoveredNode, setIsHovering } = useGraphStore((s) => s)
   const nodesNormalized = useDataStore((s) => s.nodesNormalized)
+  const { slug } = useWorkspace()
 
   const { navigateToNode } = useNodeNavigation()
 
@@ -64,11 +66,20 @@ export const Cubes = memo(() => {
       }
 
       if (object?.userData && !ignoreNodeEvent(object.userData as NodeExtended)) {
+        const nodeData = object.userData as NodeExtended
+
+        // Trigger mock log drain for Endpoint nodes (only in mock-stakgraph workspace)
+        if (nodeData.node_type === 'Endpoint' && slug === 'mock-stakgraph') {
+          fetch(`/api/mock/vercel/log-drain?workspace=${slug}&continuous=true`, {
+            method: 'POST',
+          }).catch(console.error)
+        }
+
         // Default behavior: show node details in the graph
         navigateToNode(object.userData.ref_id)
       }
     },
-    [ignoreNodeEvent, navigateToNode],
+    [ignoreNodeEvent, navigateToNode, slug],
   )
 
   const onPointerOut = useCallback(

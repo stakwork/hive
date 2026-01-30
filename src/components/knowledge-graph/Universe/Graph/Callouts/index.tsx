@@ -14,6 +14,10 @@ const CALLOUT_COLOR = '#7DDCFF'
 const CALLOUT_SWEEP_MS = 30 * 1000
 const getCalloutExpiry = (callout: GraphCallout) => callout.expiresAt ?? callout.addedAt + DEFAULT_CALLOUT_TTL_MS
 
+const LABEL_VERTICAL_SPACING = 40
+const MAX_LABEL_AREA_HEIGHT = 180 // Max vertical space for labels before they'd hit the next layer
+const MAX_SLOTS = Math.floor(MAX_LABEL_AREA_HEIGHT / LABEL_VERTICAL_SPACING)
+
 const CalloutInstance = memo(({ callout }: { callout: GraphCallout }) => {
   const htmlRef = useRef<Group>(null)
   const storeId = useStoreId()
@@ -47,6 +51,10 @@ const CalloutInstance = memo(({ callout }: { callout: GraphCallout }) => {
     }
   })
 
+  // Calculate screen-space offset based on slot, wrapping to stay within bounds
+  const wrappedSlot = callout.slot % MAX_SLOTS
+  const screenYOffset = wrappedSlot * LABEL_VERTICAL_SPACING
+
   return (
     <group ref={htmlRef} visible={false}>
       <Html
@@ -62,6 +70,7 @@ const CalloutInstance = memo(({ callout }: { callout: GraphCallout }) => {
           title={callout.title}
           baseColor={CALLOUT_COLOR}
           node={node}
+          yOffset={screenYOffset}
         />
       </Html>
     </group>
