@@ -39,6 +39,7 @@ export const NodeControls = memo(() => {
 
     if (ref.current && selectedNode) {
       const { x, y, z, fx, fy, fz } = selectedNode
+      console.log(x, y, z)
       const newPosition = reuseableVector3.set(x || fx || 0, y || fy || 0, z || fz || 0)
       ref.current.position.copy(newPosition)
     }

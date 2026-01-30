@@ -54,12 +54,12 @@ function DashboardInner() {
 
   // Track "d d d" key sequence for mock highlight trigger
   const keyTimestamps = useRef<number[]>([]);
-  const triggerDebugHighlight = useCallback(async () => {
+  const triggerMockHighlight = useCallback(async () => {
     if (!slug) return;
     try {
-      await fetch(`/api/debug/highlight?workspace=${slug}`, { method: "POST" });
+      await fetch(`/api/mock/vercel/highlight?workspace=${slug}`, { method: "POST" });
     } catch (err) {
-      console.error("[Dashboard] Failed to trigger debug highlight:", err);
+      console.error("[Dashboard] Failed to trigger mock highlight:", err);
     }
   }, [slug]);
 
@@ -87,15 +87,15 @@ function DashboardInner() {
 
       // Trigger on 3 rapid "d" presses
       if (keyTimestamps.current.length >= 3) {
-        console.log("[Dashboard] Triggering debug highlight");
+        console.log("[Dashboard] Triggering mock highlight");
         keyTimestamps.current = [];
-        triggerDebugHighlight();
+        triggerMockHighlight();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [triggerDebugHighlight]);
+  }, [triggerMockHighlight]);
 
   const handleFilterChange = (value: FilterTab) => {
     setActiveFilterTab(value);
