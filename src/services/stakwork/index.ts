@@ -222,9 +222,9 @@ export class StakworkService extends BaseServiceClass {
         }
       }
       // Log other errors but still return gracefully
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn(
-        `Failed to stop workflow for project ${projectId}`,
-        error instanceof Error ? error : new Error(String(error)),
+        `Failed to stop workflow for project ${projectId}: ${errorMessage}`,
       );
     }
   }
