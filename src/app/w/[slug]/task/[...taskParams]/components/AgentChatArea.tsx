@@ -1,7 +1,9 @@
 "use client";
 
+import React, { useEffect, useRef, useState } from "react";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LogEntry } from "@/hooks/useProjectLogWebSocket";
@@ -10,7 +12,6 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Github, Monitor, Server, ServerOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
 import TaskBreadcrumbs from "./TaskBreadcrumbs";
@@ -69,6 +70,7 @@ export function AgentChatArea({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const router = useRouter();
   const isMobile = useIsMobile();
 
@@ -198,12 +200,12 @@ export function AgentChatArea({
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={onReleasePod}
+                        onClick={() => setShowReleaseConfirm(true)}
                         disabled={isReleasingPod}
                         className="flex-shrink-0 h-8 w-8 text-green-600 hover:text-amber-600 hover:bg-amber-50 transition-colors group"
                       >
                         <span className="relative w-4 h-4">
-                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" />
+                          <Server className="w-4 h-4 transition-opacity duration-150 group-hover:opacity-0" data-testid="server-icon" />
                           <ServerOff className="w-4 h-4 absolute inset-0 transition-opacity duration-150 opacity-0 group-hover:opacity-100" />
                         </span>
                       </Button>
@@ -285,6 +287,17 @@ export function AgentChatArea({
         taskMode={taskMode}
         workspaceSlug={workspaceSlug}
         onOpenBountyRequest={onOpenBountyRequest}
+      />
+
+      <ConfirmDialog
+        open={showReleaseConfirm}
+        onOpenChange={setShowReleaseConfirm}
+        title="Release Pod?"
+        description="This will release the development pod back to the pool. Any unsaved work in the pod may be lost."
+        confirmText="Release Pod"
+        variant="destructive"
+        onConfirm={onReleasePod}
+        testId="release-pod-dialog"
       />
     </motion.div>
   );
