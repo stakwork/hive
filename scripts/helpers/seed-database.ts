@@ -483,15 +483,9 @@ async function seedFeaturesWithStakworkRuns(
 async function seedWhiteboards(
   users: Array<{ id: string; email: string }>,
 ) {
-  // Get existing workspaces with features
+  // Get all workspaces
   const workspaces = await prisma.workspace.findMany({
     where: { deleted: false },
-    include: {
-      features: {
-        where: { deleted: false },
-        take: 2,
-      },
-    },
     take: 3,
   });
 
@@ -500,10 +494,20 @@ async function seedWhiteboards(
     return;
   }
 
+  // Get all features across all workspaces
+  const allFeatures = await prisma.feature.findMany({
+    where: { 
+      deleted: false,
+      workspaceId: { in: workspaces.map(w => w.id) }
+    },
+    take: 5,
+  });
+
   // First, delete existing whiteboards to ensure idempotency
   await prisma.whiteboard.deleteMany({});
 
   let totalWhiteboards = 0;
+  let featureWhiteboards = 0;
 
   for (const workspace of workspaces) {
     // Create empty whiteboard
@@ -698,9 +702,22 @@ async function seedWhiteboards(
       },
     });
     totalWhiteboards++;
+  }
 
-    // Create feature-linked whiteboards if features exist
-    if (workspace.features.length > 0) {
+  // Create feature-linked whiteboards from the features we found
+  const workspaceFeaturesMap = new Map<string, typeof allFeatures>();
+  for (const feature of allFeatures) {
+    if (!workspaceFeaturesMap.has(feature.workspaceId)) {
+      workspaceFeaturesMap.set(feature.workspaceId, []);
+    }
+    workspaceFeaturesMap.get(feature.workspaceId)!.push(feature);
+  }
+
+  for (const workspace of workspaces) {
+    const workspaceFeatures = workspaceFeaturesMap.get(workspace.id) || [];
+    
+    if (workspaceFeatures.length > 0) {
+      // Create first feature-linked whiteboard with microservices architecture (20 elements)
       const mediumElements = [
         // Microservices architecture diagram with 20 elements
         {
@@ -1122,23 +1139,24 @@ async function seedWhiteboards(
 
       await prisma.whiteboard.create({
         data: {
-          name: `${workspace.features[0].title} - Planning`,
+          name: `${workspaceFeatures[0].title} - Planning`,
           workspaceId: workspace.id,
-          featureId: workspace.features[0].id,
+          featureId: workspaceFeatures[0].id,
           elements: mediumElements,
           appState: { viewBackgroundColor: "#fafafa", gridSize: 20 },
           files: {},
         },
       });
       totalWhiteboards++;
+      featureWhiteboards++;
 
       // Create second feature-linked whiteboard if we have 2+ features
-      if (workspace.features.length > 1) {
+      if (workspaceFeatures.length > 1) {
         await prisma.whiteboard.create({
           data: {
-            name: `${workspace.features[1].title} - Flow Diagram`,
+            name: `${workspaceFeatures[1].title} - Flow Diagram`,
             workspaceId: workspace.id,
-            featureId: workspace.features[1].id,
+            featureId: workspaceFeatures[1].id,
             elements: [
               {
                 id: "start",
@@ -1236,11 +1254,12 @@ async function seedWhiteboards(
           },
         });
         totalWhiteboards++;
+        featureWhiteboards++;
       }
     }
   }
 
-  console.log(`✓ Created ${totalWhiteboards} whiteboards across ${workspaces.length} workspaces`);
+  console.log(`✓ Created ${totalWhiteboards} whiteboards (${featureWhiteboards} feature-linked) across ${workspaces.length} workspaces`);
 }
 
 async function main() {
