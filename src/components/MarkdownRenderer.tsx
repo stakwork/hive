@@ -12,6 +12,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/use-theme";
+import { PodPasswordWrapper } from "./ui/PodPasswordWrapper";
 
 interface MarkdownRendererProps {
   children: string;
@@ -148,7 +149,7 @@ const createComponents = (
 
   p: ({ children, ...props }) => (
     <p className={cn(styleConfig.paragraph, styles.text)} {...props}>
-      {children}
+      <PodPasswordWrapper>{children}</PodPasswordWrapper>
     </p>
   ),
   em: ({ children, ...props }) => (
