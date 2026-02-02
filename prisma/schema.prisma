@@ -101,6 +101,10 @@ model User {
   // Chat messages
   chatMessages ChatMessage[] @relation("ChatMessageSender")
 
+  // API keys
+  createdApiKeys WorkspaceApiKey[] @relation("ApiKeyCreator")
+  revokedApiKeys WorkspaceApiKey[] @relation("ApiKeyRevoker")
+
   @@index([createdAt])
   @@index([deleted])
   @@index([email])
@@ -252,6 +256,9 @@ model Workspace {
   // Shared conversations
   sharedConversations SharedConversation[]
 
+  // API keys
+  apiKeys WorkspaceApiKey[]
+
   // Node type ordering for graph visualization
   nodeTypeOrder Json @default("[{\"type\":\"Function\",\"value\":20},{\"type\":\"Feature\",\"value\":20},{\"type\":\"File\",\"value\":20},{\"type\":\"Endpoint\",\"value\":20},{\"type\":\"Person\",\"value\":20},{\"type\":\"Episode\",\"value\":20},{\"type\":\"Call\",\"value\":20},{\"type\":\"Message\",\"value\":20}]") @map("node_type_order")
 
@@ -276,6 +283,34 @@ model WorkspaceMember {
   @@index([workspaceId])
   @@index([userId])
   @@map("workspace_members")
+}
+
+model WorkspaceApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Key identification
+  name      String // Human-readable name, e.g. "Cursor - John's laptop"
+  keyPrefix String @map("key_prefix") // First 8 chars for display: "hive_abc1..."
+  keyHash   String @unique @map("key_hash") // SHA-256 hash for lookup
+
+  // Ownership & audit
+  createdById String    @map("created_by_id")
+  createdBy   User      @relation("ApiKeyCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+  expiresAt   DateTime? @map("expires_at") // Optional expiration
+
+  // Status
+  revokedAt   DateTime? @map("revoked_at")
+  revokedById String?   @map("revoked_by_id")
+  revokedBy   User?     @relation("ApiKeyRevoker", fields: [revokedById], references: [id])
+
+  @@index([workspaceId])
+  @@index([keyHash])
+  @@index([createdById])
+  @@map("workspace_api_keys")
 }
 
 // =============================================
