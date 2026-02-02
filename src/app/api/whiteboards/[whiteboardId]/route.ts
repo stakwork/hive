@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { pusherServer, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -116,6 +118,32 @@ export async function PATCH(
         },
       },
     });
+
+    // Broadcast content updates via Pusher (not name/featureId changes)
+    const shouldBroadcast = 
+      body.elements !== undefined || 
+      body.appState !== undefined || 
+      body.files !== undefined;
+
+    if (shouldBroadcast) {
+      try {
+        await pusherServer.trigger(
+          getWhiteboardChannelName(whiteboardId),
+          PUSHER_EVENTS.WHITEBOARD_UPDATE,
+          {
+            whiteboardId,
+            elements: updateData.elements,
+            appState: updateData.appState,
+            files: updateData.files,
+            timestamp: new Date(),
+            updatedBy: userOrResponse.id,
+          }
+        );
+      } catch (error) {
+        // Log but don't fail the request if Pusher fails
+        logger.error("Failed to broadcast whiteboard update via Pusher", { error, whiteboardId });
+      }
+    }
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
