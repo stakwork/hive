@@ -149,6 +149,7 @@ describe("POST /api/tasks - Unit Tests", () => {
         estimatedHours: 5,
         actualHours: null,
         mode: "live",
+        model: null,
         runBuild: true,
         runTestSuite: true,
         createdById: "user1",
