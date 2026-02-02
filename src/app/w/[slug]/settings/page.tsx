@@ -1,6 +1,7 @@
 import { DeleteWorkspace } from "@/components/DeleteWorkspace";
 import { VMConfigSection } from "@/components/pool-status";
 import { RerunIngest } from "@/components/RerunIngest";
+import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
 import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
 import { PageHeader } from "@/components/ui/page-header";
@@ -45,6 +46,8 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
           <RerunIngest workspaceId={workspace.id} workspaceName={workspace.name} />
 
           <NodeTypeOrderSettings />
+
+          <ApiKeysSettings />
 
           <VercelIntegrationSettings />
 
