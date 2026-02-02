@@ -289,16 +289,18 @@ export function AgentChatArea({
         onOpenBountyRequest={onOpenBountyRequest}
       />
 
-      <ConfirmDialog
-        open={showReleaseConfirm}
-        onOpenChange={setShowReleaseConfirm}
-        title="Release Pod?"
-        description="This will release the development pod back to the pool. Any unsaved work in the pod may be lost."
-        confirmText="Release Pod"
-        variant="destructive"
-        onConfirm={onReleasePod}
-        testId="release-pod-dialog"
-      />
+      {onReleasePod && (
+        <ConfirmDialog
+          open={showReleaseConfirm}
+          onOpenChange={setShowReleaseConfirm}
+          title="Release Pod?"
+          description="This will release the development pod back to the pool. Any unsaved work in the pod may be lost."
+          confirmText="Release Pod"
+          variant="destructive"
+          onConfirm={onReleasePod}
+          testId="release-pod-dialog"
+        />
+      )}
     </motion.div>
   );
 }
