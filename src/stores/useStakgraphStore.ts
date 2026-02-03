@@ -131,7 +131,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
             const newFormData: StakgraphSettings = {
               name: settings.name || "",
               description: settings.description || "",
-              repositories: settings.repositories || [{ repositoryUrl: "", branch: "main", name: "" }],
+              repositories: settings.repositories || [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: false }],
               swarmUrl: settings.swarmUrl || "",
               swarmSecretAlias: settings.swarmSecretAlias || "",
               swarmApiKey: settings.swarmApiKey || "",

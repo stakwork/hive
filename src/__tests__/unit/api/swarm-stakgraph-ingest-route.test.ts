@@ -127,6 +127,9 @@ const mockRepository = {
   unitGlob: "",
   integrationGlob: "",
   e2eGlob: "",
+  codeIngestionEnabled: true,
+  docsEnabled: true,
+  mocksEnabled: false,
 };
 const mockGithubProfile = { username: "user", token: "token" };
 
@@ -140,6 +143,9 @@ const mockRepositoryInfo = {
   name: "test-repo",
   description: null,
   branch: "main",
+  codeIngestionEnabled: true,
+  docsEnabled: true,
+  mocksEnabled: false,
 };
 
 describe("POST /api/swarm/stakgraph/ingest", () => {
