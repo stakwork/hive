@@ -3,7 +3,7 @@ import { authOptions, getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { getSwarmVanityAddress } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { getPrimaryRepository, getAllRepositories } from "@/lib/helpers/repository";
+import { getAllRepositories } from "@/lib/helpers/repository";
 import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/lib/url";
 import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
