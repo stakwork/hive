@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { triggerAsyncSync, AsyncSyncResult } from "@/services/swarm/stakgraph-actions";
+import { triggerAsyncSync, AsyncSyncResult, SyncOptions } from "@/services/swarm/stakgraph-actions";
 import { getGithubUsernameAndPAT } from "@/lib/auth/nextauth";
 import { timingSafeEqual, computeHmacSha256Hex } from "@/lib/encryption";
 import { RepositoryStatus, Prisma, TaskStatus, WorkflowStatus } from "@prisma/client";
@@ -70,6 +70,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         branch: true,
         workspaceId: true,
         githubWebhookSecret: true,
+        codeIngestionEnabled: true,
+        docsEnabled: true,
+        mocksEnabled: true,
         workspace: {
           select: {
             swarm: {
@@ -176,6 +179,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         workspaceId: repository.workspaceId,
         pushedBranch,
       });
+
+      // Check if code ingestion is enabled for this repository
+      if (!repository.codeIngestionEnabled) {
+        console.log("[GithubWebhook] Code ingestion disabled for repository, skipping sync", {
+          delivery,
+          workspaceId: repository.workspaceId,
+          repositoryUrl: repository.repositoryUrl,
+        });
+        return NextResponse.json({ success: true }, { status: 202 });
+      }
     } else if (event === "pull_request") {
       const action = payload?.action;
       const merged = payload?.pull_request?.merged;
@@ -613,6 +626,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const callbackUrl = getStakgraphWebhookCallbackUrl(request);
 
+    // Build sync options based on repository settings
+    const syncOptions: SyncOptions = {};
+    if (repository.docsEnabled) syncOptions.docs = true;
+    if (repository.mocksEnabled) syncOptions.mocks = true;
+
     console.log("[GithubWebhook] Triggering async sync", {
       delivery,
       workspaceId: repository.workspaceId,
@@ -621,6 +639,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       repositoryUrl: repository.repositoryUrl,
       callbackUrl,
       hasGithubAuth: !!(username && githubPat),
+      syncOptions,
     });
 
     const apiResult: AsyncSyncResult = await triggerAsyncSync(
@@ -629,6 +648,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       repository.repositoryUrl,
       username && githubPat ? { username, pat: githubPat } : undefined,
       callbackUrl,
+      false, // useLsp
+      Object.keys(syncOptions).length > 0 ? syncOptions : undefined,
     );
 
     console.log("[GithubWebhook] Async sync response", {

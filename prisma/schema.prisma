@@ -441,6 +441,11 @@ model Repository {
   integrationGlob String? @default("") @map("integration_glob")
   e2eGlob         String? @default("") @map("e2e_glob")
 
+  // Sync configuration
+  codeIngestionEnabled Boolean @default(true)  @map("code_ingestion_enabled")
+  docsEnabled          Boolean @default(true)  @map("docs_enabled")
+  mocksEnabled         Boolean @default(true)  @map("mocks_enabled")
+
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
