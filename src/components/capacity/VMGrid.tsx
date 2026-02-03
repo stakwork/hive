@@ -97,7 +97,7 @@ function VMCard({ vm }: { vm: VMData }) {
         {/* User or Pending Message */}
         {vm.state === "pending" ? (
           <p className="text-xs text-muted-foreground">Preparing your environment...</p>
-        ) : vm.user_info ? (
+        ) : vm.usage_status === "used" && vm.user_info ? (
           <p className="text-xs text-muted-foreground truncate">{vm.user_info}</p>
         ) : null}
 
