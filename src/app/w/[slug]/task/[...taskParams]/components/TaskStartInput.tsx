@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  Sparkles,
 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -29,8 +30,10 @@ import { useControlKeyHold } from "@/hooks/useControlKeyHold";
 import { WorkflowNode } from "@/hooks/useWorkflowNodes";
 import { PromptsPanel } from "@/components/prompts";
 
+import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
+
 interface TaskStartInputProps {
-  onStart: (task: string) => void;
+  onStart: (task: string, model?: ModelName) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -42,6 +45,9 @@ interface TaskStartInputProps {
   onWorkflowSelect?: (workflowId: number, workflowData: WorkflowNode) => void;
   isLoadingWorkflows?: boolean;
   workflowsError?: string | null;
+  // Model selection for agent mode
+  selectedModel?: ModelName;
+  onModelChange?: (model: ModelName) => void;
 }
 
 export function TaskStartInput({
@@ -56,6 +62,8 @@ export function TaskStartInput({
   onWorkflowSelect,
   isLoadingWorkflows = false,
   workflowsError,
+  selectedModel = "sonnet",
+  onModelChange,
 }: TaskStartInputProps) {
   const searchParams = useSearchParams();
   const [value, setValue] = useState("");
@@ -135,7 +143,7 @@ export function TaskStartInput({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (value.trim()) {
-        onStart(value.trim());
+        onStart(value.trim(), selectedModel);
       }
     }
   };
@@ -161,7 +169,7 @@ export function TaskStartInput({
           stopListening();
         }
         resetTranscript();
-        onStart(value.trim());
+        onStart(value.trim(), selectedModel);
       }
     }
   };
@@ -354,7 +362,7 @@ export function TaskStartInput({
               </motion.div>
             )}
           </AnimatePresence>
-          <div className="absolute bottom-6 left-8 z-10">
+          <div className="absolute bottom-6 left-8 z-10 flex gap-2">
           <Select value={taskMode} onValueChange={onModeChange}>
             <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
               <div className="flex items-center gap-2">
@@ -401,6 +409,25 @@ export function TaskStartInput({
               )}
             </SelectContent>
           </Select>
+          {taskMode === "agent" && onModelChange && (
+            <Select value={selectedModel} onValueChange={(value) => onModelChange(value as ModelName)}>
+              <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span>{selectedModel}</span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {VALID_MODELS.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    <div className="flex items-center gap-2">
+                      <span>{model}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="absolute bottom-6 right-8 z-10 flex gap-2">
           {isSupported && !isWorkflowMode && (
