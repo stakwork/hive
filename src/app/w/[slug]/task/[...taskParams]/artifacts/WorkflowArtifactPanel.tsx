@@ -57,7 +57,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     let workflowJson: string | undefined;
     let originalWorkflowJson: string | undefined;
     let projectId: string | undefined;
-    let workflowId: number | undefined;
+    let workflowId: number | string | undefined;
     let workflowName: string | undefined;
     let workflowRefId: string | undefined;
 
