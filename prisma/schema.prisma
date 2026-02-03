@@ -499,6 +499,9 @@ model Task {
   // Task mode (live, test, agent, etc.)
   mode String @default("live")
 
+  // AI model selection for agent mode (sonnet, opus, kimi, gemini, gpt)
+  model String?
+
   // Task-specific branch override (if set, takes precedence over repository branch)
   branch String?
 
