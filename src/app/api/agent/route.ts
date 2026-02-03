@@ -62,6 +62,7 @@ import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
+import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
 
 const encryptionService = EncryptionService.getInstance();
 
@@ -105,7 +106,10 @@ interface ArtifactRequest {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { message, taskId, artifacts = [] } = body;
+  const { message, taskId, artifacts = [], model } = body;
+
+  // Validate model parameter if provided (will be combined with task model later)
+  const requestModel: ModelName | undefined = isValidModel(model) ? model : undefined;
 
   // 1. Authenticate user
   const session = await getServerSession(authOptions);
@@ -126,6 +130,7 @@ export async function POST(request: NextRequest) {
         agentPassword: true,
         agentWebhookSecret: true,
         mode: true,
+        model: true,
       },
     }),
     db.chatMessage.count({
@@ -143,6 +148,10 @@ export async function POST(request: NextRequest) {
   if (task.mode !== "agent") {
     return NextResponse.json({ error: "Task is not in agent mode" }, { status: 400 });
   }
+
+  // Determine effective model: request model takes precedence, then task model, then default
+  const taskModel: ModelName | undefined = isValidModel(task.model) ? task.model : undefined;
+  const effectiveModel: ModelName | undefined = requestModel || taskModel;
 
   // 3. Determine agent URL (support CUSTOM_GOOSE_URL for local dev)
   const agentUrl = process.env.CUSTOM_GOOSE_URL || task.agentUrl;
@@ -247,16 +256,29 @@ export async function POST(request: NextRequest) {
     console.log("[Agent]", isResume ? "Resuming" : "Creating", "session for taskId:", taskId);
     console.log("[Agent] agentUrl:", agentUrl, "sessionUrl:", sessionUrl);
     console.log("[Agent] task.agentUrl:", task.agentUrl, "CUSTOM_GOOSE_URL:", process.env.CUSTOM_GOOSE_URL);
+    if (effectiveModel) {
+      console.log("[Agent] Using model:", effectiveModel);
+    }
+
+    // Determine API key based on model (default to Anthropic for backward compatibility)
+    const apiKey = effectiveModel ? getApiKeyForModel(effectiveModel) : process.env.ANTHROPIC_API_KEY;
+
+    const sessionPayload: Record<string, unknown> = {
+      sessionId: taskId, // taskId IS the sessionId
+      webhookUrl,
+      apiKey,
+      searchApiKey: process.env.EXA_API_KEY,
+    };
+
+    // Include model in payload if specified
+    if (effectiveModel) {
+      sessionPayload.model = effectiveModel;
+    }
 
     const sessionResponse = await fetch(sessionUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        sessionId: taskId, // taskId IS the sessionId
-        webhookUrl,
-        apiKey: process.env.ANTHROPIC_API_KEY,
-        searchApiKey: process.env.EXA_API_KEY,
-      }),
+      body: JSON.stringify(sessionPayload),
     });
 
     if (!sessionResponse.ok) {
