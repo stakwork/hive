@@ -90,6 +90,40 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
+vi.mock("@/components/ui/confirm-dialog", () => ({
+  ConfirmDialog: ({ open, onOpenChange, title, description, confirmText, onConfirm, testId, variant }: any) => (
+    open ? (
+      <div data-testid={testId || "confirm-dialog"} role="dialog">
+        <h2 data-testid="dialog-title">{title}</h2>
+        <p data-testid="dialog-description">{description}</p>
+        <button
+          data-testid="dialog-cancel"
+          onClick={() => onOpenChange(false)}
+        >
+          Cancel
+        </button>
+        <button
+          data-testid="dialog-confirm"
+          className={variant}
+          onClick={() => {
+            onConfirm();
+            onOpenChange(false);
+          }}
+        >
+          {confirmText}
+        </button>
+      </div>
+    ) : null
+  ),
+}));
+
+vi.mock("@/components/ui/tooltip", () => ({
+  TooltipProvider: ({ children }: any) => <>{children}</>,
+  Tooltip: ({ children }: any) => <>{children}</>,
+  TooltipTrigger: ({ children, asChild }: any) => <>{children}</>,
+  TooltipContent: ({ children }: any) => <div>{children}</div>,
+}));
+
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: any) => (
     <a href={href} {...props}>{children}</a>
@@ -101,6 +135,14 @@ vi.mock("lucide-react", () => ({
   ArrowLeft: () => <span data-testid="arrow-left-icon">←</span>,
   ExternalLink: () => <span data-testid="external-link-icon">↗</span>,
   Monitor: () => <span data-testid="monitor-icon">🖥</span>,
+  Server: (props: any) => <span data-testid="server-icon" {...props}>🖥️</span>,
+  ServerOff: (props: any) => <span data-testid="server-off-icon" {...props}>⚠️</span>,
+  Clock: () => <span data-testid="clock-icon">🕐</span>,
+  Loader2: () => <span data-testid="loader-icon">⏳</span>,
+  CheckCircle: () => <span data-testid="check-circle-icon">✓</span>,
+  AlertCircle: () => <span data-testid="alert-circle-icon">⚠</span>,
+  Pause: () => <span data-testid="pause-icon">⏸</span>,
+  XCircle: () => <span data-testid="x-circle-icon">✗</span>,
 }));
 
 // Mock useIsMobile hook
@@ -710,6 +752,153 @@ describe("ChatArea", () => {
 
       // Focus should be maintained properly (tested indirectly through no errors)
       expect(backButton).toBeInTheDocument();
+    });
+  });
+
+  describe("Pod Release Confirmation", () => {
+    test("opens confirmation dialog when release pod button is clicked", async () => {
+      const user = userEvent.setup();
+      const onReleasePod = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        onReleasePod,
+        podId: "test-pod-123",
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Find and click the release pod button by its server icon
+      const releaseButton = screen.getByTestId("server-icon").closest("button");
+      await user.click(releaseButton!);
+
+      // Verify dialog is shown
+      expect(screen.getByTestId("release-pod-dialog")).toBeInTheDocument();
+      expect(screen.getByTestId("dialog-title")).toHaveTextContent("Release Pod?");
+      expect(screen.getByTestId("dialog-description")).toHaveTextContent(
+        "This will release the development pod back to the pool. Any unsaved work in the pod may be lost."
+      );
+      
+      // Verify onReleasePod has NOT been called yet
+      expect(onReleasePod).not.toHaveBeenCalled();
+    });
+
+    test("closes dialog without calling onReleasePod when cancel is clicked", async () => {
+      const user = userEvent.setup();
+      const onReleasePod = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        onReleasePod,
+        podId: "test-pod-123",
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Open dialog
+      const releaseButton = screen.getByTestId("server-icon").closest("button");
+      await user.click(releaseButton!);
+      expect(screen.getByTestId("release-pod-dialog")).toBeInTheDocument();
+
+      // Click cancel
+      const cancelButton = screen.getByTestId("dialog-cancel");
+      await user.click(cancelButton);
+
+      // Verify dialog is closed
+      await waitFor(() => {
+        expect(screen.queryByTestId("release-pod-dialog")).not.toBeInTheDocument();
+      });
+
+      // Verify onReleasePod was NOT called
+      expect(onReleasePod).not.toHaveBeenCalled();
+    });
+
+    test("calls onReleasePod and closes dialog when confirm is clicked", async () => {
+      const user = userEvent.setup();
+      const onReleasePod = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        onReleasePod,
+        podId: "test-pod-123",
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Open dialog
+      const releaseButton = screen.getByTestId("server-icon").closest("button");
+      await user.click(releaseButton!);
+      expect(screen.getByTestId("release-pod-dialog")).toBeInTheDocument();
+
+      // Click confirm
+      const confirmButton = screen.getByTestId("dialog-confirm");
+      await user.click(confirmButton);
+
+      // Verify onReleasePod was called
+      expect(onReleasePod).toHaveBeenCalledTimes(1);
+
+      // Verify dialog is closed
+      await waitFor(() => {
+        expect(screen.queryByTestId("release-pod-dialog")).not.toBeInTheDocument();
+      });
+    });
+
+    test("confirm button has destructive variant styling", async () => {
+      const user = userEvent.setup();
+      const onReleasePod = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        onReleasePod,
+        podId: "test-pod-123",
+        taskTitle: "Test Task",
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Open dialog
+      const releaseButton = screen.getByTestId("server-icon").closest("button");
+      await user.click(releaseButton!);
+
+      // Verify confirm button has destructive styling
+      const confirmButton = screen.getByTestId("dialog-confirm");
+      expect(confirmButton).toHaveClass("destructive");
+      expect(confirmButton).toHaveTextContent("Release Pod");
+    });
+
+    test("does not show release button when onReleasePod is not provided", () => {
+      const { props } = setupChatAreaTest({
+        onReleasePod: undefined,
+        podId: "test-pod-123",
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Release button should not be present
+      expect(screen.queryByTestId("server-icon")).not.toBeInTheDocument();
+    });
+
+    test("does not show release button when podId is not provided", () => {
+      const onReleasePod = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        onReleasePod,
+        podId: undefined,
+      });
+
+      render(<ChatArea {...props} />);
+
+      // Release button should not be present
+      expect(screen.queryByTestId("server-icon")).not.toBeInTheDocument();
+    });
+
+    test("disables release button when isReleasingPod is true", () => {
+      const onReleasePod = vi.fn().mockResolvedValue(undefined);
+      const { props } = setupChatAreaTest({
+        onReleasePod,
+        podId: "test-pod-123",
+        taskTitle: "Test Task",
+        isReleasingPod: true,
+      });
+
+      render(<ChatArea {...props} />);
+
+      const releaseButton = screen.getByTestId("server-icon").closest("button");
+      expect(releaseButton).toBeDisabled();
     });
   });
 });
