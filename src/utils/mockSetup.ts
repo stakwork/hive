@@ -162,6 +162,9 @@ export async function ensureMockWorkspaceForUser(
         unitGlob: "src/**/*.{test,spec}.{ts,tsx}",
         integrationGlob: "src/__tests__/integration/**/*.test.ts",
         e2eGlob: "src/__tests__/e2e/specs/**/*.spec.ts",
+        codeIngestionEnabled: true,
+        docsEnabled: true,
+        mocksEnabled: true,
       },
     });
 
