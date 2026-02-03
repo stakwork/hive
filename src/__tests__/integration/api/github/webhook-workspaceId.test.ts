@@ -648,7 +648,11 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
           username: 'test-user',
           pat: 'test-pat-token',
         }),  // credentials
-        expect.stringContaining('/api/swarm/stakgraph/webhook')  // callbackUrl
+        expect.stringContaining('/api/swarm/stakgraph/webhook'),  // callbackUrl
+        false,  // useLsp
+        expect.objectContaining({
+          docs: true,
+        })  // options (SyncOptions)
       );
     });
 
