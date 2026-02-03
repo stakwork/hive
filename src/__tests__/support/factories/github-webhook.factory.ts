@@ -84,6 +84,10 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
         status,
         githubWebhookId,
         githubWebhookSecret: encryptedSecret ? JSON.stringify(encryptedSecret) : null,
+        // Sync config - matches Prisma defaults
+        codeIngestionEnabled: true,
+        docsEnabled: true,
+        mocksEnabled: false,
       },
     });
 

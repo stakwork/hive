@@ -142,7 +142,7 @@ export function RepositorySettingsModal({
                       Generate Mocks
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Auto-generate mock data on sync
+                      Take inventory of mocks on sync
                     </p>
                   </div>
                 </div>
