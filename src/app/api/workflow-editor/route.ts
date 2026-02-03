@@ -17,7 +17,7 @@ export const fetchCache = "force-no-store";
 interface WorkflowEditorRequest {
   taskId: string;
   message: string;
-  workflowId: number;
+  workflowId: number | string;
   workflowName: string;
   workflowRefId: string;
   stepName: string;
