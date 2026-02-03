@@ -114,7 +114,7 @@ export default function TaskChatPage() {
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
   const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
   const [currentWorkflowContext, setCurrentWorkflowContext] = useState<{
-    workflowId: number;
+    workflowId: number | string;
     workflowName: string;
     workflowRefId: string;
   } | null>(null);
@@ -332,8 +332,10 @@ export default function TaskChatPage() {
           // Find the WORKFLOW artifact with workflowId and workflowName
           for (const msg of result.data.messages) {
             const workflowArtifact = msg.artifacts?.find(
-              (a: { type: string; content?: { workflowId?: number; workflowName?: string; workflowRefId?: string } }) =>
-                a.type === "WORKFLOW" && a.content?.workflowId,
+              (a: {
+                type: string;
+                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string };
+              }) => a.type === "WORKFLOW" && a.content?.workflowId,
             );
             if (workflowArtifact?.content?.workflowId) {
               setCurrentWorkflowContext({
@@ -478,6 +480,114 @@ export default function TaskChatPage() {
     } catch (error) {
       console.error("Error in handleWorkflowSelect:", error);
       toast.error("Error", { description: "Failed to load workflow. Please try again." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle creating a new workflow (user typed "new" in workflow editor)
+  const handleNewWorkflow = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const taskTitle = "New Workflow";
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: taskTitle,
+          description: "Creating a new workflow",
+          status: "active",
+          workspaceSlug: slug,
+          mode: taskMode,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const newTaskId = result.data.id;
+      setCurrentTaskId(newTaskId);
+      setTaskTitle(taskTitle);
+
+      // Update URL without reloading
+      const newUrl = `/w/${slug}/task/${newTaskId}`;
+      window.history.replaceState({}, "", newUrl);
+
+      // Save workflow artifact with "new" as workflowId (no workflowJson)
+      const saveResponse = await fetch(`/api/tasks/${newTaskId}/messages/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: `New Workflow\nDescribe the workflow you want to create.`,
+          role: "ASSISTANT",
+          artifacts: [
+            {
+              type: ArtifactType.WORKFLOW,
+              content: {
+                workflowId: "new",
+                workflowName: "New Workflow",
+                workflowRefId: "",
+              },
+            },
+          ],
+        }),
+      });
+
+      if (!saveResponse.ok) {
+        console.error("Failed to save workflow artifact:", await saveResponse.text());
+      }
+
+      const savedMessage = await saveResponse.json();
+
+      const initialMessage: ChatMessage = savedMessage.success
+        ? createChatMessage({
+            id: savedMessage.data.id,
+            message: savedMessage.data.message,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            artifacts: savedMessage.data.artifacts,
+          })
+        : createChatMessage({
+            id: generateUniqueId(),
+            message: `New Workflow\nDescribe the workflow you want to create.`,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            artifacts: [
+              createArtifact({
+                id: generateUniqueId(),
+                messageId: "",
+                type: ArtifactType.WORKFLOW,
+                content: {
+                  workflowId: "new",
+                  workflowName: "New Workflow",
+                  workflowRefId: "",
+                },
+              }),
+            ],
+          });
+
+      setMessages([initialMessage]);
+      setStarted(true);
+      setWorkflowStatus(WorkflowStatus.PENDING);
+
+      // Store workflow context with "new" as the ID
+      setCurrentWorkflowContext({
+        workflowId: "new",
+        workflowName: "New Workflow",
+        workflowRefId: "",
+      });
+      setWorkflowEditorWebhook(null);
+    } catch (error) {
+      console.error("Error in handleNewWorkflow:", error);
+      toast.error("Error", { description: "Failed to create new workflow. Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -1175,6 +1285,7 @@ export default function TaskChatPage() {
             workspaceSlug={slug}
             workflows={workflows}
             onWorkflowSelect={handleWorkflowSelect}
+            onNewWorkflow={handleNewWorkflow}
             isLoadingWorkflows={isLoadingWorkflows}
             workflowsError={workflowsError}
             selectedModel={selectedModel}
