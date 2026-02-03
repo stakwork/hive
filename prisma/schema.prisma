@@ -444,7 +444,7 @@ model Repository {
   // Sync configuration
   codeIngestionEnabled Boolean @default(true)  @map("code_ingestion_enabled")
   docsEnabled          Boolean @default(true)  @map("docs_enabled")
-  mocksEnabled         Boolean @default(false) @map("mocks_enabled")
+  mocksEnabled         Boolean @default(true)  @map("mocks_enabled")
 
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")

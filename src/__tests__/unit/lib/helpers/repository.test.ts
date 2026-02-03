@@ -33,7 +33,7 @@ describe("getPrimaryRepository", () => {
           branch: "main",
           codeIngestionEnabled: true,
           docsEnabled: true,
-          mocksEnabled: false,
+          mocksEnabled: true,
         },
       ],
     };
@@ -76,7 +76,7 @@ describe("getPrimaryRepository", () => {
       branch: "main",
       codeIngestionEnabled: true,
       docsEnabled: true,
-      mocksEnabled: false,
+      mocksEnabled: true,
     });
   });
 
@@ -161,7 +161,7 @@ describe("getPrimaryRepository", () => {
           branch: "main",
           codeIngestionEnabled: true,
           docsEnabled: true,
-          mocksEnabled: false,
+          mocksEnabled: true,
         },
         {
           id: "repo-2",
@@ -175,7 +175,7 @@ describe("getPrimaryRepository", () => {
           branch: "develop",
           codeIngestionEnabled: true,
           docsEnabled: true,
-          mocksEnabled: false,
+          mocksEnabled: true,
         },
       ],
     };
@@ -289,7 +289,7 @@ describe("getPrimaryRepository", () => {
           branch: "main",
           codeIngestionEnabled: true,
           docsEnabled: true,
-          mocksEnabled: false,
+          mocksEnabled: true,
         },
       ],
     };
@@ -325,7 +325,7 @@ describe("getPrimaryRepository", () => {
           branch: "main",
           codeIngestionEnabled: true,
           docsEnabled: true,
-          mocksEnabled: false,
+          mocksEnabled: true,
         },
       ],
     };
@@ -346,7 +346,7 @@ describe("getPrimaryRepository", () => {
       branch: "main",
       codeIngestionEnabled: true,
       docsEnabled: true,
-      mocksEnabled: false,
+      mocksEnabled: true,
     });
     expect(result).toHaveProperty("id");
     expect(result).toHaveProperty("name");
@@ -387,7 +387,7 @@ describe("getPrimaryRepository", () => {
           branch: "main",
           codeIngestionEnabled: true,
           docsEnabled: true,
-          mocksEnabled: false,
+          mocksEnabled: true,
         },
       ],
     };

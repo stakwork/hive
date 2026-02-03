@@ -86,12 +86,13 @@ export default function RepositoryForm({
   }, [permissions, permissionLoading, permissionError, checkingIndex, pendingSettingsIndex, data.repositories]);
 
   const handleAddRepository = () => {
+    // Additional repos added via the form default to all sync options disabled
     const newRepo: Repository = {
       repositoryUrl: "",
       branch: "main",
       name: "",
-      codeIngestionEnabled: true,
-      docsEnabled: true,
+      codeIngestionEnabled: false,
+      docsEnabled: false,
       mocksEnabled: false,
     };
     onChange({

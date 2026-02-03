@@ -652,6 +652,7 @@ describe('POST /api/github/webhook/[workspaceId]', () => {
         false,  // useLsp
         expect.objectContaining({
           docs: true,
+          mocks: true,
         })  // options (SyncOptions)
       );
     });

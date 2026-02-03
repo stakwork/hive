@@ -87,7 +87,7 @@ export async function createWebhookTestScenario(options?: CreateWebhookTestScena
         // Sync config - matches Prisma defaults
         codeIngestionEnabled: true,
         docsEnabled: true,
-        mocksEnabled: false,
+        mocksEnabled: true,
       },
     });
 
