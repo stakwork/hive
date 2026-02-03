@@ -40,7 +40,6 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
-import { archiveTaskAndRedirect } from "./lib/archive-task";
 import type { ModelName } from "@/lib/ai/models";
 
 // Generate unique IDs to prevent collisions
@@ -628,51 +627,6 @@ export default function TaskChatPage() {
         const newTaskId = result.data.id;
         setCurrentTaskId(newTaskId);
 
-        // Claim pod if agent mode is selected (AFTER task creation)
-        let claimedPodUrls: { frontend: string; ide: string } | null = null;
-        let freshPodId: string | null = null;
-        if (taskMode === "agent" && workspaceId) {
-          try {
-            const podResponse = await fetch(
-              `/api/pool-manager/claim-pod/${workspaceId}?latest=true&goose=true&taskId=${newTaskId}`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-              },
-            );
-
-            if (podResponse.ok) {
-              const podResult = await podResponse.json();
-              // console.log(">>> Pod claim result:", podResult);
-              // Only frontend and IDE URLs are returned (no goose URL or password)
-              claimedPodUrls = {
-                frontend: podResult.frontend,
-                ide: podResult.ide,
-              };
-              freshPodId = podResult.podId;
-              setPodId(freshPodId);
-              console.log(">>> Pod claimed:", freshPodId);
-            } else {
-              // Pod claim failed - archive the task and redirect back to task list
-              console.error("Failed to claim pod:", await podResponse.text());
-              await archiveTaskAndRedirect(
-                newTaskId,
-                slug,
-                "No pods available",
-                "Task archived. Please try again later when capacity is available.",
-              );
-              return;
-            }
-          } catch (error) {
-            // Network or other error during pod claim
-            console.error("Error claiming pod:", error);
-            await archiveTaskAndRedirect(newTaskId, slug, "Pod claim error", "Task archived. Please try again later.");
-            return;
-          }
-        }
-
         // Set the task title from the response or fallback to the initial message
         if (result.data.title) {
           setTaskTitle(result.data.title);
@@ -685,7 +639,9 @@ export default function TaskChatPage() {
         window.history.replaceState({}, "", newUrl);
 
         setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls });
+        // For agent mode, pod claiming is handled by /api/agent
+        // which returns podUrls that sendMessage will use to create artifacts
+        await sendMessage(msg, { taskId: newTaskId });
       } else {
         setStarted(true);
         await sendMessage(msg);
@@ -801,33 +757,10 @@ export default function TaskChatPage() {
         replyId?: string;
         webhook?: string;
         artifact?: Artifact;
-        podUrls?: { frontend: string; ide: string } | null;
       },
     ) => {
       // Create artifacts array starting with any existing artifact
       const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
-
-      // Add BROWSER and IDE artifacts if podUrls are provided
-      if (options?.podUrls) {
-        artifacts.push(
-          createArtifact({
-            id: generateUniqueId(),
-            messageId: "",
-            type: ArtifactType.BROWSER,
-            content: {
-              url: options.podUrls.frontend,
-            },
-          }),
-          createArtifact({
-            id: generateUniqueId(),
-            messageId: "",
-            type: ArtifactType.IDE,
-            content: {
-              url: options.podUrls.ide,
-            },
-          }),
-        );
-      }
 
       const newMessage: ChatMessage = createChatMessage({
         id: generateUniqueId(),
@@ -876,10 +809,40 @@ export default function TaskChatPage() {
           });
 
           if (!sessionResponse.ok) {
-            throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
+            const errorData = await sessionResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to create session: ${sessionResponse.statusText}`);
           }
 
-          const { streamToken, streamUrl, resume, historyContext } = await sessionResponse.json();
+          const { streamToken, streamUrl, resume, historyContext, podUrls } = await sessionResponse.json();
+
+          // If backend claimed a pod (new task or re-claim), update state and add artifacts
+          if (podUrls) {
+            setPodId(podUrls.podId);
+            console.log(">>> Pod claimed by backend:", podUrls.podId);
+
+            // Add BROWSER/IDE artifacts to the user message
+            const browserArtifact = createArtifact({
+              id: generateUniqueId(),
+              messageId: "",
+              type: ArtifactType.BROWSER,
+              content: { url: podUrls.frontend },
+            });
+            const ideArtifact = createArtifact({
+              id: generateUniqueId(),
+              messageId: "",
+              type: ArtifactType.IDE,
+              content: { url: podUrls.ide },
+            });
+
+            // Update the message with new artifacts
+            setMessages((msgs) =>
+              msgs.map((msg) =>
+                msg.id === newMessage.id
+                  ? { ...msg, artifacts: [...(msg.artifacts || []), browserArtifact, ideArtifact] }
+                  : msg
+              )
+            );
+          }
 
           // 2. Connect directly to remote server for streaming
           // If historyContext is provided, the session was not found on the pod
