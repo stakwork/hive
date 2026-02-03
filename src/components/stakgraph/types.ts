@@ -48,6 +48,10 @@ export interface Repository {
   repositoryUrl: string;
   branch: string;
   name: string;
+  // Sync configuration
+  codeIngestionEnabled?: boolean;  // default true - whether to sync code to stakgraph
+  docsEnabled?: boolean;           // default true - whether to generate docs on ingest/sync
+  mocksEnabled?: boolean;          // default false - whether to generate mocks on ingest/sync
 }
 
 export interface RepositoryData {

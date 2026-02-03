@@ -17,7 +17,7 @@ import { devtools } from "zustand/middleware";
 const initialFormData: StakgraphSettings = {
   name: "",
   description: "",
-  repositories: [{ repositoryUrl: "", branch: "main", name: "" }],
+  repositories: [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: false }],
   swarmUrl: "",
   swarmSecretAlias: "",
   swarmApiKey: "",

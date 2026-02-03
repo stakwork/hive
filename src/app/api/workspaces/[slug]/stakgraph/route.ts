@@ -32,6 +32,9 @@ const stakgraphSettingsSchema = z.object({
         repositoryUrl: z.string().url("Invalid repository URL"),
         branch: z.string().min(1, "Branch is required"),
         name: z.string().min(1, "Repository name is required"),
+        codeIngestionEnabled: z.boolean().optional(),
+        docsEnabled: z.boolean().optional(),
+        mocksEnabled: z.boolean().optional(),
       }),
     )
     .optional(),
@@ -194,6 +197,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name: true,
         githubWebhookId: true,
         githubWebhookSecret: true,
+        codeIngestionEnabled: true,
+        docsEnabled: true,
+        mocksEnabled: true,
       },
       orderBy: { createdAt: "asc" },
     });
@@ -452,6 +458,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             repositoryUrl: repo.repositoryUrl,
             branch: repo.branch,
             name: repo.name,
+            codeIngestionEnabled: repo.codeIngestionEnabled ?? true,
+            docsEnabled: repo.docsEnabled ?? true,
+            mocksEnabled: repo.mocksEnabled ?? false,
           })),
         });
       }
@@ -464,6 +473,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             repositoryUrl: repo.repositoryUrl,
             branch: repo.branch,
             name: repo.name,
+            codeIngestionEnabled: repo.codeIngestionEnabled,
+            docsEnabled: repo.docsEnabled,
+            mocksEnabled: repo.mocksEnabled,
           },
         });
       }
@@ -668,6 +680,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         repositoryUrl: true,
         branch: true,
         name: true,
+        codeIngestionEnabled: true,
+        docsEnabled: true,
+        mocksEnabled: true,
       },
       orderBy: { createdAt: "asc" },
     });
