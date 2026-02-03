@@ -57,7 +57,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
     let workflowJson: string | undefined;
     let originalWorkflowJson: string | undefined;
     let projectId: string | undefined;
-    let workflowId: number | undefined;
+    let workflowId: number | string | undefined;
     let workflowName: string | undefined;
     let workflowRefId: string | undefined;
 
@@ -202,7 +202,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
           )}
 
           <TabsContent value="prompts" className="flex-1 overflow-hidden mt-0">
-            <PromptsPanel workflowId={workflowId} />
+            <PromptsPanel workflowId={typeof workflowId === "number" ? workflowId : undefined} />
           </TabsContent>
 
           <TabsContent value="stakwork" className="flex-1 overflow-hidden mt-0">
