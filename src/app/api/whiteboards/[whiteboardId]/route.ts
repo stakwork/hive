@@ -141,7 +141,10 @@ export async function PATCH(
         );
       } catch (error) {
         // Log but don't fail the request if Pusher fails
-        logger.error("Failed to broadcast whiteboard update via Pusher", { error, whiteboardId });
+        logger.error("Failed to broadcast whiteboard update via Pusher", "WHITEBOARD_PUSHER", {
+          error: error instanceof Error ? error.message : String(error),
+          whiteboardId,
+        });
       }
     }
 
