@@ -26,10 +26,11 @@
  *
  * 1. **Frontend → Hive** (`POST /api/agent`):
  *    - Authenticates user session
+ *    - Claims pod if needed (new task or pod was released)
  *    - Generates/retrieves webhook secret for the task
  *    - Creates JWT-signed webhook URL (10-min expiry)
  *    - Calls remote server to create/refresh session
- *    - Returns `{ streamUrl, streamToken, resume }` to frontend
+ *    - Returns `{ streamUrl, streamToken, resume, podUrls? }` to frontend
  *
  * 2. **Hive → Agent Server** (`POST /session`):
  *    - Sends `{ sessionId, webhookUrl }` to create/refresh session
@@ -50,6 +51,7 @@
  *
  * ## Database Fields (Task model)
  *
+ * - `podId`: ID of the claimed pod
  * - `agentUrl`: Remote agent server URL
  * - `agentPassword`: Encrypted auth token for agent server
  * - `agentWebhookSecret`: Encrypted per-task secret for JWT signing
@@ -63,8 +65,13 @@ import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus, ArtifactType } from "@prisma/client";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { isValidModel, getApiKeyForModel, type ModelName } from "@/lib/ai/models";
+import { claimPodAndGetFrontend, updatePodRepositories, POD_PORTS } from "@/lib/pods";
 
 const encryptionService = EncryptionService.getInstance();
+
+// ============================================================================
+// Types
+// ============================================================================
 
 interface ChatHistoryMessage {
   role: string;
@@ -72,6 +79,36 @@ interface ChatHistoryMessage {
   timestamp: string;
 }
 
+interface ArtifactRequest {
+  type: ArtifactType;
+  content?: Record<string, unknown>;
+}
+
+interface AgentCredentials {
+  agentUrl: string;
+  agentPassword: string | null;
+}
+
+interface PodClaimResult {
+  podId: string;
+  frontend: string;
+  ide: string;
+  credentials: AgentCredentials;
+}
+
+interface ServiceInfo {
+  name: string;
+  port: number;
+  scripts?: Record<string, string>;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Fetch chat history for a task
+ */
 async function fetchChatHistory(taskId: string): Promise<ChatHistoryMessage[]> {
   const chatHistory = await db.chatMessage.findMany({
     where: { taskId },
@@ -90,6 +127,9 @@ async function fetchChatHistory(taskId: string): Promise<ChatHistoryMessage[]> {
   }));
 }
 
+/**
+ * Format chat history into a prompt context string
+ */
 function formatChatHistoryForPrompt(history: ChatHistoryMessage[]): string {
   const formattedMessages = history.map((msg) => {
     const role = msg.role === "USER" ? "User" : "Assistant";
@@ -99,16 +139,249 @@ function formatChatHistoryForPrompt(history: ChatHistoryMessage[]): string {
   return `Here is the previous conversation history for context:\n\n${formattedMessages.join("\n\n")}\n\n---\n\nContinuing the conversation:`;
 }
 
-interface ArtifactRequest {
-  type: ArtifactType;
-  content?: Record<string, unknown>;
+/**
+ * Get chat history formatted for prompt if messages exist
+ */
+async function getChatHistoryContext(taskId: string): Promise<string | null> {
+  const chatHistory = await fetchChatHistory(taskId);
+  if (chatHistory.length > 0) {
+    return formatChatHistoryForPrompt(chatHistory);
+  }
+  return null;
 }
+
+/**
+ * Claim a pod for a task and store credentials
+ * Returns pod URLs for frontend artifacts
+ */
+async function claimPodForTask(
+  taskId: string,
+  workspaceId: string
+): Promise<PodClaimResult> {
+  // Load workspace with swarm configuration
+  const workspace = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    include: {
+      swarm: true,
+      repositories: true,
+    },
+  });
+
+  if (!workspace?.swarm?.poolApiKey) {
+    throw new Error("Workspace not configured for pods");
+  }
+
+  const poolApiKey = encryptionService.decryptField("poolApiKey", workspace.swarm.poolApiKey);
+  const services = workspace.swarm.services as ServiceInfo[] | null;
+  const poolId = workspace.swarm.id as string;
+
+  // Claim pod from pool
+  const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
+    poolId,
+    poolApiKey,
+    services || undefined,
+    taskId // userInfo for tracking
+  );
+
+  const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+
+  if (!controlUrl) {
+    throw new Error("Pod control port not available");
+  }
+
+  // Update repositories on new pod (non-fatal if fails)
+  if (workspace.repositories.length > 0) {
+    try {
+      await updatePodRepositories(
+        controlUrl,
+        podWorkspace.password,
+        workspace.repositories.map((r) => ({ url: r.repositoryUrl }))
+      );
+      console.log("[Agent] Updated repositories on pod");
+    } catch (repoError) {
+      console.error("[Agent] Error updating repositories (non-fatal):", repoError);
+    }
+  }
+
+  // Store pod credentials on task
+  const encryptedPassword = encryptionService.encryptField("agentPassword", podWorkspace.password);
+  await db.task.update({
+    where: { id: taskId },
+    data: {
+      podId: podWorkspace.id,
+      agentUrl: controlUrl,
+      agentPassword: JSON.stringify(encryptedPassword),
+    },
+  });
+
+  console.log("[Agent] Claimed pod:", podWorkspace.id, "for task:", taskId);
+
+  return {
+    podId: podWorkspace.id,
+    frontend,
+    ide: podWorkspace.url || podWorkspace.portMappings["8080"] || "",
+    credentials: {
+      agentUrl: controlUrl,
+      agentPassword: podWorkspace.password,
+    },
+  };
+}
+
+/**
+ * Validate if a session exists on the remote pod
+ */
+async function validateSessionOnPod(
+  agentUrl: string,
+  agentPassword: string | null,
+  taskId: string
+): Promise<boolean> {
+  try {
+    const validateUrl = agentUrl.replace(/\/$/, "") + "/validate_session";
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (agentPassword) {
+      headers["Authorization"] = `Bearer ${agentPassword}`;
+    }
+
+    const response = await fetch(validateUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ session: taskId }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.exists === true;
+    }
+    return false;
+  } catch (error) {
+    console.error("[Agent] Error validating session:", error);
+    return false;
+  }
+}
+
+/**
+ * Get or create webhook secret for a task
+ */
+async function getOrCreateWebhookSecret(
+  taskId: string,
+  existingSecret: string | null
+): Promise<string> {
+  if (existingSecret) {
+    return encryptionService.decryptField("agentWebhookSecret", existingSecret);
+  }
+
+  const webhookSecret = generateWebhookSecret();
+  const encryptedSecret = encryptionService.encryptField("agentWebhookSecret", webhookSecret);
+  await db.task.update({
+    where: { id: taskId },
+    data: {
+      agentWebhookSecret: JSON.stringify(encryptedSecret),
+    },
+  });
+
+  return webhookSecret;
+}
+
+/**
+ * Create a session on the remote agent server
+ */
+async function createAgentSession(
+  agentUrl: string,
+  agentPassword: string | null,
+  taskId: string,
+  webhookUrl: string,
+  effectiveModel: ModelName | undefined
+): Promise<string> {
+  const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (agentPassword) {
+    headers["Authorization"] = `Bearer ${agentPassword}`;
+  }
+
+  // Determine API key based on model
+  const apiKey = effectiveModel
+    ? getApiKeyForModel(effectiveModel)
+    : process.env.ANTHROPIC_API_KEY;
+
+  const sessionPayload: Record<string, unknown> = {
+    sessionId: taskId,
+    webhookUrl,
+    apiKey,
+    searchApiKey: process.env.EXA_API_KEY,
+  };
+
+  if (effectiveModel) {
+    sessionPayload.model = effectiveModel;
+  }
+
+  console.log("[Agent] Creating session at:", sessionUrl);
+  if (effectiveModel) {
+    console.log("[Agent] Using model:", effectiveModel);
+  }
+
+  const response = await fetch(sessionUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(sessionPayload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("[Agent] Session creation failed:", response.status, errorText);
+    throw new Error("Failed to create agent session");
+  }
+
+  const sessionData = await response.json();
+  if (!sessionData.token) {
+    throw new Error("No stream token returned from agent");
+  }
+
+  return sessionData.token;
+}
+
+/**
+ * Save user message to database
+ */
+async function saveUserMessage(
+  taskId: string,
+  message: string,
+  artifacts: ArtifactRequest[]
+): Promise<void> {
+  try {
+    await db.chatMessage.create({
+      data: {
+        taskId,
+        message,
+        role: ChatRole.USER,
+        status: ChatStatus.SENT,
+        artifacts: {
+          create: artifacts.map((artifact) => ({
+            type: artifact.type,
+            content: artifact.content as object,
+          })),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("[Agent] Error saving user message:", error);
+    // Non-fatal, continue anyway
+  }
+}
+
+// ============================================================================
+// Main Handler
+// ============================================================================
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { message, taskId, artifacts = [], model } = body;
 
-  // Validate model parameter if provided (will be combined with task model later)
+  // Validate model parameter if provided
   const requestModel: ModelName | undefined = isValidModel(model) ? model : undefined;
 
   // 1. Authenticate user
@@ -121,11 +394,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "taskId is required" }, { status: 400 });
   }
 
-  // 2. Load task and check for existing messages
+  // 2. Load task and message count
   const [task, messageCount] = await Promise.all([
     db.task.findUnique({
       where: { id: taskId },
       select: {
+        podId: true,
+        workspaceId: true,
         agentUrl: true,
         agentPassword: true,
         agentWebhookSecret: true,
@@ -138,9 +413,6 @@ export async function POST(request: NextRequest) {
     }),
   ]);
 
-  // If there are existing messages, this is a resume
-  let isResume = messageCount > 0;
-
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
@@ -149,178 +421,105 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Task is not in agent mode" }, { status: 400 });
   }
 
-  // Determine effective model: request model takes precedence, then task model, then default
+  // Determine effective model: request > task > default
   const taskModel: ModelName | undefined = isValidModel(task.model) ? task.model : undefined;
   const effectiveModel: ModelName | undefined = requestModel || taskModel;
 
-  // 3. Determine agent URL (support CUSTOM_GOOSE_URL for local dev)
-  const agentUrl = process.env.CUSTOM_GOOSE_URL || task.agentUrl;
-
-  if (!agentUrl) {
-    return NextResponse.json({ error: "Agent URL not configured" }, { status: 400 });
-  }
-
-  // For custom URL, password is optional (local dev)
-  const requiresAuth = !process.env.CUSTOM_GOOSE_URL;
-
-  if (requiresAuth && !task.agentPassword) {
-    return NextResponse.json({ error: "Agent password not configured" }, { status: 400 });
-  }
-
-  // 4. Decrypt agent password
-  const agentPassword = task.agentPassword ? encryptionService.decryptField("agentPassword", task.agentPassword) : null;
-
-  // 4b. If resuming, validate session exists on the pod
-  let sessionExistsOnPod = false;
+  // 3. Ensure pod is available (claim if needed)
+  let agentCredentials: AgentCredentials;
+  let podUrls: { podId: string; frontend: string; ide: string } | null = null;
   let chatHistoryForPrompt: string | null = null;
 
-  if (isResume) {
+  const isUsingCustomUrl = !!process.env.CUSTOM_GOOSE_URL;
+
+  if (!task.podId && !isUsingCustomUrl) {
+    // No pod assigned - need to claim one
+    console.log("[Agent] No pod assigned to task, claiming new pod...");
+
     try {
-      const validateUrl = agentUrl.replace(/\/$/, "") + "/validate_session";
-      const validateHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
+      const claimResult = await claimPodForTask(taskId, task.workspaceId);
+      agentCredentials = claimResult.credentials;
+      podUrls = {
+        podId: claimResult.podId,
+        frontend: claimResult.frontend,
+        ide: claimResult.ide,
       };
-      if (agentPassword) {
-        validateHeaders["Authorization"] = `Bearer ${agentPassword}`;
-      }
 
-      const validateResponse = await fetch(validateUrl, {
-        method: "POST",
-        headers: validateHeaders,
-        body: JSON.stringify({ session: taskId }),
-      });
-
-      if (validateResponse.ok) {
-        const validateData = await validateResponse.json();
-        sessionExistsOnPod = validateData.exists === true;
+      // For freshly claimed pod with existing messages, include chat history
+      if (messageCount > 0) {
+        console.log("[Agent] Existing messages found, including chat history for context");
+        chatHistoryForPrompt = await getChatHistoryContext(taskId);
       }
+    } catch (claimError) {
+      console.error("[Agent] Failed to claim pod:", claimError);
+      return NextResponse.json(
+        { error: "No pods available" },
+        { status: 503 }
+      );
+    }
+  } else {
+    // Pod exists or using custom URL
+    const agentUrl = isUsingCustomUrl ? process.env.CUSTOM_GOOSE_URL! : task.agentUrl;
 
-      console.log("[Agent] Session validation result:", sessionExistsOnPod ? "exists" : "not found");
+    if (!agentUrl) {
+      return NextResponse.json({ error: "Agent URL not configured" }, { status: 400 });
+    }
 
-      // If session doesn't exist on pod, fetch chat history to include in prompt
-      if (!sessionExistsOnPod) {
-        console.log("[Agent] Session not found on pod, fetching chat history for context");
-        const chatHistory = await fetchChatHistory(taskId);
-        if (chatHistory.length > 0) {
-          chatHistoryForPrompt = formatChatHistoryForPrompt(chatHistory);
-        }
-        // Reset isResume since the pod doesn't have the session
-        isResume = false;
+    // Password required unless using custom URL
+    if (!isUsingCustomUrl && !task.agentPassword) {
+      return NextResponse.json({ error: "Agent password not configured" }, { status: 400 });
+    }
+
+    const agentPassword = task.agentPassword
+      ? encryptionService.decryptField("agentPassword", task.agentPassword)
+      : null;
+
+    agentCredentials = { agentUrl, agentPassword };
+
+    // 4. Validate session on existing pod (if resuming)
+    if (messageCount > 0) {
+      const sessionExists = await validateSessionOnPod(agentUrl, agentPassword, taskId);
+      console.log("[Agent] Session validation result:", sessionExists ? "exists" : "not found");
+
+      if (!sessionExists) {
+        console.log("[Agent] Session not found on pod, including chat history for context");
+        chatHistoryForPrompt = await getChatHistoryContext(taskId);
       }
-    } catch (error) {
-      console.error("[Agent] Error validating session:", error);
-      // On error, assume session doesn't exist and fetch history
-      const chatHistory = await fetchChatHistory(taskId);
-      if (chatHistory.length > 0) {
-        chatHistoryForPrompt = formatChatHistoryForPrompt(chatHistory);
-      }
-      isResume = false;
     }
   }
 
-  // 5. Handle webhook secret (generate if not exists)
-  let webhookSecret: string;
+  // 5. Get or create webhook secret
+  const webhookSecret = await getOrCreateWebhookSecret(taskId, task.agentWebhookSecret);
 
-  if (task.agentWebhookSecret) {
-    webhookSecret = encryptionService.decryptField("agentWebhookSecret", task.agentWebhookSecret);
-  } else {
-    webhookSecret = generateWebhookSecret();
-    const encryptedSecret = encryptionService.encryptField("agentWebhookSecret", webhookSecret);
-    await db.task.update({
-      where: { id: taskId },
-      data: {
-        agentWebhookSecret: JSON.stringify(encryptedSecret),
-      },
-    });
-  }
-
-  // 6. Create webhook JWT and URL
+  // 6. Create webhook URL
   const webhookToken = await createWebhookToken(taskId, webhookSecret);
   const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
   const webhookUrl = `${baseUrl}/api/agent/webhook?token=${webhookToken}`;
 
-  // 7. Call remote server POST /session
-  const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (agentPassword) {
-    headers["Authorization"] = `Bearer ${agentPassword}`;
-  }
-
+  // 7. Create session on remote agent
   let streamToken: string;
-
   try {
-    console.log("[Agent]", isResume ? "Resuming" : "Creating", "session for taskId:", taskId);
-    console.log("[Agent] agentUrl:", agentUrl, "sessionUrl:", sessionUrl);
-    console.log("[Agent] task.agentUrl:", task.agentUrl, "CUSTOM_GOOSE_URL:", process.env.CUSTOM_GOOSE_URL);
-    if (effectiveModel) {
-      console.log("[Agent] Using model:", effectiveModel);
-    }
-
-    // Determine API key based on model (default to Anthropic for backward compatibility)
-    const apiKey = effectiveModel ? getApiKeyForModel(effectiveModel) : process.env.ANTHROPIC_API_KEY;
-
-    const sessionPayload: Record<string, unknown> = {
-      sessionId: taskId, // taskId IS the sessionId
+    streamToken = await createAgentSession(
+      agentCredentials.agentUrl,
+      agentCredentials.agentPassword,
+      taskId,
       webhookUrl,
-      apiKey,
-      searchApiKey: process.env.EXA_API_KEY,
-    };
-
-    // Include model in payload if specified
-    if (effectiveModel) {
-      sessionPayload.model = effectiveModel;
-    }
-
-    const sessionResponse = await fetch(sessionUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(sessionPayload),
-    });
-
-    if (!sessionResponse.ok) {
-      const errorText = await sessionResponse.text();
-      console.error("[Agent] Session creation failed:", sessionResponse.status, errorText);
-      return NextResponse.json({ error: "Failed to create agent session" }, { status: 502 });
-    }
-
-    const sessionData = await sessionResponse.json();
-    streamToken = sessionData.token;
-
-    if (!streamToken) {
-      return NextResponse.json({ error: "No stream token returned from agent" }, { status: 502 });
-    }
+      effectiveModel
+    );
   } catch (error) {
-    console.error("[Agent] Error connecting to remote server:", error);
-    return NextResponse.json({ error: "Failed to connect to agent server" }, { status: 502 });
+    console.error("[Agent] Error creating session:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create agent session" },
+      { status: 502 }
+    );
   }
 
-  // 8. Save user message to database
-  try {
-    await db.chatMessage.create({
-      data: {
-        taskId,
-        message,
-        role: ChatRole.USER,
-        status: ChatStatus.SENT,
-        artifacts: {
-          create: artifacts.map((artifact: ArtifactRequest) => ({
-            type: artifact.type,
-            content: artifact.content,
-          })),
-        },
-      },
-    });
-  } catch (error) {
-    console.error("[Agent] Error saving user message:", error);
-    // Non-fatal, continue anyway
-  }
+  // 8. Save user message
+  await saveUserMessage(taskId, message, artifacts);
 
-  // 9. Return connection info to frontend
-  const streamUrl = agentUrl.replace(/\/$/, "") + `/stream/${taskId}`;
+  // 9. Return connection info
+  const streamUrl = agentCredentials.agentUrl.replace(/\/$/, "") + `/stream/${taskId}`;
+  const isResume = messageCount > 0 && !chatHistoryForPrompt;
 
   return NextResponse.json({
     success: true,
@@ -328,7 +527,7 @@ export async function POST(request: NextRequest) {
     streamToken,
     streamUrl,
     resume: isResume,
-    // Include chat history context if session was not found on pod
     ...(chatHistoryForPrompt && { historyContext: chatHistoryForPrompt }),
+    ...(podUrls && { podUrls }),
   });
 }
