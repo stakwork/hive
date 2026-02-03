@@ -1182,6 +1182,9 @@ model Whiteboard {
   appState    Json      @default("{}") @map("app_state")
   files       Json      @default("{}")
 
+  // Collaboration versioning for conflict resolution
+  version     Int       @default(0)
+
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 

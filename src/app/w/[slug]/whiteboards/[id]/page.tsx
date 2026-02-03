@@ -3,13 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
+import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Pencil, Check, X, CheckCircle2, Maximize2, Minimize2 } from "lucide-react";
+import { Loader2, ArrowLeft, Pencil, Check, X, CheckCircle2, Maximize2, Minimize2, Wifi, WifiOff } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -23,6 +25,7 @@ interface WhiteboardData {
   elements: unknown[];
   appState: Record<string, unknown>;
   files: Record<string, unknown>;
+  version: number;
 }
 
 export default function WhiteboardDetailPage() {
@@ -38,9 +41,25 @@ export default function WhiteboardDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
+
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const versionRef = useRef<number>(0);
+
+  // Collaboration hook
+  const {
+    collaborators,
+    excalidrawCollaborators,
+    isConnected,
+    broadcastElements,
+    broadcastCursor,
+    senderId,
+  } = useWhiteboardCollaboration({
+    whiteboardId,
+    excalidrawAPI,
+  });
 
   const loadWhiteboard = useCallback(async () => {
     try {
@@ -49,6 +68,7 @@ export default function WhiteboardDetailPage() {
       if (data.success) {
         setWhiteboard(data.data);
         setEditName(data.data.name);
+        versionRef.current = data.data.version || 0;
       } else {
         router.push(`/w/${slug}/whiteboards`);
       }
@@ -64,7 +84,8 @@ export default function WhiteboardDetailPage() {
     loadWhiteboard();
   }, [loadWhiteboard]);
 
-  const saveWhiteboard = useCallback(
+  // Save to database (debounced)
+  const saveToDatabase = useCallback(
     async (
       elements: readonly ExcalidrawElement[],
       appState: AppState,
@@ -82,6 +103,8 @@ export default function WhiteboardDetailPage() {
             gridSize: appState.gridSize,
           },
           files,
+          broadcast: false, // Don't broadcast again, we already did real-time
+          senderId,
         };
 
         const res = await fetch(`/api/whiteboards/${whiteboard.id}`, {
@@ -93,6 +116,12 @@ export default function WhiteboardDetailPage() {
         if (!res.ok) {
           throw new Error("Failed to save");
         }
+
+        const result = await res.json();
+        if (result.data?.version) {
+          versionRef.current = result.data.version;
+        }
+
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       } catch (error) {
@@ -101,28 +130,41 @@ export default function WhiteboardDetailPage() {
         setSaving(false);
       }
     },
-    [whiteboard]
+    [whiteboard, senderId]
   );
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      // Skip autosave on initial load
+      // Skip on initial load
       if (isInitialLoadRef.current) {
         isInitialLoadRef.current = false;
         return;
       }
 
-      // Clear existing timeout
+      // Broadcast immediately for real-time collaboration (100ms throttle in hook)
+      broadcastElements(elements, appState);
+
+      // Clear existing save timeout
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
 
-      // Debounce save by 1 second
+      // Debounce database save by 2 seconds
       saveTimeoutRef.current = setTimeout(() => {
-        saveWhiteboard(elements, appState, files);
-      }, 1000);
+        saveToDatabase(elements, appState, files);
+      }, 2000);
     },
-    [saveWhiteboard]
+    [broadcastElements, saveToDatabase]
+  );
+
+  // Handle pointer/cursor updates for collaboration
+  const handlePointerUpdate = useCallback(
+    (payload: { pointer: { x: number; y: number }; button: string }) => {
+      if (payload.pointer) {
+        broadcastCursor(payload.pointer.x, payload.pointer.y);
+      }
+    },
+    [broadcastCursor]
   );
 
   // Cleanup timeout on unmount
@@ -241,7 +283,20 @@ export default function WhiteboardDetailPage() {
           </div>
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Collaborators */}
+            <CollaboratorAvatars collaborators={collaborators} />
+
+            {/* Connection status */}
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              {isConnected ? (
+                <Wifi className="w-4 h-4 text-green-500" />
+              ) : (
+                <WifiOff className="w-4 h-4 text-red-500" />
+              )}
+            </div>
+
+            {/* Save status */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {saving && (
                 <>
@@ -291,11 +346,15 @@ export default function WhiteboardDetailPage() {
           </Button>
         )}
         <Excalidraw
+          excalidrawAPI={(api) => setExcalidrawAPI(api)}
           initialData={{
             elements: (whiteboard.elements || []) as never,
             appState: whiteboard.appState as never,
           }}
           onChange={handleChange}
+          onPointerUpdate={handlePointerUpdate}
+          isCollaborating={excalidrawCollaborators.size > 0}
+          collaborators={excalidrawCollaborators}
         />
       </div>
     </div>
