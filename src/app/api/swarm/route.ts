@@ -152,6 +152,10 @@ export async function POST(request: NextRequest) {
             branch,
             workspaceId,
             status: RepositoryStatus.PENDING,
+            // First repository during onboarding gets all sync features enabled
+            codeIngestionEnabled: true,
+            docsEnabled: true,
+            mocksEnabled: true,
           },
         });
         console.log(`[SWARM_CREATE] Created repository record - ID: ${createdRepo.id}, Name: ${repoName}`);
