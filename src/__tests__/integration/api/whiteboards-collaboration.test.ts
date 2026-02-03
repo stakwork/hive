@@ -5,10 +5,11 @@ import {
   generateUniqueId,
   expectSuccess,
   expectUnauthorized,
-  expectError,
+  expectForbidden,
   expectNotFound,
 } from "@/__tests__/support/helpers";
 import type { User, Workspace, Whiteboard } from "@prisma/client";
+import { MIDDLEWARE_HEADERS } from "@/config/middleware";
 
 // Mock Pusher to verify event broadcasting
 const mockPusherTrigger = vi.fn();
@@ -60,36 +61,18 @@ async function createWhiteboardTestSetup() {
   return testData;
 }
 
-// Helper to create test whiteboard
-async function createTestWhiteboard(
-  workspaceId: string,
-  options?: {
-    name?: string;
-    elements?: any[];
-    featureId?: string | null;
-  }
-) {
-  return await db.whiteboard.create({
-    data: {
-      id: generateUniqueId("wb"),
-      name: options?.name || "Test Whiteboard",
-      workspaceId,
-      elements: options?.elements || [],
-      appState: {},
-      files: {},
-      featureId: options?.featureId || null,
-    },
-  });
-}
-
-// Helper to create PATCH request
-function createPatchRequest(url: string, body: any, token?: string) {
+// Helper to create PATCH request with middleware headers
+function createPatchRequest(url: string, body: any, user?: User) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
 
-  if (token) {
-    headers["x-api-token"] = token;
+  if (user) {
+    headers[MIDDLEWARE_HEADERS.USER_ID] = user.id;
+    headers[MIDDLEWARE_HEADERS.USER_EMAIL] = user.email;
+    headers[MIDDLEWARE_HEADERS.USER_NAME] = user.name || "";
+    headers[MIDDLEWARE_HEADERS.AUTH_STATUS] = "authenticated";
+    headers[MIDDLEWARE_HEADERS.REQUEST_ID] = generateUniqueId();
   }
 
   return new Request(url, {
@@ -132,14 +115,14 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { elements: updatedElements },
-        testUser.id
+        testUser
       );
 
       const response = await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
-      expectSuccess(response);
+      await expectSuccess(response);
 
       // Verify Pusher trigger was called
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -173,14 +156,14 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { elements: largeElements },
-        testUser.id
+        testUser
       );
 
       const response = await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
-      expectSuccess(response);
+      await expectSuccess(response);
 
       // Verify Pusher was called
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -207,14 +190,14 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/invalid-id`,
         { elements: [] },
-        testUser.id
+        testUser
       );
 
       const response = await PATCH(request, {
-        params: { whiteboardId: "invalid-id" },
+        params: Promise.resolve({ whiteboardId: "invalid-id" }),
       });
 
-      expectNotFound(response);
+      await expectNotFound(response);
 
       // Verify Pusher was NOT called
       expect(mockPusherTrigger).not.toHaveBeenCalled();
@@ -232,14 +215,14 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { elements: [] },
-        unauthorizedUser.id
+        unauthorizedUser
       );
 
       const response = await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
-      expectUnauthorized(response);
+      await expectForbidden(response);
 
       // Verify Pusher was NOT called
       expect(mockPusherTrigger).not.toHaveBeenCalled();
@@ -268,14 +251,14 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { name: "Updated by Member" },
-        member.id
+        member
       );
 
       const response = await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
-      expectSuccess(response);
+      await expectSuccess(response);
 
       // Verify Pusher was called (member has access)
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -294,15 +277,15 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { name: "Updated Name" },
-        testUser.id
+        testUser
       );
 
       const response = await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       // Request should still succeed even if Pusher fails
-      expectSuccess(response);
+      await expectSuccess(response);
 
       // Verify Pusher was attempted
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -318,11 +301,11 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { name: "Test" },
-        testUser.id
+        testUser
       );
 
       await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -339,11 +322,11 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { name: "New Whiteboard Name" },
-        testUser.id
+        testUser
       );
 
       await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -364,11 +347,11 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { elements: newElements },
-        testUser.id
+        testUser
       );
 
       await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -380,11 +363,11 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { appState: newAppState },
-        testUser.id
+        testUser
       );
 
       await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -396,11 +379,11 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { files: newFiles },
-        testUser.id
+        testUser
       );
 
       await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       expect(mockPusherTrigger).toHaveBeenCalledTimes(1);
@@ -410,11 +393,11 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { name: "Test" },
-        testUser.id
+        testUser
       );
 
       await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       const channelName = mockPusherTrigger.mock.calls[0][0];
@@ -428,11 +411,11 @@ describe("Whiteboard Collaboration Integration Tests", () => {
       const request = createPatchRequest(
         `http://localhost:3000/api/whiteboards/${testWhiteboard.id}`,
         { name: "Test" },
-        testUser.id
+        testUser
       );
 
       await PATCH(request, {
-        params: { whiteboardId: testWhiteboard.id },
+        params: Promise.resolve({ whiteboardId: testWhiteboard.id }),
       });
 
       const eventName = mockPusherTrigger.mock.calls[0][1];
