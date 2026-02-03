@@ -591,6 +591,9 @@ export async function callStakworkAPI(params: {
   if (process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;
   }
+  if (process.env.ANTHROPIC_API_KEY) {
+    vars.summaryApiKey = process.env.ANTHROPIC_API_KEY;
+  }
 
   // Get workflow ID (replicating workflow selection logic)
   const stakworkWorkflowIds = config.STAKWORK_WORKFLOW_ID.split(",");
