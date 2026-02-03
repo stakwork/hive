@@ -41,6 +41,7 @@ import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
 import { archiveTaskAndRedirect } from "./lib/archive-task";
+import type { ModelName } from "@/lib/ai/models";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -125,6 +126,7 @@ export default function TaskChatPage() {
   const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -481,9 +483,14 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string) => {
+  const handleStart = async (msg: string, model?: ModelName) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
+
+    // Update selected model if provided
+    if (model) {
+      setSelectedModel(model);
+    }
 
     try {
       if (isNewTask) {
@@ -499,6 +506,7 @@ export default function TaskChatPage() {
             status: "active",
             workspaceSlug: slug,
             mode: taskMode, // Save the task mode
+            model: model || selectedModel, // Save selected AI model
           }),
         });
 
@@ -1169,6 +1177,8 @@ export default function TaskChatPage() {
             onWorkflowSelect={handleWorkflowSelect}
             isLoadingWorkflows={isLoadingWorkflows}
             workflowsError={workflowsError}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
         </motion.div>
       ) : (
