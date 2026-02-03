@@ -457,8 +457,34 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       );
     }
+  } else if (!task.podId && isUsingCustomUrl) {
+    // Local dev mode - set mock pod info
+    const mockPodId = "local-dev";
+    const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
+    
+    // Store mock podId on task
+    await db.task.update({
+      where: { id: taskId },
+      data: {
+        podId: mockPodId,
+        agentUrl: process.env.CUSTOM_GOOSE_URL,
+      },
+    });
+    
+    agentCredentials = {
+      agentUrl: process.env.CUSTOM_GOOSE_URL!,
+      agentPassword: null,
+    };
+    
+    podUrls = {
+      podId: mockPodId,
+      frontend: mockFrontend,
+      ide: mockFrontend, // Use same URL for IDE in dev
+    };
+    
+    console.log("[Agent] Using local dev mode with mock pod:", mockPodId);
   } else {
-    // Pod exists or using custom URL
+    // Pod exists (real or mock)
     const agentUrl = isUsingCustomUrl ? process.env.CUSTOM_GOOSE_URL! : task.agentUrl;
 
     if (!agentUrl) {
@@ -514,8 +540,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 8. Save user message
-  await saveUserMessage(taskId, message, artifacts);
+  // 8. Save user message (include pod artifacts if pod was just claimed)
+  const allArtifacts: ArtifactRequest[] = [...artifacts];
+  if (podUrls) {
+    allArtifacts.push(
+      { type: ArtifactType.BROWSER, content: { url: podUrls.frontend } },
+      { type: ArtifactType.IDE, content: { url: podUrls.ide } }
+    );
+  }
+  await saveUserMessage(taskId, message, allArtifacts);
 
   // 9. Return connection info
   const streamUrl = agentCredentials.agentUrl.replace(/\/$/, "") + `/stream/${taskId}`;
