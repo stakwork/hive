@@ -202,7 +202,7 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
           )}
 
           <TabsContent value="prompts" className="flex-1 overflow-hidden mt-0">
-            <PromptsPanel workflowId={workflowId} />
+            <PromptsPanel workflowId={typeof workflowId === "number" ? workflowId : undefined} />
           </TabsContent>
 
           <TabsContent value="stakwork" className="flex-1 overflow-hidden mt-0">
