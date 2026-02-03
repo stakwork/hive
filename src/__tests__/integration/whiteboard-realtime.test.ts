@@ -1,6 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { pusherServer, getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { db } from "@/lib/db";
+
+// Mock the entire pusher module
+vi.mock("@/lib/pusher", async () => {
+  const actual = await vi.importActual("@/lib/pusher");
+  
+  // Define mocks inside the factory function to avoid hoisting issues
+  const mockChannel = {
+    bind: vi.fn(),
+    unbind: vi.fn(),
+  };
+
+  const mockPusherClient = {
+    subscribe: vi.fn().mockReturnValue(mockChannel),
+    unsubscribe: vi.fn(),
+    disconnect: vi.fn(),
+  };
+
+  const mockPusherServer = {
+    trigger: vi.fn().mockResolvedValue({}),
+  };
+
+  return {
+    ...actual,
+    pusherServer: mockPusherServer,
+    getPusherClient: vi.fn(() => mockPusherClient),
+  };
+});
 
 // Mock Pusher libraries
 vi.mock("pusher", () => {
@@ -21,9 +47,11 @@ vi.mock("pusher-js", () => {
     unsubscribe: vi.fn(),
     disconnect: vi.fn(),
   }));
-  
   return { default: MockPusherClient };
 });
+
+// Import from the mocked module
+import { pusherServer, getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 vi.mock("@/lib/db", () => ({
   db: {
