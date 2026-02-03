@@ -8,7 +8,7 @@ import { getGithubWebhookCallbackUrl, getStakgraphWebhookCallbackUrl } from "@/l
 import { WebhookService } from "@/services/github/WebhookService";
 import { swarmApiRequest } from "@/services/swarm/api/swarm";
 import { saveOrUpdateSwarm } from "@/services/swarm/db";
-import { triggerIngestAsync } from "@/services/swarm/stakgraph-actions";
+import { triggerIngestAsync, SyncOptions } from "@/services/swarm/stakgraph-actions";
 import { RepositoryStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
@@ -76,15 +76,31 @@ export async function POST(request: NextRequest) {
     console.log(`[STAKGRAPH_INGEST] Using workspace ID: ${repoWorkspaceId}`);
 
     // Determine repositories to ingest based on repositoryId parameter
-    let repositoriesToIngest: Array<{ id: string; repositoryUrl: string }>;
-    let finalRepoUrls: string;
+    // Include sync config fields for filtering and building docs/mocks params
+    type RepoWithSyncConfig = {
+      id: string;
+      repositoryUrl: string;
+      name: string;
+      codeIngestionEnabled: boolean;
+      docsEnabled: boolean;
+      mocksEnabled: boolean;
+    };
+    let allFetchedRepos: RepoWithSyncConfig[];
 
     if (repositoryId) {
       // Single repository ingestion
       console.log(`[STAKGRAPH_INGEST] Single repository mode - repositoryId: ${repositoryId}`);
       const repository = await db.repository.findUnique({
         where: { id: repositoryId },
-        select: { id: true, repositoryUrl: true, workspaceId: true },
+        select: {
+          id: true,
+          repositoryUrl: true,
+          workspaceId: true,
+          name: true,
+          codeIngestionEnabled: true,
+          docsEnabled: true,
+          mocksEnabled: true,
+        },
       });
 
       if (!repository) {
@@ -97,8 +113,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, message: "Repository does not belong to this workspace" }, { status: 400 });
       }
 
-      repositoriesToIngest = [repository];
-      finalRepoUrls = repository.repositoryUrl;
+      allFetchedRepos = [repository];
     } else {
       // Multi-repository ingestion
       console.log(`[STAKGRAPH_INGEST] Multi-repository mode - fetching all repositories for workspace: ${repoWorkspaceId}`);
@@ -109,11 +124,46 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, message: "No repositories found for this workspace" }, { status: 400 });
       }
 
-      repositoriesToIngest = allRepositories.map(repo => ({ id: repo.id, repositoryUrl: repo.repositoryUrl }));
-      finalRepoUrls = allRepositories.map(repo => repo.repositoryUrl).join(',');
-      console.log(`[STAKGRAPH_INGEST] Found ${allRepositories.length} repositories to ingest`);
+      allFetchedRepos = allRepositories;
+      console.log(`[STAKGRAPH_INGEST] Found ${allRepositories.length} repositories total`);
     }
 
+    // Filter to only repos with code ingestion enabled
+    const repositoriesToIngest = allFetchedRepos.filter(repo => repo.codeIngestionEnabled);
+
+    if (repositoriesToIngest.length === 0) {
+      console.log(`[STAKGRAPH_INGEST] No repositories with code ingestion enabled`);
+      return NextResponse.json({ success: false, message: "No repositories with code ingestion enabled" }, { status: 400 });
+    }
+
+    console.log(`[STAKGRAPH_INGEST] Repositories to ingest: ${repositoriesToIngest.length} of ${allFetchedRepos.length}`);
+
+    // Build docs and mocks params based on repo settings
+    const docsRepos = repositoriesToIngest.filter(r => r.docsEnabled);
+    const mocksRepos = repositoriesToIngest.filter(r => r.mocksEnabled);
+
+    let syncOptions: SyncOptions | undefined;
+    if (docsRepos.length > 0 || mocksRepos.length > 0) {
+      syncOptions = {};
+
+      // If all repos have docs enabled, use true; otherwise use comma-separated repo names
+      if (docsRepos.length > 0) {
+        syncOptions.docs = docsRepos.length === repositoriesToIngest.length
+          ? true
+          : docsRepos.map(r => r.name).join(',');
+      }
+
+      // If all repos have mocks enabled, use true; otherwise use comma-separated repo names
+      if (mocksRepos.length > 0) {
+        syncOptions.mocks = mocksRepos.length === repositoriesToIngest.length
+          ? true
+          : mocksRepos.map(r => r.name).join(',');
+      }
+
+      console.log(`[STAKGRAPH_INGEST] Sync options - docs: ${syncOptions.docs}, mocks: ${syncOptions.mocks}`);
+    }
+
+    const finalRepoUrls = repositoriesToIngest.map(repo => repo.repositoryUrl).join(',');
     console.log(`[STAKGRAPH_INGEST] Repository URLs to ingest: ${finalRepoUrls}`);
 
     // Check if ingest request is already in progress
@@ -193,6 +243,7 @@ export async function POST(request: NextRequest) {
       { username, pat },
       stakgraphCallbackUrl,
       use_lsp,
+      syncOptions,
     );
 
     const ingestDuration = Date.now() - startTime;
@@ -213,7 +264,8 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      // Set up GitHub webhooks for all repositories being ingested
+      // Set up GitHub webhooks only for repositories with code ingestion enabled
+      // (repositoriesToIngest is already filtered to only include codeIngestionEnabled repos)
       console.log(`[STAKGRAPH_INGEST] Setting up GitHub webhooks for ${repositoriesToIngest.length} repository/repositories`);
       const callbackUrl = getGithubWebhookCallbackUrl(repoWorkspaceId, request);
       const webhookService = new WebhookService(getServiceConfig("github"));
