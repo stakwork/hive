@@ -16,6 +16,7 @@ vi.mock("@/lib/pusher", () => ({
   getPusherClient: vi.fn(),
   getTaskChannelName: vi.fn((taskId: string) => `task-${taskId}`),
   getWorkspaceChannelName: vi.fn((workspaceSlug: string) => `workspace-${workspaceSlug}`),
+  getWhiteboardChannelName: vi.fn((whiteboardId: string) => `whiteboard-${whiteboardId}`),
   PUSHER_EVENTS: {
     NEW_MESSAGE: "new-message",
     CONNECTION_COUNT: "connection-count",
@@ -23,6 +24,7 @@ vi.mock("@/lib/pusher", () => ({
     RECOMMENDATIONS_UPDATED: "recommendations-updated",
     TASK_TITLE_UPDATE: "task-title-update",
     WORKSPACE_TASK_TITLE_UPDATE: "workspace-task-title-update",
+    WHITEBOARD_UPDATE: "whiteboard-update",
   },
 }));
 
@@ -968,6 +970,99 @@ describe("usePusherConnection Hook", () => {
       expect(mockChannel.unbind_all).toHaveBeenCalled();
       expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith("task-task-123");
       expect(mockPusherClient.subscribe).toHaveBeenCalledWith("workspace-test-workspace");
+    });
+  });
+
+  describe("Whiteboard Channel Connection", () => {
+    test("should subscribe to whiteboard channel when type is whiteboard", () => {
+      const whiteboardId = "whiteboard-123";
+      const { result } = renderHook(() => usePusherConnection({ enabled: false }));
+
+      result.current.connect(whiteboardId, "whiteboard");
+
+      expect(mockPusherClient.subscribe).toHaveBeenCalledWith(`whiteboard-${whiteboardId}`);
+    });
+
+    test("should call onWhiteboardUpdate when whiteboard-update event is received", () => {
+      const whiteboardId = "whiteboard-123";
+      const onWhiteboardUpdate = vi.fn();
+      const mockUpdate = {
+        whiteboardId,
+        timestamp: new Date().toISOString(),
+      };
+
+      const { result } = renderHook(() => usePusherConnection({ 
+        enabled: false,
+        onWhiteboardUpdate,
+      }));
+
+      result.current.connect(whiteboardId, "whiteboard");
+
+      // Get the WHITEBOARD_UPDATE callback
+      const whiteboardUpdateCallback = mockChannel.bind.mock.calls.find(
+        (call) => call[0] === MOCK_PUSHER_EVENTS.WHITEBOARD_UPDATE
+      )?.[1];
+      
+      expect(whiteboardUpdateCallback).toBeDefined();
+
+      // Simulate whiteboard update
+      whiteboardUpdateCallback?.(mockUpdate);
+
+      expect(onWhiteboardUpdate).toHaveBeenCalledWith(mockUpdate);
+    });
+
+    test("should disconnect from whiteboard channel on unmount", () => {
+      const whiteboardId = "whiteboard-123";
+      const { result, unmount } = renderHook(() => usePusherConnection({ enabled: false }));
+
+      result.current.connect(whiteboardId, "whiteboard");
+
+      expect(mockPusherClient.subscribe).toHaveBeenCalledWith(`whiteboard-${whiteboardId}`);
+
+      // Unmount
+      unmount();
+
+      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`whiteboard-${whiteboardId}`);
+    });
+
+    test("should handle switching from task to whiteboard channel", () => {
+      const taskId = "task-123";
+      const whiteboardId = "whiteboard-456";
+      const { result } = renderHook(() => usePusherConnection({ enabled: false }));
+
+      // Connect to task channel
+      result.current.connect(taskId, "task");
+      expect(mockPusherClient.subscribe).toHaveBeenCalledWith(`task-${taskId}`);
+
+      vi.clearAllMocks();
+
+      // Switch to whiteboard channel
+      result.current.connect(whiteboardId, "whiteboard");
+
+      // Should disconnect from task
+      expect(mockChannel.unbind_all).toHaveBeenCalled();
+      expect(mockPusherClient.unsubscribe).toHaveBeenCalledWith(`task-${taskId}`);
+
+      // Should connect to whiteboard
+      expect(mockPusherClient.subscribe).toHaveBeenCalledWith(`whiteboard-${whiteboardId}`);
+    });
+
+    test("should not call onWhiteboardUpdate when callback is not provided", () => {
+      const whiteboardId = "whiteboard-123";
+      const { result } = renderHook(() => usePusherConnection({ enabled: false }));
+
+      // Should not throw without callback
+      expect(() => {
+        result.current.connect(whiteboardId, "whiteboard");
+      }).not.toThrow();
+
+      const whiteboardUpdateCallback = mockChannel.bind.mock.calls.find(
+        (call) => call[0] === MOCK_PUSHER_EVENTS.WHITEBOARD_UPDATE
+      )?.[1];
+
+      // Callback should still be bound (but will be no-op)
+      expect(whiteboardUpdateCallback).toBeDefined();
     });
   });
 });

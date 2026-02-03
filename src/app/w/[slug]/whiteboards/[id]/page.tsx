@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowLeft, Pencil, Check, X, CheckCircle2, Maximize2, Minimize2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { usePusherConnection } from "@/hooks/usePusherConnection";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -63,6 +64,25 @@ export default function WhiteboardDetailPage() {
   useEffect(() => {
     loadWhiteboard();
   }, [loadWhiteboard]);
+
+  // Subscribe to real-time updates via Pusher
+  const { connect, disconnect } = usePusherConnection({
+    enabled: true,
+    onWhiteboardUpdate: (update) => {
+      // Only re-fetch if user is not actively editing (avoid conflicts)
+      if (!saveTimeoutRef.current) {
+        loadWhiteboard();
+      }
+    },
+  });
+
+  // Connect to whiteboard channel on mount
+  useEffect(() => {
+    if (whiteboardId) {
+      connect(whiteboardId, "whiteboard");
+    }
+    return () => disconnect();
+  }, [whiteboardId, connect, disconnect]);
 
   const saveWhiteboard = useCallback(
     async (

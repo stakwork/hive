@@ -78,6 +78,9 @@ export async function seedMockData(
   // Seed Attachments linked to chat messages
   await seedAttachments(workspaceId, allTasks);
 
+  // Seed whiteboards
+  await seedWhiteboards(workspaceId, features);
+
   console.log("[MockSeed] Mock data seeding complete");
 }
 
@@ -2096,4 +2099,493 @@ async function seedAttachments(
   }
 
   console.log(`[MockSeed] Created ${attachmentCount} attachments`);
+}
+
+/**
+ * Seeds Whiteboards with realistic Excalidraw content
+ * Creates 3-5 whiteboards per workspace:
+ * - Empty whiteboard (baseline)
+ * - Whiteboard with 5-10 basic shapes (rectangles, circles, arrows)
+ * - Whiteboard with 50+ elements for performance testing
+ * - Whiteboard linked to a feature via featureId
+ * - Standalone whiteboard (featureId: null)
+ */
+async function seedWhiteboards(
+  workspaceId: string,
+  features: Array<{ id: string; title: string }>
+): Promise<void> {
+  // Check for existing whiteboards for idempotency
+  const existingCount = await db.whiteboard.count({
+    where: { workspaceId },
+  });
+
+  if (existingCount > 0) {
+    console.log("[MockSeed] Whiteboards already exist, skipping seed");
+    return;
+  }
+
+  // Helper to generate unique IDs for Excalidraw elements
+  const generateId = () => Math.random().toString(36).substring(2, 15);
+
+  // 1. Empty whiteboard (baseline)
+  await db.whiteboard.create({
+    data: {
+      name: "Blank Canvas",
+      workspaceId,
+      elements: [],
+      appState: {
+        viewBackgroundColor: "#ffffff",
+        currentItemFontFamily: 1,
+      },
+      files: {},
+    },
+  });
+
+  // 2. Whiteboard with 5-10 basic shapes
+  const basicElements = [
+    {
+      id: generateId(),
+      type: "rectangle",
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 150,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "#a5d8ff",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: { type: 3 },
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+    },
+    {
+      id: generateId(),
+      type: "ellipse",
+      x: 400,
+      y: 120,
+      width: 180,
+      height: 180,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "#ffc9c9",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: null,
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+    },
+    {
+      id: generateId(),
+      type: "arrow",
+      x: 300,
+      y: 175,
+      width: 100,
+      height: 0,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: { type: 2 },
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+      points: [
+        [0, 0],
+        [100, 0],
+      ],
+      lastCommittedPoint: null,
+      startBinding: null,
+      endBinding: null,
+      startArrowhead: null,
+      endArrowhead: "arrow",
+    },
+    {
+      id: generateId(),
+      type: "text",
+      x: 120,
+      y: 140,
+      width: 160,
+      height: 25,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: null,
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+      text: "Component A",
+      fontSize: 20,
+      fontFamily: 1,
+      textAlign: "center",
+      verticalAlign: "middle",
+      baseline: 18,
+      containerId: null,
+      originalText: "Component A",
+      lineHeight: 1.25,
+    },
+    {
+      id: generateId(),
+      type: "text",
+      x: 420,
+      y: 185,
+      width: 140,
+      height: 25,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: null,
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+      text: "Component B",
+      fontSize: 20,
+      fontFamily: 1,
+      textAlign: "center",
+      verticalAlign: "middle",
+      baseline: 18,
+      containerId: null,
+      originalText: "Component B",
+      lineHeight: 1.25,
+    },
+    {
+      id: generateId(),
+      type: "diamond",
+      x: 150,
+      y: 350,
+      width: 120,
+      height: 120,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "#b2f2bb",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: { type: 2 },
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+    },
+  ];
+
+  await db.whiteboard.create({
+    data: {
+      name: "System Architecture",
+      workspaceId,
+      elements: basicElements,
+      appState: {
+        viewBackgroundColor: "#ffffff",
+        currentItemFontFamily: 1,
+      },
+      files: {},
+    },
+  });
+
+  // 3. Whiteboard with 50+ elements for performance testing
+  const performanceElements = [];
+  for (let i = 0; i < 55; i++) {
+    const row = Math.floor(i / 10);
+    const col = i % 10;
+    performanceElements.push({
+      id: generateId(),
+      type: i % 3 === 0 ? "rectangle" : i % 3 === 1 ? "ellipse" : "diamond",
+      x: 50 + col * 100,
+      y: 50 + row * 100,
+      width: 80,
+      height: 80,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: ["#ffd8a8", "#a5d8ff", "#d0bfff"][i % 3],
+      fillStyle: "solid",
+      strokeWidth: 1,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: i % 3 === 0 ? { type: 3 } : null,
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+    });
+  }
+
+  await db.whiteboard.create({
+    data: {
+      name: "Performance Test - Large Canvas",
+      workspaceId,
+      elements: performanceElements,
+      appState: {
+        viewBackgroundColor: "#f8f9fa",
+        currentItemFontFamily: 1,
+      },
+      files: {},
+    },
+  });
+
+  // 4. Whiteboard linked to a feature
+  if (features.length > 0) {
+    const linkedFeature = features[0];
+    const featureElements = [
+      {
+        id: generateId(),
+        type: "rectangle",
+        x: 100,
+        y: 100,
+        width: 250,
+        height: 180,
+        angle: 0,
+        strokeColor: "#1e1e1e",
+        backgroundColor: "#fff9db",
+        fillStyle: "solid",
+        strokeWidth: 2,
+        roughness: 1,
+        opacity: 100,
+        strokeStyle: "solid",
+        roundness: { type: 3 },
+        seed: Math.floor(Math.random() * 1000000),
+        version: 1,
+        versionNonce: Math.floor(Math.random() * 1000000),
+        isDeleted: false,
+        groupIds: [],
+        boundElements: null,
+        updated: Date.now(),
+        link: null,
+        locked: false,
+      },
+      {
+        id: generateId(),
+        type: "text",
+        x: 120,
+        y: 150,
+        width: 210,
+        height: 100,
+        angle: 0,
+        strokeColor: "#1e1e1e",
+        backgroundColor: "transparent",
+        fillStyle: "solid",
+        strokeWidth: 2,
+        roughness: 1,
+        opacity: 100,
+        strokeStyle: "solid",
+        roundness: null,
+        seed: Math.floor(Math.random() * 1000000),
+        version: 1,
+        versionNonce: Math.floor(Math.random() * 1000000),
+        isDeleted: false,
+        groupIds: [],
+        boundElements: null,
+        updated: Date.now(),
+        link: null,
+        locked: false,
+        text: `Feature: ${linkedFeature.title}\n\nKey Components:\n- API Layer\n- Business Logic\n- Data Access`,
+        fontSize: 16,
+        fontFamily: 1,
+        textAlign: "left",
+        verticalAlign: "top",
+        baseline: 14,
+        containerId: null,
+        originalText: `Feature: ${linkedFeature.title}\n\nKey Components:\n- API Layer\n- Business Logic\n- Data Access`,
+        lineHeight: 1.25,
+      },
+    ];
+
+    await db.whiteboard.create({
+      data: {
+        name: `${linkedFeature.title} - Planning`,
+        workspaceId,
+        featureId: linkedFeature.id,
+        elements: featureElements,
+        appState: {
+          viewBackgroundColor: "#ffffff",
+          currentItemFontFamily: 1,
+        },
+        files: {},
+      },
+    });
+  }
+
+  // 5. Standalone whiteboard with annotations
+  const standaloneElements = [
+    {
+      id: generateId(),
+      type: "rectangle",
+      x: 200,
+      y: 150,
+      width: 300,
+      height: 200,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "#e7f5ff",
+      fillStyle: "hachure",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: { type: 3 },
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+    },
+    {
+      id: generateId(),
+      type: "text",
+      x: 250,
+      y: 200,
+      width: 200,
+      height: 100,
+      angle: 0,
+      strokeColor: "#1e1e1e",
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: null,
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+      text: "Brainstorming Session\n\nIdeas:\n✓ Real-time collab\n✓ Auto-save\n• Version history",
+      fontSize: 16,
+      fontFamily: 1,
+      textAlign: "left",
+      verticalAlign: "top",
+      baseline: 14,
+      containerId: null,
+      originalText: "Brainstorming Session\n\nIdeas:\n✓ Real-time collab\n✓ Auto-save\n• Version history",
+      lineHeight: 1.25,
+    },
+    {
+      id: generateId(),
+      type: "freedraw",
+      x: 550,
+      y: 180,
+      width: 150,
+      height: 120,
+      angle: 0,
+      strokeColor: "#f03e3e",
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      roughness: 1,
+      opacity: 100,
+      strokeStyle: "solid",
+      roundness: null,
+      seed: Math.floor(Math.random() * 1000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 1000000),
+      isDeleted: false,
+      groupIds: [],
+      boundElements: null,
+      updated: Date.now(),
+      link: null,
+      locked: false,
+      points: [
+        [0, 0],
+        [10, 15],
+        [25, 35],
+        [45, 55],
+        [70, 75],
+        [100, 90],
+        [130, 100],
+        [150, 120],
+      ],
+      pressures: [],
+      simulatePressure: true,
+      lastCommittedPoint: null,
+    },
+  ];
+
+  await db.whiteboard.create({
+    data: {
+      name: "Team Brainstorm",
+      workspaceId,
+      featureId: null, // Standalone
+      elements: standaloneElements,
+      appState: {
+        viewBackgroundColor: "#ffffff",
+        currentItemFontFamily: 1,
+      },
+      files: {},
+    },
+  });
+
+  console.log("[MockSeed] Created 5 whiteboards with varied content");
 }

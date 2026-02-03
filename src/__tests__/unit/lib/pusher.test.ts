@@ -28,6 +28,7 @@ import {
   getPusherClient,
   getTaskChannelName,
   getWorkspaceChannelName,
+  getWhiteboardChannelName,
   PUSHER_EVENTS,
 } from "@/lib/pusher";
 
@@ -264,6 +265,38 @@ describe("pusher.ts", () => {
     });
   });
 
+  describe("getWhiteboardChannelName", () => {
+    it("should generate correct whiteboard channel name", () => {
+      const whiteboardId = "wb-123";
+      expect(getWhiteboardChannelName(whiteboardId)).toBe("whiteboard-wb-123");
+    });
+
+    it("should handle various whiteboard ID formats", () => {
+      expect(getWhiteboardChannelName("simple")).toBe("whiteboard-simple");
+      expect(getWhiteboardChannelName("with-dashes")).toBe("whiteboard-with-dashes");
+      expect(getWhiteboardChannelName("with_underscores")).toBe("whiteboard-with_underscores");
+      expect(getWhiteboardChannelName("123-numeric")).toBe("whiteboard-123-numeric");
+      expect(getWhiteboardChannelName("UPPERCASE")).toBe("whiteboard-UPPERCASE");
+    });
+
+    it("should return string type", () => {
+      const result = getWhiteboardChannelName("test");
+      expect(typeof result).toBe("string");
+    });
+
+    it("should always include whiteboard prefix", () => {
+      const whiteboardId = "test-id";
+      const channelName = getWhiteboardChannelName(whiteboardId);
+      expect(channelName.startsWith("whiteboard-")).toBe(true);
+    });
+
+    it("should preserve whiteboard ID exactly as provided", () => {
+      const whiteboardId = "special!@#$%characters";
+      const channelName = getWhiteboardChannelName(whiteboardId);
+      expect(channelName).toBe(`whiteboard-${whiteboardId}`);
+    });
+  });
+
   describe("PUSHER_EVENTS", () => {
     it("should contain all expected event constants", () => {
       expect(PUSHER_EVENTS).toEqual({
@@ -280,7 +313,12 @@ describe("pusher.ts", () => {
         PROVENANCE_DATA: "provenance-data",
         PR_STATUS_CHANGE: "pr-status-change",
         BOUNTY_STATUS_CHANGE: "bounty-status-change",
+        WHITEBOARD_UPDATE: "whiteboard-update",
       });
+    });
+
+    it("should include WHITEBOARD_UPDATE event", () => {
+      expect(PUSHER_EVENTS.WHITEBOARD_UPDATE).toBe("whiteboard-update");
     });
 
     it("should have string values for all events", () => {
@@ -337,16 +375,20 @@ describe("pusher.ts", () => {
     it("should work together: channel names with event constants", () => {
       const taskId = "test-task-123";
       const workspaceSlug = "test-workspace";
+      const whiteboardId = "test-whiteboard-456";
       
       const taskChannel = getTaskChannelName(taskId);
       const workspaceChannel = getWorkspaceChannelName(workspaceSlug);
+      const whiteboardChannel = getWhiteboardChannelName(whiteboardId);
       
       expect(taskChannel).toBe("task-test-task-123");
       expect(workspaceChannel).toBe("workspace-test-workspace");
+      expect(whiteboardChannel).toBe("whiteboard-test-whiteboard-456");
       
       // Verify these can be used with event constants
       expect(PUSHER_EVENTS.TASK_TITLE_UPDATE).toBe("task-title-update");
       expect(PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE).toBe("workspace-task-title-update");
+      expect(PUSHER_EVENTS.WHITEBOARD_UPDATE).toBe("whiteboard-update");
     });
 
     it("should have all exports available", () => {
@@ -354,11 +396,13 @@ describe("pusher.ts", () => {
       expect(getPusherClient).toBeDefined();
       expect(getTaskChannelName).toBeDefined();
       expect(getWorkspaceChannelName).toBeDefined();
+      expect(getWhiteboardChannelName).toBeDefined();
       expect(PUSHER_EVENTS).toBeDefined();
       
       expect(typeof getPusherClient).toBe("function");
       expect(typeof getTaskChannelName).toBe("function");
       expect(typeof getWorkspaceChannelName).toBe("function");
+      expect(typeof getWhiteboardChannelName).toBe("function");
       expect(typeof PUSHER_EVENTS).toBe("object");
     });
   });

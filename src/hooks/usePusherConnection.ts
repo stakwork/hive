@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ChatMessage, WorkflowStatus } from "@/lib/chat";
-import { getPusherClient, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { getPusherClient, getTaskChannelName, getWorkspaceChannelName, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type { Channel } from "pusher-js";
 
 export interface WorkflowStatusUpdate {
@@ -45,6 +45,11 @@ export interface BountyStatusChangeEvent {
   content: Record<string, unknown>;
 }
 
+export interface WhiteboardUpdateEvent {
+  whiteboardId: string;
+  timestamp: string;
+}
+
 interface UsePusherConnectionOptions {
   taskId?: string | null;
   workspaceSlug?: string | null;
@@ -55,13 +60,14 @@ interface UsePusherConnectionOptions {
   onTaskTitleUpdate?: (update: TaskTitleUpdateEvent) => void;
   onPRStatusChange?: (update: PRStatusChangeEvent) => void;
   onBountyStatusChange?: (update: BountyStatusChangeEvent) => void;
+  onWhiteboardUpdate?: (update: WhiteboardUpdateEvent) => void;
   connectionReadyDelay?: number; // Configurable delay for connection readiness
 }
 
 interface UsePusherConnectionReturn {
   isConnected: boolean;
   connectionId: string | null;
-  connect: (id: string, type: "task" | "workspace") => void;
+  connect: (id: string, type: "task" | "workspace" | "whiteboard") => void;
   disconnect: () => void;
   error: string | null;
 }
@@ -78,6 +84,7 @@ export function usePusherConnection({
   onTaskTitleUpdate,
   onPRStatusChange,
   onBountyStatusChange,
+  onWhiteboardUpdate,
   connectionReadyDelay = 100, // Default 100ms delay to prevent race conditions
 }: UsePusherConnectionOptions): UsePusherConnectionReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -92,8 +99,9 @@ export function usePusherConnection({
   const onTaskTitleUpdateRef = useRef(onTaskTitleUpdate);
   const onPRStatusChangeRef = useRef(onPRStatusChange);
   const onBountyStatusChangeRef = useRef(onBountyStatusChange);
+  const onWhiteboardUpdateRef = useRef(onWhiteboardUpdate);
   const currentChannelIdRef = useRef<string | null>(null);
-  const currentChannelTypeRef = useRef<"task" | "workspace" | null>(null);
+  const currentChannelTypeRef = useRef<"task" | "workspace" | "whiteboard" | null>(null);
 
   onMessageRef.current = onMessage;
   onWorkflowStatusUpdateRef.current = onWorkflowStatusUpdate;
@@ -101,14 +109,19 @@ export function usePusherConnection({
   onTaskTitleUpdateRef.current = onTaskTitleUpdate;
   onPRStatusChangeRef.current = onPRStatusChange;
   onBountyStatusChangeRef.current = onBountyStatusChange;
+  onWhiteboardUpdateRef.current = onWhiteboardUpdate;
 
   // Stable disconnect function
   const disconnect = useCallback(() => {
     if (channelRef.current && currentChannelIdRef.current && currentChannelTypeRef.current) {
-      const channelName =
-        currentChannelTypeRef.current === "task"
-          ? getTaskChannelName(currentChannelIdRef.current)
-          : getWorkspaceChannelName(currentChannelIdRef.current);
+      let channelName: string;
+      if (currentChannelTypeRef.current === "task") {
+        channelName = getTaskChannelName(currentChannelIdRef.current);
+      } else if (currentChannelTypeRef.current === "workspace") {
+        channelName = getWorkspaceChannelName(currentChannelIdRef.current);
+      } else {
+        channelName = getWhiteboardChannelName(currentChannelIdRef.current);
+      }
 
       if (LOGS) {
         console.log("Unsubscribing from Pusher channel:", channelName);
@@ -131,7 +144,7 @@ export function usePusherConnection({
 
   // Stable connect function
   const connect = useCallback(
-    (targetId: string, type: "task" | "workspace") => {
+    (targetId: string, type: "task" | "workspace" | "whiteboard") => {
       // Disconnect from any existing channel
       disconnect();
 
@@ -140,7 +153,15 @@ export function usePusherConnection({
       }
 
       try {
-        const channelName = type === "task" ? getTaskChannelName(targetId) : getWorkspaceChannelName(targetId);
+        let channelName: string;
+        if (type === "task") {
+          channelName = getTaskChannelName(targetId);
+        } else if (type === "workspace") {
+          channelName = getWorkspaceChannelName(targetId);
+        } else {
+          channelName = getWhiteboardChannelName(targetId);
+        }
+        
         const channel = getPusherClient().subscribe(channelName);
 
         // Set up event handlers
@@ -273,6 +294,22 @@ export function usePusherConnection({
             }
             if (onTaskTitleUpdateRef.current) {
               onTaskTitleUpdateRef.current(update);
+            }
+          });
+        }
+
+        // Whiteboard-specific events
+        if (type === "whiteboard") {
+          channel.bind(PUSHER_EVENTS.WHITEBOARD_UPDATE, (update: WhiteboardUpdateEvent) => {
+            if (LOGS) {
+              console.log("Received whiteboard update:", {
+                whiteboardId: update.whiteboardId,
+                timestamp: update.timestamp,
+                channelName,
+              });
+            }
+            if (onWhiteboardUpdateRef.current) {
+              onWhiteboardUpdateRef.current(update);
             }
           });
         }

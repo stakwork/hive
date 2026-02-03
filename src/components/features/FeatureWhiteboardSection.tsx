@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { PenLine, Plus, Maximize2, Minimize2, Unlink, Loader2, CheckCircle2 } from "lucide-react";
+import { usePusherConnection } from "@/hooks/usePusherConnection";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -91,6 +92,25 @@ export function FeatureWhiteboardSection({
     loadWhiteboard();
     loadAvailableWhiteboards();
   }, [loadWhiteboard, loadAvailableWhiteboards]);
+
+  // Subscribe to real-time updates via Pusher
+  const { connect, disconnect } = usePusherConnection({
+    enabled: !!whiteboard,
+    onWhiteboardUpdate: (update) => {
+      // Only re-fetch if user is not actively editing (avoid conflicts)
+      if (!saveTimeoutRef.current) {
+        loadWhiteboard();
+      }
+    },
+  });
+
+  // Connect to whiteboard channel when whiteboard is loaded
+  useEffect(() => {
+    if (whiteboard?.id) {
+      connect(whiteboard.id, "whiteboard");
+    }
+    return () => disconnect();
+  }, [whiteboard?.id, connect, disconnect]);
 
   // Reset initial load flag when whiteboard changes
   useEffect(() => {

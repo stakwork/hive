@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { pusherServer, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export async function GET(
   request: NextRequest,
@@ -116,6 +117,18 @@ export async function PATCH(
         },
       },
     });
+
+    // Trigger Pusher event for real-time collaboration
+    try {
+      await pusherServer.trigger(
+        getWhiteboardChannelName(whiteboardId),
+        PUSHER_EVENTS.WHITEBOARD_UPDATE,
+        { whiteboardId, timestamp: new Date().toISOString() }
+      );
+    } catch (pusherError) {
+      // Log but don't fail the request if Pusher fails
+      console.error("Failed to trigger Pusher event:", pusherError);
+    }
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
