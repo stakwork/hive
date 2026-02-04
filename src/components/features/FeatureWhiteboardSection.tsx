@@ -1,10 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import dynamic from "next/dynamic";
-import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,11 +10,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card } from "@/components/ui/card";
-import { PenLine, Plus, Maximize2, Minimize2, Unlink, Loader2, CheckCircle2, Wifi, WifiOff } from "lucide-react";
-import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
 import { CollaboratorAvatars } from "@/components/whiteboard/CollaboratorAvatars";
+import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { getInitialAppState } from "@/lib/excalidraw-config";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
+import type {
+  AppState,
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+import { CheckCircle2, Loader2, Maximize2, Minimize2, PenLine, Plus, Unlink, Wifi, WifiOff } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
@@ -424,14 +429,15 @@ export function FeatureWhiteboardSection({
         )}
         <Card className={isFullscreen ? "h-full rounded-none border-0" : "h-[500px] overflow-hidden"}>
           <Excalidraw
-            excalidrawAPI={(api) => setExcalidrawAPI(api)}
+            excalidrawAPI={(api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api)}
             initialData={{
-              elements: (whiteboard.elements || []) as never,
-              appState: whiteboard.appState as never,
+              elements: (whiteboard.elements || []) as readonly ExcalidrawElement[],
+              appState: getInitialAppState(whiteboard.appState as Partial<AppState>) as Partial<AppState>,
             }}
             onChange={handleChange}
             onPointerUpdate={handlePointerUpdate}
             isCollaborating={excalidrawCollaborators.size > 0}
+            // @ts-expect-error - collaborators prop exists at runtime but not in types for v0.18
             collaborators={excalidrawCollaborators}
           />
         </Card>

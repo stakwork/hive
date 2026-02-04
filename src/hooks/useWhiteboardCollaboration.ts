@@ -78,6 +78,9 @@ export function useWhiteboardCollaboration({
   } | null>(null);
   const pendingCursorRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Track last broadcast state for delta computation
+  const lastBroadcastedElementsRef = useRef<Map<string, { version: number; isDeleted?: boolean }>>(new Map());
+
   // Convert cursor positions to Excalidraw's collaborator format
   const excalidrawCollaborators = useMemo(() => {
     const map = new Map<string, Collaborator>();
@@ -98,7 +101,38 @@ export function useWhiteboardCollaboration({
     return map;
   }, [cursorPositions]);
 
+  // Compute delta between current elements and last broadcasted state
+  const computeElementsDelta = useCallback(
+    (elements: readonly ExcalidrawElement[]): ExcalidrawElement[] => {
+      const lastState = lastBroadcastedElementsRef.current;
+      const changedElements: ExcalidrawElement[] = [];
+
+      for (const el of elements) {
+        const lastEl = lastState.get(el.id);
+        // Include if: new element, version changed, or deleted status changed
+        if (
+          !lastEl ||
+          lastEl.version !== el.version ||
+          lastEl.isDeleted !== el.isDeleted
+        ) {
+          changedElements.push(el);
+        }
+      }
+
+      // Update the last broadcasted state
+      const newState = new Map<string, { version: number; isDeleted?: boolean }>();
+      for (const el of elements) {
+        newState.set(el.id, { version: el.version, isDeleted: el.isDeleted });
+      }
+      lastBroadcastedElementsRef.current = newState;
+
+      return changedElements;
+    },
+    []
+  );
+
   // Broadcast elements with 100ms throttle (no DB save, just Pusher)
+  // Uses delta sync to only send changed elements, keeping payload under Pusher's 10KB limit
   const broadcastElements = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState) => {
       if (!whiteboardId) return;
@@ -107,12 +141,18 @@ export function useWhiteboardCollaboration({
       const timeSinceLastBroadcast = now - lastElementsBroadcastRef.current;
 
       const doBroadcast = (els: readonly ExcalidrawElement[], state: AppState) => {
+        // Compute delta - only send changed elements
+        const changedElements = computeElementsDelta(els);
+
+        // Skip broadcast if nothing changed
+        if (changedElements.length === 0) return;
+
         fetch(`/api/whiteboards/${whiteboardId}/collaboration`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "elements",
-            elements: els,
+            elements: changedElements, // Only changed elements
             appState: {
               viewBackgroundColor: state.viewBackgroundColor,
               gridSize: state.gridSize,
@@ -137,7 +177,7 @@ export function useWhiteboardCollaboration({
         }, 100 - timeSinceLastBroadcast);
       }
     },
-    [whiteboardId]
+    [whiteboardId, computeElementsDelta]
   );
 
   // Broadcast cursor with 50ms throttle
