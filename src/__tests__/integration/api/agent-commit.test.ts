@@ -148,6 +148,27 @@ describe("POST /api/agent/commit Integration Tests", () => {
         },
       });
 
+      // Create pod if podId is provided
+      let pod;
+      if (options.podId) {
+        const encryptedPassword = encryptionService.encryptField("password", "test-password");
+        pod = await tx.pod.create({
+          data: {
+            podId: options.podId,
+            swarmId: swarm.swarmId,
+            password: JSON.stringify(encryptedPassword),
+            portMappings: {
+              "3000": 30000,
+              "3010": 30010,
+              "15551": 31551,
+              "15552": 31552,
+            },
+            status: "RUNNING",
+            usageStatus: "USED",
+          },
+        });
+      }
+
       // Create test task with optional podId
       const task = await tx.task.create({
         data: {

@@ -86,6 +86,24 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         },
       });
 
+      // Create an available pod for the swarm
+      const pod = await tx.pod.create({
+        data: {
+          podId: `test-pod-${Date.now()}`,
+          swarmId: swarm.swarmId,
+          password: JSON.stringify(enc.encryptField('password', 'test-pod-password')),
+          portMappings: {
+            '3000': 30000,
+            '3010': 30010,
+            '15551': 31551,
+            '15552': 31552,
+          },
+          status: 'RUNNING',
+          usageStatus: 'UNUSED',
+          healthStatus: 'HEALTHY',
+        },
+      });
+
       // Create GitHub auth (without token - tokens are stored in Account table)
       const githubAuth = await tx.gitHubAuth.create({
         data: {
@@ -108,7 +126,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         },
       });
 
-      return { user, workspace, repository, swarm, githubAuth, task };
+      return { user, workspace, repository, swarm, githubAuth, task, pod };
     });
   }
 

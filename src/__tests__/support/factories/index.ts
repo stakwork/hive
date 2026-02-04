@@ -12,6 +12,7 @@ export * from "./task.factory";
 export * from "./swarm.factory";
 export * from "./repository.factory";
 export * from "./feature.factory";
+export * from "./pod.factory";
 
 // Janitor factories
 export * from "./janitor.factory";
