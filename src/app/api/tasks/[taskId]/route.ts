@@ -62,6 +62,26 @@ export async function PATCH(
 
     // Start workflow if requested
     if (startWorkflow) {
+      // Atomically claim the task — prevents double-start race condition
+      const claimed = await db.task.updateMany({
+        where: {
+          id: taskId,
+          deleted: false,
+          workflowStatus: { notIn: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.COMPLETED] },
+          status: { notIn: [TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.CANCELLED] },
+        },
+        data: {
+          workflowStatus: WorkflowStatus.PENDING,
+        },
+      });
+
+      if (claimed.count === 0) {
+        return NextResponse.json(
+          { error: "Task has already been started" },
+          { status: 409 }
+        );
+      }
+
       const workflowResult = await startTaskWorkflow({
         taskId,
         userId: userOrResponse.id,
