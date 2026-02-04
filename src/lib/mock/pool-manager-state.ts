@@ -149,6 +149,40 @@ class MockPoolStateManager {
     return availablePod || null;
   }
 
+  claimPod(poolName: string, workspaceId: string): MockPod | null {
+    const pool = this.pools.get(poolName);
+    if (!pool) {
+      return null;
+    }
+
+    const availablePod = pool.pods.find(
+      (pod) => pod.usage_status === "available" && pod.state === "running"
+    );
+
+    if (availablePod) {
+      availablePod.usage_status = "in_use";
+      availablePod.workspaceId = workspaceId;
+    }
+
+    return availablePod || null;
+  }
+
+  releasePod(poolName: string, podId: string): boolean {
+    const pool = this.pools.get(poolName);
+    if (!pool) {
+      return false;
+    }
+
+    const pod = pool.pods.find((p) => p.id === podId);
+    if (!pod) {
+      return false;
+    }
+
+    pod.usage_status = "available";
+    delete pod.workspaceId;
+    return true;
+  }
+
   getPod(poolName: string, podId: string): MockPod | undefined {
     const pool = this.pools.get(poolName);
     if (!pool) {
