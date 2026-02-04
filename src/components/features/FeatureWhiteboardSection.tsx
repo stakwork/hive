@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { PenLine, Plus, Maximize2, Minimize2, Unlink, Loader2, CheckCircle2 } from "lucide-react";
+import { getInitialAppState } from "@/lib/excalidraw-config";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -371,7 +372,7 @@ export function FeatureWhiteboardSection({
           <Excalidraw
             initialData={{
               elements: (whiteboard.elements || []) as never,
-              appState: whiteboard.appState as never,
+              appState: getInitialAppState(whiteboard.appState) as never,
             }}
             onChange={handleChange}
           />
