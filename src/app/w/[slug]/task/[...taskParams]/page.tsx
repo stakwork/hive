@@ -638,10 +638,17 @@ export default function TaskChatPage() {
         // this updates the URL WITHOUT reloading the page
         window.history.replaceState({}, "", newUrl);
 
-        setStarted(true);
-        // For agent mode, pod claiming is handled by /api/agent
-        // which returns podUrls that sendMessage will use to create artifacts
-        await sendMessage(msg, { taskId: newTaskId });
+        // For agent mode, pass onPodReady callback so we switch to chat view
+        // as soon as pod is claimed, before stream processing starts
+        if (taskMode === "agent") {
+          await sendMessage(msg, {
+            taskId: newTaskId,
+            onPodReady: () => setStarted(true),
+          });
+        } else {
+          setStarted(true);
+          await sendMessage(msg, { taskId: newTaskId });
+        }
       } else {
         setStarted(true);
         await sendMessage(msg);
@@ -757,6 +764,7 @@ export default function TaskChatPage() {
         replyId?: string;
         webhook?: string;
         artifact?: Artifact;
+        onPodReady?: () => void; // Called after pod is claimed, before stream starts
       },
     ) => {
       // Create artifacts array starting with any existing artifact
@@ -843,6 +851,9 @@ export default function TaskChatPage() {
               )
             );
           }
+
+          // Signal that pod is ready (for handleStart to switch views)
+          options?.onPodReady?.();
 
           // 2. Connect directly to remote server for streaming
           // If historyContext is provided, the session was not found on the pod
