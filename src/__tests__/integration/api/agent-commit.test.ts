@@ -42,9 +42,9 @@ vi.mock("@/lib/encryption", () => ({
   },
 }));
 
-// Mock pod utility functions
-vi.mock("@/lib/pods/utils", () => ({
-  getPodFromPool: vi.fn(),
+// Mock pod query functions
+vi.mock("@/lib/pods", () => ({
+  getPodDetails: vi.fn(),
   POD_PORTS: {
     CONTROL: "3010",
   },
@@ -155,7 +155,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
         pod = await tx.pod.create({
           data: {
             podId: options.podId,
-            swarmId: swarm.swarmId,
+            swarmId: swarm.id,
             password: JSON.stringify(encryptedPassword),
             portMappings: {
               "3000": 30000,
@@ -442,53 +442,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       await expectNotFound(response, "No swarm found for this workspace");
     });
 
-    test("should return 400 when swarm has no pool configuration", async () => {
-      const user = await createTestUser();
-      const workspace = await db.workspace.create({
-        data: {
-          name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
-        },
-      });
 
-      // Create swarm without poolApiKey
-      await db.swarm.create({
-        data: {
-          name: `test-swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: workspace.id,
-          poolState: "COMPLETE",
-        },
-      });
-
-      // Create task with podId
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Test Task",
-          status: "TODO",
-          priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
-          podId: "test-pod-id",
-        },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/agent/commit", {
-        workspaceId: workspace.id,
-        taskId: task.id,
-        commitMessage: "Test commit",
-        branchName: "feature/test",
-      });
-
-      const response = await POST(request);
-      await expectError(response, "Swarm not properly configured with pool information", 400);
-    });
 
     test("should return 400 when workspace has no source control org", async () => {
       const user = await createTestUser();
@@ -528,10 +482,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -553,10 +506,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -587,10 +539,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -623,15 +574,11 @@ describe("POST /api/agent/commit Integration Tests", () => {
       });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
-        url: "http://test-pod.dev",
-        state: "running",
-        repositories: ["https://github.com/test-org/test-repo"],
       } as any);
 
       // Mock getUserAppTokens
@@ -686,10 +633,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -726,10 +672,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -771,10 +716,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool with missing control port
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails with missing control port
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: {}, // Empty port mappings
       } as any);
@@ -811,10 +755,9 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -868,9 +811,8 @@ describe("POST /api/agent/commit Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock dependencies
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -904,13 +846,13 @@ describe("POST /api/agent/commit Integration Tests", () => {
   });
 
   describe("Error Handling Tests", () => {
-    test("should handle getPodFromPool failure", async () => {
+    test("should handle getPodDetails failure", async () => {
       const { user, workspace, task } = await createTestDataWithCommitCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool to throw error
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockRejectedValue(new Error("Failed to get workspace from pool: 404"));
+      // Mock getPodDetails to throw error
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockRejectedValue(new Error("Failed to get workspace from pool: 404"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/commit", {
         workspaceId: workspace.id,
@@ -931,9 +873,8 @@ describe("POST /api/agent/commit Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock dependencies
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
         portMappings: { "3010": "http://localhost:3010" },
       } as any);
@@ -1022,13 +963,10 @@ describe("POST /api/agent/commit Integration Tests", () => {
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
       // Mock all dependencies
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
         password: "secure-password",
         portMappings: { "3010": "http://pod-control.test:3010" },
-        url: "http://test-pod.dev",
-        state: "running",
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
@@ -1069,8 +1007,8 @@ describe("POST /api/agent/commit Integration Tests", () => {
         },
       });
 
-      // Verify getPodFromPool was called with correct params
-      expect(getPodFromPool).toHaveBeenCalledWith("test-pod-id", "test-pool-api-key");
+      // Verify getPodDetails was called with correct params
+      expect(getPodDetails).toHaveBeenCalledWith("test-pod-id");
 
       // Verify getUserAppTokens was called with correct params
       expect(getUserAppTokens).toHaveBeenCalledWith(user.id, "test-org");
