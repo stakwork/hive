@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, ArrowLeft, Pencil, Check, X, CheckCircle2, Maximize2, Minimize2 } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { usePusherConnection } from "@/hooks/usePusherConnection";
+import { getInitialAppState } from "@/lib/excalidraw-config";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -313,7 +314,7 @@ export default function WhiteboardDetailPage() {
         <Excalidraw
           initialData={{
             elements: (whiteboard.elements || []) as never,
-            appState: whiteboard.appState as never,
+            appState: getInitialAppState(whiteboard.appState) as never,
           }}
           onChange={handleChange}
         />
