@@ -6,7 +6,8 @@
  */
 
 import { db } from "@/lib/db";
-import { getPodFromPool, POD_PORTS } from "@/lib/pods";
+import { getPodDetails, POD_PORTS } from "@/lib/pods";
+import { EncryptionService } from "@/lib/encryption";
 import { ActionResult } from "@/lib/chat";
 import { ChatRole, ChatStatus } from "@prisma/client";
 import type { ChatMessage, Artifact } from "@prisma/client";
@@ -21,7 +22,6 @@ export interface GenerateDiffResult {
 export interface GenerateDiffOptions {
   taskId: string;
   podId: string;
-  poolApiKey: string;
 }
 
 /**
@@ -31,20 +31,28 @@ export interface GenerateDiffOptions {
  * @returns The created ChatMessage with DIFF artifact, or null if no diffs
  */
 export async function generateAndSaveDiff(options: GenerateDiffOptions): Promise<GenerateDiffResult> {
-  const { taskId, podId, poolApiKey } = options;
+  const { taskId, podId } = options;
 
   console.log(`[generateAndSaveDiff] Starting for task ${taskId}, pod ${podId}`);
 
   try {
     // Fetch pod details to get port mappings and password
-    const podWorkspace = await getPodFromPool(podId, poolApiKey);
-    console.log(`[generateAndSaveDiff] Pod workspace retrieved:`, {
-      id: podWorkspace.id,
-      state: podWorkspace.state,
-      hasControlPort: !!podWorkspace.portMappings[POD_PORTS.CONTROL],
+    const podDetails = await getPodDetails(podId);
+    
+    if (!podDetails) {
+      console.error(`[generateAndSaveDiff] Pod not found: ${podId}`);
+      return {
+        success: false,
+        error: `Pod not found: ${podId}`,
+      };
+    }
+    
+    console.log(`[generateAndSaveDiff] Pod details retrieved:`, {
+      id: podId,
+      hasControlPort: !!podDetails.portMappings?.[POD_PORTS.CONTROL],
     });
 
-    const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+    const controlPortUrl = podDetails.portMappings?.[POD_PORTS.CONTROL];
 
     if (!controlPortUrl) {
       console.error(`[generateAndSaveDiff] Control port (${POD_PORTS.CONTROL}) not found`);
@@ -54,6 +62,12 @@ export async function generateAndSaveDiff(options: GenerateDiffOptions): Promise
       };
     }
 
+    // Decrypt password
+    const encryptionService = EncryptionService.getInstance();
+    const password = podDetails.password 
+      ? encryptionService.decryptField("swarmPassword", podDetails.password)
+      : "";
+
     // GET /diff from the control port
     const diffUrl = `${controlPortUrl}/diff`;
     console.log(`[generateAndSaveDiff] Fetching diff from: ${diffUrl}`);
@@ -61,7 +75,7 @@ export async function generateAndSaveDiff(options: GenerateDiffOptions): Promise
     const diffResponse = await fetch(diffUrl, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${podWorkspace.password}`,
+        Authorization: `Bearer ${password}`,
       },
     });
 

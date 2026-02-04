@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { dropPod, getPodFromPool, updatePodRepositories, releaseTaskPod, POD_PORTS } from "@/lib/pods";
+import { dropPod, getPodDetails, updatePodRepositories, releaseTaskPod, POD_PORTS } from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -126,22 +126,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    const poolApiKey = workspace.swarm.poolApiKey;
-
-    // Check if swarm has pool configuration
-    if (!workspace.swarm.id || !poolApiKey) {
-      return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
-    }
-
-    const poolId = workspace.swarm.id || workspace.swarm.poolName;
-    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
-
     console.log(">>> Dropping pod with ID:", podId);
 
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
-      const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
-      const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+      const podDetails = await getPodDetails(podId);
+      
+      if (!podDetails) {
+        return NextResponse.json({ error: "Pod not found" }, { status: 404 });
+      }
+
+      const controlPortUrl = podDetails.portMappings?.[POD_PORTS.CONTROL];
 
       if (!controlPortUrl) {
         console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository reset`);
@@ -150,7 +145,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
           if (repositories.length > 0) {
-            await updatePodRepositories(controlPortUrl, podWorkspace.password, repositories);
+            const encryptionService = EncryptionService.getInstance();
+            const password = podDetails.password 
+              ? encryptionService.decryptField("swarmPassword", podDetails.password)
+              : "";
+            await updatePodRepositories(controlPortUrl, password, repositories);
           } else {
             console.log(">>> No repositories to reset");
           }
@@ -160,8 +159,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Drop the pod
-    await dropPod(poolId as string, podId, poolApiKeyPlain);
+    // Drop the pod using database query
+    await dropPod(podId);
 
     return NextResponse.json(
       {

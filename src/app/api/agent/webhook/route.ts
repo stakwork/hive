@@ -140,14 +140,11 @@ export async function POST(request: NextRequest) {
         console.log(`[Webhook] Finish event received for task ${taskId}`);
 
         // Generate diff and broadcast via Pusher
-        if (task.podId && task.workspace?.swarm?.poolApiKey) {
+        if (task.podId) {
           try {
-            const poolApiKey = encryptionService.decryptField("poolApiKey", task.workspace.swarm.poolApiKey);
-
             const diffResult = await generateAndSaveDiff({
               taskId,
               podId: task.podId,
-              poolApiKey,
             });
 
             if (diffResult.success && diffResult.message) {
@@ -165,7 +162,7 @@ export async function POST(request: NextRequest) {
             console.error(`[Webhook] Error generating diff for task ${taskId}:`, error);
           }
         } else {
-          console.log(`[Webhook] Skipping diff generation - missing podId or poolApiKey for task ${taskId}`);
+          console.log(`[Webhook] Skipping diff generation - missing podId for task ${taskId}`);
         }
         break;
 
