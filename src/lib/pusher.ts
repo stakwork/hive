@@ -29,6 +29,7 @@ export const getPusherClient = (): PusherClient => {
 // Channel naming helpers
 export const getTaskChannelName = (taskId: string) => `task-${taskId}`;
 export const getWorkspaceChannelName = (workspaceSlug: string) => `workspace-${workspaceSlug}`;
+export const getWhiteboardChannelName = (whiteboardId: string) => `whiteboard-${whiteboardId}`;
 
 // Event names
 export const PUSHER_EVENTS = {
@@ -45,4 +46,9 @@ export const PUSHER_EVENTS = {
   PROVENANCE_DATA: "provenance-data",
   PR_STATUS_CHANGE: "pr-status-change",
   BOUNTY_STATUS_CHANGE: "bounty-status-change",
+  // Whiteboard collaboration events
+  WHITEBOARD_ELEMENTS_UPDATE: "whiteboard-elements-update",
+  WHITEBOARD_CURSOR_UPDATE: "whiteboard-cursor-update",
+  WHITEBOARD_USER_JOIN: "whiteboard-user-join",
+  WHITEBOARD_USER_LEAVE: "whiteboard-user-leave",
 } as const;

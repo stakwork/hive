@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
+import { pusherServer, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 
 export async function GET(
   request: NextRequest,
@@ -50,6 +51,7 @@ export async function GET(
         elements: whiteboard.elements,
         appState: whiteboard.appState,
         files: whiteboard.files,
+        version: whiteboard.version,
         createdAt: whiteboard.createdAt,
         updatedAt: whiteboard.updatedAt,
       },
@@ -107,6 +109,12 @@ export async function PATCH(
     if (body.files !== undefined) updateData.files = body.files;
     if ("featureId" in body) updateData.featureId = body.featureId;
 
+    // Increment version if elements are being updated (for conflict resolution)
+    const shouldIncrementVersion = body.elements !== undefined;
+    if (shouldIncrementVersion) {
+      updateData.version = { increment: 1 };
+    }
+
     const updated = await db.whiteboard.update({
       where: { id: whiteboardId },
       data: updateData,
@@ -116,6 +124,17 @@ export async function PATCH(
         },
       },
     });
+
+    // Broadcast changes if requested and elements were updated
+    if (body.broadcast && body.elements !== undefined && body.senderId) {
+      const channelName = getWhiteboardChannelName(whiteboardId);
+      await pusherServer.trigger(channelName, PUSHER_EVENTS.WHITEBOARD_ELEMENTS_UPDATE, {
+        senderId: body.senderId,
+        elements: body.elements,
+        appState: body.appState || {},
+        version: updated.version,
+      });
+    }
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
