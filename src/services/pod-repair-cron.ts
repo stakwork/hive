@@ -15,7 +15,6 @@ import { EncryptionService } from "@/lib/encryption";
 import {
   getPodDetails,
   checkFrontendAvailable,
-  POD_PORTS,
   PROCESS_NAMES,
 } from "@/lib/pods";
 
@@ -536,19 +535,16 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
 
         let frontendError: string | null = null;
         if (podDetails?.portMappings) {
-          const controlPortUrl = podDetails.portMappings[POD_PORTS.CONTROL];
-          if (controlPortUrl) {
-            const frontendCheck = await checkFrontendAvailable(
-              jlist,
-              podDetails.portMappings,
-              controlPortUrl
+          const frontendCheck = await checkFrontendAvailable(
+            jlist,
+            podDetails.portMappings,
+            podDetails.podId
+          );
+          if (!frontendCheck.available) {
+            console.log(
+              `[PodRepairCron] Frontend not available for ${workspace.slug}/${pod.subdomain}: ${frontendCheck.error}`
             );
-            if (!frontendCheck.available) {
-              console.log(
-                `[PodRepairCron] Frontend not available for ${workspace.slug}/${pod.subdomain}: ${frontendCheck.error}`
-              );
-              frontendError = frontendCheck.error || "Frontend not available";
-            }
+            frontendError = frontendCheck.error || "Frontend not available";
           }
         }
 

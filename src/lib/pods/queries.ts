@@ -88,10 +88,7 @@ export async function findClaimablePods(swarmId: string): Promise<Pod[]> {
  * @param status - The pod status to filter by
  * @returns Array of pods with the specified status
  */
-export async function findPodsByStatus(
-  swarmId: string,
-  status: PodStatus
-): Promise<Pod[]> {
+export async function findPodsByStatus(swarmId: string, status: PodStatus): Promise<Pod[]> {
   return db.pod.findMany({
     where: {
       swarmId,
@@ -147,10 +144,7 @@ export async function findDeletedPods(swarmId: string): Promise<Pod[]> {
  * @param userId - The user ID claiming the pod
  * @returns The claimed pod or null if none available
  */
-export async function claimAvailablePod(
-  swarmId: string,
-  userId: string
-): Promise<Pod | null> {
+export async function claimAvailablePod(swarmId: string, userInfo?: string): Promise<Pod | null> {
   // Use raw SQL for atomic SELECT FOR UPDATE SKIP LOCKED
   interface RawPodResult {
     id: string;
@@ -178,7 +172,7 @@ export async function claimAvailablePod(
     SET 
       usage_status = 'USED'::"PodUsageStatus",
       usage_status_marked_at = NOW(),
-      usage_status_marked_by = ${userId}
+      usage_status_marked_by = ${userInfo}
     WHERE id = (
       SELECT id FROM pods
       WHERE 
@@ -221,6 +215,19 @@ export async function claimAvailablePod(
   } as Pod;
 }
 
+/** Base domain for pod URLs */
+export const POD_BASE_DOMAIN = "workspaces.sphinx.chat";
+
+/**
+ * Construct a pod URL from podId and port
+ * @param podId - The pod ID (workspace identifier)
+ * @param port - The port number
+ * @returns Full URL like https://{podId}.workspaces.sphinx.chat:{port}
+ */
+export function buildPodUrl(podId: string, port: number | string): string {
+  return `https://${podId}.${POD_BASE_DOMAIN}:${port}`;
+}
+
 /**
  * Get pod details (password and port mappings)
  * Used for retrieving credentials after claiming
@@ -229,14 +236,14 @@ export async function claimAvailablePod(
  * @returns Pod details or null if not found
  */
 export async function getPodDetails(
-  podId: string
-): Promise<{ password: string | null; portMappings: Record<string, string> | null } | null> {
+  podId: string,
+): Promise<{ podId: string; password: string | null; portMappings: number[] | null } | null> {
   const pod = await db.pod.findFirst({
     where: {
       podId,
-      deletedAt: null,
     },
     select: {
+      podId: true,
       password: true,
       portMappings: true,
     },
@@ -247,8 +254,9 @@ export async function getPodDetails(
   }
 
   return {
+    podId: pod.podId,
     password: pod.password,
-    portMappings: pod.portMappings as Record<string, string> | null,
+    portMappings: pod.portMappings as number[] | null,
   };
 }
 
@@ -306,9 +314,7 @@ export async function releasePodById(podId: string): Promise<Pod | null> {
  * @param podId - The pod ID (workspace identifier) to query
  * @returns Usage status details or null if not found
  */
-export async function getPodUsageStatus(
-  podId: string
-): Promise<{
+export async function getPodUsageStatus(podId: string): Promise<{
   usageStatus: PodUsageStatus;
   usageStatusMarkedAt: Date | null;
   usageStatusMarkedBy: string | null;

@@ -3,7 +3,7 @@ import { parsePM2Content } from "@/utils/devContainerUtils";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { JlistProcess } from "@/types/pod-repair";
-import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus } from "./queries";
+import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus, buildPodUrl } from "./queries";
 import type { Pod } from "@prisma/client";
 
 const encryptionService = EncryptionService.getInstance();
@@ -114,11 +114,11 @@ interface ServiceInfo {
 
 export async function claimPodAndGetFrontend(
   swarmId: string,
-  userId: string,
+  userInfo?: string,
   services?: ServiceInfo[],
 ): Promise<{ frontend: string; workspace: PodWorkspace; processList?: ProcessInfo[] }> {
   // Claim a pod from the database atomically
-  const pod = await claimAvailablePod(swarmId, userId);
+  const pod = await claimAvailablePod(swarmId, userInfo);
 
   if (!pod) {
     throw new Error(`No available pods for swarm: ${swarmId}`);
@@ -132,11 +132,18 @@ export async function claimPodAndGetFrontend(
   }
   const password = encryptionService.decryptField("swarmPassword", pod.password);
 
+  // Convert port array to port mappings dictionary
+  const portArray = (pod.portMappings as number[] | null) || [];
+  const portMappings: Record<string, string> = {};
+  for (const port of portArray) {
+    portMappings[port.toString()] = buildPodUrl(pod.podId, port);
+  }
+
   // Convert database pod to PodWorkspace format for compatibility
   const workspace: PodWorkspace = {
     id: pod.podId,
     password,
-    portMappings: pod.portMappings as Record<string, string>,
+    portMappings,
     state: pod.status,
     usage_status: pod.usageStatus,
     marked_at: pod.usageStatusMarkedAt?.toISOString() || "",
@@ -150,7 +157,7 @@ export async function claimPodAndGetFrontend(
     primaryRepo: "",
     repoName: "",
     repositories: [],
-    subdomain: "",
+    subdomain: pod.podId,
     url: "",
     useDevContainer: false,
   };
@@ -275,7 +282,7 @@ export interface PodUsage {
  */
 export async function getPodUsage(podId: string): Promise<PodUsage> {
   const status = await getPodUsageStatus(podId);
-  
+
   if (!status) {
     throw new Error(`Pod ${podId} not found`);
   }
@@ -330,8 +337,8 @@ export interface FrontendCheckResult {
  */
 export async function checkFrontendAvailable(
   jlist: JlistProcess[],
-  portMappings: Record<string, string>,
-  controlPortUrl: string
+  portMappings: number[],
+  podId: string,
 ): Promise<FrontendCheckResult> {
   // 1. Find frontend process in jlist
   const frontendProcess = jlist.find((proc) => proc.name === PROCESS_NAMES.FRONTEND);
@@ -342,18 +349,19 @@ export async function checkFrontendAvailable(
 
   // 2. Resolve frontend URL using same fallback logic as claimPodAndGetFrontend
   let frontendUrl: string | null = null;
+  const frontendPort = frontendProcess.port ? parseInt(frontendProcess.port, 10) : null;
+  const fallbackPort = parseInt(POD_PORTS.FRONTEND_FALLBACK, 10);
 
-  if (frontendProcess.port && portMappings[frontendProcess.port]) {
-    frontendUrl = portMappings[frontendProcess.port];
-  } else if (portMappings[POD_PORTS.FRONTEND_FALLBACK]) {
-    frontendUrl = portMappings[POD_PORTS.FRONTEND_FALLBACK];
-  } else if (controlPortUrl) {
-    const fallbackPort = frontendProcess.port || POD_PORTS.FRONTEND_FALLBACK;
-    frontendUrl = controlPortUrl.replace(POD_PORTS.CONTROL, fallbackPort);
-  }
-
-  if (!frontendUrl) {
-    return { available: false, frontendUrl: null, error: "Could not resolve frontend URL" };
+  if (frontendPort && portMappings.includes(frontendPort)) {
+    frontendUrl = buildPodUrl(podId, frontendPort);
+  } else if (portMappings.includes(fallbackPort)) {
+    frontendUrl = buildPodUrl(podId, fallbackPort);
+  } else if (frontendPort) {
+    // Use discovered frontend port even if not in mappings
+    frontendUrl = buildPodUrl(podId, frontendPort);
+  } else {
+    // Final fallback to default frontend port
+    frontendUrl = buildPodUrl(podId, POD_PORTS.FRONTEND_FALLBACK);
   }
 
   // 3. HTTP health check to frontend (5s timeout)
@@ -451,12 +459,14 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     }
 
     // Fetch workspace for repository reset if needed
-    const workspace = resetRepositories ? await db.workspace.findFirst({
-      where: { id: workspaceId },
-      include: {
-        repositories: true,
-      },
-    }) : null;
+    const workspace = resetRepositories
+      ? await db.workspace.findFirst({
+          where: { id: workspaceId },
+          include: {
+            repositories: true,
+          },
+        })
+      : null;
 
     // Verify pod ownership if requested (check if pod is assigned to this task)
     if (verifyOwnership) {
@@ -476,7 +486,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
 
         if (task && task.id !== taskId) {
           console.log(
-            `[releaseTaskPod] Pod ${podId} is assigned to different task (${task.id}) not this task (${taskId})`
+            `[releaseTaskPod] Pod ${podId} is assigned to different task (${task.id}) not this task (${taskId})`,
           );
           result.reassigned = true;
           result.success = true;
@@ -495,12 +505,14 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     if (resetRepositories && workspace) {
       try {
         const podDetails = await getPodDetails(podId);
-        
-        if (podDetails && podDetails.portMappings) {
-          const controlPortUrl = podDetails.portMappings[POD_PORTS.CONTROL];
-          const password = podDetails.password ? encryptionService.decryptField("swarmPassword", podDetails.password) : null;
 
-          if (controlPortUrl && password) {
+        if (podDetails && podDetails.portMappings) {
+          const controlPort = parseInt(POD_PORTS.CONTROL, 10);
+          const hasControlPort = podDetails.portMappings.includes(controlPort);
+          const password = podDetails.password;
+
+          if (hasControlPort && password) {
+            const controlPortUrl = buildPodUrl(podDetails.podId, POD_PORTS.CONTROL);
             const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
             if (repositories.length > 0) {
               await updatePodRepositories(controlPortUrl, password, repositories);
@@ -519,7 +531,7 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
     // Release the pod via database (atomically clears task associations)
     try {
       const released = await releasePodById(podId);
-      
+
       if (released) {
         result.podDropped = true;
         result.taskCleared = true; // releasePodById clears task associations atomically

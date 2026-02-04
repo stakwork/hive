@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { getPodDetails, POD_PORTS } from "@/lib/pods";
+import { getPodDetails, POD_PORTS, buildPodUrl } from "@/lib/pods";
 import { getUserAppTokens } from "@/lib/githubApp";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -115,32 +115,30 @@ export async function POST(request: NextRequest) {
 
     // Fetch pod details to get port mappings and password
     const podDetails = await getPodDetails(podId);
-    
+
     if (!podDetails) {
       return NextResponse.json({ error: "Pod not found" }, { status: 404 });
     }
-    
-    const { password, portMappings } = podDetails;
-    
+
+    const { podId: podIdentifier, password, portMappings } = podDetails;
+
     if (!password) {
       return NextResponse.json({ error: "Pod password not found" }, { status: 500 });
     }
-    
+
     if (!portMappings) {
       return NextResponse.json({ error: "Pod port mappings not found" }, { status: 500 });
     }
-    
-    const controlPortUrl = portMappings[POD_PORTS.CONTROL];
 
-    if (!controlPortUrl) {
+    const controlPort = parseInt(POD_PORTS.CONTROL, 10);
+    if (!portMappings.includes(controlPort)) {
       return NextResponse.json(
         { error: `Control port (${POD_PORTS.CONTROL}) not found in port mappings` },
         { status: 500 },
       );
     }
-    
-    // Decrypt password
-    const plainPassword = encryptionService.decryptField("swarmPassword", password);
+
+    const controlPortUrl = buildPodUrl(podIdentifier, POD_PORTS.CONTROL);
 
     console.log(">>> Using commit message:", commitMessage);
     console.log(">>> Using branch name:", branchName);
@@ -214,11 +212,15 @@ export async function POST(request: NextRequest) {
     // If a PR already exists, stay on current branch instead of creating a new one
     const stayOnBranch = existingPullRequest ? "&stayOnCurrentBranch=true" : "";
     const pushUrl = `${controlPortUrl}/push?pr=true&commit=true${stayOnBranch}&label=agent`;
-    console.log(">>> Push URL:", pushUrl, existingPullRequest ? "(staying on current branch)" : "(creating new branch)");
+    console.log(
+      ">>> Push URL:",
+      pushUrl,
+      existingPullRequest ? "(staying on current branch)" : "(creating new branch)",
+    );
     const pushResponse = await fetch(pushUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${plainPassword}`,
+        Authorization: `Bearer ${podDetails.password}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(commitPayload),

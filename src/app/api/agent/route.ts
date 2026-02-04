@@ -154,11 +154,7 @@ async function getChatHistoryContext(taskId: string): Promise<string | null> {
  * Claim a pod for a task and store credentials
  * Returns pod URLs for frontend artifacts
  */
-async function claimPodForTask(
-  taskId: string,
-  workspaceId: string,
-  userId: string
-): Promise<PodClaimResult> {
+async function claimPodForTask(taskId: string, workspaceId: string): Promise<PodClaimResult> {
   // Load workspace with swarm configuration
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
@@ -172,16 +168,11 @@ async function claimPodForTask(
     throw new Error("Workspace not configured for pods");
   }
 
-  const poolApiKey = encryptionService.decryptField("poolApiKey", workspace.swarm.poolApiKey);
   const services = workspace.swarm.services as ServiceInfo[] | null;
   const swarmId = workspace.swarm.id as string;
 
   // Claim pod from pool
-  const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
-    swarmId,
-    userId,
-    services || undefined
-  );
+  const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(swarmId, taskId, services || undefined);
 
   const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
 
@@ -195,7 +186,7 @@ async function claimPodForTask(
       await updatePodRepositories(
         controlUrl,
         podWorkspace.password,
-        workspace.repositories.map((r) => ({ url: r.repositoryUrl }))
+        workspace.repositories.map((r) => ({ url: r.repositoryUrl })),
       );
       console.log("[Agent] Updated repositories on pod");
     } catch (repoError) {
@@ -230,11 +221,7 @@ async function claimPodForTask(
 /**
  * Validate if a session exists on the remote pod
  */
-async function validateSessionOnPod(
-  agentUrl: string,
-  agentPassword: string | null,
-  taskId: string
-): Promise<boolean> {
+async function validateSessionOnPod(agentUrl: string, agentPassword: string | null, taskId: string): Promise<boolean> {
   try {
     const validateUrl = agentUrl.replace(/\/$/, "") + "/validate_session";
     const headers: Record<string, string> = {
@@ -264,10 +251,7 @@ async function validateSessionOnPod(
 /**
  * Get or create webhook secret for a task
  */
-async function getOrCreateWebhookSecret(
-  taskId: string,
-  existingSecret: string | null
-): Promise<string> {
+async function getOrCreateWebhookSecret(taskId: string, existingSecret: string | null): Promise<string> {
   if (existingSecret) {
     return encryptionService.decryptField("agentWebhookSecret", existingSecret);
   }
@@ -292,7 +276,7 @@ async function createAgentSession(
   agentPassword: string | null,
   taskId: string,
   webhookUrl: string,
-  effectiveModel: ModelName | undefined
+  effectiveModel: ModelName | undefined,
 ): Promise<string> {
   const sessionUrl = agentUrl.replace(/\/$/, "") + "/session";
 
@@ -304,9 +288,7 @@ async function createAgentSession(
   }
 
   // Determine API key based on model
-  const apiKey = effectiveModel
-    ? getApiKeyForModel(effectiveModel)
-    : process.env.ANTHROPIC_API_KEY;
+  const apiKey = effectiveModel ? getApiKeyForModel(effectiveModel) : process.env.ANTHROPIC_API_KEY;
 
   const sessionPayload: Record<string, unknown> = {
     sessionId: taskId,
@@ -347,11 +329,7 @@ async function createAgentSession(
 /**
  * Save user message to database
  */
-async function saveUserMessage(
-  taskId: string,
-  message: string,
-  artifacts: ArtifactRequest[]
-): Promise<void> {
+async function saveUserMessage(taskId: string, message: string, artifacts: ArtifactRequest[]): Promise<void> {
   try {
     await db.chatMessage.create({
       data: {
@@ -437,7 +415,7 @@ export async function POST(request: NextRequest) {
     console.log("[Agent] No pod assigned to task, claiming new pod...");
 
     try {
-      const claimResult = await claimPodForTask(taskId, task.workspaceId, session.user.id);
+      const claimResult = await claimPodForTask(taskId, task.workspaceId);
       agentCredentials = claimResult.credentials;
       podUrls = {
         podId: claimResult.podId,
@@ -452,16 +430,13 @@ export async function POST(request: NextRequest) {
       }
     } catch (claimError) {
       console.error("[Agent] Failed to claim pod:", claimError);
-      return NextResponse.json(
-        { error: "No pods available" },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: "No pods available" }, { status: 503 });
     }
   } else if (!task.podId && isUsingCustomUrl) {
     // Local dev mode - set mock pod info
     const mockPodId = "local-dev";
     const mockFrontend = process.env.MOCK_BROWSER_URL || "http://localhost:3000";
-    
+
     // Store mock podId on task
     await db.task.update({
       where: { id: taskId },
@@ -470,18 +445,18 @@ export async function POST(request: NextRequest) {
         agentUrl: process.env.CUSTOM_GOOSE_URL,
       },
     });
-    
+
     agentCredentials = {
       agentUrl: process.env.CUSTOM_GOOSE_URL!,
       agentPassword: null,
     };
-    
+
     podUrls = {
       podId: mockPodId,
       frontend: mockFrontend,
       ide: mockFrontend, // Use same URL for IDE in dev
     };
-    
+
     console.log("[Agent] Using local dev mode with mock pod:", mockPodId);
   } else {
     // Pod exists (real or mock)
@@ -530,13 +505,13 @@ export async function POST(request: NextRequest) {
       agentCredentials.agentPassword,
       taskId,
       webhookUrl,
-      effectiveModel
+      effectiveModel,
     );
   } catch (error) {
     console.error("[Agent] Error creating session:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to create agent session" },
-      { status: 502 }
+      { status: 502 },
     );
   }
 
@@ -545,7 +520,7 @@ export async function POST(request: NextRequest) {
   if (podUrls) {
     allArtifacts.push(
       { type: ArtifactType.BROWSER, content: { url: podUrls.frontend } },
-      { type: ArtifactType.IDE, content: { url: podUrls.ide } }
+      { type: ArtifactType.IDE, content: { url: podUrls.ide } },
     );
   }
   await saveUserMessage(taskId, message, allArtifacts);
