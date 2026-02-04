@@ -139,23 +139,12 @@ index 1234567..abcdefg 100644
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    const poolApiKey = workspace.swarm.poolApiKey;
-
-    // Check if swarm has pool configuration
-    if (!poolApiKey) {
-      console.log(">>> [DIFF] Swarm not configured with pool API key");
-      return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
-    }
-
-    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
-
     console.log(">>> [DIFF] Generating diff using shared helper");
 
     // Use the shared helper to generate and save the diff
     const result = await generateAndSaveDiff({
       taskId,
       podId,
-      poolApiKey: poolApiKeyPlain,
     });
 
     if (!result.success) {

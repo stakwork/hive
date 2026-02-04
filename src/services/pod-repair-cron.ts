@@ -13,11 +13,11 @@ import {
 import { config } from "@/config/env";
 import { EncryptionService } from "@/lib/encryption";
 import {
-  getPodFromPool,
+  getPodDetails,
   checkFrontendAvailable,
   POD_PORTS,
   PROCESS_NAMES,
-} from "@/lib/pods/utils";
+} from "@/lib/pods";
 
 const MAX_REPAIR_ATTEMPTS = parseInt(
   process.env.POD_REPAIR_MAX_ATTEMPTS || "10",
@@ -523,24 +523,24 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         }
 
         // Check frontend availability
-        let podWithPortMappings;
+        let podDetails;
         try {
-          podWithPortMappings = await getPodFromPool(pod.subdomain, decryptedPoolApiKey);
+          podDetails = await getPodDetails(pod.subdomain);
         } catch (error) {
           console.warn(
             `[PodRepairCron] Could not get pod details for ${pod.subdomain}:`,
             error
           );
-          podWithPortMappings = null;
+          podDetails = null;
         }
 
         let frontendError: string | null = null;
-        if (podWithPortMappings?.portMappings) {
-          const controlPortUrl = podWithPortMappings.portMappings[POD_PORTS.CONTROL];
+        if (podDetails?.portMappings) {
+          const controlPortUrl = podDetails.portMappings[POD_PORTS.CONTROL];
           if (controlPortUrl) {
             const frontendCheck = await checkFrontendAvailable(
               jlist,
-              podWithPortMappings.portMappings,
+              podDetails.portMappings,
               controlPortUrl
             );
             if (!frontendCheck.available) {

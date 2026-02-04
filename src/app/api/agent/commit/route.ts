@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { getPodFromPool, POD_PORTS } from "@/lib/pods";
+import { getPodDetails, POD_PORTS } from "@/lib/pods";
 import { getUserAppTokens } from "@/lib/githubApp";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
@@ -111,20 +111,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    const poolApiKey = workspace.swarm.poolApiKey;
-
-    // Check if swarm has pool configuration
-    if (!poolApiKey) {
-      return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
-    }
-
-    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
-
-    console.log(">>> Getting pod from pool for commit operation");
+    console.log(">>> Getting pod details for commit operation");
 
     // Fetch pod details to get port mappings and password
-    const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
-    const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+    const podDetails = await getPodDetails(podId);
+    
+    if (!podDetails) {
+      return NextResponse.json({ error: "Pod not found" }, { status: 404 });
+    }
+    
+    const { password, portMappings } = podDetails;
+    
+    if (!password) {
+      return NextResponse.json({ error: "Pod password not found" }, { status: 500 });
+    }
+    
+    if (!portMappings) {
+      return NextResponse.json({ error: "Pod port mappings not found" }, { status: 500 });
+    }
+    
+    const controlPortUrl = portMappings[POD_PORTS.CONTROL];
 
     if (!controlPortUrl) {
       return NextResponse.json(
@@ -132,6 +138,9 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+    
+    // Decrypt password
+    const plainPassword = encryptionService.decryptField("swarmPassword", password);
 
     console.log(">>> Using commit message:", commitMessage);
     console.log(">>> Using branch name:", branchName);
@@ -209,7 +218,7 @@ export async function POST(request: NextRequest) {
     const pushResponse = await fetch(pushUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${podWorkspace.password}`,
+        Authorization: `Bearer ${plainPassword}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(commitPayload),

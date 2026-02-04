@@ -156,7 +156,8 @@ async function getChatHistoryContext(taskId: string): Promise<string | null> {
  */
 async function claimPodForTask(
   taskId: string,
-  workspaceId: string
+  workspaceId: string,
+  userId: string
 ): Promise<PodClaimResult> {
   // Load workspace with swarm configuration
   const workspace = await db.workspace.findUnique({
@@ -173,14 +174,13 @@ async function claimPodForTask(
 
   const poolApiKey = encryptionService.decryptField("poolApiKey", workspace.swarm.poolApiKey);
   const services = workspace.swarm.services as ServiceInfo[] | null;
-  const poolId = workspace.swarm.id as string;
+  const swarmId = workspace.swarm.id as string;
 
   // Claim pod from pool
   const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
-    poolId,
-    poolApiKey,
-    services || undefined,
-    taskId // userInfo for tracking
+    swarmId,
+    userId,
+    services || undefined
   );
 
   const controlUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
@@ -437,7 +437,7 @@ export async function POST(request: NextRequest) {
     console.log("[Agent] No pod assigned to task, claiming new pod...");
 
     try {
-      const claimResult = await claimPodForTask(taskId, task.workspaceId);
+      const claimResult = await claimPodForTask(taskId, task.workspaceId, session.user.id);
       agentCredentials = claimResult.credentials;
       podUrls = {
         podId: claimResult.podId,

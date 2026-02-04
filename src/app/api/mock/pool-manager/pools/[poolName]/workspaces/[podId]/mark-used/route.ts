@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mockPoolState } from "@/lib/mock/pool-manager-state";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 /**
- * Mock Pool Manager mark workspace as used endpoint
- * POST /api/mock/pool-manager/pools/[poolName]/workspaces/[podId]/mark-used
+ * DEPRECATED: Mock Pool Manager mark workspace as used endpoint
+ * 
+ * This endpoint is no longer used as pod claiming now uses direct database operations
+ * with atomic status updates via claimAvailablePod() in src/lib/pods/queries.ts.
  */
 
 interface RouteContext {
@@ -20,36 +21,10 @@ export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
-  try {
-    const { poolName, podId } = await context.params;
-
-    // Auto-create pool if it doesn't exist
-    mockPoolState.getOrCreatePool(poolName);
-
-    const pod = mockPoolState.getPod(poolName, podId);
-    if (pod === undefined) {
-      return NextResponse.json(
-        { error: "Pod not found" },
-        { status: 404 }
-      );
-    }
-
-    // Parse request body for user_info
-    const body = await request.json().catch(() => ({}));
-    if (body.user_info) {
-      mockPoolState.updatePodUserInfo(poolName, podId, body.user_info);
-    }
-
-    // Pod is already marked as in_use when claimed, just return success
-    return NextResponse.json({
-      success: true,
-      message: `Workspace ${podId} marked as used`,
-    });
-  } catch (error) {
-    console.error("Mock Pool Manager mark-used error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json(
+    { 
+      error: "This endpoint is deprecated. Pod claiming now uses direct database operations." 
+    },
+    { status: 410 } // 410 Gone
+  );
 }
