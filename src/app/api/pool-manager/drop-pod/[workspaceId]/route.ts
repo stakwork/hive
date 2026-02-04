@@ -4,7 +4,14 @@ import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { dropPod, getPodDetails, updatePodRepositories, releaseTaskPod, POD_PORTS } from "@/lib/pods";
+import {
+  releasePodById,
+  getPodDetails,
+  updatePodRepositories,
+  releaseTaskPod,
+  POD_PORTS,
+  buildPodUrl,
+} from "@/lib/pods";
 
 const encryptionService: EncryptionService = EncryptionService.getInstance();
 
@@ -131,24 +138,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // If "latest" parameter is provided, reset the pod repositories before dropping
     if (shouldResetRepositories) {
       const podDetails = await getPodDetails(podId);
-      
+
       if (!podDetails) {
         return NextResponse.json({ error: "Pod not found" }, { status: 404 });
       }
 
-      const controlPortUrl = podDetails.portMappings?.[POD_PORTS.CONTROL];
+      const controlPort = parseInt(POD_PORTS.CONTROL, 10);
+      const hasControlPort = podDetails.portMappings?.includes(controlPort) ?? false;
 
-      if (!controlPortUrl) {
+      if (!hasControlPort) {
         console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository reset`);
       } else {
         try {
           const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
           if (repositories.length > 0) {
-            const encryptionService = EncryptionService.getInstance();
-            const password = podDetails.password 
-              ? encryptionService.decryptField("swarmPassword", podDetails.password)
-              : "";
+            const controlPortUrl = buildPodUrl(podDetails.podId, POD_PORTS.CONTROL);
+            const password = podDetails.password;
             await updatePodRepositories(controlPortUrl, password, repositories);
           } else {
             console.log(">>> No repositories to reset");
@@ -160,7 +166,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Drop the pod using database query
-    await dropPod(podId);
+    await releasePodById(podId);
 
     return NextResponse.json(
       {

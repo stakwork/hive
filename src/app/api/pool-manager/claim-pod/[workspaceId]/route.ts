@@ -119,7 +119,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Check if swarm has pool configuration
     // Claim pod from database
     const swarmId = workspace.swarm?.id;
-    
+
     if (!swarmId) {
       return NextResponse.json({ error: "Workspace has no swarm configured" }, { status: 400 });
     }
@@ -130,10 +130,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       | null
       | undefined;
 
-    const {
-      frontend,
-      workspace: podWorkspace,
-    } = await claimPodAndGetFrontend(swarmId, userId, services || undefined);
+    const userInfo = shouldIncludeGoose && taskId ? taskId : undefined;
+
+    const { frontend, workspace: podWorkspace } = await claimPodAndGetFrontend(
+      swarmId,
+      userInfo,
+      services || undefined,
+    );
 
     // If "latest" parameter is provided, update the pod repositories
     if (shouldUpdateToLatest) {
