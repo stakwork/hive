@@ -81,6 +81,7 @@ export async function resetDatabase() {
     await db.janitorRun.deleteMany();
     await db.janitorConfig.deleteMany();
     await db.repository.deleteMany();
+    await db.pod.deleteMany();
     await db.swarm.deleteMany();
     await db.workspaceMember.deleteMany();
     await db.workspace.deleteMany();
@@ -109,6 +110,7 @@ async function aggressiveReset() {
       "janitor_runs",
       "janitor_configs",
       "repositories",
+      "pods",
       "swarms",
       "workspace_members",
       "workspaces",
