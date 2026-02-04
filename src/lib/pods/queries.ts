@@ -164,6 +164,8 @@ export async function claimAvailablePod(
     password: string | null;
     port_mappings: any;
     flagged_for_recreation: boolean;
+    flagged_at: Date | null;
+    flagged_reason: string | null;
     last_health_check: Date | null;
     health_status: string | null;
     created_at: Date;
@@ -209,6 +211,8 @@ export async function claimAvailablePod(
     password: rawPod.password,
     portMappings: rawPod.port_mappings,
     flaggedForRecreation: rawPod.flagged_for_recreation,
+    flaggedAt: rawPod.flagged_at,
+    flaggedReason: rawPod.flagged_reason,
     lastHealthCheck: rawPod.last_health_check,
     healthStatus: rawPod.health_status,
     createdAt: rawPod.created_at,
