@@ -204,7 +204,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    test("returns 400 when swarm missing poolApiKey", async () => {
+    test("returns 500 when no pods available to claim", async () => {
       const { owner, workspace } = await createTestWorkspaceScenario();
 
       const swarm = await createTestSwarm({
@@ -213,12 +213,7 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         status: "ACTIVE",
       });
 
-      // Set poolName but leave poolApiKey null
-      await db.swarm.update({
-        where: { id: swarm.id },
-        data: { poolName: "test-pool", poolApiKey: null },
-      });
-
+      // Don't create any pods, so claiming will fail
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
 
       const request = createPostRequest(
@@ -229,7 +224,8 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      await expectError(response, "Swarm not properly configured with pool information", 400);
+      // Should return 500 when no pods are available
+      expect(response.status).toBe(500);
       expect(mockFetch).not.toHaveBeenCalled();
     });
   });
@@ -270,9 +266,8 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      await expectSuccess(response, 200);
-      const data = await response.json();
-      expect(data.podId).toBe(pods[0].id);
+      const data = await expectSuccess(response, 200);
+      expect(data.podId).toBe(pods[0].podId);
     });
 
     test("allows workspace member to claim pod", async () => {
@@ -295,11 +290,8 @@ describe("POST /api/pool-manager/claim-pod/[workspaceId] - Integration Tests", (
         params: Promise.resolve({ workspaceId: workspace.id }),
       });
 
-      await expectSuccess(response, 200);
-      const data = await response.json();
-      expect(data.podId).toBe(pods[0].id);
+      const data = await expectSuccess(response, 200);
+      expect(data.podId).toBe(pods[0].podId);
     });
   });
-
-
 });
