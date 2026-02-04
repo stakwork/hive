@@ -759,9 +759,11 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const diffCall = mockFetch.mock.calls[0];
       expect(diffCall[0]).toBe("http://pod-control.test:15552/diff");
       expect(diffCall[1]?.method).toBe("GET");
-      expect(diffCall[1]?.headers).toMatchObject({
-        Authorization: "Bearer secure-password",
-      });
+      expect(diffCall[1]?.headers).toEqual(
+        expect.objectContaining({
+          Authorization: "Bearer decrypted-value",
+        })
+      );
 
       // Verify database persistence
       const messages = await db.chatMessage.findMany({

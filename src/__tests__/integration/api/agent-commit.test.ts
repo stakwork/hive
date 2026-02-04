@@ -616,17 +616,17 @@ describe("POST /api/agent/commit Integration Tests", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
       // Verify push request includes commit
-      expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:3010/push?pr=true&commit=true&label=agent",
-        expect.objectContaining({
-          method: "POST",
-          headers: expect.objectContaining({
-            Authorization: "Bearer test-password",
-            "Content-Type": "application/json",
-          }),
-          body: expect.stringContaining("Test commit message"),
-        })
-      );
+      const pushCall = mockFetch.mock.calls[0];
+      expect(pushCall[0]).toBe("http://localhost:3010/push?pr=true&commit=true&label=agent");
+      expect(pushCall[1]).toMatchObject({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer decrypted-value",
+          "Content-Type": "application/json",
+        },
+      });
+      const pushBody = JSON.parse(pushCall[1]!.body as string);
+      expect(pushBody.repos[0].commit_name).toBe("Test commit message");
     });
 
     test("should handle commit failure from pod", async () => {
