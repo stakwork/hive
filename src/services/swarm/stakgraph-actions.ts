@@ -51,8 +51,8 @@ export async function triggerAsyncSync(
   if (creds?.username) data.username = creds.username;
   if (creds?.pat) data.pat = creds.pat;
   if (callbackUrl) (data as Record<string, string>).callback_url = callbackUrl;
-  if (options?.docs) data.docs = options.docs;
-  if (options?.mocks) data.mocks = options.mocks;
+  if (options?.docs) data.docs = String(options.docs);
+  if (options?.mocks) data.mocks = String(options.mocks);
   const result = await swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/sync_async",
@@ -87,8 +87,8 @@ export async function triggerIngestAsync(
     realtime: true,
   };
   if (callbackUrl) data.callback_url = callbackUrl;
-  if (options?.docs) data.docs = options.docs;
-  if (options?.mocks) data.mocks = options.mocks;
+  if (options?.docs) data.docs = String(options.docs);
+  if (options?.mocks) data.mocks = String(options.mocks);
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/ingest_async",
