@@ -43,6 +43,7 @@ interface TaskStartInputProps {
   // Workflow editor props
   workflows?: WorkflowNode[];
   onWorkflowSelect?: (workflowId: number, workflowData: WorkflowNode) => void;
+  onNewWorkflow?: () => void;
   isLoadingWorkflows?: boolean;
   workflowsError?: string | null;
   // Model selection for agent mode
@@ -60,6 +61,7 @@ export function TaskStartInput({
   workspaceSlug,
   workflows = [],
   onWorkflowSelect,
+  onNewWorkflow,
   isLoadingWorkflows = false,
   workflowsError,
   selectedModel = "sonnet",
@@ -96,13 +98,16 @@ export function TaskStartInput({
     }
   }, [isWorkflowMode]);
 
+  // Check if user typed "new" to create a new workflow
+  const isNewWorkflow = workflowIdValue.trim().toLowerCase() === "new";
+
   // Find matching workflow as user types
   const matchedWorkflow = useMemo(() => {
-    if (!workflowIdValue.trim()) return null;
+    if (!workflowIdValue.trim() || isNewWorkflow) return null;
     const searchId = parseInt(workflowIdValue.trim(), 10);
     if (isNaN(searchId)) return null;
     return workflows.find((w) => w.properties.workflow_id === searchId) || null;
-  }, [workflowIdValue, workflows]);
+  }, [workflowIdValue, workflows, isNewWorkflow]);
 
   const workflowName = matchedWorkflow?.properties.workflow_name || null;
   const hasValidWorkflowId = workflowIdValue.trim().length > 0 && !isNaN(parseInt(workflowIdValue.trim(), 10));
@@ -149,9 +154,13 @@ export function TaskStartInput({
   };
 
   const handleWorkflowKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && matchedWorkflow && onWorkflowSelect) {
+    if (e.key === "Enter") {
       e.preventDefault();
-      onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+      if (isNewWorkflow && onNewWorkflow) {
+        onNewWorkflow();
+      } else if (matchedWorkflow && onWorkflowSelect) {
+        onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+      }
     }
   };
 
@@ -160,7 +169,9 @@ export function TaskStartInput({
 
   const handleClick = () => {
     if (isWorkflowMode) {
-      if (matchedWorkflow && onWorkflowSelect) {
+      if (isNewWorkflow && onNewWorkflow) {
+        onNewWorkflow();
+      } else if (matchedWorkflow && onWorkflowSelect) {
         onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
       }
     } else {
@@ -201,7 +212,7 @@ export function TaskStartInput({
 
   // Determine if submit button should be enabled
   const isSubmitDisabled = isWorkflowMode
-    ? !matchedWorkflow || isLoadingWorkflows || isLoading
+    ? (!matchedWorkflow && !isNewWorkflow) || isLoadingWorkflows || isLoading
     : !hasText || isLoading || noPodsAvailable;
 
   const getModeConfig = (mode: string) => {
@@ -319,7 +330,7 @@ export function TaskStartInput({
                 />
                 {/* Workflow status messages */}
                 <div className="mt-4 min-h-[24px]">
-                  {workflowsError && (
+                  {workflowsError && !isNewWorkflow && !matchedWorkflow && (
                     <div className="flex items-center gap-2 text-destructive">
                       <AlertCircle className="h-4 w-4" />
                       <span className="text-sm">{workflowsError}</span>
@@ -329,6 +340,12 @@ export function TaskStartInput({
                     <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
                       <AlertCircle className="h-4 w-4" />
                       <span className="text-sm">Workflow not found</span>
+                    </div>
+                  )}
+                  {isNewWorkflow && (
+                    <div className="flex items-center gap-2 text-green-600 dark:text-green-500">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span className="text-sm">New Workflow</span>
                     </div>
                   )}
                   {matchedWorkflow && (
