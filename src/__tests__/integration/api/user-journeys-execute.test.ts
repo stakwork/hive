@@ -90,7 +90,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       const pod = await tx.pod.create({
         data: {
           podId: `test-pod-${Date.now()}`,
-          swarmId: swarm.swarmId,
+          swarmId: swarm.id,
           password: JSON.stringify(enc.encryptField('password', 'test-pod-password')),
           portMappings: {
             '3000': 30000,
