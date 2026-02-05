@@ -222,10 +222,10 @@ export const POD_BASE_DOMAIN = "workspaces.sphinx.chat";
  * Construct a pod URL from podId and port
  * @param podId - The pod ID (workspace identifier)
  * @param port - The port number
- * @returns Full URL like https://{podId}.workspaces.sphinx.chat:{port}
+ * @returns Full URL like https://{podId}-{port}.workspaces.sphinx.chat
  */
 export function buildPodUrl(podId: string, port: number | string): string {
-  return `https://${podId}.${POD_BASE_DOMAIN}:${port}`;
+  return `https://${podId}-${port}.${POD_BASE_DOMAIN}`;
 }
 
 /**

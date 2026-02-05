@@ -48,7 +48,7 @@ vi.mock("@/lib/pods", () => ({
   POD_PORTS: {
     CONTROL: "3010",
   },
-  buildPodUrl: (podId: string, port: number | string) => `https://${podId}.workspaces.sphinx.chat:${port}`,
+  buildPodUrl: (podId: string, port: number | string) => `https://${podId}-${port}.workspaces.sphinx.chat`,
 }));
 
 // Mock GitHub App functions
@@ -617,7 +617,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Verify push request includes commit
       const pushCall = mockFetch.mock.calls[0];
-      expect(pushCall[0]).toBe("https://test-pod-id.workspaces.sphinx.chat:3010/push?pr=true&commit=true&label=agent");
+      expect(pushCall[0]).toBe("https://test-pod-id-3010.workspaces.sphinx.chat/push?pr=true&commit=true&label=agent");
       expect(pushCall[1]).toMatchObject({
         method: "POST",
         headers: {
@@ -1022,7 +1022,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Verify push request structure (includes commit)
       const pushCall = mockFetch.mock.calls[0];
-      expect(pushCall[0]).toBe("https://test-pod-id.workspaces.sphinx.chat:3010/push?pr=true&commit=true&label=agent");
+      expect(pushCall[0]).toBe("https://test-pod-id-3010.workspaces.sphinx.chat/push?pr=true&commit=true&label=agent");
       const pushBody = JSON.parse(pushCall[1]!.body as string);
       expect(pushBody).toMatchObject({
         repos: [

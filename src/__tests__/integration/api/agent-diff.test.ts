@@ -46,7 +46,7 @@ vi.mock("@/lib/pods", () => ({
   POD_PORTS: {
     CONTROL: "15552",
   },
-  buildPodUrl: (podId: string, port: number | string) => `https://${podId}.workspaces.sphinx.chat:${port}`,
+  buildPodUrl: (podId: string, port: number | string) => `https://${podId}-${port}.workspaces.sphinx.chat`,
 }));
 
 const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
@@ -762,7 +762,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
       // Verify diff fetch request structure
       const diffCall = mockFetch.mock.calls[0];
-      expect(diffCall[0]).toBe("https://test-pod-id.workspaces.sphinx.chat:15552/diff");
+      expect(diffCall[0]).toBe("https://test-pod-id-15552.workspaces.sphinx.chat/diff");
       expect(diffCall[1]?.method).toBe("GET");
       expect(diffCall[1]?.headers).toEqual(
         expect.objectContaining({
