@@ -97,12 +97,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
             podId: options.podId,
             swarmId: swarm.id,
             password: JSON.stringify(encryptedPassword),
-            portMappings: {
-              "3000": 30000,
-              "3010": 30010,
-              "15551": 31551,
-              "15552": 31552,
-            },
+            portMappings: [3000, 3010, 15551, 15552],
             status: "RUNNING",
             usageStatus: "USED",
           },
@@ -336,7 +331,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response
@@ -381,7 +376,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock empty diff response
@@ -410,7 +405,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock failed control port response
@@ -440,7 +435,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: {}, // Empty port mappings
+        portMappings: [], // Empty port mappings
       } as any);
 
       const request = createPostRequest("http://localhost:3000/api/agent/diff", {
@@ -465,7 +460,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response
@@ -510,7 +505,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response with multiple files
@@ -558,7 +553,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock empty diff response
@@ -612,7 +607,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock network error
@@ -696,7 +691,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "secure-password",
-        portMappings: { "15552": "http://pod-control.test:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response with multiple actions

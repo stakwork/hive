@@ -112,10 +112,7 @@ describe('GET /api/cron/pod-repair', () => {
 
     // Default pod utils mocks
     mockGetPodFromPool.mockResolvedValue({
-      portMappings: {
-        '15552': 'https://control.example.com',
-        '3000': 'https://frontend.example.com',
-      },
+      portMappings: [15552, 3000],
     });
     mockCheckFrontendAvailable.mockResolvedValue({
       available: true,

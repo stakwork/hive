@@ -157,12 +157,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
             podId: options.podId,
             swarmId: swarm.id,
             password: JSON.stringify(encryptedPassword),
-            portMappings: {
-              "3000": 30000,
-              "3010": 30010,
-              "15551": 31551,
-              "15552": 31552,
-            },
+            portMappings: [3000, 3010, 15551, 15552],
             status: "RUNNING",
             usageStatus: "USED",
           },
@@ -486,7 +481,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       const request = createPostRequest("http://localhost:3000/api/agent/commit", {
@@ -510,7 +505,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens to return null (no token)
@@ -543,7 +538,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens to return token
@@ -578,7 +573,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
@@ -637,7 +632,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
@@ -676,7 +671,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
@@ -720,7 +715,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: {}, // Empty port mappings
+        portMappings: [], // Empty port mappings
       } as any);
 
       const request = createPostRequest("http://localhost:3000/api/agent/commit", {
@@ -759,7 +754,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       // Mock getUserAppTokens
@@ -814,7 +809,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
@@ -876,7 +871,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "test-password",
-        portMappings: { "3010": "http://localhost:3010" },
+        portMappings: [3010],
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
@@ -966,7 +961,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
         password: "secure-password",
-        portMappings: { "3010": "http://pod-control.test:3010" },
+        portMappings: [3010],
       } as any);
 
       const { getUserAppTokens } = await import("@/lib/githubApp");
