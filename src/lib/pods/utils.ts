@@ -352,9 +352,12 @@ export async function checkFrontendAvailable(
   const frontendPort = frontendProcess.port ? parseInt(frontendProcess.port, 10) : null;
   const fallbackPort = parseInt(POD_PORTS.FRONTEND_FALLBACK, 10);
 
-  if (frontendPort && portMappings.includes(frontendPort)) {
+  // Ensure portMappings is actually an array before using .includes()
+  const isValidArray = Array.isArray(portMappings);
+
+  if (frontendPort && isValidArray && portMappings.includes(frontendPort)) {
     frontendUrl = buildPodUrl(podId, frontendPort);
-  } else if (portMappings.includes(fallbackPort)) {
+  } else if (isValidArray && portMappings.includes(fallbackPort)) {
     frontendUrl = buildPodUrl(podId, fallbackPort);
   } else if (frontendPort) {
     // Use discovered frontend port even if not in mappings

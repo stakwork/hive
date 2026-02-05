@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { ActionResult } from "@/lib/chat";
 import { ChatRole, ChatStatus } from "@prisma/client";
 import { generateAndSaveDiff } from "@/lib/pods/diff";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {

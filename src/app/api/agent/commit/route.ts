@@ -2,12 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
 import { getPodDetails, POD_PORTS, buildPodUrl } from "@/lib/pods";
 import { getUserAppTokens } from "@/lib/githubApp";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {
