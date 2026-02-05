@@ -428,6 +428,7 @@ describe("getPrimaryRepository", () => {
               codeIngestionEnabled: true,
               docsEnabled: true,
               mocksEnabled: true,
+              embeddingsEnabled: true,
             },
           }),
         }),
