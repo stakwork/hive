@@ -148,14 +148,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       if (!hasControlPort) {
         console.error(`Control port (${POD_PORTS.CONTROL}) not found in port mappings, skipping repository reset`);
+      } else if (!podDetails.password) {
+        console.error("Pod password not found, skipping repository reset");
       } else {
         try {
           const repositories = workspace.repositories.map((repo) => ({ url: repo.repositoryUrl }));
 
           if (repositories.length > 0) {
             const controlPortUrl = buildPodUrl(podDetails.podId, POD_PORTS.CONTROL);
-            const password = podDetails.password;
-            await updatePodRepositories(controlPortUrl, password, repositories);
+            await updatePodRepositories(controlPortUrl, podDetails.password, repositories);
           } else {
             console.log(">>> No repositories to reset");
           }
