@@ -57,10 +57,10 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, mockPortMappings, mockPodId);
 
       expect(result.available).toBe(true);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
       expect(result.error).toBeUndefined();
       expect(mockFetch).toHaveBeenCalledWith(
-        `https://${mockPodId}.workspaces.sphinx.chat:3000`,
+        `https://${mockPodId}-3000.workspaces.sphinx.chat`,
         expect.objectContaining({
           method: "HEAD",
           signal: expect.any(AbortSignal),
@@ -79,7 +79,7 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, mockPortMappings, mockPodId);
 
       expect(result.available).toBe(true);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:8080`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-8080.workspaces.sphinx.chat`);
     });
   });
 
@@ -96,7 +96,7 @@ describe("checkFrontendAvailable", () => {
 
       expect(result.available).toBe(true);
       // Falls back to discovered frontend port since 5000 not in mappings but 3000 is
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
     });
 
     test("uses discovered port when not in mappings but valid", async () => {
@@ -112,7 +112,7 @@ describe("checkFrontendAvailable", () => {
 
       expect(result.available).toBe(true);
       // Uses the discovered frontend port even if not in mappings
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:4000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-4000.workspaces.sphinx.chat`);
     });
 
     test("uses default fallback port 3000 when frontend has no port", async () => {
@@ -129,7 +129,7 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, emptyMappings, mockPodId);
 
       expect(result.available).toBe(true);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
     });
   });
 
@@ -145,7 +145,7 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, mockPortMappings, mockPodId);
 
       expect(result.available).toBe(false);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
       expect(result.error).toBeUndefined();
     });
 
@@ -157,7 +157,7 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, mockPortMappings, mockPodId);
 
       expect(result.available).toBe(false);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
       expect(result.error).toBe("Frontend URL not responding");
     });
 
@@ -169,7 +169,7 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, mockPortMappings, mockPodId);
 
       expect(result.available).toBe(false);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
       expect(result.error).toBe("Frontend URL not responding");
     });
   });
@@ -186,7 +186,7 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, mockPortMappings, mockPodId);
 
       expect(result.available).toBe(true);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
     });
 
     test("is case-sensitive for process name matching", async () => {
@@ -215,7 +215,7 @@ describe("checkFrontendAvailable", () => {
       const result = await checkFrontendAvailable(jlist, mockPortMappings, mockPodId);
 
       expect(result.available).toBe(true);
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
     });
 
     test("handles non-array portMappings gracefully", async () => {
@@ -235,7 +235,7 @@ describe("checkFrontendAvailable", () => {
 
       expect(result.available).toBe(true);
       // Falls back to using the discovered frontend port
-      expect(result.frontendUrl).toBe(`https://${mockPodId}.workspaces.sphinx.chat:3000`);
+      expect(result.frontendUrl).toBe(`https://${mockPodId}-3000.workspaces.sphinx.chat`);
     });
   });
 });
