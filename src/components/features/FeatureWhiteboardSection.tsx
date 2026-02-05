@@ -20,7 +20,7 @@ import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
-import { CheckCircle2, Loader2, Maximize2, Minimize2, PenLine, Plus, Unlink, Wifi, WifiOff } from "lucide-react";
+import { CheckCircle2, Loader2, Maximize2, Minimize2, PenLine, Plus, Sparkles, Unlink, Wifi, WifiOff } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -46,11 +46,13 @@ interface WhiteboardData {
 interface FeatureWhiteboardSectionProps {
   featureId: string;
   workspaceId: string;
+  hasArchitecture?: boolean;
 }
 
 export function FeatureWhiteboardSection({
   featureId,
   workspaceId,
+  hasArchitecture = false,
 }: FeatureWhiteboardSectionProps) {
   const [whiteboard, setWhiteboard] = useState<WhiteboardData | null>(null);
   const [availableWhiteboards, setAvailableWhiteboards] = useState<WhiteboardItem[]>([]);
@@ -58,6 +60,7 @@ export function FeatureWhiteboardSection({
   const [creating, setCreating] = useState(false);
   const [linking, setLinking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
@@ -297,6 +300,33 @@ export function FeatureWhiteboardSection({
     };
   }, [isFullscreen]);
 
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/features/${featureId}/whiteboard/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setWhiteboard(data.data);
+        // Update Excalidraw if API is available
+        if (excalidrawAPI && data.data.elements) {
+          excalidrawAPI.updateScene({
+            elements: data.data.elements,
+            appState: data.data.appState,
+          });
+        }
+      } else {
+        console.error("Error generating whiteboard:", data.message);
+      }
+    } catch (error) {
+      console.error("Error generating whiteboard:", error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -324,7 +354,17 @@ export function FeatureWhiteboardSection({
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <Button onClick={handleCreate} disabled={creating}>
+              {hasArchitecture && (
+                <Button onClick={handleGenerate} disabled={generating}>
+                  {generating ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 mr-2" />
+                  )}
+                  Generate from Architecture
+                </Button>
+              )}
+              <Button onClick={handleCreate} disabled={creating} variant={hasArchitecture ? "outline" : "default"}>
                 {creating ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
@@ -358,6 +398,21 @@ export function FeatureWhiteboardSection({
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Whiteboard</Label>
         <div className="flex items-center gap-2">
+          {hasArchitecture && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGenerate}
+              disabled={generating}
+            >
+              {generating ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              Regenerate
+            </Button>
+          )}
           {/* Collaborators */}
           <CollaboratorAvatars collaborators={collaborators} />
 

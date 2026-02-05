@@ -1,29 +1,29 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2, Bot } from "lucide-react";
-import type { StakworkRunType } from "@prisma/client";
+import { AITextareaSection } from "@/components/features/AITextareaSection";
+import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
+import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
+import { FeatureWhiteboardSection } from "@/components/features/FeatureWhiteboardSection";
+import { PersonasSection } from "@/components/features/PersonasSection";
+import { TicketsList } from "@/components/features/TicketsList";
+import { UserStoriesSection } from "@/components/features/UserStoriesSection";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
+import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPopover } from "@/components/ui/status-popover";
-import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
-import { ActionMenu } from "@/components/ui/action-menu";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
-import { UserStoriesSection } from "@/components/features/UserStoriesSection";
-import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
-import { AITextareaSection } from "@/components/features/AITextareaSection";
-import { PersonasSection } from "@/components/features/PersonasSection";
-import { TicketsList } from "@/components/features/TicketsList";
-import { FeatureWhiteboardSection } from "@/components/features/FeatureWhiteboardSection";
-import { useWorkspace } from "@/hooks/useWorkspace";
-import { useDetailResource } from "@/hooks/useDetailResource";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAutoSave } from "@/hooks/useAutoSave";
+import { useDetailResource } from "@/hooks/useDetailResource";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import type { FeatureDetail } from "@/types/roadmap";
+import type { StakworkRunType } from "@prisma/client";
+import { ArrowLeft, Bot, Check, Loader2, Trash2 } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function FeatureDetailPage() {
   const router = useRouter();
@@ -31,10 +31,10 @@ export default function FeatureDetailPage() {
   const searchParams = useSearchParams();
   const { slug: workspaceSlug, id: workspaceId } = useWorkspace();
   const featureId = params.featureId as string;
-  
+
   // Get the page parameter to preserve pagination when navigating back
   const returnPage = searchParams.get("page") || "1";
-  
+
   // Helper function to get the back navigation path
   const getBackPath = () => {
     const basePath = `/w/${workspaceSlug}/plan`;
@@ -618,6 +618,7 @@ export default function FeatureDetailPage() {
               {/* Whiteboard Section */}
               <FeatureWhiteboardSection
                 featureId={featureId}
+                hasArchitecture={!!feature?.architecture?.trim()}
                 workspaceId={workspaceId}
               />
 
