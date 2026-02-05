@@ -6,7 +6,7 @@ export interface CreatePodOptions {
   podId?: string;
   swarmId: string;
   password?: string;
-  portMappings?: Record<string, number>;
+  portMappings?: number[];
   status?: PodStatus;
   usageStatus?: PodUsageStatus;
 }
@@ -19,12 +19,7 @@ export async function createTestPod(options: CreatePodOptions) {
   
   const podId = options.podId || `test-pod-${Date.now()}`;
   const password = options.password || "test-password-123";
-  const portMappings = options.portMappings || {
-    "3000": 30000,
-    "3010": 30010,
-    "15551": 31551,
-    "15552": 31552,
-  };
+  const portMappings = options.portMappings || [3000, 3010, 15551, 15552];
 
   // Encrypt password
   const encryptedPassword = encryptionService.encryptField("password", password);
