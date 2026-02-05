@@ -10,7 +10,7 @@ import { getInitialAppState } from "@/lib/excalidraw-config";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { ArrowLeft, Check, CheckCircle2, Loader2, Maximize2, Minimize2, Pencil, Wifi, WifiOff, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Loader2, Maximize2, Minimize2, Pencil, Scan, Wifi, WifiOff, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -312,6 +312,15 @@ export default function WhiteboardDetailPage() {
                 </>
               )}
             </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => excalidrawAPI?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: true, duration: 300 })}
+              title="Zoom to fit"
+              disabled={!excalidrawAPI}
+            >
+              <Scan className="w-4 h-4" />
+            </Button>
             <Button
               variant="outline"
               size="icon"
