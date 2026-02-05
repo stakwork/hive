@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
       codeIngestionEnabled: boolean;
       docsEnabled: boolean;
       mocksEnabled: boolean;
+      embeddingsEnabled: boolean;
     };
     let allFetchedRepos: RepoWithSyncConfig[];
 
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       });
 
@@ -138,12 +140,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`[STAKGRAPH_INGEST] Repositories to ingest: ${repositoriesToIngest.length} of ${allFetchedRepos.length}`);
 
-    // Build docs and mocks params based on repo settings
+    // Build docs, mocks, and embeddings params based on repo settings
     const docsRepos = repositoriesToIngest.filter(r => r.docsEnabled);
     const mocksRepos = repositoriesToIngest.filter(r => r.mocksEnabled);
+    const embeddingsRepos = repositoriesToIngest.filter(r => r.embeddingsEnabled);
 
     let syncOptions: SyncOptions | undefined;
-    if (docsRepos.length > 0 || mocksRepos.length > 0) {
+    if (docsRepos.length > 0 || mocksRepos.length > 0 || embeddingsRepos.length > 0) {
       syncOptions = {};
 
       // If all repos have docs enabled, use true; otherwise use comma-separated repo names
@@ -160,7 +163,14 @@ export async function POST(request: NextRequest) {
           : mocksRepos.map(r => r.name).join(',');
       }
 
-      console.log(`[STAKGRAPH_INGEST] Sync options - docs: ${syncOptions.docs}, mocks: ${syncOptions.mocks}`);
+      // If all repos have embeddings enabled, use true; otherwise use comma-separated repo names
+      if (embeddingsRepos.length > 0) {
+        syncOptions.embeddings = embeddingsRepos.length === repositoriesToIngest.length
+          ? true
+          : embeddingsRepos.map(r => r.name).join(',');
+      }
+
+      console.log(`[STAKGRAPH_INGEST] Sync options - docs: ${syncOptions.docs}, mocks: ${syncOptions.mocks}, embeddings: ${syncOptions.embeddings}`);
     }
 
     const finalRepoUrls = repositoriesToIngest.map(repo => repo.repositoryUrl).join(',');

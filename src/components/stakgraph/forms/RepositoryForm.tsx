@@ -94,6 +94,7 @@ export default function RepositoryForm({
       codeIngestionEnabled: false,
       docsEnabled: false,
       mocksEnabled: false,
+      embeddingsEnabled: false,
     };
     onChange({
       repositories: [...data.repositories, newRepo],
@@ -375,11 +376,12 @@ export default function RepositoryForm({
             {repo.repositoryUrl && (repo.codeIngestionEnabled !== undefined) && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
                 <span>Ingestion:</span>
-                {repo.codeIngestionEnabled ? (
+                  {repo.codeIngestionEnabled ? (
                   <Badge variant="secondary" className="text-xs py-0 h-5">
                     {[
                       repo.docsEnabled && "Docs",
                       repo.mocksEnabled && "Mocks",
+                      repo.embeddingsEnabled && "Embeddings",
                     ].filter(Boolean).join(", ") || "Code only"}
                   </Badge>
                 ) : (

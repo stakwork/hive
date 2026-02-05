@@ -52,6 +52,7 @@ export interface Repository {
   codeIngestionEnabled?: boolean;  // default true - whether to sync code to stakgraph
   docsEnabled?: boolean;           // default true - whether to generate docs on ingest/sync
   mocksEnabled?: boolean;          // default true - whether to generate mocks on ingest/sync
+  embeddingsEnabled?: boolean;     // default true - generate embeddings for semantic search
 }
 
 export interface RepositoryData {
