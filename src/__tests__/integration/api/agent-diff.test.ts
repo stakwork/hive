@@ -766,7 +766,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       expect(diffCall[1]?.method).toBe("GET");
       expect(diffCall[1]?.headers).toEqual(
         expect.objectContaining({
-          Authorization: "Bearer test-password",
+          Authorization: "Bearer secure-password",
         })
       );
 
