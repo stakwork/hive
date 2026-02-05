@@ -34,6 +34,7 @@ describe("getPrimaryRepository", () => {
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -59,6 +60,7 @@ describe("getPrimaryRepository", () => {
             codeIngestionEnabled: true,
             docsEnabled: true,
             mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -77,6 +79,7 @@ describe("getPrimaryRepository", () => {
       codeIngestionEnabled: true,
       docsEnabled: true,
       mocksEnabled: true,
+      embeddingsEnabled: true,
     });
   });
 
@@ -107,6 +110,7 @@ describe("getPrimaryRepository", () => {
             codeIngestionEnabled: true,
             docsEnabled: true,
             mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -137,6 +141,7 @@ describe("getPrimaryRepository", () => {
             codeIngestionEnabled: true,
             docsEnabled: true,
             mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -162,6 +167,7 @@ describe("getPrimaryRepository", () => {
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
+          embeddingsEnabled: true,
         },
         {
           id: "repo-2",
@@ -176,6 +182,7 @@ describe("getPrimaryRepository", () => {
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -201,6 +208,7 @@ describe("getPrimaryRepository", () => {
             codeIngestionEnabled: true,
             docsEnabled: true,
             mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -235,6 +243,7 @@ describe("getPrimaryRepository", () => {
             codeIngestionEnabled: true,
             docsEnabled: true,
             mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -266,6 +275,7 @@ describe("getPrimaryRepository", () => {
             codeIngestionEnabled: true,
             docsEnabled: true,
             mocksEnabled: true,
+            embeddingsEnabled: true,
           },
           orderBy: { createdAt: "asc" },
         },
@@ -290,6 +300,7 @@ describe("getPrimaryRepository", () => {
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -326,6 +337,7 @@ describe("getPrimaryRepository", () => {
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
@@ -347,6 +359,7 @@ describe("getPrimaryRepository", () => {
       codeIngestionEnabled: true,
       docsEnabled: true,
       mocksEnabled: true,
+      embeddingsEnabled: true,
     });
     expect(result).toHaveProperty("id");
     expect(result).toHaveProperty("name");
@@ -360,6 +373,7 @@ describe("getPrimaryRepository", () => {
     expect(result).toHaveProperty("codeIngestionEnabled");
     expect(result).toHaveProperty("docsEnabled");
     expect(result).toHaveProperty("mocksEnabled");
+    expect(result).toHaveProperty("embeddingsEnabled");
   });
 
   test("should handle Prisma query timeout errors", async () => {
@@ -388,6 +402,7 @@ describe("getPrimaryRepository", () => {
           codeIngestionEnabled: true,
           docsEnabled: true,
           mocksEnabled: true,
+          embeddingsEnabled: true,
         },
       ],
     };
