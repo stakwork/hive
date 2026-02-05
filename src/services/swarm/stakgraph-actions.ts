@@ -4,8 +4,9 @@ import { getStakgraphUrl } from "@/lib/utils/stakgraph-url";
 type Creds = { username?: string; pat?: string };
 
 export interface SyncOptions {
-  docs?: boolean | string;   // true = all repos, string = comma-separated repo names
-  mocks?: boolean | string;  // true = all repos, string = comma-separated repo names
+  docs?: boolean | string;       // true = all repos, string = comma-separated repo names
+  mocks?: boolean | string;      // true = all repos, string = comma-separated repo names
+  embeddings?: boolean | string; // true = all repos, string = comma-separated repo names
 }
 
 export interface AsyncSyncResult {
@@ -53,6 +54,7 @@ export async function triggerAsyncSync(
   if (callbackUrl) (data as Record<string, string>).callback_url = callbackUrl;
   if (options?.docs) data.docs = String(options.docs);
   if (options?.mocks) data.mocks = String(options.mocks);
+  if (options?.embeddings) data.embeddings = String(options.embeddings);
   const result = await swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/sync_async",
@@ -89,6 +91,7 @@ export async function triggerIngestAsync(
   if (callbackUrl) data.callback_url = callbackUrl;
   if (options?.docs) data.docs = String(options.docs);
   if (options?.mocks) data.mocks = String(options.mocks);
+  if (options?.embeddings) data.embeddings = String(options.embeddings);
   return swarmApiRequest({
     swarmUrl: stakgraphUrl,
     endpoint: "/ingest_async",

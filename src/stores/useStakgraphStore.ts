@@ -17,7 +17,7 @@ import { devtools } from "zustand/middleware";
 const initialFormData: StakgraphSettings = {
   name: "",
   description: "",
-  repositories: [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: true }],
+  repositories: [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: true, embeddingsEnabled: true }],
   swarmUrl: "",
   swarmSecretAlias: "",
   swarmApiKey: "",
@@ -131,7 +131,7 @@ export const useStakgraphStore = create<StakgraphStore>()(
             const newFormData: StakgraphSettings = {
               name: settings.name || "",
               description: settings.description || "",
-              repositories: settings.repositories || [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: true }],
+              repositories: settings.repositories || [{ repositoryUrl: "", branch: "main", name: "", codeIngestionEnabled: true, docsEnabled: true, mocksEnabled: true, embeddingsEnabled: true }],
               swarmUrl: settings.swarmUrl || "",
               swarmSecretAlias: settings.swarmSecretAlias || "",
               swarmApiKey: settings.swarmApiKey || "",

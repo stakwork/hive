@@ -445,6 +445,7 @@ model Repository {
   codeIngestionEnabled Boolean @default(true)  @map("code_ingestion_enabled")
   docsEnabled          Boolean @default(true)  @map("docs_enabled")
   mocksEnabled         Boolean @default(true)  @map("mocks_enabled")
+  embeddingsEnabled    Boolean @default(true)  @map("embeddings_enabled")
 
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
