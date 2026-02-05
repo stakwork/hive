@@ -73,6 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         codeIngestionEnabled: true,
         docsEnabled: true,
         mocksEnabled: true,
+        embeddingsEnabled: true,
         workspace: {
           select: {
             swarm: {
@@ -630,6 +631,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const syncOptions: SyncOptions = {};
     if (repository.docsEnabled) syncOptions.docs = true;
     if (repository.mocksEnabled) syncOptions.mocks = true;
+    if (repository.embeddingsEnabled) syncOptions.embeddings = true;
 
     console.log("[GithubWebhook] Triggering async sync", {
       delivery,

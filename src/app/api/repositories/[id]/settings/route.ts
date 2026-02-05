@@ -11,6 +11,7 @@ const repositorySettingsSchema = z.object({
   codeIngestionEnabled: z.boolean().optional(),
   docsEnabled: z.boolean().optional(),
   mocksEnabled: z.boolean().optional(),
+  embeddingsEnabled: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -112,6 +113,9 @@ export async function PATCH(
         ...(settings.mocksEnabled !== undefined && {
           mocksEnabled: settings.mocksEnabled,
         }),
+        ...(settings.embeddingsEnabled !== undefined && {
+          embeddingsEnabled: settings.embeddingsEnabled,
+        }),
       },
       select: {
         id: true,
@@ -121,6 +125,7 @@ export async function PATCH(
         codeIngestionEnabled: true,
         docsEnabled: true,
         mocksEnabled: true,
+        embeddingsEnabled: true,
       },
     });
 
@@ -220,6 +225,7 @@ export async function GET(
         codeIngestionEnabled: repository.codeIngestionEnabled,
         docsEnabled: repository.docsEnabled,
         mocksEnabled: repository.mocksEnabled,
+        embeddingsEnabled: repository.embeddingsEnabled,
       },
     });
   } catch (error) {

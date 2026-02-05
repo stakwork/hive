@@ -12,13 +12,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Loader2, Database, FileText, Copy } from "lucide-react";
+import { Loader2, Database, FileText, Copy, Layers } from "lucide-react";
 import type { Repository } from "../../types";
 
 export interface RepositorySyncSettings {
   codeIngestionEnabled: boolean;
   docsEnabled: boolean;
   mocksEnabled: boolean;
+  embeddingsEnabled: boolean;
 }
 
 interface RepositorySettingsModalProps {
@@ -42,6 +43,7 @@ export function RepositorySettingsModal({
     codeIngestionEnabled: repository.codeIngestionEnabled ?? true,
     docsEnabled: repository.docsEnabled ?? true,
     mocksEnabled: repository.mocksEnabled ?? true,
+    embeddingsEnabled: repository.embeddingsEnabled ?? true,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -51,6 +53,7 @@ export function RepositorySettingsModal({
       codeIngestionEnabled: repository.codeIngestionEnabled ?? true,
       docsEnabled: repository.docsEnabled ?? true,
       mocksEnabled: repository.mocksEnabled ?? true,
+      embeddingsEnabled: repository.embeddingsEnabled ?? true,
     });
   }, [repository]);
 
@@ -68,8 +71,8 @@ export function RepositorySettingsModal({
     setSettings((prev) => ({
       ...prev,
       codeIngestionEnabled: enabled,
-      // When disabling code ingestion, also disable docs and mocks
-      ...(enabled ? {} : { docsEnabled: false, mocksEnabled: false }),
+      // When disabling code ingestion, also disable docs, mocks, and embeddings
+      ...(enabled ? {} : { docsEnabled: false, mocksEnabled: false, embeddingsEnabled: false }),
     }));
   };
 
@@ -151,6 +154,29 @@ export function RepositorySettingsModal({
                   checked={settings.mocksEnabled}
                   onCheckedChange={(checked) =>
                     setSettings((prev) => ({ ...prev, mocksEnabled: checked }))
+                  }
+                  disabled={loading || isSaving}
+                />
+              </div>
+
+              {/* Embeddings Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Layers className="h-4 w-4 text-muted-foreground" />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="embeddings-enabled" className="text-sm font-medium">
+                      Generate Embeddings
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Generate code descriptions for semantic search
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="embeddings-enabled"
+                  checked={settings.embeddingsEnabled}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({ ...prev, embeddingsEnabled: checked }))
                   }
                   disabled={loading || isSaving}
                 />
