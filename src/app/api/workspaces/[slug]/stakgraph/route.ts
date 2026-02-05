@@ -35,6 +35,7 @@ const stakgraphSettingsSchema = z.object({
         codeIngestionEnabled: z.boolean().optional(),
         docsEnabled: z.boolean().optional(),
         mocksEnabled: z.boolean().optional(),
+        embeddingsEnabled: z.boolean().optional(),
       }),
     )
     .optional(),
@@ -461,6 +462,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             codeIngestionEnabled: repo.codeIngestionEnabled ?? true,
             docsEnabled: repo.docsEnabled ?? true,
             mocksEnabled: repo.mocksEnabled ?? true,
+            embeddingsEnabled: repo.embeddingsEnabled ?? true,
           })),
         });
       }
@@ -476,6 +478,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             codeIngestionEnabled: repo.codeIngestionEnabled,
             docsEnabled: repo.docsEnabled,
             mocksEnabled: repo.mocksEnabled,
+            embeddingsEnabled: repo.embeddingsEnabled,
           },
         });
       }
