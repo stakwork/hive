@@ -46,6 +46,7 @@ vi.mock("@/lib/pods", () => ({
   POD_PORTS: {
     CONTROL: "15552",
   },
+  buildPodUrl: (podId: string, port: number | string) => `https://${podId}.workspaces.sphinx.chat:${port}`,
 }));
 
 const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
@@ -330,6 +331,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -375,6 +377,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -404,6 +407,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -434,6 +438,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails with missing control port
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [], // Empty port mappings
       } as any);
@@ -459,6 +464,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -504,6 +510,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -552,6 +559,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -606,6 +614,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
         portMappings: [15552],
       } as any);
@@ -690,6 +699,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
       // Mock getPodDetails
       const { getPodDetails } = await import("@/lib/pods");
       vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "secure-password",
         portMappings: [15552],
       } as any);
