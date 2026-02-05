@@ -129,7 +129,7 @@ describe("Pod Queries", () => {
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-1",
-          portMappings: { "3000": "https://app1.example.com" },
+          portMappings: [3000],
         },
       });
 
@@ -140,7 +140,7 @@ describe("Pod Queries", () => {
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-2",
-          portMappings: { "3000": "https://app2.example.com" },
+          portMappings: [3000],
         },
       });
 
@@ -226,7 +226,7 @@ describe("Pod Queries", () => {
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password",
-          portMappings: { "3000": "https://app.example.com" },
+          portMappings: [3000],
         },
       });
 
@@ -370,11 +370,7 @@ describe("Pod Queries", () => {
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password-123",
-          portMappings: {
-            "3000": "https://app.example.com",
-            "15551": "https://goose.example.com",
-            "15552": "https://control.example.com",
-          },
+          portMappings: [3000, 15551, 15552],
         },
       });
 
@@ -382,11 +378,7 @@ describe("Pod Queries", () => {
 
       expect(details).not.toBeNull();
       expect(details?.password).toBe("encrypted-password-123");
-      expect(details?.portMappings).toEqual({
-        "3000": "https://app.example.com",
-        "15551": "https://goose.example.com",
-        "15552": "https://control.example.com",
-      });
+      expect(details?.portMappings).toEqual([3000, 15551, 15552]);
     });
 
     it("should return null for soft-deleted pods", async () => {
@@ -397,7 +389,7 @@ describe("Pod Queries", () => {
           status: PodStatus.RUNNING,
           usageStatus: PodUsageStatus.UNUSED,
           password: "encrypted-password",
-          portMappings: { "3000": "https://app.example.com" },
+          portMappings: [3000],
           deletedAt: new Date(),
         },
       });

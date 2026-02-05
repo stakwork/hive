@@ -233,7 +233,7 @@ export function buildPodUrl(podId: string, port: number | string): string {
  * Used for retrieving credentials after claiming
  *
  * @param podId - The pod ID (workspace identifier, not primary key)
- * @returns Pod details or null if not found
+ * @returns Pod details or null if not found (excludes deleted pods)
  */
 export async function getPodDetails(
   podId: string,
@@ -241,6 +241,7 @@ export async function getPodDetails(
   const pod = await db.pod.findFirst({
     where: {
       podId,
+      deletedAt: null,
     },
     select: {
       podId: true,

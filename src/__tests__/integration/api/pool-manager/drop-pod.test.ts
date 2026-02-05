@@ -340,12 +340,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       const pod = await createTestPod({
         podId: "pod-123",
         swarmId: swarm.id,
-        portMappings: {
-          "3000": "30000",
-          "3010": "30010",
-          "15551": "31551",
-          "15552": "31552",
-        },
+        portMappings: [3000, 3010, 15551, 15552],
       });
 
       getMockedSession().mockResolvedValue(createAuthenticatedSession(owner));
@@ -404,12 +399,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       const pod = await createTestPod({
         podId: "pod-with-repos",
         swarmId: swarm.id,
-        portMappings: {
-          "3000": "30000",
-          "3010": "30010",
-          "15551": "31551",
-          "15552": "https://control.example.com", // Control port
-        },
+        portMappings: [3000, 3010, 15551, 15552],
       });
 
       // Add repositories to the workspace
@@ -442,9 +432,9 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       await expectSuccess(response, 200);
 
-      // Should call updatePodRepositories
+      // Should call updatePodRepositories with URL built from podId
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://control.example.com/latest",
+        "https://pod-with-repos.workspaces.sphinx.chat:15552/latest",
         expect.objectContaining({
           method: "PUT",
         })
@@ -466,9 +456,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
       const pod = await createTestPod({
         podId: "pod-no-control",
         swarmId: swarm.id,
-        portMappings: {
-          "3000": "30000",
-        },
+        portMappings: [3000],
       });
 
       await db.repository.create({
