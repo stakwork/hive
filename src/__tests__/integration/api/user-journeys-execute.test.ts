@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { EncryptionService } from '@/lib/encryption';
 import { resetDatabase } from '@/__tests__/support/utilities/database';
 import { WorkflowStatus } from '@prisma/client';
+import * as podsUtils from '@/lib/pods/utils';
 
 // Mock NextAuth
 vi.mock('next-auth', () => ({
@@ -15,6 +16,15 @@ vi.mock('next-auth', () => ({
 vi.mock('@/lib/auth/options', () => ({
   authOptions: {},
 }));
+
+// Mock pods utilities
+vi.mock('@/lib/pods/utils', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/pods/utils')>('@/lib/pods/utils');
+  return {
+    ...actual,
+    claimPodAndGetFrontend: vi.fn(),
+  };
+});
 
 describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
   const mockGetServerSession = vi.mocked(getServerSession);
@@ -86,6 +96,18 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         },
       });
 
+      // Create an available pod for the swarm
+      const pod = await tx.pod.create({
+        data: {
+          podId: `test-pod-${Date.now()}`,
+          swarmId: swarm.id,
+          password: JSON.stringify(enc.encryptField('password', 'test-pod-password')),
+          portMappings: [3000, 3010, 15551, 15552],
+          status: 'RUNNING',
+          usageStatus: 'UNUSED',
+        },
+      });
+
       // Create GitHub auth (without token - tokens are stored in Account table)
       const githubAuth = await tx.gitHubAuth.create({
         data: {
@@ -108,63 +130,57 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         },
       });
 
-      return { user, workspace, repository, swarm, githubAuth, task };
+      return { user, workspace, repository, swarm, githubAuth, task, pod };
     });
-  }
-
-  // Helper to setup successful pod claiming mocks
-  function setupSuccessfulPodClaimingMocks(frontendPort = 3000, controlPort = 15552) {
-    mockFetch
-      // GET workspace from pool
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          workspace: {
-            id: 'test-workspace-id',
-            password: 'test-pod-password',
-            url: 'test-pod.example.com',
-            portMappings: {
-              [frontendPort.toString()]: `https://test-pod.example.com:40000`,
-              [controlPort.toString()]: `https://test-pod.example.com:40001`,
-            },
-          },
-        }),
-        text: async () => JSON.stringify({ workspace: {} }),
-      } as Response)
-      // POST mark workspace as used
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-        text: async () => JSON.stringify({ success: true }),
-      } as Response)
-      // GET /jlist - process list
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => [
-          { name: 'frontend', port: frontendPort.toString() },
-          { name: 'goose', port: '9090' },
-        ],
-        text: async () => JSON.stringify([{ name: 'frontend', port: frontendPort.toString() }]),
-      } as Response)
-      // POST /playwright_test - trigger test
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ status: 'triggered' }),
-        text: async () => JSON.stringify({ status: 'triggered' }),
-      } as Response);
   }
 
   describe('Happy Path - Successful Execution', () => {
     it('should successfully execute user journey task with pod claiming', async () => {
-      const { user, task, workspace, swarm } = await createTestSetup();
+      const { user, task, workspace, swarm, pod } = await createTestSetup();
 
       // Mock authenticated session
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
       } as any);
 
-      // Setup successful pod claiming flow
-      setupSuccessfulPodClaimingMocks();
+      // Mock claimPodAndGetFrontend to return success
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      const controlPortUrl = 'https://test-pod.example.com:40001';
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': controlPortUrl,
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      // Mock control port /playwright_test call
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'triggered' }),
+      } as Response);
 
       // Create request
       const request = new Request(
@@ -193,42 +209,15 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         agentPassword: expect.any(String), // One-time API key
       });
 
-      // Validate API call sequence
-      expect(mockFetch).toHaveBeenCalledTimes(4);
-
-      // Verify pool manager workspace fetch (uses swarm.id or swarm.poolName as poolId)
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        1,
-        expect.stringContaining(`/pools/`),
-        expect.objectContaining({
-          method: 'GET',
-          headers: expect.objectContaining({
-            'Authorization': expect.stringContaining('Bearer'),
-          }),
-        })
-      );
-
-      // Verify workspace mark-used
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('/mark-used'),
-        expect.objectContaining({
-          method: 'POST',
-        })
-      );
-
-      // Verify control port /jlist call
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        3,
-        expect.stringContaining('/jlist'),
-        expect.objectContaining({
-          method: 'GET',
-        })
+      // Verify pod was claimed with correct arguments
+      expect(mockClaimPod).toHaveBeenCalledWith(
+        swarm.id, // poolId
+        'test-pool-api-key', // decrypted poolApiKey
+        expect.anything() // services (can be undefined or array)
       );
 
       // Verify control port /playwright_test call
-      expect(mockFetch).toHaveBeenNthCalledWith(
-        4,
+      expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/playwright_test'),
         expect.objectContaining({
           method: 'POST',
@@ -284,7 +273,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
     });
 
     it('should handle missing GitHub credentials gracefully', async () => {
-      const { user, task } = await createTestSetup();
+      const { user, task, swarm, pod } = await createTestSetup();
 
       // Delete GitHub auth to simulate missing credentials
       await db.gitHubAuth.deleteMany({ where: { userId: user.id } });
@@ -293,7 +282,43 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         user: { id: user.id, email: user.email },
       } as any);
 
-      setupSuccessfulPodClaimingMocks();
+      // Mock claimPodAndGetFrontend
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': 'https://test-pod.example.com:40001',
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      // Mock control port
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'triggered' }),
+      } as Response);
 
       const request = new Request(
         `http://localhost:3000/api/user-journeys/${task.id}/execute`,
@@ -517,15 +542,16 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       expect(data.error).toBeDefined();
     });
 
-    it('should return 500 when pool manager API is unavailable', async () => {
+    it('should return 503 when pod claiming fails', async () => {
       const { user, task } = await createTestSetup();
 
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
       } as any);
 
-      // Mock pool manager failure
-      mockFetch.mockRejectedValue(new Error('Network error'));
+      // Mock claimPodAndGetFrontend to throw error
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockRejectedValueOnce(new Error('No available pods'));
 
       const request = new Request(
         `http://localhost:3000/api/user-journeys/${task.id}/execute`,
@@ -536,21 +562,53 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
 
       expect(response.status).toBe(503);
       const data = await response.json();
-      expect(data.error).toContain('Failed to');
+      expect(data.error).toContain('Failed to claim pod');
     });
 
-    it('should return 500 when pool manager returns non-ok response', async () => {
-      const { user, task } = await createTestSetup();
+    it('should handle control port failure gracefully', async () => {
+      const { user, task, pod } = await createTestSetup();
 
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
       } as any);
 
-      // Mock pool manager error response
-      mockFetch.mockResolvedValue({
+      // Mock successful pod claiming
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': 'https://test-pod.example.com:40001',
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      // Mock control port failure
+      mockFetch.mockResolvedValueOnce({
         ok: false,
-        status: 503,
-        json: async () => ({ error: 'Service unavailable' }),
+        status: 500,
+        json: async () => ({ error: 'Control port error' }),
       } as Response);
 
       const request = new Request(
@@ -560,57 +618,8 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
 
       const response = await POST(request, { params: { taskId: task.id } });
 
-      expect(response.status).toBe(503);
-      const data = await response.json();
-      expect(data.error).toBeDefined();
-    });
-
-    it('should handle control port failure gracefully', async () => {
-      const { user, task } = await createTestSetup();
-
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
-
-      // Setup successful pod claiming but failing control port
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            workspace: {
-              id: 'test-workspace-id',
-              password: 'test-pod-password',
-              url: 'test-pod.example.com',
-              portMappings: {
-                '3000': 'https://test-pod.example.com:40000',
-                '15552': 'https://test-pod.example.com:40001',
-              },
-            },
-          }),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ success: true }),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => [{ name: 'frontend', port: '3000' }],
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          json: async () => ({ error: 'Control port error' }),
-        } as Response);
-
-      const request = new Request(
-        `http://localhost:3000/api/user-journeys/${task.id}/execute`,
-        { method: 'POST' }
-      );
-
-      const response = await POST(request, { params: { taskId: task.id } });
-
-      // Control port failure returns 503 (pod claimed but test trigger failed)
-      expect(response.status).toBe(503);
+      // Control port failure returns 500 (caught by error handler)
+      expect(response.status).toBe(500);
     });
   });
 
@@ -637,13 +646,48 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
     });
 
     it('should generate unique one-time API key for agent password', async () => {
-      const { user, task } = await createTestSetup();
+      const { user, task, swarm, pod } = await createTestSetup();
 
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
       } as any);
 
-      setupSuccessfulPodClaimingMocks();
+      // Mock claimPodAndGetFrontend
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': 'https://test-pod.example.com:40001',
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'triggered' }),
+      } as Response);
 
       const request = new Request(
         `http://localhost:3000/api/user-journeys/${task.id}/execute`,
@@ -665,13 +709,48 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
     });
 
     it('should update task status atomically', async () => {
-      const { user, task } = await createTestSetup();
+      const { user, task, swarm, pod } = await createTestSetup();
 
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
       } as any);
 
-      setupSuccessfulPodClaimingMocks();
+      // Mock claimPodAndGetFrontend
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': 'https://test-pod.example.com:40001',
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'triggered' }),
+      } as Response);
 
       const initialStatus = task.workflowStatus;
       expect(initialStatus).toBe('PENDING');
@@ -723,7 +802,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
 
   describe('Edge Cases', () => {
     it('should handle task that is already in IN_PROGRESS state', async () => {
-      const { user, task } = await createTestSetup();
+      const { user, task, swarm, pod } = await createTestSetup();
 
       // Update task to IN_PROGRESS
       await db.task.update({
@@ -735,7 +814,42 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
         user: { id: user.id, email: user.email },
       } as any);
 
-      setupSuccessfulPodClaimingMocks();
+      // Mock claimPodAndGetFrontend
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': 'https://test-pod.example.com:40001',
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'triggered' }),
+      } as Response);
 
       const request = new Request(
         `http://localhost:3000/api/user-journeys/${task.id}/execute`,
@@ -750,23 +864,101 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
       expect(data.success).toBe(true);
     });
 
-    it('should handle missing port mappings from pool manager', async () => {
-      const { user, task } = await createTestSetup();
+    it('should handle claimPodAndGetFrontend returning missing control port', async () => {
+      const { user, task, swarm, pod } = await createTestSetup();
 
       mockGetServerSession.mockResolvedValue({
         user: { id: user.id, email: user.email },
       } as any);
 
-      // Mock workspace with missing port mappings
+      // Mock claimPodAndGetFrontend with missing control port
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: 'https://test-pod.example.com:40000',
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            // Missing control port 15552
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'frontend', status: 'online', port: '3000', pm_uptime: 1000 },
+        ],
+      });
+
+      const request = new Request(
+        `http://localhost:3000/api/user-journeys/${task.id}/execute`,
+        { method: 'POST' }
+      );
+
+      const response = await POST(request, { params: { taskId: task.id } });
+
+      // Missing control port returns 500
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.error).toContain('Control port not available');
+    });
+
+    it('should handle claimPodAndGetFrontend returning missing frontend', async () => {
+      const { user, task, swarm, pod } = await createTestSetup();
+
+      mockGetServerSession.mockResolvedValue({
+        user: { id: user.id, email: user.email },
+      } as any);
+
+      // Mock claimPodAndGetFrontend with missing frontend
+      const mockClaimPod = vi.mocked(podsUtils.claimPodAndGetFrontend);
+      mockClaimPod.mockResolvedValueOnce({
+        frontend: null, // No frontend process found
+        workspace: {
+          id: pod.podId,
+          password: 'test-pod-password',
+          url: 'test-pod.example.com',
+          portMappings: {
+            '3000': 'https://test-pod.example.com:40000',
+            '15552': 'https://test-pod.example.com:40001',
+          },
+          state: 'RUNNING',
+          usage_status: 'IN_USE',
+          marked_at: new Date().toISOString(),
+          branches: [],
+          created: new Date().toISOString(),
+          customImage: false,
+          flagged_for_recreation: false,
+          fqdn: '',
+          image: '',
+          primaryRepo: '',
+          repoName: '',
+          repositories: [],
+          subdomain: '',
+          useDevContainer: false,
+        },
+        processList: [
+          { pid: 1, name: 'backend', status: 'online', port: '8000', pm_uptime: 1000 },
+        ],
+      });
+
+      // Mock control port call
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          workspace: {
-            portMappings: [], // Empty port mappings
-            password: 'test-pod-password',
-            url: 'test-pod.example.com',
-          },
-        }),
+        json: async () => ({ status: 'triggered' }),
       } as Response);
 
       const request = new Request(
@@ -776,52 +968,11 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
 
       const response = await POST(request, { params: { taskId: task.id } });
 
-      expect(response.status).toBe(503);
+      // Missing frontend is acceptable - test still executes
+      expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.error).toBeDefined();
-    });
-
-    it('should handle missing frontend process in /jlist response', async () => {
-      const { user, task } = await createTestSetup();
-
-      mockGetServerSession.mockResolvedValue({
-        user: { id: user.id, email: user.email },
-      } as any);
-
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            workspace: {
-              id: 'test-workspace-id',
-              password: 'test-pod-password',
-              url: 'test-pod.example.com',
-              portMappings: {
-                '3000': 'https://test-pod.example.com:40000',
-                '15552': 'https://test-pod.example.com:40001',
-              },
-            },
-          }),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ success: true }),
-        } as Response)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => [{ name: 'backend', port: '8000' }], // No frontend process
-        } as Response);
-
-      const request = new Request(
-        `http://localhost:3000/api/user-journeys/${task.id}/execute`,
-        { method: 'POST' }
-      );
-
-      const response = await POST(request, { params: { taskId: task.id } });
-
-      expect(response.status).toBe(503);
-      const data = await response.json();
-      expect(data.error).toBeDefined();
+      expect(data.success).toBe(true);
+      expect(data.data.frontendUrl).toBeNull();
     });
   });
 });
