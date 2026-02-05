@@ -130,6 +130,12 @@ class MockPoolStateManager {
     };
   }
 
+  /**
+   * NOTE: Pod claiming and releasing are now handled by direct database operations
+   * in src/lib/pods/queries.ts (claimAvailablePod, releasePodById).
+   * Mock state only manages container operations (repositories, environment variables, processes).
+   */
+
   getAvailablePod(poolName: string): MockPod | null {
     const pool = this.pools.get(poolName);
     if (!pool) {
@@ -146,22 +152,19 @@ class MockPoolStateManager {
   claimPod(poolName: string, workspaceId: string): MockPod | null {
     const pool = this.pools.get(poolName);
     if (!pool) {
-      throw new Error(`Pool ${poolName} not found`);
+      return null;
     }
 
     const availablePod = pool.pods.find(
       (pod) => pod.usage_status === "available" && pod.state === "running"
     );
 
-    if (!availablePod) {
-      return null;
+    if (availablePod) {
+      availablePod.usage_status = "in_use";
+      availablePod.workspaceId = workspaceId;
     }
 
-    availablePod.usage_status = "in_use";
-    availablePod.claimedAt = new Date();
-    availablePod.workspaceId = workspaceId;
-
-    return availablePod;
+    return availablePod || null;
   }
 
   releasePod(poolName: string, podId: string): boolean {
@@ -175,15 +178,8 @@ class MockPoolStateManager {
       return false;
     }
 
-    // Reset pod state
     pod.usage_status = "available";
-    pod.repositories = [];
-    pod.branches = [];
-    pod.environmentVariables = {};
-    pod.claimedAt = undefined;
-    pod.workspaceId = undefined;
-    pod.userInfo = undefined;
-
+    delete pod.workspaceId;
     return true;
   }
 

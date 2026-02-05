@@ -116,6 +116,8 @@ export interface CreateTestWorkspaceScenarioOptions {
   workspace?: Partial<Omit<CreateTestWorkspaceOptions, "ownerId">>;
   withSwarm?: boolean;
   swarm?: Partial<CreateTestSwarmOptions>;
+  withPods?: boolean;
+  podCount?: number;
 }
 
 export interface TestWorkspaceScenarioResult {
@@ -124,6 +126,7 @@ export interface TestWorkspaceScenarioResult {
   members: User[];
   memberships: WorkspaceMember[];
   swarm: Swarm | null;
+  pods: Pod[];
 }
 
 export async function createTestWorkspaceScenario(
@@ -136,6 +139,8 @@ export async function createTestWorkspaceScenario(
     workspace: workspaceOverrides = {},
     withSwarm = false,
     swarm: swarmOverrides = {},
+    withPods = false,
+    podCount = 1,
   } = options;
 
   const owner = await createTestUser({
@@ -208,11 +213,24 @@ export async function createTestWorkspaceScenario(
     });
   }
 
+  const pods: Pod[] = [];
+
+  if (withPods && swarm) {
+    const { createTestPod } = await import('./pod.factory');
+    for (let i = 0; i < podCount; i++) {
+      const pod = await createTestPod({
+        swarmId: swarm.id,
+      });
+      pods.push(pod);
+    }
+  }
+
   return {
     owner,
     workspace,
     members,
     memberships,
     swarm,
+    pods,
   };
 }
