@@ -762,11 +762,11 @@ describe("POST /api/agent/diff Integration Tests", () => {
 
       // Verify diff fetch request structure
       const diffCall = mockFetch.mock.calls[0];
-      expect(diffCall[0]).toBe("http://pod-control.test:15552/diff");
+      expect(diffCall[0]).toBe("https://test-pod-id.workspaces.sphinx.chat:15552/diff");
       expect(diffCall[1]?.method).toBe("GET");
       expect(diffCall[1]?.headers).toEqual(
         expect.objectContaining({
-          Authorization: "Bearer decrypted-value",
+          Authorization: "Bearer test-password",
         })
       );
 
