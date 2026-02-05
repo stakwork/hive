@@ -434,7 +434,7 @@ describe("POST /api/pool-manager/drop-pod/[workspaceId] - Integration Tests", ()
 
       // Should call updatePodRepositories with URL built from podId
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://pod-with-repos.workspaces.sphinx.chat:15552/latest",
+        "https://pod-with-repos-15552.workspaces.sphinx.chat/latest",
         expect.objectContaining({
           method: "PUT",
         })
