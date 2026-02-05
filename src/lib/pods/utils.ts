@@ -480,13 +480,9 @@ export async function releaseTaskPod(options: ReleaseTaskPodOptions): Promise<Re
         }
 
         // Check if pod is assigned to a different task
-        const task = await db.task.findFirst({
-          where: { podId },
-        });
-
-        if (task && task.id !== taskId) {
+        if (podUsage.usageStatusMarkedBy !== taskId) {
           console.log(
-            `[releaseTaskPod] Pod ${podId} is assigned to different task (${task.id}) not this task (${taskId})`,
+            `[releaseTaskPod] Pod ${podId} is assigned to different task (${podUsage.usageStatusMarkedBy}) not this task (${taskId})`,
           );
           result.reassigned = true;
           result.success = true;
