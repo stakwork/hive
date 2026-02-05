@@ -1,12 +1,7 @@
-import { config } from "@/config/env";
 import { parsePM2Content } from "@/utils/devContainerUtils";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { JlistProcess } from "@/types/pod-repair";
 import { claimAvailablePod, getPodDetails, releasePodById, getPodUsageStatus, buildPodUrl } from "./queries";
-import type { Pod } from "@prisma/client";
-
-const encryptionService = EncryptionService.getInstance();
 
 // Re-export constants for external use
 export { POD_PORTS, PROCESS_NAMES } from "./constants";
@@ -126,14 +121,16 @@ export async function claimPodAndGetFrontend(
 
   console.log(">>> claimed pod", pod.podId);
 
-  // Decrypt password
+  // Password is already decrypted from the database
   if (!pod.password) {
     throw new Error("Pod password not found");
   }
-  const password = encryptionService.decryptField("swarmPassword", pod.password);
+  const password = pod.password;
 
-  // Convert port array to port mappings dictionary
+  // Get port mappings as number array
   const portArray = (pod.portMappings as number[] | null) || [];
+
+  // Convert port array to URL dictionary for PodWorkspace compatibility
   const portMappings: Record<string, string> = {};
   for (const port of portArray) {
     portMappings[port.toString()] = buildPodUrl(pod.podId, port);

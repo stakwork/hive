@@ -20,7 +20,7 @@ import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
-import { CheckCircle2, Loader2, Maximize2, Minimize2, PenLine, Plus, Sparkles, Unlink, Wifi, WifiOff } from "lucide-react";
+import { CheckCircle2, Loader2, Maximize2, Minimize2, PenLine, Plus, Scan, Sparkles, Unlink, Wifi, WifiOff } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -451,6 +451,16 @@ export function FeatureWhiteboardSection({
               <Unlink className="w-4 h-4 mr-2" />
             )}
             Unlink
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => excalidrawAPI?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: true, duration: 300 })}
+            title="Zoom to fit"
+            disabled={!excalidrawAPI}
+          >
+            <Scan className="w-4 h-4 mr-2" />
+            Fit
           </Button>
           <Button
             variant="outline"
