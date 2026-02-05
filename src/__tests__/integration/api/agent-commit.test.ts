@@ -621,7 +621,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
       expect(pushCall[1]).toMatchObject({
         method: "POST",
         headers: {
-          Authorization: "Bearer decrypted-value",
+          Authorization: "Bearer test-password",
           "Content-Type": "application/json",
         },
       });
@@ -1022,7 +1022,7 @@ describe("POST /api/agent/commit Integration Tests", () => {
 
       // Verify push request structure (includes commit)
       const pushCall = mockFetch.mock.calls[0];
-      expect(pushCall[0]).toBe("http://pod-control.test:3010/push?pr=true&commit=true&label=agent");
+      expect(pushCall[0]).toBe("https://test-pod-id.workspaces.sphinx.chat:3010/push?pr=true&commit=true&label=agent");
       const pushBody = JSON.parse(pushCall[1]!.body as string);
       expect(pushBody).toMatchObject({
         repos: [
