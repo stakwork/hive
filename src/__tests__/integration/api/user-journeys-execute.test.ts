@@ -102,12 +102,7 @@ describe('POST /api/user-journeys/[taskId]/execute - Integration Tests', () => {
           podId: `test-pod-${Date.now()}`,
           swarmId: swarm.id,
           password: JSON.stringify(enc.encryptField('password', 'test-pod-password')),
-          portMappings: {
-            '3000': 30000,
-            '3010': 30010,
-            '15551': 31551,
-            '15552': 31552,
-          },
+          portMappings: [3000, 3010, 15551, 15552],
           status: 'RUNNING',
           usageStatus: 'UNUSED',
         },
