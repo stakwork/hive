@@ -8,6 +8,7 @@ import {
   BookOpen,
   Bot,
   Brain,
+  Bug,
   CheckSquare,
   ChevronDown,
   ChevronRight,
@@ -33,6 +34,7 @@ import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SIDEBAR_WIDTH } from "@/lib/constants";
 import { NavUser } from "./NavUser";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { BugReportSlideout } from "./BugReportSlideout";
 
 
 
@@ -85,6 +87,8 @@ interface SidebarContentProps {
   tasksWaitingForInputCount: number;
   poolCapacityCount: string | null;
   user: SidebarProps['user'];
+  isBugReportOpen: boolean;
+  setIsBugReportOpen: (open: boolean) => void;
 }
 
 const baseNavigationItems: NavigationItem[] = [
@@ -128,6 +132,8 @@ function SidebarContent({
   tasksWaitingForInputCount,
   poolCapacityCount,
   user,
+  isBugReportOpen,
+  setIsBugReportOpen,
 }: SidebarContentProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
     // Auto-expand Protect if any child route is active
@@ -258,6 +264,18 @@ function SidebarContent({
           Settings
         </Button>
       </div>
+      {/* Report Bug */}
+      <div className="px-4 pb-2">
+        <Button
+          data-testid="report-bug-button"
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => setIsBugReportOpen(true)}
+        >
+          <Bug className="w-4 h-4 mr-2" />
+          Report Bug
+        </Button>
+      </div>
       <Separator />
       {/* User Popover */}
       <div className="p-4">
@@ -269,6 +287,11 @@ function SidebarContent({
           }}
         />
       </div>
+      {/* Bug Report Slideout */}
+      <BugReportSlideout
+        open={isBugReportOpen}
+        onOpenChange={setIsBugReportOpen}
+      />
     </div>
   );
 }
@@ -306,6 +329,7 @@ export function Sidebar({ user }: SidebarProps) {
   );
 
   const [isOpen, setIsOpen] = useState(false);
+  const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const pathname = usePathname();
   const isTaskPage = pathname.includes("/task/");
 
@@ -348,6 +372,8 @@ export function Sidebar({ user }: SidebarProps) {
               tasksWaitingForInputCount={tasksWaitingForInputCount}
               poolCapacityCount={poolCapacityCount}
               user={user}
+              isBugReportOpen={isBugReportOpen}
+              setIsBugReportOpen={setIsBugReportOpen}
             />
           </SheetContent>
         </Sheet>
@@ -364,6 +390,8 @@ export function Sidebar({ user }: SidebarProps) {
             tasksWaitingForInputCount={tasksWaitingForInputCount}
             poolCapacityCount={poolCapacityCount}
             user={user}
+            isBugReportOpen={isBugReportOpen}
+            setIsBugReportOpen={setIsBugReportOpen}
           />
         </div>
       </div>
