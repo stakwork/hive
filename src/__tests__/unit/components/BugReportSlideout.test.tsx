@@ -614,4 +614,230 @@ describe('BugReportSlideout', () => {
       expect(submitButton).toBeDisabled();
     });
   });
+
+  describe('Drag and Drop', () => {
+    const createFile = (name: string, type: string, size: number) => {
+      const file = new File(['file content'], name, { type, lastModified: Date.now() });
+      Object.defineProperty(file, 'size', { value: size, writable: false });
+      return file;
+    };
+
+    const createDataTransfer = (files: File[]) => {
+      return {
+        files,
+        items: files.map(file => ({
+          kind: 'file' as const,
+          type: file.type,
+          getAsFile: () => file,
+        })),
+        types: ['Files'],
+        getData: () => '',
+        setData: () => {},
+        clearData: () => {},
+      };
+    };
+
+    it('should show visual feedback when dragging an image over the upload area', () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+      
+      // Simulate drag enter
+      fireEvent.dragEnter(dropzone, {
+        dataTransfer: createDataTransfer([createFile('test.png', 'image/png', 1000)]),
+      });
+
+      // Should show "Drop image here" text
+      expect(screen.getByText('Drop image here')).toBeInTheDocument();
+    });
+
+    it('should remove visual feedback when drag leaves the upload area', () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+      
+      // Simulate drag enter
+      fireEvent.dragEnter(dropzone, {
+        dataTransfer: createDataTransfer([createFile('test.png', 'image/png', 1000)]),
+      });
+
+      expect(screen.getByText('Drop image here')).toBeInTheDocument();
+
+      // Simulate drag leave
+      fireEvent.dragLeave(dropzone, {
+        dataTransfer: createDataTransfer([createFile('test.png', 'image/png', 1000)]),
+      });
+
+      // Should show original text
+      expect(screen.getByText('Click to upload or drag and drop')).toBeInTheDocument();
+    });
+
+    it('should accept a valid image file when dropped', async () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+      const file = createFile('screenshot.png', 'image/png', 1024 * 1024); // 1MB
+
+      // Simulate drop
+      fireEvent.dragOver(dropzone, {
+        dataTransfer: createDataTransfer([file]),
+      });
+      fireEvent.drop(dropzone, {
+        dataTransfer: createDataTransfer([file]),
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('screenshot.png')).toBeInTheDocument();
+      });
+
+      // Preview should be shown
+      expect(screen.getByAltText('Screenshot preview')).toBeInTheDocument();
+    });
+
+    it('should show error toast when dropping multiple files', async () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+      const files = [
+        createFile('screenshot1.png', 'image/png', 1000),
+        createFile('screenshot2.png', 'image/png', 1000),
+      ];
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: createDataTransfer(files),
+      });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('Please drop only one image at a time');
+      });
+
+      // Should still accept the first file
+      await waitFor(() => {
+        expect(screen.getByText('screenshot1.png')).toBeInTheDocument();
+      });
+    });
+
+    it('should show error toast when dropping non-image files', async () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+      const file = createFile('document.pdf', 'application/pdf', 1000);
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: createDataTransfer([file]),
+      });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          'Please drop an image file (JPEG, PNG, GIF, or WebP)'
+        );
+      });
+
+      // No file should be selected
+      expect(screen.queryByText('document.pdf')).not.toBeInTheDocument();
+    });
+
+    it('should show error toast when dropping oversized file', async () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+      const file = createFile('large.png', 'image/png', 11 * 1024 * 1024); // 11MB (over limit)
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: createDataTransfer([file]),
+      });
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith('File size exceeds 10MB limit.');
+      });
+
+      // No file should be selected
+      expect(screen.queryByText('large.png')).not.toBeInTheDocument();
+    });
+
+    it('should handle drag-and-drop flow from start to finish', async () => {
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+      const file = createFile('screenshot.png', 'image/png', 1000);
+
+      // Drag enter
+      fireEvent.dragEnter(dropzone, {
+        dataTransfer: createDataTransfer([file]),
+      });
+      expect(screen.getByText('Drop image here')).toBeInTheDocument();
+
+      // Drag over
+      fireEvent.dragOver(dropzone, {
+        dataTransfer: createDataTransfer([file]),
+      });
+
+      // Drop
+      fireEvent.drop(dropzone, {
+        dataTransfer: createDataTransfer([file]),
+      });
+
+      // File preview should appear
+      await waitFor(() => {
+        expect(screen.getByText('screenshot.png')).toBeInTheDocument();
+      });
+
+      // Visual feedback should be removed
+      expect(screen.queryByText('Drop image here')).not.toBeInTheDocument();
+    });
+
+    it('should support all allowed image types', async () => {
+      const allowedTypes = [
+        { type: 'image/jpeg', name: 'image.jpg' },
+        { type: 'image/png', name: 'image.png' },
+        { type: 'image/gif', name: 'image.gif' },
+        { type: 'image/webp', name: 'image.webp' },
+      ];
+
+      for (const { type, name } of allowedTypes) {
+        const { unmount } = render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+        const dropzone = screen.getByTestId('bug-screenshot-dropzone');
+        const file = createFile(name, type, 1000);
+
+        fireEvent.drop(dropzone, {
+          dataTransfer: createDataTransfer([file]),
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(name)).toBeInTheDocument();
+        });
+
+        unmount();
+      }
+    });
+
+    it('should maintain existing click-to-upload functionality alongside drag-and-drop', async () => {
+      const user = userEvent.setup();
+      render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      const fileInput = screen.getByTestId('bug-screenshot-input');
+      const file = createFile('clicked.png', 'image/png', 1000);
+
+      // Simulate file selection via click
+      await user.upload(fileInput, file);
+
+      await waitFor(() => {
+        expect(screen.getByText('clicked.png')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Padding', () => {
+    it('should have px-6 padding on form content', () => {
+      const { container } = render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
+
+      // Find the wrapper div that should have px-6
+      const formWrapper = container.querySelector('.px-6');
+      expect(formWrapper).toBeInTheDocument();
+
+      // Verify it contains the form
+      expect(formWrapper?.querySelector('form')).toBeInTheDocument();
+    });
+  });
 });
