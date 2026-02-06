@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import * as useWorkspaceModule from '@/hooks/useWorkspace';
@@ -221,5 +222,121 @@ describe.skip('Sidebar - Pool Capacity Counter (DISABLED - complex component ren
     // Verify the badge shows 5/5 (all running pods are in use)
     const capacityBadge = screen.getByText('5/5');
     expect(capacityBadge).toBeInTheDocument();
+  });
+
+  describe('Bug Report Integration', () => {
+    it('should render Report Bug button in sidebar', () => {
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+        poolStatus: null,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<Sidebar user={mockUser} />);
+
+      const bugReportButton = screen.getByTestId('report-bug-button');
+      expect(bugReportButton).toBeInTheDocument();
+      expect(bugReportButton).toHaveTextContent('Report Bug');
+    });
+
+    it('should open bug report slideout when button is clicked', async () => {
+      const user = userEvent.setup();
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+        poolStatus: null,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      render(<Sidebar user={mockUser} />);
+
+      const bugReportButton = screen.getByTestId('report-bug-button');
+      await user.click(bugReportButton);
+
+      // Verify slideout is opened by checking for its title
+      await waitFor(() => {
+        expect(screen.getByText('Report a Bug')).toBeInTheDocument();
+      });
+    });
+
+    it('should close slideout when submission is successful', async () => {
+      const user = userEvent.setup();
+      const mockWorkspace = {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+        poolState: 'COMPLETE',
+      };
+
+      vi.mocked(useWorkspaceModule.useWorkspace).mockReturnValue({
+        workspace: mockWorkspace,
+        loading: false,
+        error: null,
+        waitingForInputCount: 0,
+        refreshTaskNotifications: vi.fn(),
+      } as any);
+
+      vi.mocked(usePoolStatusModule.usePoolStatus).mockReturnValue({
+        poolStatus: null,
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      // Mock successful API response
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'feature-123' }),
+      });
+
+      render(<Sidebar user={mockUser} />);
+
+      const bugReportButton = screen.getByTestId('report-bug-button');
+      await user.click(bugReportButton);
+
+      // Fill in the form
+      const textarea = screen.getByTestId('bug-description-textarea');
+      await user.type(textarea, 'This is a bug report description');
+
+      // Submit
+      const submitButton = screen.getByTestId('submit-bug-report-button');
+      await user.click(submitButton);
+
+      // Verify slideout closes
+      await waitFor(() => {
+        expect(screen.queryByText('Report a Bug')).not.toBeInTheDocument();
+      });
+    });
   });
 });
