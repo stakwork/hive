@@ -11,13 +11,17 @@ export interface CreatePodOptions {
   usageStatus?: PodUsageStatus;
 }
 
+// Counter to ensure unique pod IDs when creating multiple pods rapidly
+let podCounter = 0;
+
 /**
  * Create a test pod in the database
  */
 export async function createTestPod(options: CreatePodOptions) {
   const encryptionService = EncryptionService.getInstance();
   
-  const podId = options.podId || `test-pod-${Date.now()}`;
+  // Use counter + timestamp + random to ensure uniqueness even when called rapidly
+  const podId = options.podId || `test-pod-${Date.now()}-${podCounter++}-${Math.random().toString(36).substring(7)}`;
   const password = options.password || "test-password-123";
   const portMappings = options.portMappings || [3000, 3010, 15551, 15552];
 
