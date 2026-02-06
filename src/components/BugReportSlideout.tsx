@@ -194,10 +194,11 @@ export function BugReportSlideout({
         throw new Error(error.message || "Failed to create bug report");
       }
 
-      const feature = await featureResponse.json();
+      const featureResult = await featureResponse.json();
+      const feature = featureResult.data;
 
       // Step 2: If screenshot attached, upload it
-      if (selectedFile && feature.id) {
+      if (selectedFile && feature?.id) {
         try {
           // Get presigned upload URL
           const uploadResponse = await fetch("/api/upload/image", {

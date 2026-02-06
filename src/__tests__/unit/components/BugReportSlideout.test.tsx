@@ -292,7 +292,7 @@ describe('BugReportSlideout', () => {
 
       global.fetch = vi.fn().mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ id: 'feature-123' }),
+        json: async () => ({ success: true, data: { id: 'feature-123' } }),
       });
 
       render(<BugReportSlideout open={true} onOpenChange={onOpenChange} />);
@@ -327,7 +327,7 @@ describe('BugReportSlideout', () => {
 
       global.fetch = vi.fn().mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ id: 'feature-123' }),
+        json: async () => ({ success: true, data: { id: 'feature-123' } }),
       });
 
       render(<BugReportSlideout open={true} onOpenChange={onOpenChange} />);
@@ -364,7 +364,7 @@ describe('BugReportSlideout', () => {
         // First call: Create feature
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ id: 'feature-123' }),
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
         })
         // Second call: Get presigned URL
         .mockResolvedValueOnce({
@@ -381,7 +381,7 @@ describe('BugReportSlideout', () => {
         // Fourth call: Update feature with image
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ id: 'feature-123' }),
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
         });
 
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
@@ -442,7 +442,7 @@ describe('BugReportSlideout', () => {
 
       global.fetch = vi.fn().mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ id: 'feature-123' }),
+        json: async () => ({ success: true, data: { id: 'feature-123' } }),
       });
 
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
@@ -496,7 +496,7 @@ describe('BugReportSlideout', () => {
         .fn()
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ id: 'feature-123' }),
+          json: async () => ({ success: true, data: { id: 'feature-123' } }),
         })
         .mockResolvedValueOnce({
           ok: false,
@@ -578,7 +578,7 @@ describe('BugReportSlideout', () => {
       const user = userEvent.setup();
 
       global.fetch = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, json: async () => ({ id: 'feature-123' }) }), 1000))
+        () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, json: async () => ({ success: true, data: { id: 'feature-123' } }) }), 1000))
       );
 
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
@@ -597,7 +597,7 @@ describe('BugReportSlideout', () => {
       const user = userEvent.setup();
 
       global.fetch = vi.fn().mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, json: async () => ({ id: 'feature-123' }) }), 100))
+        () => new Promise((resolve) => setTimeout(() => resolve({ ok: true, json: async () => ({ success: true, data: { id: 'feature-123' } }) }), 100))
       );
 
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
