@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useSession } from "next-auth/react";
+import { cn } from "@/lib/utils";
 
 interface BugReportSlideoutProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function BugReportSlideout({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const { workspace } = useWorkspace();
   const { data: session } = useSession();
@@ -93,6 +95,66 @@ export function BugReportSlideout({
     setDescription("");
     handleRemoveFile();
     setIsSubmitting(false);
+  };
+
+  // Drag-and-drop handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the container itself
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+
+    // Filter to only image files
+    const imageFiles = Array.from(files).filter((file) =>
+      ALLOWED_IMAGE_TYPES.includes(file.type)
+    );
+
+    if (imageFiles.length === 0) {
+      toast.error("Please drop an image file (JPEG, PNG, GIF, or WebP)");
+      return;
+    }
+
+    if (imageFiles.length > 1) {
+      toast.error("Please drop only one image at a time");
+    }
+
+    // Use the first image file
+    const file = imageFiles[0];
+    const error = validateFile(file);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+
+    // Clean up previous preview URL
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -226,96 +288,116 @@ export function BugReportSlideout({
           </SheetDescription>
         </SheetHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-4">
-          {/* Description Field */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bug-description">
-              Bug Description <span className="text-destructive">*</span>
-            </Label>
-            <Textarea
-              id="bug-description"
-              placeholder="Describe the issue you encountered..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={6}
-              required
-              className="resize-none"
-              data-testid="bug-description-textarea"
-            />
-            <p className="text-xs text-muted-foreground">
-              Minimum 10 characters ({description.length}/10)
-            </p>
-          </div>
+        <div className="px-6">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-4">
+            {/* Description Field */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bug-description">
+                Bug Description <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="bug-description"
+                placeholder="Describe the issue you encountered..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={6}
+                required
+                className="resize-none"
+                data-testid="bug-description-textarea"
+              />
+              <p className="text-xs text-muted-foreground">
+                Minimum 10 characters ({description.length}/10)
+              </p>
+            </div>
 
-          {/* Screenshot Upload */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bug-screenshot">Screenshot (optional)</Label>
-            {!selectedFile ? (
-              <div className="relative">
-                <input
-                  id="bug-screenshot"
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  data-testid="bug-screenshot-input"
-                />
-                <label htmlFor="bug-screenshot">
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-md p-6 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors">
-                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Click to upload screenshot
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      JPEG, PNG, GIF, WebP (max 10MB)
-                    </p>
-                  </div>
-                </label>
-              </div>
-            ) : (
-              <div className="relative border rounded-md p-2">
-                <div className="flex items-start gap-2">
-                  {previewUrl && (
-                    <img
-                      src={previewUrl}
-                      alt="Screenshot preview"
-                      className="w-20 h-20 object-cover rounded"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {selectedFile.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleRemoveFile}
-                    className="shrink-0"
-                    data-testid="remove-screenshot-button"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+            {/* Screenshot Upload */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="bug-screenshot">Screenshot (optional)</Label>
+              {!selectedFile ? (
+                <div
+                  className="relative"
+                  onDragEnter={handleDragEnter}
+                  onDragLeave={handleDragLeave}
+                  onDragOver={handleDragOver}
+                  onDrop={handleImageDrop}
+                  data-testid="bug-screenshot-dropzone"
+                >
+                  <input
+                    id="bug-screenshot"
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    data-testid="bug-screenshot-input"
+                  />
+                  <label htmlFor="bug-screenshot">
+                    <div
+                      className={cn(
+                        "border-2 border-dashed rounded-md p-6 text-center cursor-pointer transition-colors",
+                        isDragging
+                          ? "border-primary bg-primary/10"
+                          : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                      )}
+                    >
+                      <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        {isDragging
+                          ? "Drop image here"
+                          : "Click to upload or drag and drop"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        JPEG, PNG, GIF, WebP (max 10MB)
+                      </p>
+                    </div>
+                  </label>
                 </div>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="relative border rounded-md p-2">
+                  <div className="flex items-start gap-2">
+                    {previewUrl && (
+                      <img
+                        src={previewUrl}
+                        alt="Screenshot preview"
+                        className="w-20 h-20 object-cover rounded"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {selectedFile.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleRemoveFile}
+                      className="shrink-0"
+                      data-testid="remove-screenshot-button"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
 
-          {/* Submit Button */}
-          <Button
-            type="submit"
-            disabled={!isDescriptionValid || isSubmitting}
-            className="w-full"
-            data-testid="submit-bug-report-button"
-          >
-            {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {isSubmitting ? "Submitting..." : "Submit Bug Report"}
-          </Button>
-        </form>
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              disabled={!isDescriptionValid || isSubmitting}
+              className="w-full"
+              data-testid="submit-bug-report-button"
+            >
+              {isSubmitting && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              {isSubmitting ? "Submitting..." : "Submit Bug Report"}
+            </Button>
+          </form>
+        </div>
       </SheetContent>
     </Sheet>
   );
