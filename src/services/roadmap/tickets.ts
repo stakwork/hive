@@ -194,6 +194,7 @@ export async function createTicket(
       dependsOnTaskIds: data.dependsOnTaskIds || [],
       runBuild: data.runBuild ?? true,
       runTestSuite: data.runTestSuite ?? true,
+      autoMerge: data.autoMerge ?? true,
       createdById: userId,
       updatedById: userId,
     },
@@ -208,6 +209,9 @@ export async function createTicket(
       phaseId: true,
       bountyCode: true,
       dependsOnTaskIds: true,
+      runBuild: true,
+      runTestSuite: true,
+      autoMerge: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,
@@ -292,6 +296,10 @@ export async function updateTicket(
 
   if (data.runTestSuite !== undefined) {
     updateData.runTestSuite = data.runTestSuite;
+  }
+
+  if (data.autoMerge !== undefined) {
+    updateData.autoMerge = data.autoMerge;
   }
 
   if (data.phaseId !== undefined) {
@@ -415,6 +423,9 @@ export async function updateTicket(
       phaseId: true,
       bountyCode: true,
       dependsOnTaskIds: true,
+      runBuild: true,
+      runTestSuite: true,
+      autoMerge: true,
       createdAt: true,
       updatedAt: true,
       systemAssigneeType: true,

@@ -31,6 +31,7 @@ export interface CreateTestTaskOptions {
   testFilePath?: string;
   testFileUrl?: string;
   stakworkProjectId?: number;
+  autoMerge?: boolean;
   /** If true, return existing task if title+workspace match */
   idempotent?: boolean;
 }
@@ -92,6 +93,7 @@ export async function createTestTask(
       testFilePath: options.testFilePath ?? null,
       testFileUrl: options.testFileUrl ?? null,
       stakworkProjectId: options.stakworkProjectId ?? null,
+      autoMerge: options.autoMerge ?? true,
     },
   });
 }
