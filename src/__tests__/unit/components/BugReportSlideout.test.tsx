@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { BugReportSlideout } from '@/components/BugReportSlideout';
@@ -54,6 +54,10 @@ vi.mock('@/components/ui/label', () => ({
   Label: ({ children, ...props }: any) => <label {...props}>{children}</label>,
 }));
 
+// Mock URL methods globally for all tests
+global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+global.URL.revokeObjectURL = vi.fn();
+
 describe('BugReportSlideout', () => {
   const mockWorkspace = {
     workspace: {
@@ -76,10 +80,19 @@ describe('BugReportSlideout', () => {
     // Mock toast functions
     vi.mocked(toast.success).mockImplementation(() => '');
     vi.mocked(toast.error).mockImplementation(() => '');
+    // Mock URL methods globally
+    if (!global.URL.createObjectURL) {
+      global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    }
+    if (!global.URL.revokeObjectURL) {
+      global.URL.revokeObjectURL = vi.fn();
+    }
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    // Clean up any pending timers or async operations
+    vi.clearAllTimers();
   });
 
   describe('Rendering', () => {
@@ -89,7 +102,7 @@ describe('BugReportSlideout', () => {
       expect(screen.getByText('Report a Bug')).toBeInTheDocument();
       expect(screen.getByText('Help us improve by reporting issues you encounter')).toBeInTheDocument();
       expect(screen.getByTestId('bug-description-textarea')).toBeInTheDocument();
-      expect(screen.getByTestId('screenshot-input')).toBeInTheDocument();
+      expect(screen.getByTestId('bug-screenshot-input')).toBeInTheDocument();
       expect(screen.getByTestId('submit-bug-report-button')).toBeInTheDocument();
     });
 
@@ -131,36 +144,75 @@ describe('BugReportSlideout', () => {
     });
 
     it('should reject non-image file types', async () => {
-      const user = userEvent.setup();
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       const file = new File(['content'], 'document.pdf', { type: 'application/pdf' });
-      const input = screen.getByTestId('screenshot-input') as HTMLInputElement;
+      const input = screen.getByTestId('bug-screenshot-input') as HTMLInputElement;
 
-      await user.upload(input, file);
+      // Create a proper FileList-like object
+      const fileList = {
+        0: file,
+        length: 1,
+        item: (index: number) => (index === 0 ? file : null),
+        [Symbol.iterator]: function* () {
+          yield file;
+        },
+      };
 
+      // Set files property
+      Object.defineProperty(input, 'files', {
+        value: fileList,
+        configurable: true,
+      });
+      
+      // Trigger the change event
+      fireEvent.change(input);
+
+      // Wait for toast to be called
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(
-          'Please select a valid image file (JPEG, PNG, GIF, or WebP)'
+          'Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.'
         );
-      });
+      }, { timeout: 2000 });
+
+      // File should not be selected
+      expect(screen.queryByText('document.pdf')).not.toBeInTheDocument();
     });
 
     it('should reject files larger than 10MB', async () => {
-      const user = userEvent.setup();
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       // Create a file larger than 10MB
       const largeFile = new File(['x'.repeat(11 * 1024 * 1024)], 'large.png', { 
         type: 'image/png' 
       });
-      const input = screen.getByTestId('screenshot-input') as HTMLInputElement;
+      const input = screen.getByTestId('bug-screenshot-input') as HTMLInputElement;
 
-      await user.upload(input, largeFile);
+      // Create a proper FileList-like object
+      const fileList = {
+        0: largeFile,
+        length: 1,
+        item: (index: number) => (index === 0 ? largeFile : null),
+        [Symbol.iterator]: function* () {
+          yield largeFile;
+        },
+      };
+
+      // Set files property
+      Object.defineProperty(input, 'files', {
+        value: fileList,
+        configurable: true,
+      });
+      
+      // Trigger the change event
+      fireEvent.change(input);
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('File size must be less than 10MB');
-      });
+        expect(toast.error).toHaveBeenCalledWith('File size exceeds 10MB limit.');
+      }, { timeout: 2000 });
+
+      // File should not be selected
+      expect(screen.queryByText('large.png')).not.toBeInTheDocument();
     });
 
     it('should accept valid image files', async () => {
@@ -168,7 +220,7 @@ describe('BugReportSlideout', () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
-      const input = screen.getByTestId('screenshot-input') as HTMLInputElement;
+      const input = screen.getByTestId('bug-screenshot-input') as HTMLInputElement;
 
       await user.upload(input, file);
 
@@ -184,7 +236,7 @@ describe('BugReportSlideout', () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
-      const input = screen.getByTestId('screenshot-input') as HTMLInputElement;
+      const input = screen.getByTestId('bug-screenshot-input') as HTMLInputElement;
 
       // Mock URL.createObjectURL
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
@@ -192,8 +244,8 @@ describe('BugReportSlideout', () => {
       await user.upload(input, file);
 
       await waitFor(() => {
-        expect(screen.getByTestId('file-preview')).toBeInTheDocument();
         expect(screen.getByText('screenshot.png')).toBeInTheDocument();
+        expect(screen.getByAltText('Screenshot preview')).toBeInTheDocument();
       });
     });
 
@@ -202,7 +254,7 @@ describe('BugReportSlideout', () => {
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
 
       const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
-      const input = screen.getByTestId('screenshot-input') as HTMLInputElement;
+      const input = screen.getByTestId('bug-screenshot-input') as HTMLInputElement;
 
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
       global.URL.revokeObjectURL = vi.fn();
@@ -213,7 +265,7 @@ describe('BugReportSlideout', () => {
         expect(screen.getByText('screenshot.png')).toBeInTheDocument();
       });
 
-      const removeButton = screen.getByTestId('remove-file-button');
+      const removeButton = screen.getByTestId('remove-screenshot-button');
       await user.click(removeButton);
 
       expect(screen.queryByText('screenshot.png')).not.toBeInTheDocument();
@@ -288,12 +340,18 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/features', {
+        expect(global.fetch).toHaveBeenCalledWith('/api/features', expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: expect.stringContaining('"title":"Bug Report: This is a very long bug report description that e..."'),
-        });
+        }));
       });
+
+      // Check the body separately
+      const callArgs = (global.fetch as any).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      expect(body.title).toBe('Bug Report: This is a very long bug report description that ex...');
+      expect(toast.success).toHaveBeenCalled();
+      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
     it('should submit bug report with screenshot', async () => {
@@ -334,7 +392,7 @@ describe('BugReportSlideout', () => {
       await user.type(textarea, 'Bug with screenshot');
 
       const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
-      const input = screen.getByTestId('screenshot-input') as HTMLInputElement;
+      const input = screen.getByTestId('bug-screenshot-input') as HTMLInputElement;
       await user.upload(input, file);
 
       const submitButton = screen.getByTestId('submit-bug-report-button');
@@ -411,7 +469,7 @@ describe('BugReportSlideout', () => {
 
       global.fetch = vi.fn().mockResolvedValueOnce({
         ok: false,
-        statusText: 'Internal Server Error',
+        json: async () => ({ message: 'Database error' }),
       });
 
       render(<BugReportSlideout open={true} onOpenChange={onOpenChange} />);
@@ -423,7 +481,7 @@ describe('BugReportSlideout', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Failed to create bug report');
+        expect(toast.error).toHaveBeenCalledWith('Database error');
       });
 
       // Slideout should stay open
@@ -442,7 +500,7 @@ describe('BugReportSlideout', () => {
         })
         .mockResolvedValueOnce({
           ok: false,
-          statusText: 'Upload Failed',
+          json: async () => ({ message: 'Upload service unavailable' }),
         });
 
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
@@ -453,18 +511,18 @@ describe('BugReportSlideout', () => {
       await user.type(textarea, 'Bug with screenshot');
 
       const file = new File(['content'], 'screenshot.png', { type: 'image/png' });
-      const input = screen.getByTestId('screenshot-input') as HTMLInputElement;
+      const input = screen.getByTestId('bug-screenshot-input') as HTMLInputElement;
       await user.upload(input, file);
 
       const submitButton = screen.getByTestId('submit-bug-report-button');
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith('Failed to get upload URL');
+        expect(toast.error).toHaveBeenCalledWith('Upload service unavailable');
       });
 
-      // Slideout should stay open
-      expect(onOpenChange).not.toHaveBeenCalled();
+      // Slideout should close even though upload failed, because the feature was created
+      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
     it('should handle network errors gracefully', async () => {
@@ -494,7 +552,7 @@ describe('BugReportSlideout', () => {
 
       global.fetch = vi.fn().mockResolvedValueOnce({
         ok: false,
-        statusText: 'Error',
+        json: async () => ({ message: 'Submission failed' }),
       });
 
       render(<BugReportSlideout open={true} onOpenChange={vi.fn()} />);
