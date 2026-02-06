@@ -252,20 +252,8 @@ function SidebarContent({
       </nav>
       {/* Spacer to push bottom content down */}
       <div className="flex-1" />
-      {/* Settings */}
-      <div className="p-4 pb-2">
-        <Button
-          data-testid="settings-button"
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => handleNavigate("/settings")}
-        >
-          <Settings className="w-4 h-4 mr-2" />
-          Settings
-        </Button>
-      </div>
       {/* Report Bug */}
-      <div className="px-4 pb-2">
+      <div className="p-4 pb-2">
         <Button
           data-testid="report-bug-button"
           variant="ghost"
@@ -274,6 +262,18 @@ function SidebarContent({
         >
           <Bug className="w-4 h-4 mr-2" />
           Report Bug
+        </Button>
+      </div>
+      {/* Settings */}
+      <div className="px-4 pb-2">
+        <Button
+          data-testid="settings-button"
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => handleNavigate("/settings")}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Settings
         </Button>
       </div>
       <Separator />
