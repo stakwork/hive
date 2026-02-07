@@ -128,7 +128,15 @@ export async function processTicketSweep(
         { feature: { status: { not: "CANCELLED" } } },
       ],
     },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      featureId: true,
+      priority: true,
+      createdAt: true,
+      createdById: true,
+      dependsOnTaskIds: true,
+      autoMerge: true,
       feature: {
         select: {
           id: true,

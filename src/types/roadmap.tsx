@@ -593,6 +593,7 @@ export interface CreateRoadmapTaskRequest {
   priority?: import("@prisma/client").Priority;
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMerge?: boolean;
   dependsOnTaskIds?: string[];
 }
 
@@ -608,6 +609,7 @@ export interface UpdateRoadmapTaskRequest {
   dependsOnTaskIds?: string[];
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMerge?: boolean;
 }
 
 export interface ReorderRoadmapTasksRequest {

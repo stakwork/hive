@@ -12,6 +12,7 @@ interface CreateRoadmapTaskParams {
   status?: TaskStatus;
   priority?: Priority;
   assigneeId?: string | null;
+  autoMerge?: boolean;
 }
 
 interface UpdateRoadmapTaskParams {
@@ -23,6 +24,7 @@ interface UpdateRoadmapTaskParams {
     priority?: Priority;
     assigneeId?: string | null;
     dependsOnTaskIds?: string[];
+    autoMerge?: boolean;
   };
 }
 
@@ -45,6 +47,7 @@ export function useRoadmapTaskMutations() {
           status: params.status,
           priority: params.priority,
           assigneeId: params.assigneeId,
+          autoMerge: params.autoMerge,
         }),
       });
 

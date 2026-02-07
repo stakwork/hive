@@ -243,6 +243,7 @@ export async function startTaskWorkflow(params: {
       sourceType: true,
       runBuild: true,
       runTestSuite: true,
+      autoMerge: true,
       workspace: {
         select: {
           id: true,
@@ -297,6 +298,7 @@ export async function startTaskWorkflow(params: {
     mode,
     generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
+    autoMergePr: task.autoMerge,
   });
 }
 

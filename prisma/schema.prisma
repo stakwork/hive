@@ -517,6 +517,7 @@ model Task {
   // Build and test configuration
   runBuild     Boolean @default(true) @map("run_build")
   runTestSuite Boolean @default(true) @map("run_test_suite")
+  autoMerge    Boolean @default(true) @map("auto_merge")
 
   // Agent URLs and credentials (encrypted)
   agentUrl           String? @map("agent_url")
