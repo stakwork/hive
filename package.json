@@ -36,6 +36,7 @@
     "decrypt-json": "tsx scripts/decrypt-json-file.ts"
   },
   "dependencies": {
+    "@ai-sdk/mcp": "^1.0.19",
     "@anycable/web": "^1.1.0",
     "@auth/prisma-adapter": "^2.10.0",
     "@aws-sdk/client-s3": "^3.864.0",

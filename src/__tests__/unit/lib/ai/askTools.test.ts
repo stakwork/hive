@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { parseOwnerRepo } from "@/lib/ai/utils";
 
 // Use vi.hoisted to create mocks that can be accessed in vi.mock factories
-const { mockGetRecentCommitsWithFiles, mockGetContributorPRs, mockGetProviderTool } = vi.hoisted(() => ({
+const { mockGetRecentCommitsWithFiles, mockGetContributorPRs, mockGetProviderTool, mockCreateMCPClient } = vi.hoisted(() => ({
   mockGetRecentCommitsWithFiles: vi.fn(),
   mockGetContributorPRs: vi.fn(),
   mockGetProviderTool: vi.fn(),
+  mockCreateMCPClient: vi.fn(),
 }));
 
 // Mock external dependencies using the hoisted mock instances
@@ -18,6 +19,10 @@ vi.mock("gitsee/server", () => ({
 
 vi.mock("@/lib/ai/provider", () => ({
   getProviderTool: mockGetProviderTool,
+}));
+
+vi.mock("@ai-sdk/mcp", () => ({
+  createMCPClient: mockCreateMCPClient,
 }));
 
 import { askTools } from "@/lib/ai/askTools";
@@ -52,7 +57,7 @@ describe("askTools", () => {
   });
 
   describe("factory function", () => {
-    it("returns object with all 6 tools", () => {
+    it("returns object with all 7 tools", () => {
       const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
 
       expect(tools).toHaveProperty("list_concepts");
@@ -60,6 +65,7 @@ describe("askTools", () => {
       expect(tools).toHaveProperty("recent_commits");
       expect(tools).toHaveProperty("recent_contributions");
       expect(tools).toHaveProperty("repo_agent");
+      expect(tools).toHaveProperty("search_logs");
       expect(tools).toHaveProperty("web_search");
     });
 
@@ -419,6 +425,140 @@ describe("askTools", () => {
       const result = await tools.repo_agent.execute({ prompt: "Analyze this code" });
 
       expect(result).toBe("Could not execute repo agent");
+    });
+  });
+
+  describe("search_logs tool", () => {
+    beforeEach(() => {
+      mockCreateMCPClient.mockClear();
+    });
+
+    it("executes search_logs tool successfully", async () => {
+      const mockLogs = [
+        { timestamp: "2024-01-01T00:00:00Z", level: "INFO", message: "Log entry 1" },
+        { timestamp: "2024-01-01T00:00:01Z", level: "ERROR", message: "Log entry 2" },
+      ];
+
+      const mockClose = vi.fn();
+      const mockExecute = vi.fn().mockResolvedValue(mockLogs);
+      const mockTools = {
+        search_logs: {
+          execute: mockExecute,
+        },
+      };
+
+      mockCreateMCPClient.mockResolvedValue({
+        tools: vi.fn().mockResolvedValue(mockTools),
+        close: mockClose,
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.search_logs.execute({ query: "*", max_hits: 10 });
+
+      expect(result).toEqual(mockLogs);
+      expect(mockCreateMCPClient).toHaveBeenCalledWith({
+        transport: {
+          type: 'http',
+          url: `${mockSwarmUrl}/mcp`,
+          headers: {
+            Authorization: `Bearer ${mockSwarmApiKey}`,
+          },
+        },
+      });
+      expect(mockExecute).toHaveBeenCalledWith(
+        { query: "*", max_hits: 10 },
+        { toolCallId: '1', messages: [] }
+      );
+      expect(mockClose).toHaveBeenCalled();
+    });
+
+    it("handles search_logs MCP connection failure", async () => {
+      mockCreateMCPClient.mockRejectedValue(new Error("MCP connection failed"));
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.search_logs.execute({ query: "level:ERROR" });
+
+      expect(result).toBe("Could not search logs");
+    });
+
+    it("closes MCP client after execution", async () => {
+      const mockClose = vi.fn();
+      const mockExecute = vi.fn().mockResolvedValue([]);
+      const mockTools = {
+        search_logs: {
+          execute: mockExecute,
+        },
+      };
+
+      mockCreateMCPClient.mockResolvedValue({
+        tools: vi.fn().mockResolvedValue(mockTools),
+        close: mockClose,
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      await tools.search_logs.execute({ query: "*" });
+
+      expect(mockClose).toHaveBeenCalled();
+    });
+
+    it("closes MCP client even on error", async () => {
+      const mockClose = vi.fn();
+      const mockExecute = vi.fn().mockRejectedValue(new Error("Execution failed"));
+      const mockTools = {
+        search_logs: {
+          execute: mockExecute,
+        },
+      };
+
+      mockCreateMCPClient.mockResolvedValue({
+        tools: vi.fn().mockResolvedValue(mockTools),
+        close: mockClose,
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.search_logs.execute({ query: "*" });
+
+      expect(result).toBe("Could not search logs");
+      expect(mockClose).toHaveBeenCalled();
+    });
+
+    it("uses default max_hits value when not provided", async () => {
+      const mockClose = vi.fn();
+      const mockExecute = vi.fn().mockResolvedValue([]);
+      const mockTools = {
+        search_logs: {
+          execute: mockExecute,
+        },
+      };
+
+      mockCreateMCPClient.mockResolvedValue({
+        tools: vi.fn().mockResolvedValue(mockTools),
+        close: mockClose,
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      await tools.search_logs.execute({ query: "*" });
+
+      expect(mockExecute).toHaveBeenCalledWith(
+        { query: "*", max_hits: 10 },
+        { toolCallId: '1', messages: [] }
+      );
+    });
+
+    it("handles missing search_logs tool on MCP server", async () => {
+      const mockClose = vi.fn();
+      const mockTools = {}; // No search_logs tool
+
+      mockCreateMCPClient.mockResolvedValue({
+        tools: vi.fn().mockResolvedValue(mockTools),
+        close: mockClose,
+      });
+
+      const tools = askTools(mockSwarmUrl, mockSwarmApiKey, mockRepoUrl, mockPat, mockApiKey);
+      const result = await tools.search_logs.execute({ query: "*" });
+
+      expect(result).toBe("search_logs tool not found on MCP server");
+      expect(mockClose).toHaveBeenCalled();
     });
   });
 
