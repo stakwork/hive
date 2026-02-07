@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { getWorkspaceBySlug } from "@/services/workspace";
-import { getServiceConfig } from "@/config/services";
-import { PoolManagerService } from "@/services/pool-manager";
+import { getPoolStatusFromPods } from "@/lib/pods/status-queries";
 
 export async function GET(
   request: NextRequest,
@@ -38,36 +37,34 @@ export async function GET(
       },
       select: {
         id: true,
-        poolApiKey: true,
       },
     });
 
-    if (!swarm?.id || !swarm?.poolApiKey) {
+    if (!swarm?.id) {
       return NextResponse.json(
         { success: false, message: "Pool not configured for this workspace" },
         { status: 404 }
       );
     }
 
-    const config = getServiceConfig("poolManager");
-    const poolManagerService = new PoolManagerService(config);
-
     try {
-      const poolStatus = await poolManagerService.getPoolStatus(swarm.id, swarm.poolApiKey);
+      const poolStatus = await getPoolStatusFromPods(swarm.id);
 
       return NextResponse.json({
         success: true,
-        data: poolStatus,
+        data: {
+          status: poolStatus,
+        },
       });
     } catch (error) {
-      console.warn("Pool status fetch failed (pool may still be active):", error);
+      console.error("Database query failed:", error);
       const message = error instanceof Error ? error.message : "Unable to fetch pool data right now";
       return NextResponse.json(
         {
           success: false,
           message,
         },
-        { status: 503 }
+        { status: 500 }
       );
     }
   } catch (error) {
