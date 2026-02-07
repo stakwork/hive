@@ -3,6 +3,7 @@ import { z } from "zod";
 import { RepoAnalyzer } from "gitsee/server";
 import { parseOwnerRepo } from "./utils";
 import {  getProviderTool} from "@/lib/ai/provider";
+import { createMCPClient } from "@ai-sdk/mcp";
 
 export async function listConcepts(swarmUrl: string, swarmApiKey: string): Promise<Record<string, unknown>> {
   const r = await fetch(`${swarmUrl}/gitree/features`, {
@@ -178,6 +179,48 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
         } catch (e) {
           console.error("Error executing repo agent:", e);
           return "Could not execute repo agent";
+        }
+      },
+    }),
+    search_logs: tool({
+      description: "Search application logs using Quickwit. Supports Lucene query syntax.",
+      inputSchema: z.object({
+        query: z.string().describe("Lucene query string"),
+        max_hits: z.number().optional().default(10).describe("Maximum number of log entries to return"),
+      }),
+      execute: async ({ query, max_hits = 10 }: { query: string; max_hits?: number }) => {
+        let mcpClient;
+        try {
+          mcpClient = await createMCPClient({
+            transport: {
+              type: 'http',
+              url: `${swarmUrl}/mcp`,
+              headers: {
+                Authorization: `Bearer ${swarmApiKey}`,
+              },
+            },
+          });
+
+          const tools = await mcpClient.tools();
+          const searchLogsTool = tools['search_logs'];
+          
+          if (!searchLogsTool || !searchLogsTool.execute) {
+            return "search_logs tool not found on MCP server";
+          }
+
+          const result = await searchLogsTool.execute(
+            { query, max_hits },
+            { toolCallId: '1', messages: [] }
+          );
+          
+          return result;
+        } catch (e) {
+          console.error("Error searching logs:", e);
+          return "Could not search logs";
+        } finally {
+          if (mcpClient) {
+            await mcpClient.close();
+          }
         }
       },
     }),
