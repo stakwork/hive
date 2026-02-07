@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { type ApiError } from "@/types";
 import { getPodDetails, POD_PORTS, buildPodUrl } from "@/lib/pods";
 import { getUserAppTokens } from "@/lib/githubApp";
+import { enablePRAutoMerge, getOctokitForWorkspace, parsePRUrl } from "@/lib/github";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -234,6 +236,76 @@ export async function POST(request: NextRequest) {
 
     const pushData = await pushResponse.json();
     console.log(">>> Push successful:", pushData);
+
+    // Handle auto-merge if task has autoMerge enabled and PR was created
+    if (pushData.prs && Object.keys(pushData.prs).length > 0 && !existingPullRequest) {
+      try {
+        // Query task for autoMerge field
+        const taskWithAutoMerge = await db.task.findUnique({
+          where: { id: taskId },
+          select: { autoMerge: true, workspaceId: true },
+        });
+
+        if (taskWithAutoMerge?.autoMerge === true) {
+          // Get the first PR URL from the response
+          const prUrl = Object.values(pushData.prs)[0] as string;
+          logger.info("Task has auto-merge enabled, processing PR", "AutoMerge", { taskId, prUrl });
+
+          // Parse PR URL to extract owner, repo, and PR number
+          const prInfo = parsePRUrl(prUrl);
+          if (!prInfo) {
+            logger.warn("Failed to parse PR URL", "AutoMerge", { taskId, prUrl });
+          } else {
+            const { owner, repo, prNumber } = prInfo;
+            
+            // Get Octokit instance for the workspace
+            const octokit = await getOctokitForWorkspace(userId, owner);
+            if (!octokit) {
+              logger.warn("Failed to get Octokit instance", "AutoMerge", { taskId, owner });
+            } else {
+              // Fetch PR details to get node_id
+              try {
+                const { data: pr } = await octokit.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                });
+
+                // Enable auto-merge
+                const result = await enablePRAutoMerge(octokit, pr.node_id, "SQUASH");
+                
+                if (result.success) {
+                  logger.info("Successfully enabled auto-merge for PR", "AutoMerge", {
+                    taskId,
+                    prUrl,
+                    prNumber,
+                  });
+                } else {
+                  logger.warn("Failed to enable auto-merge for PR", "AutoMerge", {
+                    taskId,
+                    prUrl,
+                    prNumber,
+                    error: result.error,
+                  });
+                }
+              } catch (prError) {
+                logger.error("Error fetching PR details or enabling auto-merge", "AutoMerge", {
+                  taskId,
+                  prUrl,
+                  error: prError instanceof Error ? prError.message : String(prError),
+                });
+              }
+            }
+          }
+        }
+      } catch (autoMergeError) {
+        // Log but don't fail the request - graceful degradation
+        logger.error("Error processing auto-merge", "AutoMerge", {
+          taskId,
+          error: autoMergeError instanceof Error ? autoMergeError.message : String(autoMergeError),
+        });
+      }
+    }
 
     return NextResponse.json(
       {
