@@ -135,6 +135,11 @@ export function AITextareaSection({
     await aiGeneration.provideFeedback(feedback);
   };
 
+  const handleCancelClarifyingQuestions = () => {
+    aiGeneration.clear();
+    toast.info("Clarifying questions cancelled");
+  };
+
   const handleDeepThink = async () => {
     try {
       setInitiatingDeepThink(true);
@@ -287,6 +292,7 @@ export function AITextareaSection({
         <ClarifyingQuestionsPreview
           questions={parsedContent.data.content}
           onSubmit={(formattedAnswers) => handleProvideFeedback(formattedAnswers)}
+          onCancel={handleCancelClarifyingQuestions}
           isLoading={aiGeneration.isLoading}
         />
       ) : parsedContent?.type === "content" ? (

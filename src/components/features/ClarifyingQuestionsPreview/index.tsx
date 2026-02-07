@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { HelpCircle, Check, Loader2 } from "lucide-react";
+import { HelpCircle, Check, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -103,6 +103,7 @@ function getColorFromArtifact(artifact: QuestionArtifact | undefined, optionLabe
 interface ClarifyingQuestionsPreviewProps {
   questions: ClarifyingQuestion[];
   onSubmit: (answers: string) => void;
+  onCancel?: () => void;
   isLoading?: boolean;
 }
 
@@ -150,6 +151,7 @@ function formatAnswersForFeedback(
 export function ClarifyingQuestionsPreview({
   questions,
   onSubmit,
+  onCancel,
   isLoading = false,
 }: ClarifyingQuestionsPreviewProps) {
   const validQuestions = useMemo(
@@ -480,39 +482,52 @@ export function ClarifyingQuestionsPreview({
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border/50 rounded-b-md">
-        <div className="flex items-center justify-center gap-3 p-3">
-          {(!isFirstQuestion || showReview) && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handlePrevious}
-              disabled={isLoading}
-            >
-              Back
-            </Button>
-          )}
-
+        <div className="flex items-center justify-between p-3">
           <Button
             size="sm"
-            variant="default"
-            onClick={handleNext}
-            disabled={isLoading || (!showReview && !hasCurrentAnswer)}
+            variant="ghost"
+            onClick={() => onCancel?.()}
+            disabled={isLoading}
+            className="text-muted-foreground"
           >
-            {showReview ? (
-              <>
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                ) : (
-                  <Check className="h-4 w-4 mr-1" />
-                )}
-                Submit
-              </>
-            ) : isLastQuestion ? (
-              "Review"
-            ) : (
-              "Next"
-            )}
+            <X className="h-4 w-4 mr-1" />
+            Cancel
           </Button>
+
+          <div className="flex gap-3">
+            {(!isFirstQuestion || showReview) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handlePrevious}
+                disabled={isLoading}
+              >
+                Back
+              </Button>
+            )}
+
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleNext}
+              disabled={isLoading || (!showReview && !hasCurrentAnswer)}
+            >
+              {showReview ? (
+                <>
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4 mr-1" />
+                  )}
+                  Submit
+                </>
+              ) : isLastQuestion ? (
+                "Review"
+              ) : (
+                "Next"
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
