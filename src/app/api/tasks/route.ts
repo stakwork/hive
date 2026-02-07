@@ -249,6 +249,7 @@ export async function GET(request: NextRequest) {
           featureId: true,
           systemAssigneeType: true,
           dependsOnTaskIds: true,
+          autoMerge: true,
           createdAt: true,
           updatedAt: true,
           feature: {

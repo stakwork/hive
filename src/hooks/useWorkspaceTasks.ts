@@ -51,6 +51,7 @@ export interface TaskData {
   featureId?: string | null;
   systemAssigneeType?: "TASK_COORDINATOR" | "BOUNTY_HUNTER" | null;
   dependsOnTaskIds?: string[];
+  autoMerge?: boolean;
   createdAt: string;
   updatedAt: string;
   hasActionArtifact?: boolean;
