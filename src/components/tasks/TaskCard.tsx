@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server } from "lucide-react";
+import { Calendar, User, Sparkles, Bot, Archive, ArchiveRestore, Server, GitMerge } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { TaskData } from "@/hooks/useWorkspaceTasks";
@@ -249,6 +249,23 @@ export function TaskCard({ task, workspaceSlug, hideWorkflowStatus = false, isAr
             url={task.prArtifact.content.url}
             status={task.prArtifact.content.status}
           />
+        )}
+
+        {/* Auto-merge Badge - only show for open PRs with autoMerge enabled */}
+        {task.autoMerge === true && task.prArtifact?.content?.status === 'IN_PROGRESS' && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="gap-1 h-5 bg-purple-500/10 text-purple-700 border-purple-500/20">
+                  <GitMerge className="h-3 w-3" />
+                  Auto-merge
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Will merge automatically when CI passes</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
     </motion.div>
