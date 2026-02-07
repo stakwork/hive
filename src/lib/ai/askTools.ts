@@ -183,7 +183,12 @@ export function askTools(swarmUrl: string, swarmApiKey: string, repoUrl: string,
       },
     }),
     search_logs: tool({
-      description: "Search application logs using Quickwit. Supports Lucene query syntax.",
+      description: `Search application logs using Quickwit. Supports Lucene query syntax. Does not support wildcards. 
+Example queries:
+- "path:pool AND path:status" (for searching endpoint like /api/pool/[slug]/status)
+- "message:AuthenticationError",
+- "level:ERROR"
+`,
       inputSchema: z.object({
         query: z.string().describe("Lucene query string"),
         max_hits: z.number().optional().default(10).describe("Maximum number of log entries to return"),
