@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Table as TableIcon, Network, Play } from "lucide-react";
+import { Plus, Table as TableIcon, Network, Play, GitMerge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,8 @@ import { PriorityPopover } from "@/components/ui/priority-popover";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
@@ -71,6 +73,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     email: string | null;
     image: string | null;
   } | null>(null);
+  const [newTicketAutoMerge, setNewTicketAutoMerge] = useState(true);
 
   // View toggle
   const [activeView, setActiveView] = useState<"table" | "graph">("table");
@@ -188,6 +191,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
       status: newTicketStatus,
       priority: newTicketPriority,
       assigneeId: newTicketAssigneeId,
+      autoMerge: newTicketAutoMerge,
     });
 
     if (ticket && feature.phases) {
@@ -227,6 +231,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
       setNewTicketPriority("MEDIUM");
       setNewTicketAssigneeId(null);
       setNewTicketAssigneeData(null);
+      setNewTicketAutoMerge(true);
     }
   };
 
@@ -237,6 +242,7 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     setNewTicketPriority("MEDIUM");
     setNewTicketAssigneeId(null);
     setNewTicketAssigneeData(null);
+    setNewTicketAutoMerge(true);
     setIsCreatingTicket(false);
   };
 
@@ -567,6 +573,29 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
                 }}
                 showSpecialAssignees={true}
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto-merge"
+                checked={newTicketAutoMerge}
+                onCheckedChange={(checked) => setNewTicketAutoMerge(checked === true)}
+              />
+              <label
+                htmlFor="auto-merge"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Auto-merge PR when CI passes
+              </label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-muted-foreground cursor-help">ⓘ</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">When enabled, the PR will automatically merge once all CI checks pass, and the task will be marked as done without manual intervention</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <div className="flex items-center justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={handleCancelCreateTicket} disabled={creatingTicket}>
