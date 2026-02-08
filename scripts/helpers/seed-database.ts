@@ -480,6 +480,400 @@ async function seedFeaturesWithStakworkRuns(
   console.log(`✓ Created ${featuresData.length} features with StakworkRuns`);
 }
 
+/**
+ * Seeds auto-merge test scenarios for testing multi-task feature chains,
+ * coordinator behavior, and UI display. Creates features with varied
+ * auto-merge settings and dependency chains.
+ */
+export async function seedAutoMergeTestScenarios(
+  users?: Array<{ id: string; email: string }>,
+) {
+  const workspaces = await prisma.workspace.findMany();
+  if (workspaces.length === 0) {
+    console.log("No workspaces found, skipping auto-merge test seeding");
+    return;
+  }
+
+  const workspace = workspaces[0];
+  
+  // Get or use provided users
+  const seedUsers = users || await prisma.user.findMany({ take: 1 });
+  if (seedUsers.length === 0) {
+    console.log("No users found, skipping auto-merge test seeding");
+    return;
+  }
+  const userId = seedUsers[0].id;
+
+  // Find or create system user for task-coordinator
+  let systemUser = await prisma.user.findFirst({
+    where: { email: "system:task-coordinator@hive.local" },
+  });
+
+  if (!systemUser) {
+    systemUser = await prisma.user.create({
+      data: {
+        email: "system:task-coordinator@hive.local",
+        name: "Task Coordinator",
+        image: null,
+      },
+    });
+  }
+
+  console.log("Creating auto-merge test features...");
+
+  // FEATURE A: Payment Integration - All tasks with autoMerge: true
+  // Sequential dependency chain to test coordinator auto-progression
+  const paymentFeature = await prisma.feature.create({
+    data: {
+      title: "Payment Integration",
+      brief: "End-to-end payment processing system",
+      status: "IN_PROGRESS",
+      priority: Priority.HIGH,
+      workspaceId: workspace.id,
+      createdById: userId,
+      updatedById: userId,
+    },
+  });
+
+  const paymentPhase = await prisma.phase.create({
+    data: {
+      name: "Implementation",
+      featureId: paymentFeature.id,
+      order: 0,
+    },
+  });
+
+  // Task 1: Add payment API endpoints (no dependencies)
+  const paymentTask1 = await prisma.task.create({
+    data: {
+      title: "Add payment API endpoints",
+      description:
+        "Create REST API endpoints for payment processing: POST /api/payments/process, GET /api/payments/:id, POST /api/payments/refund. Include validation, error handling, and proper HTTP status codes.",
+      workspaceId: workspace.id,
+      featureId: paymentFeature.id,
+      phaseId: paymentPhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.TODO,
+      priority: Priority.HIGH,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 0,
+      dependsOnTaskIds: [],
+    },
+  });
+
+  // Task 2: Implement payment UI components (depends on Task 1)
+  const paymentTask2 = await prisma.task.create({
+    data: {
+      title: "Implement payment UI components",
+      description:
+        "Build React components for payment form with card input, billing address, and payment method selection. Include real-time validation and loading states.",
+      workspaceId: workspace.id,
+      featureId: paymentFeature.id,
+      phaseId: paymentPhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.TODO,
+      priority: Priority.HIGH,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 1,
+      dependsOnTaskIds: [paymentTask1.id],
+    },
+  });
+
+  // Task 3: Add payment confirmation flow (depends on Task 2)
+  const paymentTask3 = await prisma.task.create({
+    data: {
+      title: "Add payment confirmation flow",
+      description:
+        "Implement post-payment confirmation page with receipt display, email confirmation trigger, and order summary. Add success/failure handling.",
+      workspaceId: workspace.id,
+      featureId: paymentFeature.id,
+      phaseId: paymentPhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.TODO,
+      priority: Priority.MEDIUM,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 2,
+      dependsOnTaskIds: [paymentTask2.id],
+    },
+  });
+
+  console.log(
+    `✓ Created Feature A: Payment Integration with 3 sequential autoMerge tasks`,
+  );
+
+  // FEATURE B: User Profile Enhancement - Mixed auto-merge settings
+  // Tests coordinator handling of manual intervention mid-chain
+  const profileFeature = await prisma.feature.create({
+    data: {
+      title: "User Profile Enhancement",
+      brief: "Improve user profile management and customization",
+      status: "IN_PROGRESS",
+      priority: Priority.MEDIUM,
+      workspaceId: workspace.id,
+      createdById: userId,
+      updatedById: userId,
+    },
+  });
+
+  const profilePhase = await prisma.phase.create({
+    data: {
+      name: "Development",
+      featureId: profileFeature.id,
+      order: 0,
+    },
+  });
+
+  // Task 1: Update profile schema - autoMerge: true (no dependencies)
+  const profileTask1 = await prisma.task.create({
+    data: {
+      title: "Update profile schema",
+      description:
+        "Add new fields to User model: bio (text), location (string), website (url), socialLinks (json). Create Prisma migration and update TypeScript types.",
+      workspaceId: workspace.id,
+      featureId: profileFeature.id,
+      phaseId: profilePhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.TODO,
+      priority: Priority.HIGH,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 0,
+      dependsOnTaskIds: [],
+    },
+  });
+
+  // Task 2: Add profile edit UI - autoMerge: false (depends on Task 1)
+  // Manual review required for UI changes
+  const profileTask2 = await prisma.task.create({
+    data: {
+      title: "Add profile edit UI",
+      description:
+        "Create profile editing form with all new fields. Include client-side validation, autosave functionality, and preview mode. Requires design review before merge.",
+      workspaceId: workspace.id,
+      featureId: profileFeature.id,
+      phaseId: profilePhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.TODO,
+      priority: Priority.MEDIUM,
+      sourceType: "SYSTEM",
+      autoMerge: false, // Manual merge for UI review
+      order: 1,
+      dependsOnTaskIds: [profileTask1.id],
+    },
+  });
+
+  // Task 3: Add avatar upload - autoMerge: true (depends on Task 2)
+  const profileTask3 = await prisma.task.create({
+    data: {
+      title: "Add avatar upload",
+      description:
+        "Implement avatar image upload with S3 integration, image resizing/cropping, and fallback to initials. Max file size 5MB, support JPG/PNG/WebP.",
+      workspaceId: workspace.id,
+      featureId: profileFeature.id,
+      phaseId: profilePhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.TODO,
+      priority: Priority.LOW,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 2,
+      dependsOnTaskIds: [profileTask2.id],
+    },
+  });
+
+  console.log(
+    `✓ Created Feature B: User Profile Enhancement with mixed autoMerge settings`,
+  );
+
+  // EDGE CASE TASKS: Various PR artifact states for UI testing
+  const edgeCaseFeature = await prisma.feature.create({
+    data: {
+      title: "Edge Case Testing Feature",
+      brief: "Tasks with various auto-merge and PR states for testing",
+      status: "IN_PROGRESS",
+      priority: Priority.LOW,
+      workspaceId: workspace.id,
+      createdById: userId,
+      updatedById: userId,
+    },
+  });
+
+  const edgeCasePhase = await prisma.phase.create({
+    data: {
+      name: "Testing",
+      featureId: edgeCaseFeature.id,
+      order: 0,
+    },
+  });
+
+  // Edge Case 1: autoMerge with open PR (should show badge)
+  const edgeTask1 = await prisma.task.create({
+    data: {
+      title: "Task with open PR and auto-merge",
+      description: "Test auto-merge badge display with IN_PROGRESS PR artifact",
+      workspaceId: workspace.id,
+      featureId: edgeCaseFeature.id,
+      phaseId: edgeCasePhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.IN_PROGRESS,
+      priority: Priority.LOW,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 0,
+    },
+  });
+
+  const edgeMessage1 = await prisma.chatMessage.create({
+    data: {
+      taskId: edgeTask1.id,
+      message: "Created PR with auto-merge enabled",
+      role: "ASSISTANT",
+      userId: systemUser.id,
+    },
+  });
+
+  await prisma.artifact.create({
+    data: {
+      messageId: edgeMessage1.id,
+      type: "PULL_REQUEST",
+      content: JSON.stringify({
+        url: "https://github.com/test/repo/pull/101",
+        number: 101,
+        title: "Add feature with auto-merge",
+        status: "IN_PROGRESS",
+        autoMergeEnabled: true,
+      }),
+    },
+  });
+
+  // Edge Case 2: autoMerge with merged PR (should NOT show badge)
+  const edgeTask2 = await prisma.task.create({
+    data: {
+      title: "Task with merged PR and auto-merge",
+      description: "Test that badge doesn't show for already merged PRs",
+      workspaceId: workspace.id,
+      featureId: edgeCaseFeature.id,
+      phaseId: edgeCasePhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.DONE,
+      priority: Priority.LOW,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 1,
+    },
+  });
+
+  const edgeMessage2 = await prisma.chatMessage.create({
+    data: {
+      taskId: edgeTask2.id,
+      message: "PR merged successfully",
+      role: "ASSISTANT",
+      userId: systemUser.id,
+    },
+  });
+
+  await prisma.artifact.create({
+    data: {
+      messageId: edgeMessage2.id,
+      type: "PULL_REQUEST",
+      content: JSON.stringify({
+        url: "https://github.com/test/repo/pull/102",
+        number: 102,
+        title: "Completed feature",
+        status: "DONE",
+        mergedAt: new Date().toISOString(),
+      }),
+    },
+  });
+
+  // Edge Case 3: Manual merge workflow (autoMerge: false with PR)
+  const edgeTask3 = await prisma.task.create({
+    data: {
+      title: "Task with manual merge required",
+      description: "Test manual merge workflow with autoMerge disabled",
+      workspaceId: workspace.id,
+      featureId: edgeCaseFeature.id,
+      phaseId: edgeCasePhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.IN_PROGRESS,
+      priority: Priority.LOW,
+      sourceType: "SYSTEM",
+      autoMerge: false,
+      order: 2,
+    },
+  });
+
+  const edgeMessage3 = await prisma.chatMessage.create({
+    data: {
+      taskId: edgeTask3.id,
+      message: "Created PR requiring manual review",
+      role: "ASSISTANT",
+      userId: systemUser.id,
+    },
+  });
+
+  await prisma.artifact.create({
+    data: {
+      messageId: edgeMessage3.id,
+      type: "PULL_REQUEST",
+      content: JSON.stringify({
+        url: "https://github.com/test/repo/pull/103",
+        number: 103,
+        title: "Feature requiring manual review",
+        status: "IN_PROGRESS",
+        autoMergeEnabled: false,
+      }),
+    },
+  });
+
+  // Edge Case 4: Coordinator handling (autoMerge with PENDING workflow)
+  const edgeTask4 = await prisma.task.create({
+    data: {
+      title: "Task awaiting coordinator processing",
+      description:
+        "Test coordinator picks up task with auto-merge and pending workflow",
+      workspaceId: workspace.id,
+      featureId: edgeCaseFeature.id,
+      phaseId: edgeCasePhase.id,
+      createdById: userId,
+      updatedById: userId,
+      systemAssigneeType: "TASK_COORDINATOR",
+      status: TaskStatus.IN_PROGRESS,
+      workflowStatus: "PENDING",
+      priority: Priority.MEDIUM,
+      sourceType: "SYSTEM",
+      autoMerge: true,
+      order: 3,
+    },
+  });
+
+  console.log(`✓ Created 4 edge case tasks with PR artifacts`);
+  console.log(
+    `\n✓ Auto-merge test data seeding complete:\n  - 2 features with dependency chains\n  - 6 core tasks (4 with autoMerge: true, 2 with autoMerge: false)\n  - 4 edge case tasks with PR artifacts\n  - Total: 10 tasks for comprehensive testing`,
+  );
+}
+
 async function main() {
   await prisma.$connect();
 
@@ -487,6 +881,7 @@ async function main() {
   await seedWorkspacesAndSwarms(users);
   await seedTasksWithLayerTypes(users);
   await seedFeaturesWithStakworkRuns(users);
+  await seedAutoMergeTestScenarios(users);
 
   console.log("Seed completed.");
 }
