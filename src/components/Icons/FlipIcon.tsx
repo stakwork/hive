@@ -6,16 +6,16 @@ const FlipIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <path
       d="M4.5 6.04386L7.83333 2.83398V13.6673"
       stroke="white"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
     <path
       d="M15.5 13.9581L12.1667 17.168L12.1667 6.33463"
       stroke="white"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </svg>
 )
