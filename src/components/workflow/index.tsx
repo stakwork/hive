@@ -1257,7 +1257,7 @@ export default function App(workflowApp: WorkflowAppProps) {
       <ReactFlow
         onInit={onInit}
         ref={ref}
-        minZoom={0.2}
+        minZoom={0.05}
         maxZoom={0.7}
         nodeTypes={nodeTypes}
         nodes={nodes}
