@@ -157,16 +157,16 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
         ...feature,
         phases: feature.phases.map((phase) => ({
           ...phase,
-          tickets: phase.tickets.map((ticket) => {
-            if (ticket.id !== event.taskId) return ticket;
+          tasks: phase.tasks.map((task) => {
+            if (task.id !== event.taskId) return task;
 
             // Update task status if PR was merged
-            const updatedTicket = { ...ticket };
+            const updatedTask = { ...task };
             if (event.artifactStatus === 'DONE') {
-              updatedTicket.status = 'DONE';
+              updatedTask.status = 'DONE';
             }
 
-            return updatedTicket;
+            return updatedTask;
           }),
         })),
       };

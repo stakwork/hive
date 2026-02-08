@@ -417,8 +417,9 @@ export async function notifyPRStatusChange(
     if (task?.workspace?.slug) {
       const workspaceChannelName = getWorkspaceChannelName(task.workspace.slug);
       
-      // Map state to artifactStatus for consistency with webhook events
-      const artifactStatus = state === "merged" ? "DONE" : state === "closed" ? "CANCELLED" : "IN_PROGRESS";
+      // For monitoring updates, the PR is always in progress
+      // (merged/closed states are handled by webhook events, not the monitor)
+      const artifactStatus = "IN_PROGRESS";
       
       await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
         taskId,

@@ -2,6 +2,7 @@
 
 import {
   TaskTitleUpdateEvent,
+  PRStatusChangeEvent,
   usePusherConnection,
 } from "@/hooks/usePusherConnection";
 import { WorkflowStatus } from "@/lib/chat";
