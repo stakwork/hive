@@ -26,14 +26,13 @@ describe("Task Factory - Auto-Merge Support", () => {
       data: {
         name: "Test Workspace",
         slug: "test-automerge-ws",
-        createdById: userId,
-        updatedById: userId,
+        ownerId: userId,
       },
     });
     workspaceId = workspace.id;
 
     // Add user as workspace member
-    await db.workspaceMembership.create({
+    await db.workspaceMember.create({
       data: {
         userId,
         workspaceId,

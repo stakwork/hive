@@ -26,8 +26,7 @@ describe("Task Factory - Auto-Merge Support", () => {
       data: {
         name: "Test Workspace",
         slug: `test-ws-${Date.now()}`,
-        createdById: userId,
-        updatedById: userId,
+        ownerId: userId,
       },
     });
     workspaceId = workspace.id;
