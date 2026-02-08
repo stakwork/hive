@@ -84,13 +84,18 @@ export default function FeatureDetailPage() {
       const response = await fetch(`/api/stakwork/runs?${params}`);
       if (response.ok) {
         const data = await response.json();
+        // Check if tasks already exist in the feature
+        const hasTasks = feature?.phases?.some(phase => phase.tasks && phase.tasks.length > 0) ?? false;
+        
         // Filter for runs that need attention (decision is null)
         const pendingTypes = new Set<StakworkRunType>(
           data.runs
-            .filter((run: { decision: string | null; type: StakworkRunType }) =>
-              run.decision === null &&
-              ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"].includes(run.type)
-            )
+            .filter((run: { decision: string | null; type: StakworkRunType }) => {
+              if (run.decision !== null) return false;
+              // If tasks already exist, don't show indicator for TASK_GENERATION
+              if (run.type === "TASK_GENERATION" && hasTasks) return false;
+              return ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"].includes(run.type);
+            })
             .map((run: { type: StakworkRunType }) => run.type)
         );
         setPendingRunTypes(pendingTypes);
@@ -98,7 +103,7 @@ export default function FeatureDetailPage() {
     } catch (err) {
       console.error("Failed to fetch pending runs:", err);
     }
-  }, [workspaceId, featureId]);
+  }, [workspaceId, featureId, feature?.phases]);
 
   useEffect(() => {
     fetchPendingRuns();
