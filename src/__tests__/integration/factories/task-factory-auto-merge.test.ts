@@ -4,14 +4,14 @@ import {
   createTestTask,
   createTestFeatureWithAutoMergeTasks,
 } from "@/__tests__/support/factories/task.factory";
-import { cleanDatabase } from "@/__tests__/support/helpers/database-helpers";
+import { resetDatabase } from "@/__tests__/support/utilities/database";
 
 describe("Task Factory - Auto-Merge Support", () => {
   let workspaceId: string;
   let userId: string;
 
   beforeAll(async () => {
-    await cleanDatabase();
+    await resetDatabase();
 
     // Create test user and workspace
     const user = await db.user.create({
@@ -43,7 +43,7 @@ describe("Task Factory - Auto-Merge Support", () => {
   });
 
   afterAll(async () => {
-    await cleanDatabase();
+    await resetDatabase();
   });
 
   describe("createTestTask with autoMerge", () => {
