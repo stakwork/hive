@@ -382,6 +382,19 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
           }
         }
 
+        // Auto-mark pending TASK_GENERATION run as ACCEPTED
+        if (latestRun?.id && !latestRun.decision && latestRun.type === "TASK_GENERATION") {
+          try {
+            await fetch(`/api/stakwork/runs/${latestRun.id}/decision`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ decision: "ACCEPTED", featureId }),
+            });
+          } catch (error) {
+            console.error("Failed to mark TASK_GENERATION run as ACCEPTED:", error);
+          }
+        }
+
         // Call accept to clear state (no API call for quick source)
         await aiGeneration.accept();
       } else if (aiGeneration.source === "deep") {
