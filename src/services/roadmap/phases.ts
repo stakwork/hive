@@ -42,6 +42,7 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
           order: true,
           featureId: true,
           phaseId: true,
+          workspaceId: true,
           bountyCode: true,
           dependsOnTaskIds: true,
           createdAt: true,
