@@ -17,6 +17,33 @@ export async function POST(
 
     const ticket = await createTicket(featureId, userOrResponse.id, body);
 
+    // Auto-mark pending TASK_GENERATION run as ACCEPTED when user manually creates a task
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+      // Get workspaceId from the ticket's workspace relation
+      const workspaceId = ticket.workspaceId;
+      
+      const pendingRunResponse = await fetch(
+        `${baseUrl}/api/stakwork/runs?workspaceId=${workspaceId}&featureId=${featureId}&type=TASK_GENERATION&status=COMPLETED`
+      );
+      
+      if (pendingRunResponse.ok) {
+        const runsData = await pendingRunResponse.json();
+        const pendingRun = runsData.runs?.find((r: any) => r.decision === null);
+        
+        if (pendingRun?.id) {
+          await fetch(`${baseUrl}/api/stakwork/runs/${pendingRun.id}/decision`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ decision: "ACCEPTED", featureId }),
+          });
+        }
+      }
+    } catch (error) {
+      // Log but don't fail the request if marking run as ACCEPTED fails
+      console.error("Failed to mark TASK_GENERATION run as ACCEPTED:", error);
+    }
+
     return NextResponse.json<TicketResponse>(
       {
         success: true,
