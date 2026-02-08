@@ -147,11 +147,41 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     [feature, onUpdate]
   );
 
+  // Handle real-time PR status changes
+  const handlePRStatusChange = useCallback(
+    (event: { taskId: string; state: string; artifactStatus?: string }) => {
+      if (!feature) return;
+
+      // Deep clone feature and update matching task
+      const updatedFeature = {
+        ...feature,
+        phases: feature.phases.map((phase) => ({
+          ...phase,
+          tasks: phase.tasks.map((task) => {
+            if (task.id !== event.taskId) return task;
+
+            // Update task status if PR was merged
+            const updatedTask = { ...task };
+            if (event.artifactStatus === 'DONE') {
+              updatedTask.status = 'DONE';
+            }
+
+            return updatedTask;
+          }),
+        })),
+      };
+
+      onUpdate(updatedFeature);
+    },
+    [feature, onUpdate]
+  );
+
   // Subscribe to workspace-level Pusher updates for real-time task changes
   usePusherConnection({
     workspaceSlug,
     enabled: !!workspaceSlug,
     onTaskTitleUpdate: handleRealtimeTaskUpdate,
+    onPRStatusChange: handlePRStatusChange,
   });
 
   // Auto-focus after ticket creation completes
