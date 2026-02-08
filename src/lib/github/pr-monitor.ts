@@ -14,7 +14,7 @@ import { Octokit } from "@octokit/rest";
 import { db } from "@/lib/db";
 import { Prisma, ChatRole, ChatStatus, TaskStatus } from "@prisma/client";
 import { getUserAppTokens } from "@/lib/githubApp";
-import { pusherServer, getTaskChannelName, PUSHER_EVENTS } from "@/lib/pusher";
+import { pusherServer, getTaskChannelName, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import { EncryptionService } from "@/lib/encryption";
 import { createWebhookToken, generateWebhookSecret } from "@/lib/auth/agent-jwt";
 import { createChatMessageAndTriggerStakwork } from "@/services/task-workflow";
@@ -405,7 +405,46 @@ export async function notifyPRStatusChange(
     timestamp: new Date(),
   });
 
-  log.info("Sent Pusher notification", { taskId, prNumber, state });
+  log.info("Sent Pusher notification to task channel", { taskId, prNumber, state });
+
+  // Also broadcast to workspace channel for UI-wide updates
+  try {
+    const task = await db.task.findUnique({
+      where: { id: taskId },
+      select: { workspace: { select: { slug: true } } },
+    });
+
+    if (task?.workspace?.slug) {
+      const workspaceChannelName = getWorkspaceChannelName(task.workspace.slug);
+      
+      // For monitoring updates, the PR is always in progress
+      // (merged/closed states are handled by webhook events, not the monitor)
+      const artifactStatus = "IN_PROGRESS";
+      
+      await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
+        taskId,
+        prNumber,
+        state,
+        artifactStatus,
+        problemDetails,
+        timestamp: new Date(),
+      });
+
+      log.info("Sent Pusher notification to workspace channel", { 
+        taskId, 
+        prNumber, 
+        state, 
+        workspaceSlug: task.workspace.slug 
+      });
+    }
+  } catch (error) {
+    log.error("Failed to broadcast PR status to workspace channel", { 
+      taskId, 
+      prNumber, 
+      error 
+    });
+    // Don't throw - task channel notification already succeeded
+  }
 }
 
 /**
