@@ -246,3 +246,105 @@ export async function createTestArtifact(
     },
   });
 }
+
+export interface CreateFeatureWithAutoMergeTasksOptions {
+  workspaceId: string;
+  userId: string;
+  featureTitle?: string;
+  taskCount: number;
+  allAutoMerge?: boolean;
+  sequential?: boolean; // creates dependency chain
+  autoMergePattern?: boolean[]; // explicit pattern, overrides allAutoMerge
+}
+
+/**
+ * Helper function to create a feature with auto-merge task chains
+ * 
+ * @example
+ * // Create feature with 3 sequential tasks, all auto-merge enabled
+ * const { feature, tasks } = await createTestFeatureWithAutoMergeTasks({
+ *   workspaceId: 'ws_123',
+ *   userId: 'user_123',
+ *   taskCount: 3,
+ *   allAutoMerge: true,
+ *   sequential: true
+ * });
+ * 
+ * @example
+ * // Create feature with mixed auto-merge pattern
+ * const { feature, tasks } = await createTestFeatureWithAutoMergeTasks({
+ *   workspaceId: 'ws_123',
+ *   userId: 'user_123',
+ *   taskCount: 3,
+ *   sequential: true,
+ *   autoMergePattern: [true, false, true] // Task 2 requires manual merge
+ * });
+ */
+export async function createTestFeatureWithAutoMergeTasks(
+  options: CreateFeatureWithAutoMergeTasksOptions,
+): Promise<{ feature: any; phase: any; tasks: Task[] }> {
+  const uniqueId = generateUniqueId("feature");
+  const featureTitle = options.featureTitle ?? `Test Feature ${uniqueId}`;
+
+  // Create feature with phase
+  const feature = await db.feature.create({
+    data: {
+      title: featureTitle,
+      brief: `Test feature with ${options.taskCount} tasks for auto-merge testing`,
+      status: "IN_PROGRESS",
+      priority: "MEDIUM",
+      workspaceId: options.workspaceId,
+      createdById: options.userId,
+      updatedById: options.userId,
+      phases: {
+        create: {
+          name: "Test Phase",
+          description: "Auto-merge test phase",
+          status: "IN_PROGRESS",
+          order: 0,
+        },
+      },
+    },
+    include: {
+      phases: true,
+    },
+  });
+
+  const phase = feature.phases[0];
+  const tasks: Task[] = [];
+
+  // Create tasks with auto-merge settings
+  for (let i = 0; i < options.taskCount; i++) {
+    let autoMerge: boolean;
+    
+    // Determine autoMerge value
+    if (options.autoMergePattern && options.autoMergePattern[i] !== undefined) {
+      autoMerge = options.autoMergePattern[i];
+    } else if (options.allAutoMerge !== undefined) {
+      autoMerge = options.allAutoMerge;
+    } else {
+      autoMerge = true; // default
+    }
+
+    // Build dependencies if sequential
+    const dependsOnTaskIds = options.sequential && i > 0 ? [tasks[i - 1].id] : [];
+
+    const task = await createTestTask({
+      title: `Task ${i + 1}: ${featureTitle}`,
+      description: `Auto-merge test task ${i + 1} (autoMerge: ${autoMerge})`,
+      workspaceId: options.workspaceId,
+      createdById: options.userId,
+      featureId: feature.id,
+      phaseId: phase.id,
+      status: "TODO",
+      priority: "MEDIUM",
+      autoMerge,
+      dependsOnTaskIds,
+      order: i,
+    });
+
+    tasks.push(task);
+  }
+
+  return { feature, phase, tasks };
+}
