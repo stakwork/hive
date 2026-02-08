@@ -282,8 +282,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 // Continue processing - don't fail on artifact update error
               }
 
-              // Broadcast Pusher event for real-time UI updates (task-specific channel only)
+              // Broadcast Pusher event for real-time UI updates
               if (workspace?.slug) {
+                // Broadcast to workspace channel for UI-wide updates
+                try {
+                  const workspaceChannelName = getWorkspaceChannelName(workspace.slug);
+                  await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
+                    taskId: task.task_id,
+                    prNumber: payload.pull_request.number,
+                    prUrl: prUrl,
+                    state: "closed",
+                    artifactStatus: "CANCELLED",
+                    timestamp: new Date(),
+                  });
+
+                  console.log("[GithubWebhook] PR closed - workspace channel event broadcasted", {
+                    delivery,
+                    taskId: task.task_id,
+                    channel: workspaceChannelName,
+                  });
+                } catch (workspacePusherError) {
+                  console.error("[GithubWebhook] PR closed - workspace channel broadcast failed", {
+                    delivery,
+                    taskId: task.task_id,
+                    error: workspacePusherError,
+                  });
+                }
+
+                // Also broadcast to task-specific channel for task chat page
                 try {
                   const taskChannelName = getTaskChannelName(task.task_id);
                   await pusherServer.trigger(taskChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
@@ -390,6 +416,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
             // Broadcast Pusher event for real-time UI updates
             if (workspace?.slug) {
+              // Broadcast task status update to workspace channel
               try {
                 const channelName = getWorkspaceChannelName(workspace.slug);
                 await pusherServer.trigger(channelName, PUSHER_EVENTS.WORKSPACE_TASK_TITLE_UPDATE, {
@@ -412,6 +439,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                   error: pusherError,
                 });
                 // Continue processing - don't fail webhook on Pusher error
+              }
+
+              // Broadcast PR status change to workspace channel for UI-wide updates
+              try {
+                const workspaceChannelName = getWorkspaceChannelName(workspace.slug);
+                await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.PR_STATUS_CHANGE, {
+                  taskId: task.task_id,
+                  prNumber: payload.pull_request.number,
+                  prUrl: prUrl,
+                  state: "merged",
+                  artifactStatus: "DONE",
+                  timestamp: new Date(),
+                });
+
+                console.log("[GithubWebhook] PR merged - workspace channel PR status event broadcasted", {
+                  delivery,
+                  taskId: task.task_id,
+                  channel: workspaceChannelName,
+                });
+              } catch (workspacePRPusherError) {
+                console.error("[GithubWebhook] PR merged - workspace channel PR status broadcast failed", {
+                  delivery,
+                  taskId: task.task_id,
+                  error: workspacePRPusherError,
+                });
               }
 
               // Also send to task-specific channel for real-time updates on task chat page
