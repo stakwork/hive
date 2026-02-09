@@ -339,6 +339,117 @@ export async function createStakworkRun(
 }
 
 /**
+ * Create a lightweight Stakwork run for diagram generation.
+ * Unlike createStakworkRun, this doesn't fetch repos, PATs, or swarm credentials.
+ */
+export async function createDiagramStakworkRun(input: {
+  workspaceId: string;
+  featureId: string;
+  architectureText: string;
+  layout: string;
+  userId: string;
+}) {
+  // Validate workspace access
+  const workspace = await db.workspace.findUnique({
+    where: { id: input.workspaceId },
+    select: {
+      id: true,
+      ownerId: true,
+      deleted: true,
+      members: {
+        where: { userId: input.userId },
+        select: { role: true },
+      },
+    },
+  });
+
+  if (!workspace || workspace.deleted) {
+    throw new Error("Workspace not found");
+  }
+
+  const isOwner = workspace.ownerId === input.userId;
+  const isMember = workspace.members.length > 0;
+
+  if (!isOwner && !isMember) {
+    throw new Error("Access denied");
+  }
+
+  const baseUrl = getBaseUrl();
+
+  // Create DB record with PENDING status
+  let run = await db.stakworkRun.create({
+    data: {
+      type: StakworkRunType.DIAGRAM_GENERATION,
+      workspaceId: input.workspaceId,
+      featureId: input.featureId,
+      status: WorkflowStatus.PENDING,
+      webhookUrl: "",
+      dataType: "string",
+    },
+  });
+
+  // Build webhook URL with layout param for post-processing
+  const webhookUrl = `${baseUrl}/api/webhook/stakwork/response?type=DIAGRAM_GENERATION&workspace_id=${input.workspaceId}&feature_id=${input.featureId}&layout=${input.layout}`;
+  const workflowWebhookUrl = `${baseUrl}/api/stakwork/webhook?run_id=${run.id}`;
+
+  await db.stakworkRun.update({
+    where: { id: run.id },
+    data: { webhookUrl },
+  });
+
+  try {
+    const workflowId = config.STAKWORK_DIAGRAM_WORKFLOW_ID;
+    if (!workflowId) {
+      throw new Error("STAKWORK_DIAGRAM_WORKFLOW_ID not configured");
+    }
+
+    const vars = {
+      runId: run.id,
+      architectureText: input.architectureText,
+      layout: input.layout,
+      webhookUrl,
+    };
+
+    const stakworkPayload = {
+      name: `diagram-gen-${Date.now()}`,
+      workflow_id: parseInt(workflowId),
+      webhook_url: workflowWebhookUrl,
+      workflow_params: {
+        set_var: {
+          attributes: { vars },
+        },
+      },
+    };
+
+    const response = await stakworkService().stakworkRequest<{
+      success: boolean;
+      data: { project_id: number };
+    }>("/projects", stakworkPayload);
+
+    const projectId = response?.data?.project_id;
+    if (!projectId) {
+      throw new Error("Failed to get project ID from Stakwork");
+    }
+
+    run = await db.stakworkRun.update({
+      where: { id: run.id },
+      data: {
+        projectId,
+        status: WorkflowStatus.IN_PROGRESS,
+      },
+    });
+
+    return run;
+  } catch (error) {
+    await db.stakworkRun.update({
+      where: { id: run.id },
+      data: { status: WorkflowStatus.FAILED },
+    });
+    throw error;
+  }
+}
+
+/**
  * Process webhook from Stakwork for AI generation runs
  * Uses atomic updateMany to prevent race conditions
  */
@@ -348,6 +459,7 @@ export async function processStakworkRunWebhook(
     type: string;
     workspace_id: string;
     feature_id?: string;
+    layout?: string;
   }
 ) {
   const { result, project_status, project_id } = webhookData;
@@ -418,7 +530,57 @@ export async function processStakworkRunWebhook(
     return { runId: run.id, status: run.status };
   }
 
-  // Step 2: Broadcast via Pusher for real-time updates
+  // Step 2: Post-process DIAGRAM_GENERATION — run ELK layout and upsert whiteboard
+  if (
+    type === "DIAGRAM_GENERATION" &&
+    status === WorkflowStatus.COMPLETED &&
+    serializedResult &&
+    feature_id
+  ) {
+    try {
+      const { relayoutDiagram } = await import("@/services/excalidraw-layout");
+      const parsedDiagram = JSON.parse(serializedResult);
+      const layoutAlgo = queryParams.layout || "layered";
+      const layoutData = await relayoutDiagram(parsedDiagram, layoutAlgo as "layered" | "force" | "stress" | "mrtree");
+
+      // Upsert whiteboard for this feature
+      const existingWhiteboard = await db.whiteboard.findUnique({
+        where: { featureId: feature_id },
+      });
+
+      if (existingWhiteboard) {
+        await db.whiteboard.update({
+          where: { id: existingWhiteboard.id },
+          data: {
+            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+            appState: layoutData.appState as Prisma.InputJsonValue,
+          },
+        });
+      } else {
+        // Get feature title for whiteboard name
+        const feature = await db.feature.findUnique({
+          where: { id: feature_id },
+          select: { title: true },
+        });
+
+        await db.whiteboard.create({
+          data: {
+            name: `${feature?.title || "Feature"} - Architecture`,
+            workspaceId: workspace_id,
+            featureId: feature_id,
+            elements: layoutData.elements as unknown as Prisma.InputJsonValue,
+            appState: layoutData.appState as Prisma.InputJsonValue,
+            files: {},
+          },
+        });
+      }
+    } catch (postProcessError) {
+      console.error("Error post-processing diagram generation:", postProcessError);
+      // Don't throw — the result is already saved in the run
+    }
+  }
+
+  // Step 3: Broadcast via Pusher for real-time updates
   try {
     const channelName = getWorkspaceChannelName(run.workspace.slug);
     await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {

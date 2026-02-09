@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMiddlewareContext, requireAuth } from "@/lib/middleware/utils";
 import { db } from "@/lib/db";
-import type { Prisma } from "@prisma/client";
-import {
-  generateExcalidrawFromArchitecture,
-  ExcalidrawData,
-} from "@/services/excalidraw-generator";
+import type { LayoutAlgorithm } from "@/services/excalidraw-layout";
 import { validateWorkspaceAccessById } from "@/services/workspace";
+import { createDiagramStakworkRun } from "@/services/stakwork-run";
 
 export async function POST(
   request: NextRequest,
@@ -18,6 +15,9 @@ export async function POST(
     if (userOrResponse instanceof NextResponse) return userOrResponse;
 
     const { featureId } = await params;
+
+    const body = await request.json().catch(() => ({}));
+    const layout = (body.layout as LayoutAlgorithm) || "layered";
 
     // Fetch the feature with workspace ID
     const feature = await db.feature.findUnique({
@@ -64,60 +64,24 @@ export async function POST(
       );
     }
 
-    // Generate Excalidraw elements using OpenAI
-    let excalidrawData: ExcalidrawData;
-    try {
-      excalidrawData = await generateExcalidrawFromArchitecture(
-        feature.architecture
-      );
-    } catch (error) {
-      console.error("Error generating whiteboard:", error);
-      const message = error instanceof Error ? error.message : "Failed to generate whiteboard diagram";
-      return NextResponse.json(
-        { error: "Whiteboard generation failed", message },
-        { status: 500 }
-      );
-    }
-
-    // Check if whiteboard already exists for this feature
-    let whiteboard = await db.whiteboard.findUnique({
-      where: { featureId },
+    // Fire-and-forget: create a Stakwork run for async diagram generation
+    const run = await createDiagramStakworkRun({
+      workspaceId: feature.workspaceId,
+      featureId: feature.id,
+      architectureText: feature.architecture,
+      layout,
+      userId: userOrResponse.id,
     });
-
-    if (whiteboard) {
-      // Update existing whiteboard with generated elements
-      whiteboard = await db.whiteboard.update({
-        where: { id: whiteboard.id },
-        data: {
-          elements: excalidrawData.elements as unknown as Prisma.InputJsonValue,
-          appState: excalidrawData.appState as Prisma.InputJsonValue,
-        },
-      });
-    } else {
-      // Create new whiteboard linked to feature
-      whiteboard = await db.whiteboard.create({
-        data: {
-          name: `${feature.title} - Architecture`,
-          workspaceId: feature.workspaceId,
-          featureId: feature.id,
-          elements: excalidrawData.elements as unknown as Prisma.InputJsonValue,
-          appState: excalidrawData.appState as Prisma.InputJsonValue,
-          files: {},
-        },
-      });
-    }
 
     return NextResponse.json(
       {
         success: true,
         data: {
-          id: whiteboard.id,
-          name: whiteboard.name,
-          elements: whiteboard.elements,
-          appState: whiteboard.appState,
+          runId: run.id,
+          status: run.status,
         },
       },
-      { status: 200 }
+      { status: 202 }
     );
   } catch (error) {
     console.error("Error in whiteboard generation endpoint:", error);

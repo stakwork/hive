@@ -1123,6 +1123,7 @@ enum StakworkRunType {
   REQUIREMENTS
   POD_REPAIR
   POD_LAUNCH_FAILURE
+  DIAGRAM_GENERATION
 }
 
 enum StakworkRunDecision {

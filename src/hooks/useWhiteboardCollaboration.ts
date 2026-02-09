@@ -1,18 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState, useMemo } from "react";
-import { useSession } from "next-auth/react";
-import type { ExcalidrawImperativeAPI, Collaborator } from "@excalidraw/excalidraw/types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import type { AppState } from "@excalidraw/excalidraw/types";
 import { getPusherClient, getWhiteboardChannelName, PUSHER_EVENTS } from "@/lib/pusher";
 import type {
   CollaboratorInfo,
-  WhiteboardElementsUpdateEvent,
   WhiteboardCursorUpdateEvent,
+  WhiteboardElementsUpdateEvent,
   WhiteboardUserJoinEvent,
   WhiteboardUserLeaveEvent,
 } from "@/types/whiteboard-collaboration";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { AppState, Collaborator, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import { useSession } from "next-auth/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // Generate a consistent color based on user ID
 function generateUserColor(userId: string): string {
@@ -49,6 +48,9 @@ interface UseWhiteboardCollaborationReturn {
   senderId: string;
   userColor: string;
 }
+
+const COLLABORATION_ENABLED = false &&
+  process.env.NEXT_PUBLIC_WHITEBOARD_COLLABORATION !== "false";
 
 export function useWhiteboardCollaboration({
   whiteboardId,
@@ -135,7 +137,7 @@ export function useWhiteboardCollaboration({
   // Uses delta sync to only send changed elements, keeping payload under Pusher's 10KB limit
   const broadcastElements = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState) => {
-      if (!whiteboardId) return;
+      if (!COLLABORATION_ENABLED || !whiteboardId) return;
 
       const now = Date.now();
       const timeSinceLastBroadcast = now - lastElementsBroadcastRef.current;
@@ -183,7 +185,7 @@ export function useWhiteboardCollaboration({
   // Broadcast cursor with 50ms throttle
   const broadcastCursor = useCallback(
     (x: number, y: number) => {
-      if (!whiteboardId) return;
+      if (!COLLABORATION_ENABLED || !whiteboardId) return;
 
       const now = Date.now();
       const timeSinceLastBroadcast = now - lastCursorBroadcastRef.current;
@@ -221,7 +223,7 @@ export function useWhiteboardCollaboration({
 
   // Subscribe to Pusher channel
   useEffect(() => {
-    if (!whiteboardId) return;
+    if (!COLLABORATION_ENABLED || !whiteboardId) return;
 
     const pusher = getPusherClient();
     const channelName = getWhiteboardChannelName(whiteboardId);
@@ -265,7 +267,7 @@ export function useWhiteboardCollaboration({
 
           excalidrawAPI.updateScene({
             elements: mergedElements,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             appState: data.appState as any,
           });
 
