@@ -576,7 +576,7 @@ export function DashboardChat() {
           </div>
           <div className="flex gap-4 flex-1 min-h-0">
             {/* Message history */}
-            <div className="flex-1 overflow-y-auto pb-2 pointer-events-auto">
+            <div className="flex-1 max-h-[85vh] overflow-y-auto pb-2">
               <div className="space-y-2 px-4">
                 {messages.map((message, index) => {
                   // Only the last message is streaming
@@ -609,7 +609,7 @@ export function DashboardChat() {
 
             {/* Provenance sidebar - only shows when toggled AND data available */}
             {isProvenanceSidebarOpen && provenanceData && (
-              <div className="w-80 overflow-y-auto pointer-events-auto">
+              <div className="w-80 overflow-y-auto max-h-[85vh] pointer-events-auto">
                 <div className="backdrop-blur-md bg-background/20 border border-border/50 rounded-lg p-4 shadow-lg">
                   <ProvenanceTree provenanceData={provenanceData} />
                 </div>
