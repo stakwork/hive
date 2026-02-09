@@ -39,7 +39,7 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
   }, [nodeTypes])
 
   const fetchMockData = useCallback(async () => {
-    if (!workspaceId || hasFetchedMocks) {
+    if (!workspaceId?.trim() || hasFetchedMocks) {
       return
     }
 
@@ -66,13 +66,19 @@ export const MockNodesLayer = memo<MockNodesLayerProps>(({ radius = DEFAULT_CIRC
       const response = await fetch(url)
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch Mock data: ${response.statusText}`)
+        console.warn(`[MockNodesLayer] Failed to fetch Mock data: ${response.status} ${response.statusText}`)
+        setMockNodes([])
+        setHasFetchedMocks(true)
+        return
       }
 
       const result = await response.json()
 
       if (!result.success || !result.data) {
-        throw new Error(`API returned unsuccessful response for Mock data`)
+        console.warn(`[MockNodesLayer] API returned unsuccessful response for Mock data`)
+        setMockNodes([])
+        setHasFetchedMocks(true)
+        return
       }
 
       const fetchedNodes = result.data.nodes || []
