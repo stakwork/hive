@@ -84,12 +84,15 @@ async function fetchProvenance(swarmUrl: string, apiKey: string, conceptIds: str
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[DEBUG] /api/ask/quick - Request received');
     const context = getMiddlewareContext(request);
     const userOrResponse = requireAuth(context);
     if (userOrResponse instanceof NextResponse) return userOrResponse;
+    console.log('[DEBUG] User authenticated:', userOrResponse.id);
 
     const body = await request.json();
     const { messages, workspaceSlug } = body;
+    console.log('[DEBUG] workspaceSlug:', workspaceSlug);
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       throw validationError("Missing required parameter: messages (must be a non-empty array)");
@@ -98,14 +101,18 @@ export async function POST(request: NextRequest) {
       throw validationError("Missing required parameter: workspaceSlug");
     }
 
+    console.log('[DEBUG] Validating workspace access...');
     const workspaceAccess = await validateWorkspaceAccess(workspaceSlug, userOrResponse.id);
+    console.log('[DEBUG] Workspace access:', { hasAccess: workspaceAccess.hasAccess, workspaceId: workspaceAccess.workspace?.id });
     if (!workspaceAccess.hasAccess) {
       throw forbiddenError("Workspace not found or access denied");
     }
 
+    console.log('[DEBUG] Finding swarm...');
     const swarm = await db.swarm.findFirst({
       where: { workspaceId: workspaceAccess.workspace?.id },
     });
+    console.log('[DEBUG] Swarm:', swarm ? { id: swarm.id, url: swarm.swarmUrl } : null);
     if (!swarm) {
       throw notFoundError("Swarm not found for this workspace");
     }
@@ -113,36 +120,42 @@ export async function POST(request: NextRequest) {
       throw notFoundError("Swarm URL not configured");
     }
 
+    console.log('[DEBUG] Decrypting swarm API key...');
     const encryptionService: EncryptionService = EncryptionService.getInstance();
     const decryptedSwarmApiKey = encryptionService.decryptField("swarmApiKey", swarm.swarmApiKey || "");
+    console.log('[DEBUG] Swarm API key decrypted');
 
     const swarmUrlObj = new URL(swarm.swarmUrl);
     let baseSwarmUrl = `https://${swarmUrlObj.hostname}:3355`;
     if (swarm.swarmUrl.includes("localhost")) {
       baseSwarmUrl = `http://localhost:3355`;
     }
+    console.log('[DEBUG] Base swarm URL:', baseSwarmUrl);
 
+    console.log('[DEBUG] Getting primary repository...');
     const primaryRepo = await getPrimaryRepository(swarm.workspaceId);
+    console.log('[DEBUG] Primary repo:', primaryRepo ? { id: primaryRepo.id, url: primaryRepo.repositoryUrl } : null);
     const repoUrl = primaryRepo?.repositoryUrl;
     if (!repoUrl) {
       throw notFoundError("Repository URL not configured for this swarm");
     }
 
+    console.log('[DEBUG] Getting workspace...');
     const workspace = await db.workspace.findUnique({
-      where: { id: workspaceAccess.workspace?.id },
-      select: { slug: true },
+      where: { id: swarm.workspaceId },
+      include: { owner: true, sourceControlOrg: true },
     });
+    console.log('[DEBUG] Workspace:', workspace ? { id: workspace.id, sourceControlOrg: workspace.sourceControlOrg?.githubLogin } : null);
 
-    if (!workspace) {
-      throw notFoundError("Workspace not found");
-    }
-
-    const githubProfile = await getGithubUsernameAndPAT(userOrResponse.id, workspace.slug);
-    const pat = githubProfile?.token;
-
-    if (!pat) {
+    console.log('[DEBUG] Getting GitHub username and PAT...');
+    const githubCredentials = await getGithubUsernameAndPAT(userOrResponse.email, workspace?.sourceControlOrg?.githubLogin);
+    console.log('[DEBUG] GitHub credentials:', githubCredentials ? 'found' : 'not found');
+    
+    if (!githubCredentials) {
       throw notFoundError("GitHub PAT not found for this user");
     }
+    
+    const { username, token: pat } = githubCredentials;
 
     const provider: Provider = "anthropic";
     const apiKey = getApiKeyForProvider(provider);
@@ -353,10 +366,11 @@ export async function POST(request: NextRequest) {
     if (isApiError(error)) {
       return NextResponse.json(
         { error: error.message, kind: error.kind, details: error.details },
-        { status: error.statusCode },
+        { status: error.statusCode }
       );
     }
-    console.error("❌ [quick-ask] Unhandled error:", error);
+    console.error("Error in POST /api/ask/quick:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json({ error: "Failed to process quick ask" }, { status: 500 });
   }
 }
