@@ -51,12 +51,11 @@ export function useFavicon({ workspaceLogoUrl, enabled = true, showNotificationD
 
         // Update all favicon links
         faviconLinks.forEach((link) => {
-          // Store original href if not already stored
-          if (!link.dataset.originalHref && !workspaceLogoUrl && !showNotificationDot) {
-            link.dataset.originalHref = link.href;
-          }
-
           if (workspaceLogoUrl || showNotificationDot) {
+            // Store original href before changing it (if not already stored)
+            if (!link.dataset.originalHref) {
+              link.dataset.originalHref = link.href;
+            }
             // Update to workspace logo or notification version
             link.href = finalFaviconUrl;
           } else {
