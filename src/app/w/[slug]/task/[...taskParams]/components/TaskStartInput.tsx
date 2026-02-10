@@ -72,7 +72,7 @@ export function TaskStartInput({
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
-  const [autoMerge, setAutoMerge] = useState(false);
+  const [autoMerge, setAutoMerge] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
@@ -82,7 +82,7 @@ export function TaskStartInput({
   const devMode = isDevelopmentMode();
   const isWorkflowMode = taskMode === "workflow_editor";
   const isPromptsMode = taskMode === "prompts";
-  const isAsyncMode = taskMode === "live";
+  const isAgentMode = taskMode === "agent";
 
   // Check URL for prompt param and switch to prompts mode if present
   useEffect(() => {
@@ -493,8 +493,8 @@ export function TaskStartInput({
         </Card>
       )}
 
-      {/* Auto-merge checkbox for async mode */}
-      {isAsyncMode && !isWorkflowMode && (
+      {/* Auto-merge checkbox for agent mode */}
+      {isAgentMode && (
         <div className="w-full max-w-2xl mt-3">
           <TooltipProvider>
             <div className="flex items-center gap-2">
