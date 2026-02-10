@@ -592,7 +592,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, model?: ModelName) => {
+  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -616,6 +616,7 @@ export default function TaskChatPage() {
             workspaceSlug: slug,
             mode: taskMode, // Save the task mode
             model: model || selectedModel, // Save selected AI model
+            autoMerge: autoMerge || false, // Save auto-merge preference
           }),
         });
 
