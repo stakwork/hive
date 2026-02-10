@@ -6,7 +6,14 @@ import { RefreshCw, Sprout, Box, ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { CreateFeatureModal } from "./CreateFeatureModal";
+import { UsageDisplay } from "./UsageDisplay";
 import { formatRelativeOrDate } from "@/lib/date-utils";
+
+interface CumulativeUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
 
 interface Feature {
   id: string;
@@ -26,6 +33,7 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
   const [isFeaturesCollapsed, setIsFeaturesCollapsed] = useState(false);
   const [lastProcessed, setLastProcessed] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [cumulativeUsage, setCumulativeUsage] = useState<CumulativeUsage | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [autoLearnEnabled, setAutoLearnEnabled] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
@@ -45,6 +53,7 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
         setFeatures(data.features || []);
         setLastProcessed(data.lastProcessedTimestamp || null);
         setIsProcessing(data.processing || false);
+        setCumulativeUsage(data.cumulativeUsage || null);
       } catch (error) {
         console.error("Error fetching features:", error);
       } finally {
@@ -100,6 +109,7 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
           setFeatures(data.features || []);
           setLastProcessed(data.lastProcessedTimestamp || null);
           setIsProcessing(data.processing || false);
+          setCumulativeUsage(data.cumulativeUsage || null);
         }
       }
     } catch (error) {
@@ -215,6 +225,9 @@ export function LearnSidebar({ workspaceSlug, onFeatureClick }: LearnSidebarProp
         <div className="flex items-center gap-2 mb-2">
           <Sprout className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-medium text-muted-foreground">Process Repository</h3>
+          <div className="ml-auto">
+            {cumulativeUsage && <UsageDisplay usage={cumulativeUsage} />}
+          </div>
         </div>
         <div className="flex items-center justify-between mb-3">
           <div>

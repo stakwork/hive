@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
@@ -24,6 +25,7 @@ import {
   FileText,
   Image as ImageIcon,
   X,
+  Sparkles,
 } from "lucide-react";
 import { isDevelopmentMode } from "@/lib/runtime";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -42,8 +44,10 @@ interface PendingImage {
   size: number;
 }
 
+import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
+
 interface TaskStartInputProps {
-  onStart: (task: string, images?: File[]) => void;
+  onStart: (task: string, model?: ModelName, autoMerge?: boolean, images?: File[]) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -53,8 +57,12 @@ interface TaskStartInputProps {
   // Workflow editor props
   workflows?: WorkflowNode[];
   onWorkflowSelect?: (workflowId: number, workflowData: WorkflowNode) => void;
+  onNewWorkflow?: () => void;
   isLoadingWorkflows?: boolean;
   workflowsError?: string | null;
+  // Model selection for agent mode
+  selectedModel?: ModelName;
+  onModelChange?: (model: ModelName) => void;
 }
 
 export function TaskStartInput({
@@ -67,8 +75,11 @@ export function TaskStartInput({
   workspaceSlug,
   workflows = [],
   onWorkflowSelect,
+  onNewWorkflow,
   isLoadingWorkflows = false,
   workflowsError,
+  selectedModel = "sonnet",
+  onModelChange,
 }: TaskStartInputProps) {
   const searchParams = useSearchParams();
   const [value, setValue] = useState("");
@@ -76,6 +87,7 @@ export function TaskStartInput({
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [autoMerge, setAutoMerge] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +98,7 @@ export function TaskStartInput({
   const devMode = isDevelopmentMode();
   const isWorkflowMode = taskMode === "workflow_editor";
   const isPromptsMode = taskMode === "prompts";
+  const isAgentMode = taskMode === "agent";
   
   // Image upload is disabled in agent mode and workflow mode
   const isImageUploadEnabled = taskMode !== "agent" && !isWorkflowMode;
@@ -110,13 +123,16 @@ export function TaskStartInput({
     }
   }, [isWorkflowMode]);
 
+  // Check if user typed "new" to create a new workflow
+  const isNewWorkflow = workflowIdValue.trim().toLowerCase() === "new";
+
   // Find matching workflow as user types
   const matchedWorkflow = useMemo(() => {
-    if (!workflowIdValue.trim()) return null;
+    if (!workflowIdValue.trim() || isNewWorkflow) return null;
     const searchId = parseInt(workflowIdValue.trim(), 10);
     if (isNaN(searchId)) return null;
     return workflows.find((w) => w.properties.workflow_id === searchId) || null;
-  }, [workflowIdValue, workflows]);
+  }, [workflowIdValue, workflows, isNewWorkflow]);
 
   const workflowName = matchedWorkflow?.properties.workflow_name || null;
   const hasValidWorkflowId = workflowIdValue.trim().length > 0 && !isNaN(parseInt(workflowIdValue.trim(), 10));
@@ -277,9 +293,13 @@ export function TaskStartInput({
   };
 
   const handleWorkflowKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && matchedWorkflow && onWorkflowSelect) {
+    if (e.key === "Enter") {
       e.preventDefault();
-      onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+      if (isNewWorkflow && onNewWorkflow) {
+        onNewWorkflow();
+      } else if (matchedWorkflow && onWorkflowSelect) {
+        onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
+      }
     }
   };
 
@@ -299,8 +319,8 @@ export function TaskStartInput({
       // Cleanup preview URLs
       pendingImages.forEach(img => URL.revokeObjectURL(img.preview));
       
-      // Call onStart with text and images
-      onStart(value.trim(), imageFiles.length > 0 ? imageFiles : undefined);
+      // Call onStart with all parameters: text, model, autoMerge, images
+      onStart(value.trim(), selectedModel, autoMerge, imageFiles.length > 0 ? imageFiles : undefined);
       
       // Clear state
       setValue("");
@@ -310,7 +330,9 @@ export function TaskStartInput({
 
   const handleClick = () => {
     if (isWorkflowMode) {
-      if (matchedWorkflow && onWorkflowSelect) {
+      if (isNewWorkflow && onNewWorkflow) {
+        onNewWorkflow();
+      } else if (matchedWorkflow && onWorkflowSelect) {
         onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
       }
     } else {
@@ -345,7 +367,7 @@ export function TaskStartInput({
 
   // Determine if submit button should be enabled
   const isSubmitDisabled = isWorkflowMode
-    ? !matchedWorkflow || isLoadingWorkflows || isLoading
+    ? (!matchedWorkflow && !isNewWorkflow) || isLoadingWorkflows || isLoading
     : (!hasText && pendingImages.length === 0) || isLoading || noPodsAvailable;
 
   const getModeConfig = (mode: string) => {
@@ -526,7 +548,7 @@ export function TaskStartInput({
                   />
                   {/* Workflow status messages */}
                   <div className="mt-4 min-h-[24px]">
-                    {workflowsError && (
+                    {workflowsError && !isNewWorkflow && !matchedWorkflow && (
                       <div className="flex items-center gap-2 text-destructive">
                         <AlertCircle className="h-4 w-4" />
                         <span className="text-sm">{workflowsError}</span>
@@ -536,6 +558,12 @@ export function TaskStartInput({
                       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
                         <AlertCircle className="h-4 w-4" />
                         <span className="text-sm">Workflow not found</span>
+                      </div>
+                    )}
+                    {isNewWorkflow && (
+                      <div className="flex items-center gap-2 text-green-600 dark:text-green-500">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span className="text-sm">New Workflow</span>
                       </div>
                     )}
                     {matchedWorkflow && (
@@ -572,7 +600,7 @@ export function TaskStartInput({
             </AnimatePresence>
             <div className="absolute bottom-6 left-8 z-10 flex gap-2">
               <Select value={taskMode} onValueChange={onModeChange}>
-            <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
+                <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg shadow-sm">
               <div className="flex items-center gap-2">
                 <ModeIcon className="h-4 w-4" />
                 <span>{modeConfig.label}</span>
@@ -617,6 +645,25 @@ export function TaskStartInput({
               )}
             </SelectContent>
           </Select>
+          {taskMode === "agent" && onModelChange && (
+            <Select value={selectedModel} onValueChange={(value) => onModelChange(value as ModelName)}>
+              <SelectTrigger className="w-[120px] h-8 text-xs rounded-lg shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span>{selectedModel}</span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {VALID_MODELS.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    <div className="flex items-center gap-2">
+                      <span>{model}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="absolute bottom-6 right-8 z-10 flex gap-2">
           {/* Image upload button */}
@@ -683,6 +730,35 @@ export function TaskStartInput({
           </Button>
         </div>
           </Card>
+        </div>
+      )}
+
+      {/* Auto-merge checkbox for agent mode */}
+      {isAgentMode && (
+        <div className="w-full max-w-2xl mt-3">
+          <TooltipProvider>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto-merge-task-start"
+                checked={autoMerge}
+                onCheckedChange={(checked) => setAutoMerge(checked === true)}
+                data-testid="auto-merge-checkbox"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <label
+                    htmlFor="auto-merge-task-start"
+                    className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                  >
+                    Auto-merge PR when CI passes
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Automatically merge the pull request when all CI checks pass</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
       )}
 

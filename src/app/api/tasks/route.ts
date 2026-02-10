@@ -4,6 +4,7 @@ import { extractPrArtifact, sanitizeTask } from "@/lib/helpers/tasks";
 import { Priority, Prisma, TaskSourceType, TaskStatus, WorkflowStatus } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
+import { VALID_MODELS } from "@/lib/ai/models";
 
 export async function GET(request: NextRequest) {
   try {
@@ -248,6 +249,7 @@ export async function GET(request: NextRequest) {
           featureId: true,
           systemAssigneeType: true,
           dependsOnTaskIds: true,
+          autoMerge: true,
           createdAt: true,
           updatedAt: true,
           feature: {
@@ -422,8 +424,10 @@ export async function POST(request: NextRequest) {
       estimatedHours,
       actualHours,
       mode,
+      model,
       runBuild,
       runTestSuite,
+      autoMerge,
     } = body;
 
     // Validate required fields
@@ -537,6 +541,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Validate model if provided
+    const taskModel = model && VALID_MODELS.includes(model) ? model : null;
+
     // Create the task
     const task = await db.task.create({
       data: {
@@ -550,8 +557,10 @@ export async function POST(request: NextRequest) {
         estimatedHours: estimatedHours || null,
         actualHours: actualHours || null,
         mode: mode || "live", // Save the task mode, default to "live"
+        model: taskModel, // AI model for agent mode
         runBuild: runBuild ?? true,
         runTestSuite: runTestSuite ?? true,
+        autoMerge: autoMerge ?? false, // Auto-merge PR when CI passes
         createdById: userId,
         updatedById: userId,
       },

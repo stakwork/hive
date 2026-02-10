@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from "vitest";
 import { POST } from "@/app/api/agent/diff/route";
 import { db } from "@/lib/db";
+import { EncryptionService } from "@/lib/encryption";
 import { ChatRole, ChatStatus } from "@prisma/client";
 import {
   createAuthenticatedSession,
@@ -40,11 +41,12 @@ vi.mock("@/lib/encryption", () => ({
 }));
 
 // Mock pod utility functions
-vi.mock("@/lib/pods/utils", () => ({
-  getPodFromPool: vi.fn(),
+vi.mock("@/lib/pods", () => ({
+  getPodDetails: vi.fn(),
   POD_PORTS: {
     CONTROL: "15552",
   },
+  buildPodUrl: (podId: string, port: number | string) => `https://${podId}-${port}.workspaces.sphinx.chat`,
 }));
 
 const mockFetch = global.fetch as vi.MockedFunction<typeof global.fetch>;
@@ -86,6 +88,23 @@ describe("POST /api/agent/diff Integration Tests", () => {
         },
       });
 
+      // Create pod if podId is provided
+      let pod;
+      if (options.podId) {
+        const encryptionService = EncryptionService.getInstance();
+        const encryptedPassword = encryptionService.encryptField("password", "test-password");
+        pod = await tx.pod.create({
+          data: {
+            podId: options.podId,
+            swarmId: swarm.id,
+            password: JSON.stringify(encryptedPassword),
+            portMappings: [3000, 3010, 15551, 15552],
+            status: "RUNNING",
+            usageStatus: "USED",
+          },
+        });
+      }
+
       // Create test task with optional podId
       const task = await tx.task.create({
         data: {
@@ -100,7 +119,7 @@ describe("POST /api/agent/diff Integration Tests", () => {
         },
       });
 
-      return { user, workspace, swarm, task };
+      return { user, workspace, swarm, task, pod };
     });
   }
 
@@ -302,51 +321,6 @@ describe("POST /api/agent/diff Integration Tests", () => {
       await expectNotFound(response, "No swarm found for this workspace");
     });
 
-    test("returns 400 when swarm has no pool configuration", async () => {
-      const user = await createTestUser();
-      const workspace = await db.workspace.create({
-        data: {
-          name: "Test Workspace",
-          slug: generateUniqueSlug("test-workspace"),
-          ownerId: user.id,
-        },
-      });
-
-      // Create swarm without poolApiKey
-      await db.swarm.create({
-        data: {
-          name: `test-swarm-${Date.now()}`,
-          status: "ACTIVE",
-          instanceType: "XL",
-          workspaceId: workspace.id,
-          poolState: "COMPLETE",
-        },
-      });
-
-      // Create task with podId in the workspace
-      const task = await db.task.create({
-        data: {
-          workspaceId: workspace.id,
-          title: "Test Task",
-          status: "TODO",
-          priority: "MEDIUM",
-          order: 1,
-          createdById: user.id,
-          updatedById: user.id,
-          podId: "test-pod-id",
-        },
-      });
-
-      getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
-
-      const request = createPostRequest("http://localhost:3000/api/agent/diff", {
-        workspaceId: workspace.id,
-        taskId: task.id,
-      });
-
-      const response = await POST(request);
-      await expectError(response, "Swarm not properly configured with pool information", 400);
-    });
   });
 
   describe("Pod Communication Tests", () => {
@@ -354,14 +328,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
-        url: "http://test-pod.dev",
-        state: "running",
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response
@@ -402,12 +374,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock empty diff response
@@ -432,12 +404,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock failed control port response
@@ -463,12 +435,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool with missing control port
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails with missing control port
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: {}, // Empty port mappings
+        portMappings: [], // Empty port mappings
       } as any);
 
       const request = createPostRequest("http://localhost:3000/api/agent/diff", {
@@ -489,12 +461,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response
@@ -535,12 +507,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response with multiple files
@@ -584,12 +556,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock empty diff response
@@ -615,13 +587,13 @@ describe("POST /api/agent/diff Integration Tests", () => {
   });
 
   describe("Error Handling Tests", () => {
-    test("handles getPodFromPool failure", async () => {
+    test("handles getPodDetails failure", async () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool to throw error
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockRejectedValue(new Error("Failed to get workspace from pool: 404"));
+      // Mock getPodDetails to throw error
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockRejectedValue(new Error("Failed to get workspace from pool: 404"));
 
       const request = createPostRequest("http://localhost:3000/api/agent/diff", {
         workspaceId: workspace.id,
@@ -639,12 +611,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "test-password",
-        portMappings: { "15552": "http://localhost:15552" },
+        portMappings: [15552],
       } as any);
 
       // Mock network error
@@ -724,14 +696,12 @@ describe("POST /api/agent/diff Integration Tests", () => {
       const { user, workspace, task } = await createTestDataWithDiffCapabilities({ podId: "test-pod-id" });
       getMockedSession().mockResolvedValue(createAuthenticatedSession(user));
 
-      // Mock getPodFromPool
-      const { getPodFromPool } = await import("@/lib/pods/utils");
-      vi.mocked(getPodFromPool).mockResolvedValue({
-        id: "test-pod-id",
+      // Mock getPodDetails
+      const { getPodDetails } = await import("@/lib/pods");
+      vi.mocked(getPodDetails).mockResolvedValue({
+        podId: "test-pod-id",
         password: "secure-password",
-        portMappings: { "15552": "http://pod-control.test:15552" },
-        url: "http://test-pod.dev",
-        state: "running",
+        portMappings: [15552],
       } as any);
 
       // Mock successful diff response with multiple actions
@@ -787,16 +757,18 @@ describe("POST /api/agent/diff Integration Tests", () => {
         }),
       });
 
-      // Verify getPodFromPool was called with correct params
-      expect(getPodFromPool).toHaveBeenCalledWith("test-pod-id", "test-pool-api-key");
+      // Verify getPodDetails was called with correct params
+      expect(getPodDetails).toHaveBeenCalledWith("test-pod-id");
 
       // Verify diff fetch request structure
       const diffCall = mockFetch.mock.calls[0];
-      expect(diffCall[0]).toBe("http://pod-control.test:15552/diff");
+      expect(diffCall[0]).toBe("https://test-pod-id-15552.workspaces.sphinx.chat/diff");
       expect(diffCall[1]?.method).toBe("GET");
-      expect(diffCall[1]?.headers).toMatchObject({
-        Authorization: "Bearer secure-password",
-      });
+      expect(diffCall[1]?.headers).toEqual(
+        expect.objectContaining({
+          Authorization: "Bearer secure-password",
+        })
+      );
 
       // Verify database persistence
       const messages = await db.chatMessage.findMany({

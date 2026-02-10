@@ -2,10 +2,22 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Plus, CheckCircle, XCircle, Loader2, AlertTriangle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Trash2, Plus, CheckCircle, XCircle, Loader2, AlertTriangle, Settings } from "lucide-react";
 import { RepositoryData, Repository, FormSectionProps } from "../types";
 import { useRepositoryPermissions } from "@/hooks/useRepositoryPermissions";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { RepositorySettingsModal, type RepositorySyncSettings } from "./RepositorySettingsModal";
+import { toast } from "sonner";
 
 interface RepositoryPermissionStatus {
   [index: number]: {
@@ -14,6 +26,13 @@ interface RepositoryPermissionStatus {
     error: string | null;
   };
 }
+
+interface SettingsModalStateOpen {
+  index: number;
+  isNew: boolean;
+}
+
+type SettingsModalState = SettingsModalStateOpen | null;
 
 export default function RepositoryForm({
   data,
@@ -29,12 +48,23 @@ export default function RepositoryForm({
   } = useRepositoryPermissions();
   const [permissionStatus, setPermissionStatus] = useState<RepositoryPermissionStatus>({});
   const [checkingIndex, setCheckingIndex] = useState<number | null>(null);
+  
+  // State for confirmation dialog
+  const [repoToRemove, setRepoToRemove] = useState<number | null>(null);
+  
+  // State for settings modal
+  const [settingsModal, setSettingsModal] = useState<SettingsModalState>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+  
+  // Track which repos should show settings modal after verify
+  const [pendingSettingsIndex, setPendingSettingsIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (checkingIndex !== null && !permissionLoading) {
+      const wasChecking = checkingIndex;
       setPermissionStatus((prev) => {
         const status = { ...prev };
-        status[checkingIndex] = {
+        status[wasChecking] = {
           checking: false,
           hasAccess: permissionError ? false : (permissions?.hasAccess ?? null),
           error: permissionError,
@@ -42,21 +72,36 @@ export default function RepositoryForm({
         return status;
       });
       setCheckingIndex(null);
+      
+      // If verification succeeded and this is a new repo, show settings modal
+      if (!permissionError && permissions?.hasAccess && pendingSettingsIndex === wasChecking) {
+        const repo = data.repositories[wasChecking];
+        // Only show modal for repos without an id (new repos)
+        if (repo && !repo.id) {
+          setSettingsModal({ index: wasChecking, isNew: true });
+        }
+      }
+      setPendingSettingsIndex(null);
     }
-  }, [permissions, permissionLoading, permissionError, checkingIndex]);
+  }, [permissions, permissionLoading, permissionError, checkingIndex, pendingSettingsIndex, data.repositories]);
 
   const handleAddRepository = () => {
+    // Additional repos added via the form default to all sync options disabled
     const newRepo: Repository = {
       repositoryUrl: "",
       branch: "main",
       name: "",
+      codeIngestionEnabled: false,
+      docsEnabled: false,
+      mocksEnabled: false,
+      embeddingsEnabled: false,
     };
     onChange({
       repositories: [...data.repositories, newRepo],
     });
   };
 
-  const handleRemoveRepository = (index: number) => {
+  const handleRemoveRepository = useCallback((index: number) => {
     if (data.repositories.length <= 1) return;
 
     const updatedRepos = data.repositories.filter((_, i) => i !== index);
@@ -73,7 +118,8 @@ export default function RepositoryForm({
 
     setPermissionStatus(newStatus);
     onChange({ repositories: updatedRepos });
-  };
+    setRepoToRemove(null);
+  }, [data.repositories, permissionStatus, onChange]);
 
   const handleRepositoryChange = (index: number, field: keyof Repository, value: string) => {
     const updatedRepos = [...data.repositories];
@@ -102,8 +148,76 @@ export default function RepositoryForm({
     const status = { ...permissionStatus };
     status[index] = { checking: true, hasAccess: null, error: null };
     setPermissionStatus(status);
+    
+    // Mark this index to show settings modal after successful verification (for new repos only)
+    const repo = data.repositories[index];
+    if (!repo.id) {
+      setPendingSettingsIndex(index);
+    }
 
     await checkPermissions(url);
+  };
+
+  const handleSettingsSave = async (settings: RepositorySyncSettings) => {
+    if (settingsModal === null) return;
+    
+    const { index, isNew } = settingsModal;
+    const repo = data.repositories[index];
+    
+    if (isNew) {
+      // For new repos, just update local state - will be saved with main form
+      const updatedRepos = [...data.repositories];
+      updatedRepos[index] = {
+        ...updatedRepos[index],
+        ...settings,
+      };
+      onChange({ repositories: updatedRepos });
+    } else {
+      // For existing repos, save directly to API
+      if (!repo.id) return;
+      
+      setSavingSettings(true);
+      try {
+        const response = await fetch(`/api/repositories/${repo.id}/settings`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(settings),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Failed to save settings");
+        }
+        
+        // Update local state to reflect saved changes
+        const updatedRepos = [...data.repositories];
+        updatedRepos[index] = {
+          ...updatedRepos[index],
+          ...settings,
+        };
+        onChange({ repositories: updatedRepos });
+        
+        toast.success("Settings saved", {
+          description: "Repository sync settings have been updated",
+        });
+      } catch (error) {
+        console.error("Failed to save repository settings:", error);
+        toast.error("Failed to save settings", {
+          description: error instanceof Error ? error.message : "Please try again",
+        });
+        throw error; // Re-throw to prevent modal from closing
+      } finally {
+        setSavingSettings(false);
+      }
+    }
+  };
+
+  const openSettingsModal = (index: number) => {
+    const repo = data.repositories[index];
+    setSettingsModal({
+      index,
+      isNew: !repo.id,
+    });
   };
 
   const getPermissionBadge = (index: number) => {
@@ -149,6 +263,10 @@ export default function RepositoryForm({
     return null;
   };
 
+  const getRepoDisplayName = (repo: Repository, index: number) => {
+    return repo.name || repo.repositoryUrl?.split("/").pop() || `Repository ${index + 1}`;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -174,16 +292,33 @@ export default function RepositoryForm({
                 <span className="text-sm font-medium text-muted-foreground">Repository {index + 1}</span>
                 {getPermissionBadge(index)}
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => handleRemoveRepository(index)}
-                disabled={loading || data.repositories.length <= 1}
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {/* Settings gear icon - only show if repo has URL */}
+                {repo.repositoryUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openSettingsModal(index)}
+                    disabled={loading}
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                    title="Code ingestion settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                )}
+                {/* Delete button */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRepoToRemove(index)}
+                  disabled={loading || data.repositories.length <= 1}
+                  className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -236,6 +371,26 @@ export default function RepositoryForm({
                 <p className="text-sm text-destructive">{errors.defaultBranch}</p>
               )}
             </div>
+
+            {/* Show sync config summary for repos with settings configured */}
+            {repo.repositoryUrl && (repo.codeIngestionEnabled !== undefined) && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
+                <span>Ingestion:</span>
+                  {repo.codeIngestionEnabled ? (
+                  <Badge variant="secondary" className="text-xs py-0 h-5">
+                    {[
+                      repo.docsEnabled && "Docs",
+                      repo.mocksEnabled && "Mocks",
+                      repo.embeddingsEnabled && "Embeddings",
+                    ].filter(Boolean).join(", ") || "Code only"}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs py-0 h-5">
+                    Disabled
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -253,6 +408,43 @@ export default function RepositoryForm({
       <p className="text-xs text-muted-foreground">
         At least one repository is required. Add multiple repositories to include them in your workspace.
       </p>
+
+      {/* Remove Repository Confirmation Dialog */}
+      <AlertDialog open={repoToRemove !== null} onOpenChange={(open) => !open && setRepoToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Repository</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove{" "}
+              <span className="font-medium">
+                {repoToRemove !== null ? getRepoDisplayName(data.repositories[repoToRemove], repoToRemove) : "this repository"}
+              </span>
+              ? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => repoToRemove !== null && handleRemoveRepository(repoToRemove)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Repository Settings Modal */}
+      {settingsModal !== null && (
+        <RepositorySettingsModal
+          open={true}
+          onOpenChange={(open) => !open && setSettingsModal(null)}
+          repository={data.repositories[settingsModal.index]}
+          isNewRepository={settingsModal.isNew}
+          onSave={handleSettingsSave}
+          loading={savingSettings}
+        />
+      )}
     </div>
   );
 }

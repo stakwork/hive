@@ -40,7 +40,7 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { useSession } from "next-auth/react";
 import { WorkflowTransition, getStepType } from "@/types/stakwork/workflow";
-import { archiveTaskAndRedirect } from "./lib/archive-task";
+import type { ModelName } from "@/lib/ai/models";
 
 // Generate unique IDs to prevent collisions
 function generateUniqueId() {
@@ -113,7 +113,7 @@ export default function TaskChatPage() {
   const [pendingDebugAttachment, setPendingDebugAttachment] = useState<Artifact | null>(null);
   const [selectedStep, setSelectedStep] = useState<WorkflowTransition | null>(null);
   const [currentWorkflowContext, setCurrentWorkflowContext] = useState<{
-    workflowId: number;
+    workflowId: number | string;
     workflowName: string;
     workflowRefId: string;
   } | null>(null);
@@ -125,6 +125,7 @@ export default function TaskChatPage() {
   const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
 
   // Use hook to check for active chat form and get webhook
   const { hasActiveChatForm, webhook: chatWebhook } = useChatForm(messages);
@@ -330,8 +331,10 @@ export default function TaskChatPage() {
           // Find the WORKFLOW artifact with workflowId and workflowName
           for (const msg of result.data.messages) {
             const workflowArtifact = msg.artifacts?.find(
-              (a: { type: string; content?: { workflowId?: number; workflowName?: string; workflowRefId?: string } }) =>
-                a.type === "WORKFLOW" && a.content?.workflowId,
+              (a: {
+                type: string;
+                content?: { workflowId?: number | string; workflowName?: string; workflowRefId?: string };
+              }) => a.type === "WORKFLOW" && a.content?.workflowId,
             );
             if (workflowArtifact?.content?.workflowId) {
               setCurrentWorkflowContext({
@@ -481,9 +484,122 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, images?: File[]) => {
+  // Handle creating a new workflow (user typed "new" in workflow editor)
+  const handleNewWorkflow = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const taskTitle = "New Workflow";
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: taskTitle,
+          description: "Creating a new workflow",
+          status: "active",
+          workspaceSlug: slug,
+          mode: taskMode,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const newTaskId = result.data.id;
+      setCurrentTaskId(newTaskId);
+      setTaskTitle(taskTitle);
+
+      // Update URL without reloading
+      const newUrl = `/w/${slug}/task/${newTaskId}`;
+      window.history.replaceState({}, "", newUrl);
+
+      // Save workflow artifact with "new" as workflowId (no workflowJson)
+      const saveResponse = await fetch(`/api/tasks/${newTaskId}/messages/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: `New Workflow\nDescribe the workflow you want to create.`,
+          role: "ASSISTANT",
+          artifacts: [
+            {
+              type: ArtifactType.WORKFLOW,
+              content: {
+                workflowId: "new",
+                workflowName: "New Workflow",
+                workflowRefId: "",
+              },
+            },
+          ],
+        }),
+      });
+
+      if (!saveResponse.ok) {
+        console.error("Failed to save workflow artifact:", await saveResponse.text());
+      }
+
+      const savedMessage = await saveResponse.json();
+
+      const initialMessage: ChatMessage = savedMessage.success
+        ? createChatMessage({
+            id: savedMessage.data.id,
+            message: savedMessage.data.message,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            artifacts: savedMessage.data.artifacts,
+          })
+        : createChatMessage({
+            id: generateUniqueId(),
+            message: `New Workflow\nDescribe the workflow you want to create.`,
+            role: ChatRole.ASSISTANT,
+            status: ChatStatus.SENT,
+            artifacts: [
+              createArtifact({
+                id: generateUniqueId(),
+                messageId: "",
+                type: ArtifactType.WORKFLOW,
+                content: {
+                  workflowId: "new",
+                  workflowName: "New Workflow",
+                  workflowRefId: "",
+                },
+              }),
+            ],
+          });
+
+      setMessages([initialMessage]);
+      setStarted(true);
+      setWorkflowStatus(WorkflowStatus.PENDING);
+
+      // Store workflow context with "new" as the ID
+      setCurrentWorkflowContext({
+        workflowId: "new",
+        workflowName: "New Workflow",
+        workflowRefId: "",
+      });
+      setWorkflowEditorWebhook(null);
+    } catch (error) {
+      console.error("Error in handleNewWorkflow:", error);
+      toast.error("Error", { description: "Failed to create new workflow. Please try again." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[]) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
+
+    // Update selected model if provided
+    if (model) {
+      setSelectedModel(model);
+    }
 
     try {
       if (isNewTask) {
@@ -499,6 +615,8 @@ export default function TaskChatPage() {
             status: "active",
             workspaceSlug: slug,
             mode: taskMode, // Save the task mode
+            model: model || selectedModel, // Save selected AI model
+            autoMerge: autoMerge || false, // Save auto-merge preference
           }),
         });
 
@@ -509,6 +627,13 @@ export default function TaskChatPage() {
         const result = await response.json();
         const newTaskId = result.data.id;
         setCurrentTaskId(newTaskId);
+
+        // Set the task title from the response or fallback to the initial message
+        if (result.data.title) {
+          setTaskTitle(result.data.title);
+        } else {
+          setTaskTitle(msg); // Use the initial message as title fallback
+        }
 
         // Upload images to S3 if provided
         let attachments: Array<{path: string, filename: string, mimeType: string, size: number}> | undefined;
@@ -560,64 +685,22 @@ export default function TaskChatPage() {
           }
         }
 
-        // Claim pod if agent mode is selected (AFTER task creation)
-        let claimedPodUrls: { frontend: string; ide: string } | null = null;
-        let freshPodId: string | null = null;
-        if (taskMode === "agent" && workspaceId) {
-          try {
-            const podResponse = await fetch(
-              `/api/pool-manager/claim-pod/${workspaceId}?latest=true&goose=true&taskId=${newTaskId}`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-              },
-            );
-
-            if (podResponse.ok) {
-              const podResult = await podResponse.json();
-              // console.log(">>> Pod claim result:", podResult);
-              // Only frontend and IDE URLs are returned (no goose URL or password)
-              claimedPodUrls = {
-                frontend: podResult.frontend,
-                ide: podResult.ide,
-              };
-              freshPodId = podResult.podId;
-              setPodId(freshPodId);
-              console.log(">>> Pod claimed:", freshPodId);
-            } else {
-              // Pod claim failed - archive the task and redirect back to task list
-              console.error("Failed to claim pod:", await podResponse.text());
-              await archiveTaskAndRedirect(
-                newTaskId,
-                slug,
-                "No pods available",
-                "Task archived. Please try again later when capacity is available.",
-              );
-              return;
-            }
-          } catch (error) {
-            // Network or other error during pod claim
-            console.error("Error claiming pod:", error);
-            await archiveTaskAndRedirect(newTaskId, slug, "Pod claim error", "Task archived. Please try again later.");
-            return;
-          }
-        }
-
-        // Set the task title from the response or fallback to the initial message
-        if (result.data.title) {
-          setTaskTitle(result.data.title);
-        } else {
-          setTaskTitle(msg); // Use the initial message as title fallback
-        }
-
         const newUrl = `/w/${slug}/task/${newTaskId}`;
         // this updates the URL WITHOUT reloading the page
         window.history.replaceState({}, "", newUrl);
 
-        setStarted(true);
-        await sendMessage(msg, { taskId: newTaskId, podUrls: claimedPodUrls, attachments });
+        // For agent mode, pass onPodReady callback so we switch to chat view
+        // as soon as pod is claimed, before stream processing starts
+        if (taskMode === "agent") {
+          await sendMessage(msg, {
+            taskId: newTaskId,
+            onPodReady: () => setStarted(true),
+            attachments,
+          });
+        } else {
+          setStarted(true);
+          await sendMessage(msg, { taskId: newTaskId, attachments });
+        }
       } else {
         setStarted(true);
         await sendMessage(msg);
@@ -735,33 +818,11 @@ export default function TaskChatPage() {
         webhook?: string;
         artifact?: Artifact;
         attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>;
-        podUrls?: { frontend: string; ide: string } | null;
+        onPodReady?: () => void; // Called after pod is claimed, before stream starts
       },
     ) => {
       // Create artifacts array starting with any existing artifact
       const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
-
-      // Add BROWSER and IDE artifacts if podUrls are provided
-      if (options?.podUrls) {
-        artifacts.push(
-          createArtifact({
-            id: generateUniqueId(),
-            messageId: "",
-            type: ArtifactType.BROWSER,
-            content: {
-              url: options.podUrls.frontend,
-            },
-          }),
-          createArtifact({
-            id: generateUniqueId(),
-            messageId: "",
-            type: ArtifactType.IDE,
-            content: {
-              url: options.podUrls.ide,
-            },
-          }),
-        );
-      }
 
       // Convert attachment metadata to Attachment objects for UI
       const attachments = options?.attachments?.map(att => ({
@@ -823,10 +884,43 @@ export default function TaskChatPage() {
           });
 
           if (!sessionResponse.ok) {
-            throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
+            const errorData = await sessionResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to create session: ${sessionResponse.statusText}`);
           }
 
-          const { streamToken, streamUrl, resume, historyContext } = await sessionResponse.json();
+          const { streamToken, streamUrl, resume, historyContext, podUrls } = await sessionResponse.json();
+
+          // If backend claimed a pod (new task or re-claim), update state and add artifacts
+          if (podUrls) {
+            setPodId(podUrls.podId);
+            console.log(">>> Pod claimed by backend:", podUrls.podId);
+
+            // Add BROWSER/IDE artifacts to the user message
+            const browserArtifact = createArtifact({
+              id: generateUniqueId(),
+              messageId: "",
+              type: ArtifactType.BROWSER,
+              content: { url: podUrls.frontend },
+            });
+            const ideArtifact = createArtifact({
+              id: generateUniqueId(),
+              messageId: "",
+              type: ArtifactType.IDE,
+              content: { url: podUrls.ide },
+            });
+
+            // Update the message with new artifacts
+            setMessages((msgs) =>
+              msgs.map((msg) =>
+                msg.id === newMessage.id
+                  ? { ...msg, artifacts: [...(msg.artifacts || []), browserArtifact, ideArtifact] }
+                  : msg
+              )
+            );
+          }
+
+          // Signal that pod is ready (for handleStart to switch views)
+          options?.onPodReady?.();
 
           // 2. Connect directly to remote server for streaming
           // If historyContext is provided, the session was not found on the pod
@@ -1233,8 +1327,11 @@ export default function TaskChatPage() {
             workspaceSlug={slug}
             workflows={workflows}
             onWorkflowSelect={handleWorkflowSelect}
+            onNewWorkflow={handleNewWorkflow}
             isLoadingWorkflows={isLoadingWorkflows}
             workflowsError={workflowsError}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
         </motion.div>
       ) : (

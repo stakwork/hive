@@ -243,6 +243,7 @@ export async function startTaskWorkflow(params: {
       sourceType: true,
       runBuild: true,
       runTestSuite: true,
+      autoMerge: true,
       workspace: {
         select: {
           id: true,
@@ -297,6 +298,7 @@ export async function startTaskWorkflow(params: {
     mode,
     generateChatTitle: false, // Don't generate title - task already has one
     featureContext,
+    autoMergePr: task.autoMerge,
   });
 }
 
@@ -590,6 +592,9 @@ export async function callStakworkAPI(params: {
   }
   if (process.env.EXA_API_KEY) {
     vars.searchApiKey = process.env.EXA_API_KEY;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    vars.summaryApiKey = process.env.ANTHROPIC_API_KEY;
   }
 
   // Get workflow ID (replicating workflow selection logic)

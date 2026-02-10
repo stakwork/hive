@@ -441,6 +441,12 @@ model Repository {
   integrationGlob String? @default("") @map("integration_glob")
   e2eGlob         String? @default("") @map("e2e_glob")
 
+  // Sync configuration
+  codeIngestionEnabled Boolean @default(true)  @map("code_ingestion_enabled")
+  docsEnabled          Boolean @default(true)  @map("docs_enabled")
+  mocksEnabled         Boolean @default(true)  @map("mocks_enabled")
+  embeddingsEnabled    Boolean @default(true)  @map("embeddings_enabled")
+
   // Repository belongs to workspace (source control org inherited from workspace)
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -499,6 +505,9 @@ model Task {
   // Task mode (live, test, agent, etc.)
   mode String @default("live")
 
+  // AI model selection for agent mode (sonnet, opus, kimi, gemini, gpt)
+  model String?
+
   // Task-specific branch override (if set, takes precedence over repository branch)
   branch String?
 
@@ -508,6 +517,7 @@ model Task {
   // Build and test configuration
   runBuild     Boolean @default(true) @map("run_build")
   runTestSuite Boolean @default(true) @map("run_test_suite")
+  autoMerge    Boolean @default(true) @map("auto_merge")
 
   // Agent URLs and credentials (encrypted)
   agentUrl           String? @map("agent_url")
@@ -1178,6 +1188,9 @@ model Whiteboard {
   elements    Json      @default("[]")
   appState    Json      @default("{}") @map("app_state")
   files       Json      @default("{}")
+
+  // Collaboration versioning for conflict resolution
+  version     Int       @default(0)
 
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")

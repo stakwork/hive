@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/nextauth";
 import { db } from "@/lib/db";
-import { EncryptionService } from "@/lib/encryption";
 import { type ApiError } from "@/types";
-import { getPodFromPool, POD_PORTS } from "@/lib/pods";
+import { getPodDetails, POD_PORTS, buildPodUrl } from "@/lib/pods";
 import { getUserAppTokens } from "@/lib/githubApp";
-
-const encryptionService: EncryptionService = EncryptionService.getInstance();
+import { enablePRAutoMerge, getOctokitForWorkspace, parsePRUrl } from "@/lib/github";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   try {
@@ -111,27 +110,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No swarm found for this workspace" }, { status: 404 });
     }
 
-    const poolApiKey = workspace.swarm.poolApiKey;
-
-    // Check if swarm has pool configuration
-    if (!poolApiKey) {
-      return NextResponse.json({ error: "Swarm not properly configured with pool information" }, { status: 400 });
-    }
-
-    const poolApiKeyPlain = encryptionService.decryptField("poolApiKey", poolApiKey);
-
-    console.log(">>> Getting pod from pool for commit operation");
+    console.log(">>> Getting pod details for commit operation");
 
     // Fetch pod details to get port mappings and password
-    const podWorkspace = await getPodFromPool(podId, poolApiKeyPlain);
-    const controlPortUrl = podWorkspace.portMappings[POD_PORTS.CONTROL];
+    const podDetails = await getPodDetails(podId);
 
-    if (!controlPortUrl) {
+    if (!podDetails) {
+      return NextResponse.json({ error: "Pod not found" }, { status: 404 });
+    }
+
+    const { podId: podIdentifier, password, portMappings } = podDetails;
+
+    if (!password) {
+      return NextResponse.json({ error: "Pod password not found" }, { status: 500 });
+    }
+
+    if (!portMappings) {
+      return NextResponse.json({ error: "Pod port mappings not found" }, { status: 500 });
+    }
+
+    const controlPort = parseInt(POD_PORTS.CONTROL, 10);
+    if (!portMappings.includes(controlPort)) {
       return NextResponse.json(
         { error: `Control port (${POD_PORTS.CONTROL}) not found in port mappings` },
         { status: 500 },
       );
     }
+
+    const controlPortUrl = buildPodUrl(podIdentifier, POD_PORTS.CONTROL);
 
     console.log(">>> Using commit message:", commitMessage);
     console.log(">>> Using branch name:", branchName);
@@ -205,11 +211,15 @@ export async function POST(request: NextRequest) {
     // If a PR already exists, stay on current branch instead of creating a new one
     const stayOnBranch = existingPullRequest ? "&stayOnCurrentBranch=true" : "";
     const pushUrl = `${controlPortUrl}/push?pr=true&commit=true${stayOnBranch}&label=agent`;
-    console.log(">>> Push URL:", pushUrl, existingPullRequest ? "(staying on current branch)" : "(creating new branch)");
+    console.log(
+      ">>> Push URL:",
+      pushUrl,
+      existingPullRequest ? "(staying on current branch)" : "(creating new branch)",
+    );
     const pushResponse = await fetch(pushUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${podWorkspace.password}`,
+        Authorization: `Bearer ${podDetails.password}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(commitPayload),
@@ -226,6 +236,76 @@ export async function POST(request: NextRequest) {
 
     const pushData = await pushResponse.json();
     console.log(">>> Push successful:", pushData);
+
+    // Handle auto-merge if task has autoMerge enabled and PR was created
+    if (pushData.prs && Object.keys(pushData.prs).length > 0 && !existingPullRequest) {
+      try {
+        // Query task for autoMerge field
+        const taskWithAutoMerge = await db.task.findUnique({
+          where: { id: taskId },
+          select: { autoMerge: true, workspaceId: true },
+        });
+
+        if (taskWithAutoMerge?.autoMerge === true) {
+          // Get the first PR URL from the response
+          const prUrl = Object.values(pushData.prs)[0] as string;
+          logger.info("Task has auto-merge enabled, processing PR", "AutoMerge", { taskId, prUrl });
+
+          // Parse PR URL to extract owner, repo, and PR number
+          const prInfo = parsePRUrl(prUrl);
+          if (!prInfo) {
+            logger.warn("Failed to parse PR URL", "AutoMerge", { taskId, prUrl });
+          } else {
+            const { owner, repo, prNumber } = prInfo;
+            
+            // Get Octokit instance for the workspace
+            const octokit = await getOctokitForWorkspace(userId, owner);
+            if (!octokit) {
+              logger.warn("Failed to get Octokit instance", "AutoMerge", { taskId, owner });
+            } else {
+              // Fetch PR details to get node_id
+              try {
+                const { data: pr } = await octokit.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                });
+
+                // Enable auto-merge
+                const result = await enablePRAutoMerge(octokit, pr.node_id, "SQUASH");
+                
+                if (result.success) {
+                  logger.info("Successfully enabled auto-merge for PR", "AutoMerge", {
+                    taskId,
+                    prUrl,
+                    prNumber,
+                  });
+                } else {
+                  logger.warn("Failed to enable auto-merge for PR", "AutoMerge", {
+                    taskId,
+                    prUrl,
+                    prNumber,
+                    error: result.error,
+                  });
+                }
+              } catch (prError) {
+                logger.error("Error fetching PR details or enabling auto-merge", "AutoMerge", {
+                  taskId,
+                  prUrl,
+                  error: prError instanceof Error ? prError.message : String(prError),
+                });
+              }
+            }
+          }
+        }
+      } catch (autoMergeError) {
+        // Log but don't fail the request - graceful degradation
+        logger.error("Error processing auto-merge", "AutoMerge", {
+          taskId,
+          error: autoMergeError instanceof Error ? autoMergeError.message : String(autoMergeError),
+        });
+      }
+    }
 
     return NextResponse.json(
       {

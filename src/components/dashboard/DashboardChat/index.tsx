@@ -560,10 +560,10 @@ export function DashboardChat() {
     provenanceData?.concepts.some((concept) => concept.files && concept.files.length > 0) ?? false;
 
   return (
-    <div className="pointer-events-none">
+    <div className="pointer-events-none flex flex-col justify-end max-h-[85vh]">
       {/* Message history with optional provenance sidebar */}
       {(messages.length > 0 || activeToolCalls.length > 0) && (
-        <div className="flex flex-col">
+        <div className="flex flex-col min-h-0">
           {/* Clear all button - above scrollable area */}
           <div className="flex justify-end px-4 pb-1">
             <button
@@ -574,9 +574,9 @@ export function DashboardChat() {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-4 flex-1 min-h-0">
             {/* Message history */}
-            <div className="flex-1 max-h-[300px] overflow-y-auto pb-2">
+            <div className="flex-1 max-h-[85vh] overflow-y-auto pb-2">
               <div className="space-y-2 px-4">
                 {messages.map((message, index) => {
                   // Only the last message is streaming
@@ -609,7 +609,7 @@ export function DashboardChat() {
 
             {/* Provenance sidebar - only shows when toggled AND data available */}
             {isProvenanceSidebarOpen && provenanceData && (
-              <div className="w-80 overflow-y-auto max-h-[300px] pointer-events-auto">
+              <div className="w-80 overflow-y-auto max-h-[85vh] pointer-events-auto">
                 <div className="backdrop-blur-md bg-background/20 border border-border/50 rounded-lg p-4 shadow-lg">
                   <ProvenanceTree provenanceData={provenanceData} />
                 </div>
@@ -620,7 +620,7 @@ export function DashboardChat() {
       )}
 
       {/* Input field */}
-      <div className="pointer-events-auto">
+      <div className="pointer-events-auto shrink-0">
         <ChatInput
           onSend={handleSend}
           disabled={isLoading}

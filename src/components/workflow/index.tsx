@@ -21,6 +21,7 @@ import {
   useEdgesState,
   addEdge,
   Connection,
+  useOnViewportChange,
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
@@ -94,7 +95,7 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   // Store transitions for step click lookup
   const transitionsRef = useRef<Record<string, WorkflowTransitionType>>({});
-  
+
   // Track previous workflow data to detect actual changes
   const previousWorkflowDataRef = useRef<{ transitions: any; connections: any } | null>(null);
 
@@ -153,6 +154,7 @@ export default function App(workflowApp: WorkflowAppProps) {
   const [isDragging, setIsDragging] = useState(false);
   const dragEndTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const DRAG_END_DELAY = 300;
+  const autoCenteringRef = useRef(false);
 
   const showStep = getUrlParameter("show_step");
 
@@ -520,19 +522,19 @@ export default function App(workflowApp: WorkflowAppProps) {
 
   const updateDiagram = (data: any, userInitiated: boolean = false) => {
     // console.log("data", data)
-    
+
     // Check if workflow data has actually changed using deep comparison
-    const hasDataChanged = !deepEqual(previousWorkflowDataRef.current, { 
+    const hasDataChanged = !deepEqual(previousWorkflowDataRef.current, {
       transitions: data.transitions,
-      connections: data.connections 
+      connections: data.connections,
     });
-    
+
     // Update ref with current data
     previousWorkflowDataRef.current = {
       transitions: data.transitions,
-      connections: data.connections
+      connections: data.connections,
     };
-    
+
     // Store transitions for step click lookup
     transitionsRef.current = data.transitions || {};
 
@@ -702,10 +704,8 @@ export default function App(workflowApp: WorkflowAppProps) {
     // 1. The API is supported
     // 2. Data has actually changed (prevents flickering on no-op polling updates)
     // 3. It's user-initiated OR there are structural changes
-    const shouldUseTransition = 
-      typeof (document as any).startViewTransition === 'function' && 
-      hasDataChanged &&
-      userInitiated;
+    const shouldUseTransition =
+      typeof (document as any).startViewTransition === "function" && hasDataChanged && userInitiated;
 
     const updateView = () => {
       setNodes(myNodes);
@@ -732,7 +732,13 @@ export default function App(workflowApp: WorkflowAppProps) {
               y: (lastNode.y - pane.top - 200) * -zoomLevel,
             };
 
+            // Mark that we're auto-centering before updating position
+            autoCenteringRef.current = true;
             setTargetPosition({ ...targetPosition, x: screenPoint.x, y: screenPoint.y });
+            // Reset after a short delay to allow viewport change to process
+            setTimeout(() => {
+              autoCenteringRef.current = false;
+            }, 100);
           }
         }
       }
@@ -864,15 +870,23 @@ export default function App(workflowApp: WorkflowAppProps) {
     }
   }, [workflowId]);
 
-  const viewportChange = (change: any) => {
-    manualNavigation = true;
-    setTargetPosition(change);
-
-    if (!projectId) {
-      const cookieKey = getCookieKey();
-      localStorage.setItem(cookieKey, JSON.stringify(change));
-    }
-  };
+  // Replace the old viewportChange function with useOnViewportChange hook
+  useOnViewportChange({
+    onStart: (viewport) => {
+      // Only set manualNavigation if this is NOT a programmatic update
+      if (!autoCenteringRef.current) {
+        manualNavigation = true;
+      }
+    },
+    onChange: (viewport) => {
+      // Track viewport changes for localStorage (existing behavior)
+      if (!projectId && !autoCenteringRef.current) {
+        const cookieKey = getCookieKey();
+        localStorage.setItem(cookieKey, JSON.stringify(viewport));
+      }
+      setTargetPosition(viewport);
+    },
+  });
 
   const updateWorkflowWithNode = (changed_nodes: any[]) => {
     const workflowSpecField = document.querySelector("#workflow_spec") as HTMLInputElement | null;
@@ -1257,12 +1271,11 @@ export default function App(workflowApp: WorkflowAppProps) {
       <ReactFlow
         onInit={onInit}
         ref={ref}
-        minZoom={0.2}
-        maxZoom={0.7}
+        minZoom={0.05}
+        maxZoom={1.5}
         nodeTypes={nodeTypes}
         nodes={nodes}
         edges={edges}
-        onViewportChange={viewportChange}
         viewport={{ x: targetPosition.x, y: targetPosition.y, zoom: targetPosition.zoom }}
         onNodesChange={onCustomNodesChanged}
         nodeDragThreshold={10}

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET } from "@/app/api/w/[slug]/pool/status/route";
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
-import { PoolManagerService } from "@/services/pool-manager";
+import { createTestPod } from "@/__tests__/support/factories/pod.factory";
+import { PodStatus, PodUsageStatus } from "@prisma/client";
 import {
   createTestWorkspaceScenario,
   createTestSwarm,
@@ -43,24 +44,11 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
       owner = scenario.owner;
       workspace = scenario.workspace;
 
-      // Create swarm with encrypted API key
-      const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key"
-      );
-
+      // Create swarm
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: `test-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
-      });
-
-      await tx.swarm.update({
-        where: { id: swarm.id },
-        data: {
-          poolApiKey: JSON.stringify(encryptedApiKey),
-        },
       });
     });
   });
@@ -70,11 +58,14 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
   });
 
   it("should return 401 for unauthenticated requests", async () => {
-    getMockedRequireAuth.mockReturnValue(NextResponse.json({ error: "Unauthorized", kind: "unauthorized" }, { status: 401 }));
-
-    const request = createGetRequest(
-      `/api/w/${workspace.slug}/pool/status`
+    getMockedRequireAuth.mockReturnValue(
+      NextResponse.json(
+        { error: "Unauthorized", kind: "unauthorized" },
+        { status: 401 }
+      )
     );
+
+    const request = createGetRequest(`/api/w/${workspace.slug}/pool/status`);
     const response = await GET(request, {
       params: Promise.resolve({ slug: workspace.slug }),
     });
@@ -83,7 +74,11 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
   });
 
   it("should return 400 when workspace slug is missing", async () => {
-    getMockedRequireAuth.mockReturnValue({ id: owner.id, email: owner.email!, name: owner.name! });
+    getMockedRequireAuth.mockReturnValue({
+      id: owner.id,
+      email: owner.email!,
+      name: owner.name!,
+    });
 
     const request = createGetRequest("/api/w//pool/status");
     const response = await GET(request, {
@@ -96,9 +91,15 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
   });
 
   it("should return 404 for non-existent workspace", async () => {
-    getMockedRequireAuth.mockReturnValue({ id: owner.id, email: owner.email!, name: owner.name! });
+    getMockedRequireAuth.mockReturnValue({
+      id: owner.id,
+      email: owner.email!,
+      name: owner.name!,
+    });
 
-    const request = createGetRequest("/api/w/nonexistent-workspace/pool/status");
+    const request = createGetRequest(
+      "/api/w/nonexistent-workspace/pool/status"
+    );
     const response = await GET(request, {
       params: Promise.resolve({ slug: "nonexistent-workspace" }),
     });
@@ -112,35 +113,17 @@ describe("GET /api/w/[slug]/pool/status - Authentication", () => {
       owner: { name: "No Swarm Owner" },
     });
 
-    getMockedRequireAuth.mockReturnValue({ id: newScenario.owner.id, email: newScenario.owner.email!, name: newScenario.owner.name! });
+    getMockedRequireAuth.mockReturnValue({
+      id: newScenario.owner.id,
+      email: newScenario.owner.email!,
+      name: newScenario.owner.name!,
+    });
 
     const request = createGetRequest(
       `/api/w/${newScenario.workspace.slug}/pool/status`
     );
     const response = await GET(request, {
       params: Promise.resolve({ slug: newScenario.workspace.slug }),
-    });
-
-    expect(response.status).toBe(404);
-    const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toBe("Pool not configured for this workspace");
-  });
-
-  it("should return 404 when poolApiKey is not configured", async () => {
-    // Update swarm to have null poolApiKey
-    await db.swarm.update({
-      where: { id: swarm.id },
-      data: { poolApiKey: null },
-    });
-
-    getMockedRequireAuth.mockReturnValue({ id: owner.id, email: owner.email!, name: owner.name! });
-
-    const request = createGetRequest(
-      `/api/w/${workspace.slug}/pool/status`
-    );
-    const response = await GET(request, {
-      params: Promise.resolve({ slug: workspace.slug }),
     });
 
     expect(response.status).toBe(404);
@@ -176,24 +159,18 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
       memberDeveloper = scenario.members[1];
       memberAdmin = scenario.members[2];
 
-      // Create swarm with encrypted API key
-      const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key-auth"
-      );
-
+      // Create swarm
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: `auth-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
-      await tx.swarm.update({
-        where: { id: swarm.id },
-        data: {
-          poolApiKey: JSON.stringify(encryptedApiKey),
-        },
+      // Create test pods for this swarm
+      await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.UNUSED,
       });
 
       // Create non-member user
@@ -204,18 +181,6 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
         },
       });
       nonMember = nonMemberData;
-    });
-
-    // Mock PoolManagerService.getPoolStatus for all authorization tests
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue({
-      status: {
-        runningVms: 2,
-        pendingVms: 1,
-        failedVms: 0,
-        usedVms: 2,
-        unusedVms: 1,
-        lastCheck: new Date().toISOString(),
-      },
     });
   });
 
@@ -323,7 +288,7 @@ describe("GET /api/w/[slug]/pool/status - Authorization", () => {
   });
 });
 
-describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
+describe("GET /api/w/[slug]/pool/status - Pool Status Data", () => {
   let owner: User;
   let workspace: Workspace;
   let swarm: Swarm;
@@ -337,23 +302,10 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
       owner = scenario.owner;
       workspace = scenario.workspace;
 
-      const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key-service"
-      );
-
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: `service-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
-      });
-
-      await tx.swarm.update({
-        where: { id: swarm.id },
-        data: {
-          poolApiKey: JSON.stringify(encryptedApiKey),
-        },
       });
     });
 
@@ -368,21 +320,43 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("should successfully fetch pool status from external service", async () => {
-    const mockPoolStatus: PoolStatusResponse = {
-      status: {
-        runningVms: 5,
-        pendingVms: 2,
-        failedVms: 1,
-        usedVms: 4,
-        unusedVms: 3,
-        lastCheck: "2024-01-15T12:00:00Z",
-      },
-    };
+  it("should successfully fetch pool status", async () => {
+    // Create 5 RUNNING/UNUSED pods
+    for (let i = 0; i < 5; i++) {
+      await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.UNUSED,
+      });
+    }
 
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(
-      mockPoolStatus
-    );
+    // Create 2 RUNNING/USED pods
+    for (let i = 0; i < 2; i++) {
+      await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.USED,
+      });
+    }
+
+    // Create 2 PENDING pods
+    await createTestPod({
+      swarmId: swarm.id,
+      status: PodStatus.PENDING,
+      usageStatus: PodUsageStatus.UNUSED,
+    });
+    await createTestPod({
+      swarmId: swarm.id,
+      status: PodStatus.STARTING,
+      usageStatus: PodUsageStatus.UNUSED,
+    });
+
+    // Create 1 FAILED pod
+    await createTestPod({
+      swarmId: swarm.id,
+      status: PodStatus.FAILED,
+      usageStatus: PodUsageStatus.UNUSED,
+    });
 
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/status`,
@@ -394,85 +368,77 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
 
     const data = await expectSuccess(response);
     expect(data.success).toBe(true);
-    expect(data.data).toEqual(mockPoolStatus);
-    expect(data.data.status.runningVms).toBe(5);
-    expect(data.data.status.pendingVms).toBe(2);
-    expect(data.data.status.failedVms).toBe(1);
-    expect(data.data.status.usedVms).toBe(4);
+    expect(data.data.status.runningVms).toBe(7); // 5 RUNNING/UNUSED + 2 RUNNING/USED
+    expect(data.data.status.pendingVms).toBe(2); // 1 PENDING + 1 STARTING
+    expect(data.data.status.failedVms).toBe(1); // 1 FAILED
+    expect(data.data.status.usedVms).toBe(2); // 2 RUNNING/USED
+    expect(data.data.status.unusedVms).toBe(8); // 5 RUNNING/UNUSED + 1 PENDING + 1 STARTING + 1 FAILED
+    expect(data.data.status.lastCheck).toBeDefined();
+    expect(typeof data.data.status.lastCheck).toBe("string");
+    // Verify it's a valid ISO timestamp
+    expect(() => new Date(data.data.status.lastCheck)).not.toThrow();
+  });
+
+  it("should exclude TERMINATING and MOTHBALLED pods from counts", async () => {
+    // Create 3 RUNNING pods
+    for (let i = 0; i < 3; i++) {
+      await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.UNUSED,
+      });
+    }
+
+    // Create 1 TERMINATING pod (should be excluded)
+    await createTestPod({
+      swarmId: swarm.id,
+      status: PodStatus.TERMINATING,
+      usageStatus: PodUsageStatus.UNUSED,
+    });
+
+    // Create 1 MOTHBALLED pod (should be excluded)
+    await createTestPod({
+      swarmId: swarm.id,
+      status: PodStatus.MOTHBALLED,
+      usageStatus: PodUsageStatus.UNUSED,
+    });
+
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${workspace.slug}/pool/status`,
+      owner
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: workspace.slug }),
+    });
+
+    const data = await expectSuccess(response);
+    expect(data.data.status.runningVms).toBe(3);
+    expect(data.data.status.pendingVms).toBe(0);
+    expect(data.data.status.failedVms).toBe(0);
+    expect(data.data.status.usedVms).toBe(0);
     expect(data.data.status.unusedVms).toBe(3);
-    expect(data.data.status.lastCheck).toBe("2024-01-15T12:00:00Z");
   });
 
-  it("should return 503 when pool service is unavailable", async () => {
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockRejectedValue(
-      new Error("Unable to connect to pool service")
-    );
+  it("should exclude soft-deleted pods from counts", async () => {
+    // Create 5 RUNNING pods
+    const pods = [];
+    for (let i = 0; i < 5; i++) {
+      const pod = await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.UNUSED,
+      });
+      pods.push(pod);
+    }
 
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
-    const response = await GET(request, {
-      params: Promise.resolve({ slug: workspace.slug }),
+    // Soft-delete 2 pods
+    await db.pod.update({
+      where: { id: pods[0].id },
+      data: { deletedAt: new Date() },
     });
-
-    expect(response.status).toBe(503);
-    const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toContain("Unable to connect to pool service");
-  });
-
-  it("should return 503 when pool metrics cannot be fetched", async () => {
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockRejectedValue(
-      new Error("Unable to fetch pool metrics at the moment")
-    );
-
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
-    const response = await GET(request, {
-      params: Promise.resolve({ slug: workspace.slug }),
-    });
-
-    expect(response.status).toBe(503);
-    const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toContain("Unable to fetch pool metrics at the moment");
-  });
-
-  it("should handle network errors gracefully", async () => {
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockRejectedValue(
-      new Error("Network error: Connection timeout")
-    );
-
-    const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
-    );
-    const response = await GET(request, {
-      params: Promise.resolve({ slug: workspace.slug }),
-    });
-
-    expect(response.status).toBe(503);
-    const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toBeDefined();
-  });
-
-  it("should decrypt poolApiKey before calling external service", async () => {
-    const getPoolStatusSpy = vi.spyOn(
-      PoolManagerService.prototype,
-      "getPoolStatus"
-    ).mockResolvedValue({
-      status: {
-        runningVms: 1,
-        pendingVms: 0,
-        failedVms: 0,
-        usedVms: 1,
-        unusedVms: 0,
-        lastCheck: new Date().toISOString(),
-      },
+    await db.pod.update({
+      where: { id: pods[1].id },
+      data: { deletedAt: new Date() },
     });
 
     const request = createAuthenticatedGetRequest(
@@ -483,13 +449,33 @@ describe("GET /api/w/[slug]/pool/status - External Service Integration", () => {
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    await expectSuccess(response);
+    const data = await expectSuccess(response);
+    expect(data.data.status.runningVms).toBe(3);
+    expect(data.data.status.pendingVms).toBe(0);
+    expect(data.data.status.failedVms).toBe(0);
+    expect(data.data.status.usedVms).toBe(0);
+    expect(data.data.status.unusedVms).toBe(3);
+  });
 
-    // Verify getPoolStatus was called with swarm.id and encrypted poolApiKey
-    expect(getPoolStatusSpy).toHaveBeenCalledWith(
-      swarm.id,
-      expect.any(String) // poolApiKey (encrypted JSON string)
+  it("should return zeros when swarm has no active pods", async () => {
+    // Don't create any pods for the swarm
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${workspace.slug}/pool/status`,
+      owner
     );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: workspace.slug }),
+    });
+
+    const data = await expectSuccess(response);
+    expect(data.data.status.runningVms).toBe(0);
+    expect(data.data.status.pendingVms).toBe(0);
+    expect(data.data.status.failedVms).toBe(0);
+    expect(data.data.status.usedVms).toBe(0);
+    expect(data.data.status.unusedVms).toBe(0);
+    // lastCheck should still be present even with no pods
+    expect(data.data.status.lastCheck).toBeDefined();
+    expect(typeof data.data.status.lastCheck).toBe("string");
   });
 });
 
@@ -507,23 +493,27 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
       owner = scenario.owner;
       workspace = scenario.workspace;
 
-      const encryptionService = EncryptionService.getInstance();
-      const encryptedApiKey = encryptionService.encryptField(
-        "poolApiKey",
-        "test-pool-api-key-response"
-      );
-
       swarm = await createTestSwarm({
         workspaceId: workspace.id,
         name: `response-swarm-${generateUniqueId("swarm")}`,
         status: "ACTIVE",
       });
 
-      await tx.swarm.update({
-        where: { id: swarm.id },
-        data: {
-          poolApiKey: JSON.stringify(encryptedApiKey),
-        },
+      // Create some test pods
+      await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.USED,
+      });
+      await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.RUNNING,
+        usageStatus: PodUsageStatus.UNUSED,
+      });
+      await createTestPod({
+        swarmId: swarm.id,
+        status: PodStatus.PENDING,
+        usageStatus: PodUsageStatus.UNUSED,
       });
     });
 
@@ -539,21 +529,6 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
   });
 
   it("should return valid PoolStatusResponse structure", async () => {
-    const mockPoolStatus: PoolStatusResponse = {
-      status: {
-        runningVms: 3,
-        pendingVms: 1,
-        failedVms: 0,
-        usedVms: 2,
-        unusedVms: 2,
-        lastCheck: "2024-01-15T10:30:00Z",
-      },
-    };
-
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(
-      mockPoolStatus
-    );
-
     const request = createAuthenticatedGetRequest(
       `/api/w/${workspace.slug}/pool/status`,
       owner
@@ -586,27 +561,29 @@ describe("GET /api/w/[slug]/pool/status - Response Structure", () => {
   });
 
   it("should handle zero values in pool status", async () => {
-    const mockPoolStatus: PoolStatusResponse = {
-      status: {
-        runningVms: 0,
-        pendingVms: 0,
-        failedVms: 0,
-        usedVms: 0,
-        unusedVms: 0,
-        lastCheck: "2024-01-15T09:00:00Z",
-      },
-    };
+    // Create a new workspace with no pods
+    const newScenario = await createTestWorkspaceScenario({
+      owner: { name: "Empty Pool Owner" },
+    });
 
-    vi.spyOn(PoolManagerService.prototype, "getPoolStatus").mockResolvedValue(
-      mockPoolStatus
-    );
+    const newSwarm = await createTestSwarm({
+      workspaceId: newScenario.workspace.id,
+      name: `empty-swarm-${generateUniqueId("swarm")}`,
+      status: "ACTIVE",
+    });
+
+    getMockedRequireAuth.mockReturnValue({
+      id: newScenario.owner.id,
+      email: newScenario.owner.email!,
+      name: newScenario.owner.name!,
+    });
 
     const request = createAuthenticatedGetRequest(
-      `/api/w/${workspace.slug}/pool/status`,
-      owner
+      `/api/w/${newScenario.workspace.slug}/pool/status`,
+      newScenario.owner
     );
     const response = await GET(request, {
-      params: Promise.resolve({ slug: workspace.slug }),
+      params: Promise.resolve({ slug: newScenario.workspace.slug }),
     });
 
     const data = await expectSuccess(response);

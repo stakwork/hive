@@ -217,6 +217,7 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
             order: true;
             featureId: true;
             phaseId: true;
+            workspaceId: true;
             bountyCode: true;
             dependsOnTaskIds: true;
             createdAt: true;
@@ -430,6 +431,7 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
         order: true;
         featureId: true;
         phaseId: true;
+        workspaceId: true;
         bountyCode: true;
         dependsOnTaskIds: true;
         createdAt: true;
@@ -492,6 +494,7 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
     order: true;
     featureId: true;
     phaseId: true;
+    workspaceId: true;
     bountyCode: true;
     dependsOnTaskIds: true;
     createdAt: true;
@@ -593,6 +596,7 @@ export interface CreateRoadmapTaskRequest {
   priority?: import("@prisma/client").Priority;
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMerge?: boolean;
   dependsOnTaskIds?: string[];
 }
 
@@ -608,6 +612,7 @@ export interface UpdateRoadmapTaskRequest {
   dependsOnTaskIds?: string[];
   runBuild?: boolean;
   runTestSuite?: boolean;
+  autoMerge?: boolean;
 }
 
 export interface ReorderRoadmapTasksRequest {
