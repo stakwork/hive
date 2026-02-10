@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import {
@@ -33,7 +34,7 @@ import { PromptsPanel } from "@/components/prompts";
 import { VALID_MODELS, type ModelName } from "@/lib/ai/models";
 
 interface TaskStartInputProps {
-  onStart: (task: string, model?: ModelName) => void;
+  onStart: (task: string, model?: ModelName, autoMerge?: boolean) => void;
   taskMode: string;
   onModeChange: (mode: string) => void;
   isLoading?: boolean;
@@ -71,6 +72,7 @@ export function TaskStartInput({
   const [value, setValue] = useState("");
   const [workflowIdValue, setWorkflowIdValue] = useState("");
   const [hasInteractedWithWorkflowInput, setHasInteractedWithWorkflowInput] = useState(false);
+  const [autoMerge, setAutoMerge] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
@@ -80,6 +82,7 @@ export function TaskStartInput({
   const devMode = isDevelopmentMode();
   const isWorkflowMode = taskMode === "workflow_editor";
   const isPromptsMode = taskMode === "prompts";
+  const isAsyncMode = taskMode === "live";
 
   // Check URL for prompt param and switch to prompts mode if present
   useEffect(() => {
@@ -148,7 +151,7 @@ export function TaskStartInput({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (value.trim()) {
-        onStart(value.trim(), selectedModel);
+        onStart(value.trim(), selectedModel, autoMerge);
       }
     }
   };
@@ -180,7 +183,7 @@ export function TaskStartInput({
           stopListening();
         }
         resetTranscript();
-        onStart(value.trim(), selectedModel);
+        onStart(value.trim(), selectedModel, autoMerge);
       }
     }
   };
@@ -488,6 +491,35 @@ export function TaskStartInput({
           </Button>
         </div>
         </Card>
+      )}
+
+      {/* Auto-merge checkbox for async mode */}
+      {isAsyncMode && !isWorkflowMode && (
+        <div className="w-full max-w-2xl mt-3">
+          <TooltipProvider>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto-merge-task-start"
+                checked={autoMerge}
+                onCheckedChange={(checked) => setAutoMerge(checked === true)}
+                data-testid="auto-merge-checkbox"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <label
+                    htmlFor="auto-merge-task-start"
+                    className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                  >
+                    Auto-merge PR when CI passes
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Automatically merge the pull request when all CI checks pass</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+        </div>
       )}
 
       {/* Pod availability warning for agent mode */}
