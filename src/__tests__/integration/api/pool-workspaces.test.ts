@@ -436,7 +436,7 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
     expect(data.data.workspaces[1].state).toBe("stopped");
   });
 
-  it("should return 503 when pool service is unavailable", async () => {
+  it("should return 200 with basic data when pool service is unavailable", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
       new Error("Unable to connect to pool service")
     );
@@ -449,13 +449,16 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toContain("Unable to connect to pool service");
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    expect(data.data).toBeDefined();
+    expect(data.data.workspaces).toBeDefined();
+    expect(Array.isArray(data.data.workspaces)).toBe(true);
   });
 
-  it("should return 503 when workspace data cannot be fetched", async () => {
+  it("should return 200 with basic data when workspace data cannot be fetched", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
       new Error("Unable to fetch workspace data at the moment")
     );
@@ -468,13 +471,15 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toContain("Unable to fetch workspace data at the moment");
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    expect(data.data).toBeDefined();
+    expect(data.data.workspaces).toBeDefined();
   });
 
-  it("should handle network errors gracefully", async () => {
+  it("should return 200 with basic data on network errors", async () => {
     vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
       new Error("Network error: Connection timeout")
     );
@@ -487,10 +492,11 @@ describe("GET /api/w/[slug]/pool/workspaces - External Service Integration", () 
       params: Promise.resolve({ slug: workspace.slug }),
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(false);
-    expect(data.message).toBeDefined();
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    expect(data.data).toBeDefined();
   });
 
   it("should decrypt poolApiKey before calling external service", async () => {
