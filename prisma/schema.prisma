@@ -230,6 +230,12 @@ model Workspace {
   vercelProjectId String? @map("vercel_project_id") // Vercel project ID for log webhook mapping
   vercelWebhookSecret String? @map("vercel_webhook_secret") // Encrypted webhook secret for log drain verification
 
+  // Sphinx integration
+  sphinxEnabled     Boolean  @default(false) @map("sphinx_enabled")
+  sphinxChatPubkey  String?  @map("sphinx_chat_pubkey")
+  sphinxBotId       String?  @map("sphinx_bot_id")
+  sphinxBotSecret   String?  @map("sphinx_bot_secret")  // Encrypted JSON
+
   // Janitor configuration
   janitorConfig JanitorConfig?
   janitorRecommendations JanitorRecommendation[]
