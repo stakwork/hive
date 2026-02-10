@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 
 interface VMGridProps {
@@ -102,7 +103,7 @@ function VMCard({ vm }: { vm: VMData }) {
         ) : null}
 
         {/* Resources */}
-        {vm.resource_usage.available && (
+        {vm.resource_usage.available ? (
           <div className="space-y-2 pt-1">
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs">
@@ -136,6 +137,23 @@ function VMCard({ vm }: { vm: VMData }) {
                   style={{ width: `${Math.min(memoryPercent, 100)}%` }}
                 />
               </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2 pt-1">
+            <p className="text-xs text-muted-foreground italic">Fetching metrics...</p>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">CPU</span>
+              </div>
+              <Skeleton className="h-1 w-full rounded-full" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Memory</span>
+              </div>
+              <Skeleton className="h-1 w-full rounded-full" />
             </div>
           </div>
         )}
