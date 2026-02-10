@@ -427,6 +427,7 @@ export async function POST(request: NextRequest) {
       model,
       runBuild,
       runTestSuite,
+      autoMerge,
     } = body;
 
     // Validate required fields
@@ -559,6 +560,7 @@ export async function POST(request: NextRequest) {
         model: taskModel, // AI model for agent mode
         runBuild: runBuild ?? true,
         runTestSuite: runTestSuite ?? true,
+        autoMerge: autoMerge ?? false, // Auto-merge PR when CI passes
         createdById: userId,
         updatedById: userId,
       },
