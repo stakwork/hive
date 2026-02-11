@@ -6,21 +6,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { AlertCircle, Loader2, Server } from "lucide-react";
+import { AlertCircle, Server } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { CapacityControls } from "@/components/capacity/CapacityControls";
 import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
 import { VMGrid } from "@/components/capacity/VMGrid";
+import { VMCardSkeleton } from "@/components/capacity/VMCardSkeleton";
 import { VMData } from "@/types/pool-manager";
 
 export default function CapacityPage() {
   const { workspace, slug } = useWorkspace();
   const isPoolActive = workspace?.poolState === "COMPLETE";
-  const { loading: statusLoading, error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
+  const { error: statusError, refetch } = usePoolStatus(slug, isPoolActive);
 
   const [vmData, setVmData] = useState<VMData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [basicDataLoading, setBasicDataLoading] = useState(true);
+  const [metricsLoading, setMetricsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>(() => {
     const saved = localStorage.getItem("capacity-view-preference");
@@ -32,20 +34,20 @@ export default function CapacityPage() {
     localStorage.setItem("capacity-view-preference", mode);
   };
 
-  // Fetch VM details from internal API
+  // Progressive loading: Step 1 - Fetch basic VM data from database
   useEffect(() => {
-    async function fetchVMData() {
+    async function fetchBasicVMData() {
       if (!slug) {
-        setLoading(false);
+        setBasicDataLoading(false);
         return;
       }
 
       try {
-        setLoading(true);
-        const response = await fetch(`/api/w/${slug}/pool/workspaces`);
+        setBasicDataLoading(true);
+        const response = await fetch(`/api/w/${slug}/pool/basic-workspaces`);
 
         if (!response.ok) {
-          throw new Error("Failed to fetch VM data");
+          throw new Error("Failed to fetch basic VM data");
         }
 
         const result = await response.json();
@@ -58,16 +60,50 @@ export default function CapacityPage() {
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load VM details");
       } finally {
-        setLoading(false);
+        setBasicDataLoading(false);
       }
     }
 
     if (isPoolActive) {
-      fetchVMData();
+      fetchBasicVMData();
     } else {
-      setLoading(false);
+      setBasicDataLoading(false);
     }
   }, [slug, isPoolActive]);
+
+  // Progressive loading: Step 2 - Fetch real-time metrics from pool-manager
+  useEffect(() => {
+    async function fetchMetrics() {
+      if (!slug || vmData.length === 0) {
+        return;
+      }
+
+      try {
+        setMetricsLoading(true);
+        const response = await fetch(`/api/w/${slug}/pool/workspaces`);
+
+        if (!response.ok) {
+          console.warn("Failed to fetch real-time metrics");
+          return;
+        }
+
+        const result = await response.json();
+
+        if (result.success && result.data) {
+          setVmData(result.data.workspaces || []);
+        }
+      } catch (err) {
+        console.warn("Failed to load real-time metrics:", err);
+        // Don't set error - we already have basic data
+      } finally {
+        setMetricsLoading(false);
+      }
+    }
+
+    if (isPoolActive && !basicDataLoading) {
+      fetchMetrics();
+    }
+  }, [slug, isPoolActive, basicDataLoading, vmData.length]);
 
   // Pool not complete - show banner
   if (workspace?.poolState !== "COMPLETE") {
@@ -82,20 +118,8 @@ export default function CapacityPage() {
     );
   }
 
-  // Loading
-  if (statusLoading || loading) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Capacity" />
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </div>
-    );
-  }
-
-  // Error
-  if (statusError || error) {
+  // Error state - only show if basic data failed to load
+  if (error && basicDataLoading) {
     return (
       <div className="space-y-6">
         <PageHeader title="Capacity" />
@@ -123,7 +147,17 @@ export default function CapacityPage() {
     <div className="space-y-6">
       <PageHeader title="Capacity" />
 
-      {vmData.length > 0 && (
+      {/* Loading skeleton while fetching basic data */}
+      {basicDataLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <VMCardSkeleton key={i} />
+          ))}
+        </div>
+      )}
+
+      {/* Show VM data once basic data is loaded */}
+      {!basicDataLoading && vmData.length > 0 && (
         <>
           {/* Controls */}
           <CapacityControls
@@ -144,7 +178,7 @@ export default function CapacityPage() {
       )}
 
       {/* Empty State */}
-      {vmData.length === 0 && (
+      {!basicDataLoading && vmData.length === 0 && (
         <Card>
           <CardContent className="py-12">
             <div className="text-center text-muted-foreground">
