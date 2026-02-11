@@ -224,6 +224,7 @@ export async function createStakworkRun(
       status: WorkflowStatus.PENDING,
       webhookUrl: "", // Will be updated below
       dataType: "string", // Default, will be updated by webhook based on actual result type
+      autoAccept: input.autoAccept ?? false,
     },
   });
 
@@ -370,6 +371,7 @@ export async function processStakworkRunWebhook(
       workspace: {
         select: {
           slug: true,
+          ownerId: true,
         },
       },
     },
@@ -431,6 +433,47 @@ export async function processStakworkRunWebhook(
   } catch (error) {
     console.error("Error broadcasting to Pusher:", error);
     // Don't throw - webhook processing succeeded
+  }
+
+  // Step 3: Auto-accept if flag is set and run completed successfully
+  if (run.autoAccept && status === WorkflowStatus.COMPLETED && run.featureId && serializedResult) {
+    try {
+      await db.stakworkRun.update({
+        where: { id: run.id },
+        data: { decision: StakworkRunDecision.ACCEPTED },
+      });
+
+      await applyAcceptResult(
+        {
+          type: run.type,
+          featureId: run.featureId,
+          result: serializedResult,
+          workspaceId: run.workspaceId,
+        },
+        run.workspace.ownerId
+      );
+
+      // Broadcast the auto-accept decision
+      try {
+        const channelName = getWorkspaceChannelName(run.workspace.slug);
+        await pusherServer.trigger(
+          channelName,
+          PUSHER_EVENTS.STAKWORK_RUN_DECISION,
+          {
+            runId: run.id,
+            type: run.type,
+            featureId: run.featureId,
+            decision: StakworkRunDecision.ACCEPTED,
+            timestamp: new Date(),
+          }
+        );
+      } catch (pusherError) {
+        console.error("Error broadcasting auto-accept decision to Pusher:", pusherError);
+      }
+    } catch (error) {
+      console.error(`Auto-accept failed for run ${run.id}:`, error);
+      // Don't throw - the webhook result was already saved successfully
+    }
   }
 
   return {
@@ -505,6 +548,102 @@ export async function getStakworkRuns(
     limit: query.limit,
     offset: query.offset,
   };
+}
+
+/**
+ * Apply the accepted result to the appropriate feature field based on run type.
+ * Shared between manual accept (updateStakworkRunDecision) and auto-accept (webhook).
+ */
+async function applyAcceptResult(
+  run: { type: StakworkRunType; featureId: string; result: string; workspaceId: string },
+  userId: string
+) {
+  switch (run.type) {
+    case StakworkRunType.ARCHITECTURE:
+      await db.feature.update({
+        where: { id: run.featureId },
+        data: { architecture: run.result },
+      });
+      break;
+
+    case StakworkRunType.TASK_GENERATION: {
+      const tasksData = JSON.parse(run.result);
+
+      const featureWithPhase = await db.feature.findUnique({
+        where: { id: run.featureId },
+        include: {
+          phases: { orderBy: { order: "asc" }, take: 1 },
+          workspace: { select: { id: true } },
+        },
+      });
+
+      if (!featureWithPhase) {
+        throw new Error("Feature not found");
+      }
+
+      const defaultPhase = featureWithPhase.phases[0];
+      if (!defaultPhase) {
+        throw new Error("No phase found for feature");
+      }
+
+      const tasks = tasksData.phases[0]?.tasks || [];
+      const tempIdToRealId: Record<string, string> = {};
+
+      for (const task of tasks) {
+        const dependsOnTaskIds = (task.dependsOn || [])
+          .map((tempId: string) => tempIdToRealId[tempId])
+          .filter(Boolean);
+
+        const createdTask = await db.task.create({
+          data: {
+            title: task.title,
+            description: task.description || null,
+            priority: task.priority,
+            phaseId: defaultPhase.id,
+            featureId: run.featureId,
+            workspaceId: featureWithPhase.workspace.id,
+            status: "TODO",
+            dependsOnTaskIds,
+            createdById: userId,
+            updatedById: userId,
+          },
+        });
+
+        tempIdToRealId[task.tempId] = createdTask.id;
+      }
+      break;
+    }
+
+    case StakworkRunType.REQUIREMENTS:
+      await db.feature.update({
+        where: { id: run.featureId },
+        data: { requirements: run.result },
+      });
+      break;
+
+    case StakworkRunType.USER_STORIES: {
+      const parsedStories = JSON.parse(run.result);
+
+      if (!Array.isArray(parsedStories)) {
+        throw new Error("Result is not an array");
+      }
+
+      for (const storyData of parsedStories) {
+        if (!storyData.title || typeof storyData.title !== "string") {
+          console.warn("Skipping invalid story data:", storyData);
+          continue;
+        }
+
+        await createUserStory(run.featureId, userId, {
+          title: storyData.title,
+        });
+      }
+      break;
+    }
+
+    default:
+      console.warn(`Unhandled StakworkRunType: ${run.type}`);
+  }
 }
 
 /**
@@ -600,13 +739,14 @@ export async function updateStakworkRunDecision(
       updatedRun.type
     );
 
-    // Create new run with history
+    // Create new run with history (preserve autoAccept from the original run)
     const newRun = await createStakworkRun(
       {
         type: updatedRun.type,
         workspaceId: updatedRun.workspaceId,
         featureId: updatedRun.featureId,
         history: previousHistory,
+        autoAccept: updatedRun.autoAccept,
       },
       userId
     );
@@ -630,126 +770,21 @@ export async function updateStakworkRunDecision(
     }
   }
 
-  // If ACCEPTED with result, update the appropriate feature field based on type
+  // If ACCEPTED with result, apply to the feature
   if (
     input.decision === StakworkRunDecision.ACCEPTED &&
     updatedRun.featureId &&
     updatedRun.result
   ) {
-    switch (updatedRun.type) {
-      case StakworkRunType.ARCHITECTURE:
-        await db.feature.update({
-          where: { id: updatedRun.featureId },
-          data: {
-            architecture: updatedRun.result,
-          },
-        });
-        break;
-
-      case StakworkRunType.TASK_GENERATION:
-        // Parse the result JSON (phasesTasksSchema format)
-        const tasksData = JSON.parse(updatedRun.result);
-
-        // Get feature and its first phase
-        const featureWithPhase = await db.feature.findUnique({
-          where: { id: updatedRun.featureId },
-          include: {
-            phases: {
-              orderBy: { order: 'asc' },
-              take: 1
-            },
-            workspace: {
-              select: { id: true }
-            }
-          }
-        });
-
-        if (!featureWithPhase) {
-          throw new Error("Feature not found");
-        }
-
-        const defaultPhase = featureWithPhase.phases[0];
-        if (!defaultPhase) {
-          throw new Error("No phase found for feature");
-        }
-
-        // Extract tasks from FIRST phase only (matches quick generation)
-        const tasks = tasksData.phases[0]?.tasks || [];
-
-        // Map tempId to real database ID for dependency handling
-        const tempIdToRealId: Record<string, string> = {};
-
-        // Create tasks sequentially to handle dependencies
-        for (const task of tasks) {
-          // Map tempId dependencies to real IDs
-          const dependsOnTaskIds = (task.dependsOn || [])
-            .map((tempId: string) => tempIdToRealId[tempId])
-            .filter(Boolean);
-
-          const createdTask = await db.task.create({
-            data: {
-              title: task.title,
-              description: task.description || null,
-              priority: task.priority,
-              phaseId: defaultPhase.id,
-              featureId: updatedRun.featureId,
-              workspaceId: featureWithPhase.workspace.id,
-              status: 'TODO',
-              dependsOnTaskIds,
-              createdById: userId,
-              updatedById: userId,
-            },
-          });
-
-          // Store mapping for next tasks' dependencies
-          tempIdToRealId[task.tempId] = createdTask.id;
-        }
-        break;
-
-      case StakworkRunType.REQUIREMENTS:
-        if (!updatedRun.result) {
-          throw new Error("No result found in run");
-        }
-
-        // Update feature.requirements field
-        await db.feature.update({
-          where: { id: updatedRun.featureId },
-          data: { requirements: updatedRun.result },
-        });
-        break;
-
-      case StakworkRunType.USER_STORIES:
-        if (!updatedRun.result) {
-          throw new Error("No result found in run");
-        }
-
-        try {
-          const parsedStories = JSON.parse(updatedRun.result);
-
-          if (!Array.isArray(parsedStories)) {
-            throw new Error("Result is not an array");
-          }
-
-          // Create user stories from the parsed result, maintaining order
-          for (const storyData of parsedStories) {
-            if (!storyData.title || typeof storyData.title !== "string") {
-              console.warn("Skipping invalid story data:", storyData);
-              continue;
-            }
-
-            await createUserStory(updatedRun.featureId, userId, {
-              title: storyData.title,
-            });
-          }
-        } catch (error) {
-          console.error("Failed to parse or create user stories:", error);
-          throw new Error("Failed to process user stories result");
-        }
-        break;
-
-      default:
-        console.warn(`Unhandled StakworkRunType: ${updatedRun.type}`);
-    }
+    await applyAcceptResult(
+      {
+        type: updatedRun.type,
+        featureId: updatedRun.featureId,
+        result: updatedRun.result,
+        workspaceId: updatedRun.workspaceId,
+      },
+      userId
+    );
   }
 
   // Broadcast decision via Pusher
