@@ -65,7 +65,7 @@ describe("Workspace CRUD Operations", () => {
     });
 
     test("should throw error for invalid slug", async () => {
-      const invalidData = { ...mockWorkspaceData, slug: "invalid_slug" };
+      const invalidData = { ...mockWorkspaceData, slug: "-invalid-slug" };
 
       await expect(createWorkspace(invalidData)).rejects.toThrow(
         WORKSPACE_ERRORS.SLUG_INVALID_FORMAT

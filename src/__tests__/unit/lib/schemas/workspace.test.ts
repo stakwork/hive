@@ -104,10 +104,11 @@ describe("updateWorkspaceSchema", () => {
     test("should reject slugs with invalid format", () => {
       const invalidSlugs = [
         "My Workspace", // spaces
-        "workspace_name", // underscores
         "workspace.", // ends with special char
         "-workspace", // starts with hyphen
         "workspace-", // ends with hyphen
+        "_workspace", // starts with underscore
+        "workspace_", // ends with underscore
         "UPPERCASE", // uppercase
         "work@space", // special characters
         "", // empty
@@ -122,6 +123,24 @@ describe("updateWorkspaceSchema", () => {
           description: "",
         });
         expect(result.success).toBe(false);
+      });
+    });
+
+    test("should accept slugs with underscores", () => {
+      const validSlugs = [
+        "workspace_name",
+        "senza_android",
+        "my_workspace_123",
+        "test_workspace",
+      ];
+
+      validSlugs.forEach(slug => {
+        const result = updateWorkspaceSchema.safeParse({
+          name: "Test",
+          slug,
+          description: "",
+        });
+        expect(result.success).toBe(true);
       });
     });
 

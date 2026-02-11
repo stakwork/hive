@@ -209,11 +209,12 @@ describe("createWorkspace - Unit Tests", () => {
     test("should reject slugs with invalid characters", async () => {
       const invalidSlugs = [
         "My Workspace", // spaces
-        "workspace_name", // underscores
         "workspace.", // ends with special char
         "work@space", // special characters
         "UPPERCASE", // uppercase
         "workspace!", // exclamation mark
+        "_invalid", // starts with underscore
+        "invalid_", // ends with underscore
       ];
 
       for (const slug of invalidSlugs) {

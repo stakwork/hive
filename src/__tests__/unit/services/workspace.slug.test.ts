@@ -35,14 +35,16 @@ describe("Workspace Slug Validation", () => {
         isValid: false,
         error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
-      expect(validateWorkspaceSlug("invalid_underscore")).toEqual({
-        isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
-      });
       expect(validateWorkspaceSlug("Invalid-Caps")).toEqual({
         isValid: false,
         error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT,
       });
+    });
+
+    test("should accept slugs with underscores", () => {
+      expect(validateWorkspaceSlug("valid_underscore")).toEqual({ isValid: true });
+      expect(validateWorkspaceSlug("senza_android")).toEqual({ isValid: true });
+      expect(validateWorkspaceSlug("my_workspace_123")).toEqual({ isValid: true });
     });
 
     test("should reject reserved slugs", () => {

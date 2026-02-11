@@ -111,6 +111,22 @@ describe("validateWorkspaceSlug", () => {
       });
     });
 
+    test("should reject slug starting with underscore", () => {
+      const result = validateWorkspaceSlug("_workspace");
+      expect(result).toEqual({
+        isValid: false,
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+      });
+    });
+
+    test("should reject slug ending with underscore", () => {
+      const result = validateWorkspaceSlug("workspace_");
+      expect(result).toEqual({
+        isValid: false,
+        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
+      });
+    });
+
     test("should reject slug with consecutive hyphens", () => {
       const result = validateWorkspaceSlug("work--space");
       expect(result).toEqual({
@@ -119,12 +135,19 @@ describe("validateWorkspaceSlug", () => {
       });
     });
 
-    test("should reject slug with underscores", () => {
+    test("should accept slug with underscores", () => {
       const result = validateWorkspaceSlug("work_space");
-      expect(result).toEqual({
-        isValid: false,
-        error: WORKSPACE_ERRORS.SLUG_INVALID_FORMAT
-      });
+      expect(result).toEqual({ isValid: true });
+    });
+
+    test("should accept slug with multiple underscores", () => {
+      const result = validateWorkspaceSlug("my_awesome_workspace");
+      expect(result).toEqual({ isValid: true });
+    });
+
+    test("should accept slug with mixed hyphens and underscores", () => {
+      const result = validateWorkspaceSlug("my-workspace_123");
+      expect(result).toEqual({ isValid: true });
     });
 
     test("should reject slug with special characters", () => {
