@@ -138,6 +138,7 @@ export async function GET(
           ...artifact,
           content: artifact.content as unknown,
         })) as Artifact[],
+        attachments: msg.attachments || [],
       } as ChatMessage;
     });
 
