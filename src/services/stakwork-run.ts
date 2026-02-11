@@ -282,6 +282,9 @@ export async function createStakworkRun(
         existingTasks: featureContext.tasksText,
       }),
 
+      // Auto-accept flag
+      autoAccept: input.autoAccept ?? false,
+
       // Allow params override
       ...(input.params || {}),
 
