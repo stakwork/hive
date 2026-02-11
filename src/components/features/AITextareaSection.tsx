@@ -35,10 +35,13 @@ interface AITextareaSectionProps {
   saved: boolean;
   onChange: (value: string) => void;
   onBlur: (value: string | null) => void;
+  onFocus?: () => void;
   rows?: number;
   className?: string;
   initialDiagramUrl?: string | null;
   onDecisionMade?: () => void;
+  isListening?: boolean;
+  transcript?: string;
 }
 
 /**
@@ -60,10 +63,13 @@ export function AITextareaSection({
   saved,
   onChange,
   onBlur,
+  onFocus,
   rows = 8,
   className,
   initialDiagramUrl = null,
   onDecisionMade,
+  isListening = false,
+  transcript = "",
 }: AITextareaSectionProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [initiatingDeepThink, setInitiatingDeepThink] = useState(false);
@@ -325,10 +331,11 @@ export function AITextareaSection({
                 <Textarea
                   ref={textareaRef}
                   id={id}
-                  placeholder={`Type your ${label.toLowerCase()} here...`}
+                  placeholder={isListening && transcript ? `${transcript}...` : isListening ? "Listening..." : `Type your ${label.toLowerCase()} here...`}
                   value={value || ""}
                   onChange={(e) => onChange(e.target.value)}
                   onBlur={(e) => onBlur(e.target.value || null)}
+                  onFocus={onFocus}
                   rows={rows}
                   className={cn("resize-y font-mono text-sm min-h-[200px] pr-12", className)}
                   isDragging={isDragging}

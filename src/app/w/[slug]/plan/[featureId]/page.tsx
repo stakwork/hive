@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2, Bot } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2, Bot, Mic } from "lucide-react";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import type { StakworkRunType } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { StatusPopover } from "@/components/ui/status-popover";
 import { FeaturePriorityPopover } from "@/components/ui/feature-priority-popover";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AssigneeCombobox } from "@/components/features/AssigneeCombobox";
 import { UserStoriesSection } from "@/components/features/UserStoriesSection";
 import { AutoSaveTextarea } from "@/components/features/AutoSaveTextarea";
@@ -48,6 +50,15 @@ export default function FeatureDetailPage() {
   const [newStoryTitle, setNewStoryTitle] = useState("");
   const [creatingStory, setCreatingStory] = useState(false);
   const storyFocusRef = useRef(false);
+
+  // Speech recognition state
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const ctrlHoldTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isCtrlHoldingRef = useRef(false);
+  const fieldForTranscriptRef = useRef<string | null>(null);
+  const wasListeningRef = useRef(false);
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
+    useSpeechRecognition();
 
   // Pending StakworkRuns state (for tab indicators)
   const [pendingRunTypes, setPendingRunTypes] = useState<Set<StakworkRunType>>(new Set());
@@ -108,6 +119,83 @@ export default function FeatureDetailPage() {
   useEffect(() => {
     fetchPendingRuns();
   }, [fetchPendingRuns]);
+
+  // Handle Ctrl key hold for speech recognition (only when a field is focused)
+  useEffect(() => {
+    if (!isSupported || !focusedField) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control" && !e.repeat && !isCtrlHoldingRef.current) {
+        ctrlHoldTimerRef.current = setTimeout(() => {
+          isCtrlHoldingRef.current = true;
+          startListening();
+        }, 500);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") {
+        if (ctrlHoldTimerRef.current) {
+          clearTimeout(ctrlHoldTimerRef.current);
+          ctrlHoldTimerRef.current = null;
+        }
+        if (isCtrlHoldingRef.current) {
+          isCtrlHoldingRef.current = false;
+          stopListening();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      if (ctrlHoldTimerRef.current) clearTimeout(ctrlHoldTimerRef.current);
+    };
+  }, [isSupported, focusedField, startListening, stopListening]);
+
+  // Track which field we're recording for, and apply transcript when listening stops
+  useEffect(() => {
+    // When listening starts, capture which field we're recording for
+    if (isListening && !wasListeningRef.current) {
+      fieldForTranscriptRef.current = focusedField;
+      wasListeningRef.current = true;
+    }
+    
+    // When listening stops, apply the transcript to the field
+    if (!isListening && wasListeningRef.current) {
+      wasListeningRef.current = false;
+      const targetField = fieldForTranscriptRef.current;
+      
+      if (transcript && targetField) {
+        if (targetField === "newStory") {
+          // For user stories input, append to the current value
+          const currentValue = newStoryTitle;
+          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
+          setNewStoryTitle(newValue);
+        } else if (feature) {
+          const currentValue = 
+            targetField === "brief" ? (feature.brief || "") :
+            targetField === "requirements" ? (feature.requirements || "") :
+            targetField === "architecture" ? (feature.architecture || "") : "";
+          
+          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
+          
+          if (targetField === "brief") {
+            updateFeature({ brief: newValue });
+          } else if (targetField === "requirements") {
+            updateFeature({ requirements: newValue });
+          } else if (targetField === "architecture") {
+            updateFeature({ architecture: newValue });
+          }
+        }
+      }
+      
+      resetTranscript();
+      fieldForTranscriptRef.current = null;
+    }
+  }, [isListening, transcript, focusedField, feature, updateFeature, resetTranscript, newStoryTitle, setNewStoryTitle]);
 
   const handleSave = useCallback(
     async (updates: Partial<FeatureDetail> | { assigneeId: string | null }) => {
@@ -513,6 +601,23 @@ export default function FeatureDetailPage() {
                     ))}
                   </TabsList>
 
+                  {/* Speech Recognition Indicator */}
+                  {isSupported && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className={`flex items-center gap-1.5 text-xs ${isListening ? "text-foreground" : "text-muted-foreground"}`}>
+                            <Mic className={`h-4 w-4 ${isListening ? "animate-pulse" : ""}`} />
+                            {isListening && <span>Listening...</span>}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Hold Ctrl while focused on a text field to use voice input</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+
                   {/* Task Coordinator Progress */}
                   {showTcProgress && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -554,8 +659,11 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ brief: value })}
                 onBlur={(value) => handleFieldBlur("brief", value)}
+                onFocus={() => setFocusedField("brief")}
                 featureId={featureId}
                 enableImageUpload={true}
+                isListening={isListening && focusedField === "brief"}
+                transcript={focusedField === "brief" ? transcript : ""}
               />
 
               {/* User Personas - Always visible */}
@@ -581,6 +689,9 @@ export default function FeatureDetailPage() {
                 onReorderUserStories={handleReorderUserStories}
                 onAcceptGeneratedStory={handleAcceptGeneratedStory}
                 shouldFocusRef={storyFocusRef}
+                onFocus={() => setFocusedField("newStory")}
+                isListening={isListening && focusedField === "newStory"}
+                transcript={focusedField === "newStory" ? transcript : ""}
               />
 
               {/* Requirements - Always visible */}
@@ -595,7 +706,10 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ requirements: value })}
                 onBlur={(value) => handleFieldBlur("requirements", value)}
+                onFocus={() => setFocusedField("requirements")}
                 onDecisionMade={fetchPendingRuns}
+                isListening={isListening && focusedField === "requirements"}
+                transcript={focusedField === "requirements" ? transcript : ""}
               />
 
               {/* Navigation buttons */}
@@ -616,8 +730,11 @@ export default function FeatureDetailPage() {
                 saved={saved}
                 onChange={(value) => updateFeature({ architecture: value })}
                 onBlur={(value) => handleFieldBlur("architecture", value)}
+                onFocus={() => setFocusedField("architecture")}
                 initialDiagramUrl={feature.diagramUrl}
                 onDecisionMade={fetchPendingRuns}
+                isListening={isListening && focusedField === "architecture"}
+                transcript={focusedField === "architecture" ? transcript : ""}
               />
 
               {/* Whiteboard Section */}

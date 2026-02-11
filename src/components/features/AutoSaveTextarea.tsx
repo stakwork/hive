@@ -24,6 +24,8 @@ interface AutoSaveTextareaProps {
   onFocus?: () => void;
   featureId?: string;
   enableImageUpload?: boolean;
+  isListening?: boolean;
+  transcript?: string;
 }
 
 export function AutoSaveTextarea({
@@ -42,6 +44,8 @@ export function AutoSaveTextarea({
   onFocus,
   featureId,
   enableImageUpload = false,
+  isListening = false,
+  transcript = "",
 }: AutoSaveTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -84,7 +88,7 @@ export function AutoSaveTextarea({
       <Textarea
         ref={textareaRef}
         id={id}
-        placeholder={placeholder || `Type your ${label.toLowerCase()} here...`}
+        placeholder={isListening && transcript ? `${transcript}...` : isListening ? "Listening..." : (placeholder || `Type your ${label.toLowerCase()} here...`)}
         value={value || ""}
         onChange={(e) => onChange(e.target.value)}
         onBlur={(e) => onBlur(e.target.value || null)}
