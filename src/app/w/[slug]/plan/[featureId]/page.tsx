@@ -155,48 +155,6 @@ export default function FeatureDetailPage() {
     };
   }, [isSupported, focusedField, startListening, stopListening]);
 
-  // Track which field we're recording for, and apply transcript when listening stops
-  useEffect(() => {
-    // When listening starts, capture which field we're recording for
-    if (isListening && !wasListeningRef.current) {
-      fieldForTranscriptRef.current = focusedField;
-      wasListeningRef.current = true;
-    }
-    
-    // When listening stops, apply the transcript to the field
-    if (!isListening && wasListeningRef.current) {
-      wasListeningRef.current = false;
-      const targetField = fieldForTranscriptRef.current;
-      
-      if (transcript && targetField) {
-        if (targetField === "newStory") {
-          // For user stories input, append to the current value
-          const currentValue = newStoryTitle;
-          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
-          setNewStoryTitle(newValue);
-        } else if (feature) {
-          const currentValue = 
-            targetField === "brief" ? (feature.brief || "") :
-            targetField === "requirements" ? (feature.requirements || "") :
-            targetField === "architecture" ? (feature.architecture || "") : "";
-          
-          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
-          
-          if (targetField === "brief") {
-            updateFeature({ brief: newValue });
-          } else if (targetField === "requirements") {
-            updateFeature({ requirements: newValue });
-          } else if (targetField === "architecture") {
-            updateFeature({ architecture: newValue });
-          }
-        }
-      }
-      
-      resetTranscript();
-      fieldForTranscriptRef.current = null;
-    }
-  }, [isListening, transcript, focusedField, feature, updateFeature, resetTranscript, newStoryTitle, setNewStoryTitle]);
-
   const handleSave = useCallback(
     async (updates: Partial<FeatureDetail> | { assigneeId: string | null }) => {
       const response = await fetch(`/api/features/${featureId}`, {
@@ -223,6 +181,52 @@ export default function FeatureDetailPage() {
     data: feature,
     onSave: handleSave,
   });
+
+  // Track which field we're recording for, and apply transcript when listening stops
+  useEffect(() => {
+    // When listening starts, capture which field we're recording for
+    if (isListening && !wasListeningRef.current) {
+      fieldForTranscriptRef.current = focusedField;
+      wasListeningRef.current = true;
+    }
+    
+    // When listening stops, apply the transcript to the field
+    if (!isListening && wasListeningRef.current) {
+      wasListeningRef.current = false;
+      const targetField = fieldForTranscriptRef.current;
+      
+      if (transcript && targetField) {
+        if (targetField === "newStory") {
+          // For user stories input, append to the current value (no auto-save needed)
+          const currentValue = newStoryTitle;
+          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
+          setNewStoryTitle(newValue);
+        } else if (feature) {
+          const currentValue = 
+            targetField === "brief" ? (feature.brief || "") :
+            targetField === "requirements" ? (feature.requirements || "") :
+            targetField === "architecture" ? (feature.architecture || "") : "";
+          
+          const newValue = currentValue ? `${currentValue} ${transcript}` : transcript;
+          
+          // Update local state and trigger auto-save
+          if (targetField === "brief") {
+            updateFeature({ brief: newValue });
+            handleFieldBlur("brief", newValue);
+          } else if (targetField === "requirements") {
+            updateFeature({ requirements: newValue });
+            handleFieldBlur("requirements", newValue);
+          } else if (targetField === "architecture") {
+            updateFeature({ architecture: newValue });
+            handleFieldBlur("architecture", newValue);
+          }
+        }
+      }
+      
+      resetTranscript();
+      fieldForTranscriptRef.current = null;
+    }
+  }, [isListening, transcript, focusedField, feature, updateFeature, resetTranscript, newStoryTitle, setNewStoryTitle, handleFieldBlur]);
 
   const handleUpdateStatus = async (status: FeatureDetail["status"]) => {
     await handleSave({ status });
