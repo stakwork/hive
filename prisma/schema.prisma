@@ -1105,6 +1105,7 @@ model StakworkRun {
   dataType    String         @default("string") @map("data_type") // "string", "json", "number", etc.
   feedback    String?        // User feedback on result
   decision    StakworkRunDecision? // User decision on result
+  autoAccept  Boolean  @default(false) @map("auto_accept")
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
