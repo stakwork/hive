@@ -120,6 +120,21 @@ export default function FeatureDetailPage() {
     fetchPendingRuns();
   }, [fetchPendingRuns]);
 
+  // Clear focused field when clicking outside text inputs
+  useEffect(() => {
+    const handleFocusOut = (e: FocusEvent) => {
+      // Check if the new focus target is a text input
+      const relatedTarget = e.relatedTarget as HTMLElement | null;
+      const isTextInput = relatedTarget?.tagName === "TEXTAREA" || relatedTarget?.tagName === "INPUT";
+      if (!isTextInput) {
+        setFocusedField(null);
+      }
+    };
+
+    document.addEventListener("focusout", handleFocusOut);
+    return () => document.removeEventListener("focusout", handleFocusOut);
+  }, []);
+
   // Handle Ctrl key hold for speech recognition (only when a field is focused)
   useEffect(() => {
     if (!isSupported || !focusedField) return;
@@ -152,6 +167,11 @@ export default function FeatureDetailPage() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       if (ctrlHoldTimerRef.current) clearTimeout(ctrlHoldTimerRef.current);
+      // Stop listening if component unmounts or focusedField changes while recording
+      if (isCtrlHoldingRef.current) {
+        isCtrlHoldingRef.current = false;
+        stopListening();
+      }
     };
   }, [isSupported, focusedField, startListening, stopListening]);
 
