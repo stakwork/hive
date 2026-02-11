@@ -31,7 +31,8 @@ export type EncryptableField =
   | "agentPassword"
   | "agentWebhookSecret"
   | "vercelApiToken"
-  | "vercelWebhookSecret";
+  | "vercelWebhookSecret"
+  | "sphinxBotSecret";
 
 export interface EncryptionError extends Error {
   code: "ENCRYPTION_FAILED" | "DECRYPTION_FAILED" | "INVALID_KEY" | "INVALID_DATA";

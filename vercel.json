@@ -22,6 +22,10 @@
     {
       "path": "/api/cron/pr-monitor",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/sphinx-summary",
+      "schedule": "0 1 * * *"
     }
   ]
 }
