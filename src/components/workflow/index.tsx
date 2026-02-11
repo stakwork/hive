@@ -15,6 +15,7 @@ declare global {
 
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   BackgroundVariant,
   useNodesState,
@@ -68,7 +69,7 @@ interface WorkflowAppProps {
   };
 }
 
-export default function App(workflowApp: WorkflowAppProps) {
+function WorkflowApp(workflowApp: WorkflowAppProps) {
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     title: string;
@@ -1313,5 +1314,14 @@ export default function App(workflowApp: WorkflowAppProps) {
         variant={confirmDialog.variant}
       />
     </div>
+  );
+}
+
+// Wrap with ReactFlowProvider to fix zustand provider error
+export default function App(workflowApp: WorkflowAppProps) {
+  return (
+    <ReactFlowProvider>
+      <WorkflowApp {...workflowApp} />
+    </ReactFlowProvider>
   );
 }

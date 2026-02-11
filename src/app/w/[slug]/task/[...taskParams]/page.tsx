@@ -592,7 +592,7 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean) => {
+  const handleStart = async (msg: string, model?: ModelName, autoMerge?: boolean, images?: File[]) => {
     if (isLoading) return; // Prevent duplicate sends
     setIsLoading(true);
 
@@ -635,6 +635,56 @@ export default function TaskChatPage() {
           setTaskTitle(msg); // Use the initial message as title fallback
         }
 
+        // Upload images to S3 if provided
+        let attachments: Array<{path: string, filename: string, mimeType: string, size: number}> | undefined;
+        if (images && images.length > 0) {
+          try {
+            attachments = [];
+            for (const image of images) {
+              // Request presigned URL
+              const presignedResponse = await fetch("/api/upload/presigned-url", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  taskId: newTaskId,
+                  filename: image.name,
+                  contentType: image.type,
+                  size: image.size,
+                }),
+              });
+
+              if (!presignedResponse.ok) {
+                const error = await presignedResponse.json();
+                throw new Error(error.error || "Failed to get presigned URL");
+              }
+
+              const { presignedUrl, s3Path } = await presignedResponse.json();
+
+              // Upload to S3
+              const uploadResponse = await fetch(presignedUrl, {
+                method: "PUT",
+                headers: { "Content-Type": image.type },
+                body: image,
+              });
+
+              if (!uploadResponse.ok) {
+                throw new Error("Failed to upload image to S3");
+              }
+
+              attachments.push({
+                path: s3Path,
+                filename: image.name,
+                mimeType: image.type,
+                size: image.size,
+              });
+            }
+          } catch (uploadError) {
+            console.error("Error uploading images:", uploadError);
+            toast.error("Failed to upload one or more images");
+            // Continue with task creation even if image upload fails
+          }
+        }
+
         const newUrl = `/w/${slug}/task/${newTaskId}`;
         // this updates the URL WITHOUT reloading the page
         window.history.replaceState({}, "", newUrl);
@@ -645,10 +695,11 @@ export default function TaskChatPage() {
           await sendMessage(msg, {
             taskId: newTaskId,
             onPodReady: () => setStarted(true),
+            attachments,
           });
         } else {
           setStarted(true);
-          await sendMessage(msg, { taskId: newTaskId });
+          await sendMessage(msg, { taskId: newTaskId, attachments });
         }
       } else {
         setStarted(true);
@@ -661,9 +712,9 @@ export default function TaskChatPage() {
     }
   };
 
-  const handleSend = async (message: string) => {
-    // Allow sending if we have either text or a pending debug/step attachment
-    if (!message.trim() && !pendingDebugAttachment && !selectedStep) return;
+  const handleSend = async (message: string, attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>) => {
+    // Allow sending if we have either text, attachments, or a pending debug/step attachment
+    if (!message.trim() && !attachments?.length && !pendingDebugAttachment && !selectedStep) return;
     if (isLoading) return; // Prevent duplicate sends
 
     // Handle workflow_editor mode - always use workflow editor endpoint
@@ -747,12 +798,13 @@ export default function TaskChatPage() {
       return;
     }
 
-    // For artifact-only messages, provide a default message
-    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : "");
+    // For artifact-only or attachment-only messages, provide a default message
+    const messageText = message.trim() || (pendingDebugAttachment ? "Debug analysis attached" : (attachments?.length ? "" : ""));
 
     await sendMessage(messageText, {
       ...(pendingDebugAttachment && { artifact: pendingDebugAttachment }),
       ...(chatWebhook && { webhook: chatWebhook }),
+      ...(attachments && { attachments }),
     });
     setPendingDebugAttachment(null); // Clear attachment after sending
   };
@@ -765,11 +817,24 @@ export default function TaskChatPage() {
         replyId?: string;
         webhook?: string;
         artifact?: Artifact;
+        attachments?: Array<{path: string, filename: string, mimeType: string, size: number}>;
         onPodReady?: () => void; // Called after pod is claimed, before stream starts
       },
     ) => {
       // Create artifacts array starting with any existing artifact
       const artifacts: Artifact[] = options?.artifact ? [options.artifact] : [];
+
+      // Convert attachment metadata to Attachment objects for UI
+      const attachments = options?.attachments?.map(att => ({
+        id: generateUniqueId(),
+        messageId: '', // Will be set by backend
+        path: att.path,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
 
       const newMessage: ChatMessage = createChatMessage({
         id: generateUniqueId(),
@@ -778,6 +843,7 @@ export default function TaskChatPage() {
         status: ChatStatus.SENDING,
         replyId: options?.replyId,
         artifacts,
+        attachments,
         createdBy: session?.user
           ? {
               id: session.user.id,
@@ -919,6 +985,7 @@ export default function TaskChatPage() {
           ...(options?.replyId && { replyId: options.replyId }),
           ...(options?.webhook && { webhook: options.webhook }),
           ...(options?.artifact && { artifacts: [options.artifact] }),
+          ...(options?.attachments && { attachments: options.attachments }),
         };
         const response = await fetch("/api/chat/message", {
           method: "POST",
@@ -1241,16 +1308,17 @@ export default function TaskChatPage() {
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
-    <AnimatePresence mode="wait">
-      {!started ? (
-        <motion.div
-          key="start"
-          initial={{ opacity: 0, y: 60 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -60 }}
-          transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
-        >
-          <TaskStartInput
+    <>
+      <AnimatePresence mode="wait">
+        {!started ? (
+          <motion.div
+            key="start"
+            initial={{ opacity: 0, y: 60 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -60 }}
+            transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
+          >
+            <TaskStartInput
             onStart={handleStart}
             taskMode={taskMode}
             onModeChange={handleModeChange}
@@ -1426,6 +1494,7 @@ export default function TaskChatPage() {
                     showPreview={showPreview}
                     onTogglePreview={() => setShowPreview(!showPreview)}
                     taskMode={taskMode}
+                    taskId={currentTaskId}
                     podId={podId}
                     onReleasePod={handleReleasePod}
                     isReleasingPod={isReleasingPod}
@@ -1459,6 +1528,7 @@ export default function TaskChatPage() {
                       taskTitle={taskTitle}
                       workspaceSlug={slug}
                       taskMode={taskMode}
+                      taskId={currentTaskId}
                       podId={podId}
                       onReleasePod={handleReleasePod}
                       isReleasingPod={isReleasingPod}
@@ -1505,6 +1575,7 @@ export default function TaskChatPage() {
                 taskTitle={taskTitle}
                 workspaceSlug={slug}
                 taskMode={taskMode}
+                taskId={currentTaskId}
                 podId={podId}
                 onReleasePod={handleReleasePod}
                 isReleasingPod={isReleasingPod}
@@ -1518,29 +1589,30 @@ export default function TaskChatPage() {
           )}
         </motion.div>
       )}
-
-      {/* Commit Modal */}
-      <CommitModal
-        isOpen={showCommitModal}
-        onClose={() => setShowCommitModal(false)}
-        onConfirm={handleConfirmCommit}
-        initialCommitMessage={commitMessage}
-        initialBranchName={branchName}
-        isCommitting={isCommitting}
-      />
-
-      {/* Bounty Request Modal */}
-      {currentTaskId && taskTitle && effectiveWorkspaceId && (
-        <BountyRequestModal
-          isOpen={showBountyModal}
-          onClose={() => setShowBountyModal(false)}
-          sourceTaskId={currentTaskId}
-          sourceWorkspaceSlug={slug}
-          sourceWorkspaceId={effectiveWorkspaceId}
-          sourceTaskTitle={taskTitle}
-          sourceTaskDescription={taskDescription}
-        />
-      )}
     </AnimatePresence>
+
+    {/* Commit Modal */}
+    <CommitModal
+      isOpen={showCommitModal}
+      onClose={() => setShowCommitModal(false)}
+      onConfirm={handleConfirmCommit}
+      initialCommitMessage={commitMessage}
+      initialBranchName={branchName}
+      isCommitting={isCommitting}
+    />
+
+    {/* Bounty Request Modal */}
+    {currentTaskId && taskTitle && effectiveWorkspaceId && (
+      <BountyRequestModal
+        isOpen={showBountyModal}
+        onClose={() => setShowBountyModal(false)}
+        sourceTaskId={currentTaskId}
+        sourceWorkspaceSlug={slug}
+        sourceWorkspaceId={effectiveWorkspaceId}
+        sourceTaskTitle={taskTitle}
+        sourceTaskDescription={taskDescription}
+      />
+    )}
+    </>
   );
 }
