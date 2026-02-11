@@ -70,6 +70,10 @@ describe("updateWorkspaceSchema", () => {
         "a1",
         "workspace-with-many-hyphens",
         "123numbers",
+        "work_space",
+        "my_awesome_workspace",
+        "test_workspace_123",
+        "test-workspace_123",
       ];
 
       validSlugs.forEach(slug => {
@@ -104,10 +108,11 @@ describe("updateWorkspaceSchema", () => {
     test("should reject slugs with invalid format", () => {
       const invalidSlugs = [
         "My Workspace", // spaces
-        "workspace_name", // underscores
         "workspace.", // ends with special char
         "-workspace", // starts with hyphen
         "workspace-", // ends with hyphen
+        "_workspace", // starts with underscore
+        "workspace_", // ends with underscore
         "UPPERCASE", // uppercase
         "work@space", // special characters
         "", // empty
