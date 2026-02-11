@@ -3,6 +3,7 @@ import { VMConfigSection } from "@/components/pool-status";
 import { RerunIngest } from "@/components/RerunIngest";
 import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
 import { NodeTypeOrderSettings } from "@/components/settings/NodeTypeOrderSettings";
+import { SphinxIntegrationSettings } from "@/components/settings/SphinxIntegrationSettings";
 import { VercelIntegrationSettings } from "@/components/settings/VercelIntegrationSettings";
 import { PageHeader } from "@/components/ui/page-header";
 import { WorkspaceMembers } from "@/components/workspace/WorkspaceMembers";
@@ -50,6 +51,8 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
           <ApiKeysSettings />
 
           <VercelIntegrationSettings />
+
+          <SphinxIntegrationSettings />
 
           {workspace.userRole === "OWNER" && (
             <DeleteWorkspace workspaceSlug={workspace.slug} workspaceName={workspace.name} />
