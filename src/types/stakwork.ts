@@ -75,6 +75,7 @@ export const CreateStakworkRunSchema = z.object({
     content: z.string(),
   })).optional(),
   includeHistory: z.boolean().optional(),
+  autoAccept: z.boolean().optional(),
 });
 
 export const StakworkRunWebhookSchema = z.object({
