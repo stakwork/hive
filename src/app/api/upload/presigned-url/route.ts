@@ -12,6 +12,46 @@ const uploadRequestSchema = z.object({
   taskId: z.string().min(1, 'Task ID is required'),
 })
 
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    // Get s3Key from query params
+    const { searchParams } = new URL(request.url)
+    const s3Key = searchParams.get('s3Key')
+    
+    if (!s3Key) {
+      return NextResponse.json(
+        { error: 's3Key parameter is required' },
+        { status: 400 }
+      )
+    }
+
+    // Generate presigned download URL
+    const presignedUrl = await getS3Service().generatePresignedDownloadUrl(
+      s3Key,
+      300 // 5 minutes
+    )
+
+    // Redirect to the presigned URL
+    return NextResponse.redirect(presignedUrl)
+
+  } catch (error) {
+    console.error('Error generating presigned download URL:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
