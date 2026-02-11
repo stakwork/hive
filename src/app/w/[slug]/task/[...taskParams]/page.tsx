@@ -1308,16 +1308,17 @@ export default function TaskChatPage() {
     (taskMode !== "agent" && taskMode !== "workflow_editor" && !liveModeSendAllowed);
 
   return (
-    <AnimatePresence mode="wait">
-      {!started ? (
-        <motion.div
-          key="start"
-          initial={{ opacity: 0, y: 60 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -60 }}
-          transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
-        >
-          <TaskStartInput
+    <>
+      <AnimatePresence mode="wait">
+        {!started ? (
+          <motion.div
+            key="start"
+            initial={{ opacity: 0, y: 60 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -60 }}
+            transition={{ duration: 0.6, ease: [0.4, 0.0, 0.2, 1] }}
+          >
+            <TaskStartInput
             onStart={handleStart}
             taskMode={taskMode}
             onModeChange={handleModeChange}
@@ -1588,29 +1589,30 @@ export default function TaskChatPage() {
           )}
         </motion.div>
       )}
-
-      {/* Commit Modal */}
-      <CommitModal
-        isOpen={showCommitModal}
-        onClose={() => setShowCommitModal(false)}
-        onConfirm={handleConfirmCommit}
-        initialCommitMessage={commitMessage}
-        initialBranchName={branchName}
-        isCommitting={isCommitting}
-      />
-
-      {/* Bounty Request Modal */}
-      {currentTaskId && taskTitle && effectiveWorkspaceId && (
-        <BountyRequestModal
-          isOpen={showBountyModal}
-          onClose={() => setShowBountyModal(false)}
-          sourceTaskId={currentTaskId}
-          sourceWorkspaceSlug={slug}
-          sourceWorkspaceId={effectiveWorkspaceId}
-          sourceTaskTitle={taskTitle}
-          sourceTaskDescription={taskDescription}
-        />
-      )}
     </AnimatePresence>
+
+    {/* Commit Modal */}
+    <CommitModal
+      isOpen={showCommitModal}
+      onClose={() => setShowCommitModal(false)}
+      onConfirm={handleConfirmCommit}
+      initialCommitMessage={commitMessage}
+      initialBranchName={branchName}
+      isCommitting={isCommitting}
+    />
+
+    {/* Bounty Request Modal */}
+    {currentTaskId && taskTitle && effectiveWorkspaceId && (
+      <BountyRequestModal
+        isOpen={showBountyModal}
+        onClose={() => setShowBountyModal(false)}
+        sourceTaskId={currentTaskId}
+        sourceWorkspaceSlug={slug}
+        sourceWorkspaceId={effectiveWorkspaceId}
+        sourceTaskTitle={taskTitle}
+        sourceTaskDescription={taskDescription}
+      />
+    )}
+    </>
   );
 }
