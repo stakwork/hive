@@ -27,6 +27,7 @@ const encryptionService = EncryptionService.getInstance();
 // Retry limits to prevent infinite loops
 const PR_FIX_MAX_ATTEMPTS = parseInt(process.env.PR_FIX_MAX_ATTEMPTS || "6", 10);
 const PR_FIX_COOLDOWN_MS = parseInt(process.env.PR_FIX_COOLDOWN_MS || "600000", 10); // 10 minutes
+const PR_FIX_STALE_TIMEOUT_MS = parseInt(process.env.PR_FIX_STALE_TIMEOUT_MS || "1800000", 10); // 30 minutes - timeout for stuck 'in_progress' state
 
 // Simple console logging helpers
 const log = {
@@ -530,7 +531,14 @@ export async function findOpenPRArtifacts(limit: number = 50): Promise<
       -- Simple JSON checks (moderate)
       AND a.content->>'url' IS NOT NULL
       AND COALESCE(a.content->>'status', 'open') NOT IN ('DONE', 'CANCELLED')
-      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') NOT IN ('in_progress', 'gave_up')
+      -- Skip 'gave_up' permanently, but allow 'in_progress' to be re-checked after cooldown
+      -- This prevents PRs from getting stuck if a fix attempt never completes
+      AND COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'gave_up'
+      AND (
+        COALESCE(a.content->'progress'->'resolution'->>'status', '') != 'in_progress'
+        OR a.content->'progress'->'resolution'->>'lastAttemptAt' IS NULL
+        OR (a.content->'progress'->'resolution'->>'lastAttemptAt')::timestamptz < NOW() - INTERVAL '30 minutes'
+      )
       -- Cooldown logic: only "healthy" PRs (CI passed, no issues) have 1-hour cooldown
       -- All other states (checking, conflict, ci_failure) are re-checked every cron run
       AND (
@@ -739,6 +747,26 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
       const stateChanged = previousState !== result.state;
       const needsAgentFix = result.state === "conflict" || result.state === "ci_failure";
 
+      // Detect and reset stale 'in_progress' resolution status
+      // This happens when a fix attempt was triggered but never completed, and now the issue is resolved
+      const previousResolutionStatus = pr.progress?.resolution?.status;
+      const previousLastAttemptAt = pr.progress?.resolution?.lastAttemptAt;
+      const isStaleInProgress =
+        previousResolutionStatus === "in_progress" &&
+        previousLastAttemptAt &&
+        Date.now() - new Date(previousLastAttemptAt).getTime() > PR_FIX_STALE_TIMEOUT_MS;
+
+      if (isStaleInProgress) {
+        log.info("Detected stale in_progress resolution, resetting", {
+          taskId: pr.taskId,
+          prNumber: result.prNumber,
+          previousState,
+          currentState: result.state,
+          lastAttemptAt: previousLastAttemptAt,
+          staleTimeoutMs: PR_FIX_STALE_TIMEOUT_MS,
+        });
+      }
+
       // Handle out_of_date: try auto-merge first (no agent needed)
       if (result.state === "out_of_date") {
         stats.outOfDate++;
@@ -907,14 +935,17 @@ export async function monitorOpenPRs(maxPRs: number = 10): Promise<{
         }
 
         // If was problematic and is now healthy, mark as resolved
-        if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date") {
+        // Also clear stale in_progress resolutions
+        if (previousState === "conflict" || previousState === "ci_failure" || previousState === "out_of_date" || isStaleInProgress) {
           progress.resolution = {
             ...pr.progress?.resolution,
             status: "resolved",
             attempts: pr.progress?.resolution?.attempts || 0,
           };
-          await notifyPRStatusChange(pr.taskId, result.prNumber, "healthy");
-          stats.notified++;
+          if (stateChanged) {
+            await notifyPRStatusChange(pr.taskId, result.prNumber, "healthy");
+            stats.notified++;
+          }
         }
 
         await updatePRArtifactProgress(pr.artifactId, progress);
