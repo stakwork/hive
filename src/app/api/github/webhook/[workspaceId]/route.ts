@@ -393,6 +393,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 const updatedContent = {
                   ...artifact.content,
                   status: "DONE",
+                  merge_commit_sha: payload.pull_request.merge_commit_sha,
                 };
 
                 await db.artifact.update({
@@ -403,6 +404,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 console.log("[GithubWebhook] PR merged - artifact status updated to DONE", {
                   delivery,
                   artifactId: task.artifact_id,
+                  mergeCommitSha: payload.pull_request.merge_commit_sha,
                 });
               }
             } catch (artifactError) {
@@ -606,6 +608,261 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       // For pull_request events, we don't trigger sync, so return here
       return NextResponse.json({ success: true }, { status: 202 });
+    } else if (event === "deployment_status") {
+      // Handle deployment_status events for tracking staging/production deployments
+      console.log("[GithubWebhook] Processing deployment_status event", {
+        delivery,
+        workspaceId: repository.workspaceId,
+      });
+
+      try {
+        const deploymentPayload = payload as {
+          deployment_status: {
+            state: string;
+            target_url?: string;
+            environment_url?: string;
+          };
+          deployment: {
+            id: number;
+            sha: string;
+            environment: string;
+          };
+        };
+
+        const deploymentState = deploymentPayload.deployment_status.state;
+        const environment = deploymentPayload.deployment.environment.toLowerCase();
+        const commitSha = deploymentPayload.deployment.sha;
+        const githubDeploymentId = String(deploymentPayload.deployment.id);
+        const deploymentUrl = deploymentPayload.deployment_status.target_url || deploymentPayload.deployment_status.environment_url;
+
+        console.log("[GithubWebhook] Deployment status event details", {
+          delivery,
+          deploymentState,
+          environment,
+          commitSha,
+          githubDeploymentId,
+          hasUrl: !!deploymentUrl,
+        });
+
+        // Filter environments - only process staging and production
+        if (environment !== "staging" && environment !== "production") {
+          console.log("[GithubWebhook] Deployment environment not tracked, ignoring", {
+            delivery,
+            environment,
+            commitSha,
+          });
+          return NextResponse.json({ success: true }, { status: 202 });
+        }
+
+        // Map deployment status
+        let mappedStatus: "IN_PROGRESS" | "SUCCESS" | "FAILURE" | "ERROR";
+        if (deploymentState === "success") {
+          mappedStatus = "SUCCESS";
+        } else if (deploymentState === "failure") {
+          mappedStatus = "FAILURE";
+        } else if (deploymentState === "error") {
+          mappedStatus = "ERROR";
+        } else if (deploymentState === "pending" || deploymentState === "in_progress") {
+          mappedStatus = "IN_PROGRESS";
+        } else {
+          console.log("[GithubWebhook] Unknown deployment state, ignoring", {
+            delivery,
+            deploymentState,
+            commitSha,
+          });
+          return NextResponse.json({ success: true }, { status: 202 });
+        }
+
+        // Query tasks by commit SHA using raw SQL
+        const tasks = await db.$queryRaw<Array<{
+          task_id: string;
+          workspace_id: string;
+          repository_id: string | null;
+          artifact_id: string;
+          pr_url: string;
+        }>>`
+          SELECT t.id as task_id, t.workspace_id, t.repository_id,
+                 a.id as artifact_id, a.content->>'url' as pr_url
+          FROM artifacts a
+          JOIN chat_messages m ON a.message_id = m.id
+          JOIN tasks t ON m.task_id = t.id
+          WHERE a.type = 'PULL_REQUEST'
+            AND a.content->>'merge_commit_sha' = ${commitSha}
+            AND t.deleted = false
+            AND t.archived = false
+            AND t.workspace_id = ${repository.workspaceId}
+        `;
+
+        console.log("[GithubWebhook] Tasks found for commit SHA", {
+          delivery,
+          commitSha,
+          taskCount: tasks.length,
+        });
+
+        if (tasks.length === 0) {
+          console.log("[GithubWebhook] No matching tasks found for deployment", {
+            delivery,
+            commitSha,
+            environment,
+          });
+          return NextResponse.json({ success: true }, { status: 202 });
+        }
+
+        // Create Deployment records for all matching tasks
+        const deploymentEnvironment = environment === "staging" ? "STAGING" : "PRODUCTION";
+        const now = new Date();
+        const completedAt = mappedStatus === "SUCCESS" || mappedStatus === "FAILURE" || mappedStatus === "ERROR" ? now : null;
+
+        for (const task of tasks) {
+          try {
+            await db.deployment.create({
+              data: {
+                taskId: task.task_id,
+                repositoryId: task.repository_id,
+                commitSha: commitSha,
+                prUrl: task.pr_url,
+                environment: deploymentEnvironment,
+                status: mappedStatus,
+                deploymentUrl: deploymentUrl || null,
+                githubDeploymentId: githubDeploymentId,
+                startedAt: now,
+                completedAt: completedAt,
+              },
+            });
+
+            console.log("[GithubWebhook] Deployment record created", {
+              delivery,
+              taskId: task.task_id,
+              environment: deploymentEnvironment,
+              status: mappedStatus,
+            });
+          } catch (deploymentError) {
+            console.error("[GithubWebhook] Failed to create deployment record", {
+              delivery,
+              taskId: task.task_id,
+              error: deploymentError,
+            });
+            // Continue processing other tasks
+          }
+        }
+
+        // Update task deployment status only for SUCCESS
+        if (mappedStatus === "SUCCESS") {
+          const taskIds = tasks.map(t => t.task_id);
+          const updateData: {
+            deploymentStatus: string;
+            deployedToStagingAt?: Date;
+            deployedToProductionAt?: Date;
+          } = {
+            deploymentStatus: environment,
+          };
+
+          if (environment === "staging") {
+            updateData.deployedToStagingAt = now;
+          } else if (environment === "production") {
+            updateData.deployedToProductionAt = now;
+          }
+
+          try {
+            await db.task.updateMany({
+              where: {
+                id: { in: taskIds },
+              },
+              data: updateData,
+            });
+
+            console.log("[GithubWebhook] Task deployment status updated", {
+              delivery,
+              taskCount: taskIds.length,
+              environment,
+              deploymentStatus: environment,
+            });
+          } catch (updateError) {
+            console.error("[GithubWebhook] Failed to update task deployment status", {
+              delivery,
+              taskCount: taskIds.length,
+              error: updateError,
+            });
+          }
+
+          // Broadcast Pusher events for successful deployments
+          if (workspace?.slug) {
+            // Broadcast to workspace channel for task list updates
+            try {
+              const workspaceChannelName = getWorkspaceChannelName(workspace.slug);
+              for (const task of tasks) {
+                await pusherServer.trigger(workspaceChannelName, PUSHER_EVENTS.DEPLOYMENT_STATUS_CHANGE, {
+                  taskId: task.task_id,
+                  deploymentStatus: environment,
+                  environment: environment,
+                  deployedAt: now,
+                  timestamp: now,
+                });
+
+                console.log("[GithubWebhook] Workspace deployment event broadcasted", {
+                  delivery,
+                  taskId: task.task_id,
+                  channel: workspaceChannelName,
+                  environment,
+                });
+              }
+            } catch (pusherError) {
+              console.error("[GithubWebhook] Workspace deployment broadcast failed", {
+                delivery,
+                error: pusherError,
+              });
+            }
+
+            // Broadcast to individual task channels
+            for (const task of tasks) {
+              try {
+                const taskChannelName = getTaskChannelName(task.task_id);
+                await pusherServer.trigger(taskChannelName, PUSHER_EVENTS.DEPLOYMENT_STATUS_CHANGE, {
+                  taskId: task.task_id,
+                  deploymentStatus: environment,
+                  environment: environment,
+                  deployedAt: now,
+                  timestamp: now,
+                });
+
+                console.log("[GithubWebhook] Task deployment event broadcasted", {
+                  delivery,
+                  taskId: task.task_id,
+                  channel: taskChannelName,
+                  environment,
+                });
+              } catch (taskPusherError) {
+                console.error("[GithubWebhook] Task deployment broadcast failed", {
+                  delivery,
+                  taskId: task.task_id,
+                  error: taskPusherError,
+                });
+              }
+            }
+          }
+        } else {
+          console.log("[GithubWebhook] Deployment not successful, task status not updated", {
+            delivery,
+            mappedStatus,
+            environment,
+            taskCount: tasks.length,
+          });
+        }
+
+        return NextResponse.json({ 
+          success: true,
+          tasksProcessed: tasks.length,
+          environment,
+          status: mappedStatus,
+        }, { status: 202 });
+
+      } catch (error) {
+        console.error("[GithubWebhook] Error processing deployment_status event", {
+          delivery,
+          error,
+        });
+        return NextResponse.json({ success: true }, { status: 202 });
+      }
     } else {
       console.log("[GithubWebhook] Event type not handled, skipping", {
         delivery,
