@@ -580,6 +580,7 @@ export async function reorderTickets(
       phaseId: true,
       workspaceId: true,
       bountyCode: true,
+      autoMerge: true,
       dependsOnTaskIds: true,
       createdAt: true,
       updatedAt: true,

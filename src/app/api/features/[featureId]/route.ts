@@ -110,6 +110,8 @@ export async function GET(
                 updatedAt: true,
                 systemAssigneeType: true,
                 dependsOnTaskIds: true,
+                bountyCode: true,
+                autoMerge: true,
                 assignee: {
                   select: {
                     id: true,
@@ -144,6 +146,8 @@ export async function GET(
             updatedAt: true,
             systemAssigneeType: true,
             dependsOnTaskIds: true,
+            bountyCode: true,
+            autoMerge: true,
             assignee: {
               select: {
                 id: true,

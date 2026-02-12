@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
 import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import type { TicketListItem } from "@/types/roadmap";
@@ -46,6 +47,7 @@ function SortableTableRow({
   onPriorityUpdate,
   onAssigneeUpdate,
   onDependenciesUpdate,
+  onAutoMergeUpdate,
   onDelete,
   onStartTask,
 }: {
@@ -58,6 +60,7 @@ function SortableTableRow({
   onPriorityUpdate: (priority: Priority) => Promise<void>;
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
   onDependenciesUpdate: (dependencyIds: string[]) => Promise<void>;
+  onAutoMergeUpdate: (autoMerge: boolean) => Promise<void>;
   onDelete: () => void;
   onStartTask: () => void;
 }) {
@@ -181,6 +184,17 @@ function SortableTableRow({
           maxVisibleDependencies={maxVisibleDependencies}
         />
       </TableCell>
+      <TableCell className="w-[100px]">
+        <div 
+          onClick={(e) => e.stopPropagation()} 
+          className="flex items-center justify-center"
+        >
+          <Switch
+            checked={task.autoMerge ?? true}
+            onCheckedChange={onAutoMergeUpdate}
+          />
+        </div>
+      </TableCell>
       <TableCell className="w-[50px]">
         <ActionMenu actions={actionMenuItems} />
       </TableCell>
@@ -235,7 +249,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
     }
   };
 
-  const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[] }) => {
+  const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[]; autoMerge?: boolean }) => {
     const updatedTask = await updateTicket({ taskId, updates });
     if (updatedTask && onTaskUpdate) {
       onTaskUpdate(taskId, updatedTask);
@@ -287,6 +301,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
               <TableHead className="w-[120px]">Priority</TableHead>
               <TableHead className="w-[180px]">Assignee</TableHead>
               <TableHead className="w-[200px]">Dependencies</TableHead>
+              <TableHead className="w-[100px]">Auto-Merge</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -306,6 +321,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
                     onPriorityUpdate={async (priority) => handleUpdateTask(task.id, { priority })}
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTask(task.id, { assigneeId })}
                     onDependenciesUpdate={async (dependsOnTaskIds) => handleUpdateTask(task.id, { dependsOnTaskIds })}
+                    onAutoMergeUpdate={async (autoMerge) => handleUpdateTask(task.id, { autoMerge })}
                     onDelete={() => handleDeleteTask(task.id)}
                     onStartTask={() => handleStartTask(task)}
                   />
