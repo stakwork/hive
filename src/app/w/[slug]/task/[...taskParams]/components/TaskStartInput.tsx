@@ -60,6 +60,8 @@ interface TaskStartInputProps {
   onNewWorkflow?: () => void;
   isLoadingWorkflows?: boolean;
   workflowsError?: string | null;
+  // Project debugger props
+  onProjectSelect?: (projectId: string, projectData: any) => void;
   // Model selection for agent mode
   selectedModel?: ModelName;
   onModelChange?: (model: ModelName) => void;
@@ -78,6 +80,7 @@ export function TaskStartInput({
   onNewWorkflow,
   isLoadingWorkflows = false,
   workflowsError,
+  onProjectSelect,
   selectedModel = "sonnet",
   onModelChange,
 }: TaskStartInputProps) {
@@ -88,8 +91,16 @@ export function TaskStartInput({
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [autoMerge, setAutoMerge] = useState(true);
+  
+  // Project debugger state
+  const [projectIdValue, setProjectIdValue] = useState("");
+  const [projectNotFound, setProjectNotFound] = useState(false);
+  const [matchedProject, setMatchedProject] = useState<any>(null);
+  const [isValidatingProject, setIsValidatingProject] = useState(false);
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowInputRef = useRef<HTMLInputElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialValueRef = useRef("");
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } =
@@ -97,6 +108,7 @@ export function TaskStartInput({
 
   const devMode = isDevelopmentMode();
   const isWorkflowMode = taskMode === "workflow_editor";
+  const isProjectMode = taskMode === "project_debugger";
   const isPromptsMode = taskMode === "prompts";
   const isAgentMode = taskMode === "agent";
   
@@ -118,10 +130,12 @@ export function TaskStartInput({
   useEffect(() => {
     if (isWorkflowMode) {
       workflowInputRef.current?.focus();
+    } else if (isProjectMode) {
+      projectInputRef.current?.focus();
     } else {
       textareaRef.current?.focus();
     }
-  }, [isWorkflowMode]);
+  }, [isWorkflowMode, isProjectMode]);
 
   // Check if user typed "new" to create a new workflow
   const isNewWorkflow = workflowIdValue.trim().toLowerCase() === "new";
@@ -335,6 +349,10 @@ export function TaskStartInput({
       } else if (matchedWorkflow && onWorkflowSelect) {
         onWorkflowSelect(matchedWorkflow.properties.workflow_id, matchedWorkflow);
       }
+    } else if (isProjectMode) {
+      if (matchedProject && onProjectSelect) {
+        onProjectSelect(projectIdValue.trim(), matchedProject);
+      }
     } else {
       handleSubmit();
     }
@@ -365,9 +383,67 @@ export function TaskStartInput({
     setHasInteractedWithWorkflowInput(true);
   };
 
+  // Project debugger handlers
+  const validateProjectId = useCallback(async (projectId: string) => {
+    if (!projectId.trim()) {
+      setProjectNotFound(false);
+      setMatchedProject(null);
+      return;
+    }
+
+    setIsValidatingProject(true);
+    setProjectNotFound(false);
+
+    try {
+      const response = await fetch(`/api/stakwork/projects/${projectId}`);
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setMatchedProject(data.data);
+        setProjectNotFound(false);
+      } else {
+        setMatchedProject(null);
+        setProjectNotFound(true);
+      }
+    } catch (error) {
+      console.error("Error validating project:", error);
+      setMatchedProject(null);
+      setProjectNotFound(true);
+    } finally {
+      setIsValidatingProject(false);
+    }
+  }, []);
+
+  const handleProjectInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProjectIdValue(e.target.value);
+    setProjectNotFound(false);
+    setMatchedProject(null);
+  };
+
+  const handleProjectInputBlur = () => {
+    if (projectIdValue.trim()) {
+      validateProjectId(projectIdValue.trim());
+    }
+  };
+
+  const handleProjectKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (matchedProject && onProjectSelect) {
+        onProjectSelect(projectIdValue.trim(), matchedProject);
+      } else if (projectIdValue.trim()) {
+        validateProjectId(projectIdValue.trim());
+      }
+    }
+  };
+
+  const projectName = matchedProject?.project?.name || null;
+
   // Determine if submit button should be enabled
   const isSubmitDisabled = isWorkflowMode
     ? (!matchedWorkflow && !isNewWorkflow) || isLoadingWorkflows || isLoading
+    : isProjectMode
+    ? !matchedProject || isValidatingProject || isLoading
     : (!hasText && pendingImages.length === 0) || isLoading || noPodsAvailable;
 
   const getModeConfig = (mode: string) => {
@@ -378,6 +454,8 @@ export function TaskStartInput({
         return { icon: Bot, label: "Agent" };
       case "workflow_editor":
         return { icon: Workflow, label: "Workflow" };
+      case "project_debugger":
+        return { icon: Workflow, label: "Project" };
       case "prompts":
         return { icon: FileText, label: "Prompts" };
       case "test":
@@ -390,7 +468,7 @@ export function TaskStartInput({
   const modeConfig = getModeConfig(taskMode);
   const ModeIcon = modeConfig.icon;
 
-  const title = isWorkflowMode ? "Workflow Editor" : isPromptsMode ? "Manage Prompts" : "Build Something";
+  const title = isWorkflowMode ? "Workflow Editor" : isProjectMode ? "Project Debugger" : isPromptsMode ? "Manage Prompts" : "Build Something";
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[92vh] md:h-[97vh] bg-background">
@@ -436,6 +514,14 @@ export function TaskStartInput({
                     <div className="flex items-center gap-2">
                       <Workflow className="h-3.5 w-3.5" />
                       <span>Workflow</span>
+                    </div>
+                  </SelectItem>
+                )}
+                {(workspaceSlug === "stakwork" || devMode) && (
+                  <SelectItem value="project_debugger">
+                    <div className="flex items-center gap-2">
+                      <Workflow className="h-3.5 w-3.5" />
+                      <span>Project</span>
                     </div>
                   </SelectItem>
                 )}
@@ -576,6 +662,51 @@ export function TaskStartInput({
                     )}
                   </div>
                 </motion.div>
+              ) : isProjectMode ? (
+                <motion.div
+                  key="project"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="min-h-[180px] px-8 pt-8 pb-16"
+                >
+                  <Input
+                    ref={projectInputRef}
+                    type="text"
+                    placeholder="Enter project ID (e.g., 141652040)"
+                    value={projectIdValue}
+                    onChange={handleProjectInputChange}
+                    onBlur={handleProjectInputBlur}
+                    onKeyDown={handleProjectKeyDown}
+                    className="text-lg h-12 bg-transparent border-0 focus:ring-0 focus-visible:ring-0 shadow-none"
+                    autoFocus
+                    data-testid="project-id-input"
+                  />
+                  {/* Project status messages */}
+                  <div className="mt-4 min-h-[24px]">
+                    {isValidatingProject && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">Validating project...</span>
+                      </div>
+                    )}
+                    {projectNotFound && !isValidatingProject && (
+                      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-sm">Project not found</span>
+                      </div>
+                    )}
+                    {matchedProject && !isValidatingProject && (
+                      <div className="flex items-center gap-2 text-green-600 dark:text-green-500">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span className="text-sm">
+                          {projectName || `Project ${projectIdValue}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
               ) : (
                 <motion.div
                   key="task"
@@ -624,6 +755,14 @@ export function TaskStartInput({
                   <div className="flex items-center gap-2">
                     <Workflow className="h-3.5 w-3.5" />
                     <span>Workflow</span>
+                  </div>
+                </SelectItem>
+              )}
+              {(workspaceSlug === "stakwork" || devMode) && (
+                <SelectItem value="project_debugger">
+                  <div className="flex items-center gap-2">
+                    <Workflow className="h-3.5 w-3.5" />
+                    <span>Project</span>
                   </div>
                 </SelectItem>
               )}
