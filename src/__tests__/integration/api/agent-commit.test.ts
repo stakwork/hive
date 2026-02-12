@@ -177,7 +177,6 @@ describe("POST /api/agent/commit Integration Tests", () => {
           createdById: user.id,
           updatedById: user.id,
           podId: options.podId,
-          autoMerge: false, // Explicitly disable auto-merge for tests
         },
       });
 

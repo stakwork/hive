@@ -11,4 +11,3 @@ export {
   buildFixPrompt,
   type PRCheckResult,
 } from "./pr-monitor";
-export { enablePRAutoMerge, type EnableAutoMergeResult, type MergeMethod } from "./auto-merge";
