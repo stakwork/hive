@@ -707,25 +707,25 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
     const uniqueSuffix = Date.now();
     const pod1 = await db.pod.create({
       data: {
-        subdomain: `timeout-pod-1-${uniqueSuffix}`,
-        workspaceId: workspace.id,
+        podId: `timeout-pod-1-${uniqueSuffix}`,
+        swarmId: swarm.id,
         status: "RUNNING",
-        usageStatus: "AVAILABLE",
-        url: `https://timeout-pod-1-${uniqueSuffix}.example.com`,
+        usageStatus: "UNUSED",
         password: "test-password",
+        portMappings: [3000],
       },
     });
 
     const pod2 = await db.pod.create({
       data: {
-        subdomain: `timeout-pod-2-${uniqueSuffix}`,
-        workspaceId: workspace.id,
+        podId: `timeout-pod-2-${uniqueSuffix}`,
+        swarmId: swarm.id,
         status: "RUNNING",
         usageStatus: "USED",
-        url: `https://timeout-pod-2-${uniqueSuffix}.example.com`,
         password: "test-password-2",
-        markedBy: owner.id,
-        markedAt: new Date(),
+        portMappings: [3000],
+        usageStatusMarkedBy: owner.id,
+        usageStatusMarkedAt: new Date(),
       },
     });
 
@@ -762,7 +762,7 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
     
     expect(vm1).toBeDefined();
     expect(vm1?.state).toBe("running");
-    expect(vm1?.usage_status).toBe("available");
+    expect(vm1?.usage_status).toBe("unused");
     
     expect(vm2).toBeDefined();
     expect(vm2?.state).toBe("running");
