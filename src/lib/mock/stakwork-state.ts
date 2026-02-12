@@ -80,6 +80,24 @@ class MockStakworkStateManager {
     }, 3000);
   }
 
+  stopWorkflow(projectId: number): boolean {
+    const project = this.projects.get(projectId);
+    if (!project) return false;
+
+    // Clear any pending completion timer
+    if (project.completionTimer) {
+      clearTimeout(project.completionTimer);
+      delete project.completionTimer;
+    }
+
+    // Update state to stopped if currently running or pending
+    if (project.workflow_state === "running" || project.workflow_state === "pending") {
+      project.workflow_state = "complete";
+    }
+
+    return true;
+  }
+
   private async triggerWebhook(
     projectId: number,
     status: string
