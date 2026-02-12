@@ -40,6 +40,9 @@ interface UserStoriesSectionProps {
   onReorderUserStories: (stories: FeatureDetail["userStories"]) => void;
   onAcceptGeneratedStory: (title: string) => Promise<void>;
   shouldFocusRef: React.MutableRefObject<boolean>;
+  onFocus?: () => void;
+  isListening?: boolean;
+  transcript?: string;
 }
 
 export function UserStoriesSection({
@@ -54,6 +57,9 @@ export function UserStoriesSection({
   onReorderUserStories,
   onAcceptGeneratedStory,
   shouldFocusRef,
+  onFocus,
+  isListening = false,
+  transcript = "",
 }: UserStoriesSectionProps) {
   const storyInputRef = useRef<HTMLInputElement>(null);
   const [aiSuggestions, setAiSuggestions] = useState<GeneratedStory[]>([]);
@@ -165,7 +171,7 @@ export function UserStoriesSection({
         <div className="flex gap-2 p-4">
           <Input
             ref={storyInputRef}
-            placeholder="As a user, I want to..."
+            placeholder={isListening && transcript ? `${transcript}...` : isListening ? "Listening..." : "As a user, I want to..."}
             value={newStoryTitle}
             onChange={(e) => onNewStoryTitleChange(e.target.value)}
             onKeyDown={(e) => {
@@ -173,6 +179,7 @@ export function UserStoriesSection({
                 onAddUserStory();
               }
             }}
+            onFocus={onFocus}
             disabled={creatingStory}
             className="flex-1"
           />

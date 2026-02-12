@@ -226,51 +226,63 @@ export async function checkRepositoryAccess(
     }
     console.log("[REPO ACCESS] Successfully retrieved access token");
 
-    console.log(
-      "[REPO ACCESS] Making GitHub API request to:",
-      `${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories`,
-    );
+    const baseUrl = `${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories`;
+    console.log("[REPO ACCESS] Making GitHub API request to:", baseUrl);
 
-    // Fetch repositories accessible by this installation
-    const response = await fetch(`${serviceConfigs.github.baseURL}/user/installations/${installationId}/repositories`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${tokens.accessToken}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
+    // Fetch repositories with pagination (GitHub defaults to 30 per page, max is 100)
+    let page = 1;
+    let hasAccess = false;
+    let totalCount = 0;
+    let fetchedCount = 0;
 
-    console.log("[REPO ACCESS] GitHub API response status:", response.status);
+    while (true) {
+      const url = `${baseUrl}?per_page=100&page=${page}`;
+      console.log(`[REPO ACCESS] Fetching page ${page}:`, url);
 
-    if (!response.ok) {
-      console.error("[REPO ACCESS] Failed to fetch installation repositories:", response.status, response.statusText);
-      const errorText = await response.text();
-      console.error("[REPO ACCESS] Error response body:", errorText);
-      return false;
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${tokens.accessToken}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      });
+
+      console.log("[REPO ACCESS] GitHub API response status:", response.status);
+
+      if (!response.ok) {
+        console.error("[REPO ACCESS] Failed to fetch installation repositories:", response.status, response.statusText);
+        const errorText = await response.text();
+        console.error("[REPO ACCESS] Error response body:", errorText);
+        return false;
+      }
+
+      const data = await response.json();
+      const repositories = data.repositories || [];
+      totalCount = data.total_count || 0;
+      fetchedCount += repositories.length;
+
+      console.log(`[REPO ACCESS] Page ${page}: fetched ${repositories.length} repos (${fetchedCount}/${totalCount} total)`);
+
+      // Check if the target repository is in this page
+      hasAccess = repositories.some(
+        (repository: { full_name: string }) => repository.full_name.toLowerCase() === targetRepoFullName,
+      );
+
+      if (hasAccess) {
+        console.log(`[REPO ACCESS] Found repository ${targetRepoFullName} on page ${page}`);
+        break;
+      }
+
+      // Check if there are more pages
+      if (repositories.length === 0 || fetchedCount >= totalCount) {
+        console.log(`[REPO ACCESS] Finished pagination: checked ${fetchedCount} repositories across ${page} pages`);
+        break;
+      }
+
+      page++;
     }
 
-    const data = await response.json();
-    console.log("[REPO ACCESS] Successfully fetched data from GitHub API");
-
-    // Log the API response for debugging
-    console.log(`GitHub App Installation ${installationId} repositories:`, {
-      total_count: data.total_count,
-      repository_count: data.repositories?.length,
-      repositories:
-        data.repositories?.map((repo: { full_name: string; private: boolean; permissions: object }) => ({
-          full_name: repo.full_name,
-          private: repo.private,
-          permissions: repo.permissions,
-        })) || [],
-    });
-
     console.log(`Looking for repository: ${targetRepoFullName}`);
-
-    // Check if the target repository is in the list
-    const hasAccess = data.repositories?.some(
-      (repository: { full_name: string }) => repository.full_name.toLowerCase() === targetRepoFullName,
-    );
-
     console.log(`Repository access check result: ${hasAccess ? "GRANTED" : "DENIED"}`);
 
     console.log("[REPO ACCESS] Final result:", hasAccess ? "ACCESS GRANTED" : "ACCESS DENIED");
