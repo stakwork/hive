@@ -701,4 +701,72 @@ describe("GET /api/w/[slug]/pool/workspaces - Response Structure", () => {
     expect(data.data.workspaces[0].id).toBe("vm-1");
     expect(data.data.workspaces[4].id).toBe("vm-5");
   });
+
+  it("should return basic data when pool-manager times out after 5 seconds", async () => {
+    // Create pods in database for fallback data
+    const uniqueSuffix = Date.now();
+    const pod1 = await db.pod.create({
+      data: {
+        subdomain: `timeout-pod-1-${uniqueSuffix}`,
+        workspaceId: workspace.id,
+        status: "RUNNING",
+        usageStatus: "AVAILABLE",
+        url: `https://timeout-pod-1-${uniqueSuffix}.example.com`,
+        password: "test-password",
+      },
+    });
+
+    const pod2 = await db.pod.create({
+      data: {
+        subdomain: `timeout-pod-2-${uniqueSuffix}`,
+        workspaceId: workspace.id,
+        status: "RUNNING",
+        usageStatus: "USED",
+        url: `https://timeout-pod-2-${uniqueSuffix}.example.com`,
+        password: "test-password-2",
+        markedBy: owner.id,
+        markedAt: new Date(),
+      },
+    });
+
+    // Mock pool-manager to timeout (throw error after 5s)
+    vi.spyOn(PoolManagerService.prototype, "getPoolWorkspaces").mockRejectedValue(
+      new Error("Request timeout")
+    );
+
+    const request = createAuthenticatedGetRequest(
+      `/api/w/${workspace.slug}/pool/workspaces`,
+      owner
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ slug: workspace.slug }),
+    });
+
+    const data = await expectSuccess(response);
+    
+    // Should still succeed with warning
+    expect(data.success).toBe(true);
+    expect(data.warning).toBe("Real-time metrics unavailable");
+    
+    // Should return basic data from database
+    expect(data.data.workspaces).toHaveLength(2);
+    
+    // Verify resource_usage.available is false for all VMs
+    data.data.workspaces.forEach((vm) => {
+      expect(vm.resource_usage.available).toBe(false);
+    });
+
+    // Verify basic VM data is present
+    const vm1 = data.data.workspaces.find((vm) => vm.subdomain === `timeout-pod-1-${uniqueSuffix}`);
+    const vm2 = data.data.workspaces.find((vm) => vm.subdomain === `timeout-pod-2-${uniqueSuffix}`);
+    
+    expect(vm1).toBeDefined();
+    expect(vm1?.state).toBe("running");
+    expect(vm1?.usage_status).toBe("available");
+    
+    expect(vm2).toBeDefined();
+    expect(vm2?.state).toBe("running");
+    expect(vm2?.usage_status).toBe("used");
+  });
 });
+
