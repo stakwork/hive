@@ -168,6 +168,28 @@ export function AITextareaSection({
     }
   };
 
+  const handleStop = async () => {
+    if (!latestRun?.id) return;
+    
+    try {
+      const response = await fetch(`/api/stakwork/runs/${latestRun.id}/stop`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to stop run");
+      }
+
+      // Refetch to update the run status
+      await refetch();
+      toast.success("Deep research stopped");
+    } catch (error) {
+      console.error("Failed to stop run:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to stop run");
+    }
+  };
+
   const handleModeSwitch = (newMode: "edit" | "preview") => {
     if (mode === "edit" && newMode === "preview") {
       onBlur(value);
@@ -288,7 +310,11 @@ export function AITextareaSection({
       )}
 
       {latestRun?.status === "IN_PROGRESS" && latestRun.projectId ? (
-        <DeepResearchProgress projectId={latestRun.projectId} />
+        <DeepResearchProgress 
+          projectId={latestRun.projectId} 
+          runId={latestRun.id}
+          onStop={handleStop}
+        />
       ) : parsedContent?.type === "questions" ? (
         <ClarifyingQuestionsPreview
           questions={parsedContent.data.content}
