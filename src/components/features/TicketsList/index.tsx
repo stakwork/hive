@@ -85,6 +85,9 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
   // Bulk assign state
   const [assigningTasks, setAssigningTasks] = useState(false);
 
+  // Deep research stop state
+  const [isStopping, setIsStopping] = useState(false);
+
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -476,6 +479,32 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     }
   };
 
+  const handleStopDeepResearch = async () => {
+    if (!latestRun?.id || isStopping) return;
+    
+    try {
+      setIsStopping(true);
+      
+      const response = await fetch(`/api/stakwork/runs/${latestRun.id}/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to stop research");
+      }
+      
+      toast.success("Deep Research stopped");
+      await refetchStakworkRun(); // Refresh run state
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to stop research";
+      toast.error(message);
+    } finally {
+      setIsStopping(false);
+    }
+  };
+
   if (!defaultPhase) {
     return (
       <Empty>
@@ -489,7 +518,14 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
 
   // Show progress overlay while deep research is running
   if (latestRun?.status === "IN_PROGRESS" && latestRun.projectId) {
-    return <DeepResearchProgress projectId={latestRun.projectId} />;
+    return (
+      <DeepResearchProgress 
+        projectId={latestRun.projectId}
+        runId={latestRun.id}
+        onStop={handleStopDeepResearch}
+        isStopping={isStopping}
+      />
+    );
   }
 
   // Show generation preview if we have generated task content (JSON format)
