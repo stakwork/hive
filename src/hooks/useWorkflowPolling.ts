@@ -8,6 +8,7 @@ export interface WorkflowData {
     [key: string]: unknown;
   };
   status: string;
+  current_transition_completion?: number;
 }
 
 export const useWorkflowPolling = (

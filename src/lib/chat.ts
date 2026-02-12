@@ -91,6 +91,8 @@ export interface WorkflowContent {
   workflowName?: string; // Optional workflow name
   workflowRefId?: string; // Graph node ref_id
   workflowVersionId?: number; // Version ID to fetch updated spec from Stakwork
+  projectInfo?: any; // Project data for project debugger mode
+  debuggerProjectId?: string; // Project ID for debugger context
 }
 
 export interface PublishWorkflowContent {
