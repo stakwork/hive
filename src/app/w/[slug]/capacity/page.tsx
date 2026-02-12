@@ -6,8 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { usePoolStatus } from "@/hooks/usePoolStatus";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { AlertCircle, Server } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertCircle, Server, RefreshCw } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
 
 import { CapacityControls } from "@/components/capacity/CapacityControls";
 import { CapacityVisualization3D } from "@/components/capacity/CapacityVisualization3D";
@@ -23,11 +23,16 @@ export default function CapacityPage() {
   const [vmData, setVmData] = useState<VMData[]>([]);
   const [basicDataLoading, setBasicDataLoading] = useState(true);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>(() => {
     const saved = localStorage.getItem("capacity-view-preference");
     return saved === "3d" ? "3d" : "2d";
   });
+
+  // Track if metrics have been fetched to prevent infinite loop
+  const metricsFetched = useRef(false);
+  const metricsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleViewChange = (mode: '2d' | '3d') => {
     setViewMode(mode);
@@ -71,32 +76,65 @@ export default function CapacityPage() {
     }
   }, [slug, isPoolActive]);
 
+  // Reset metricsFetched ref when slug or pool status changes
+  useEffect(() => {
+    metricsFetched.current = false;
+    setMetricsError(false);
+  }, [slug, isPoolActive]);
+
   // Progressive loading: Step 2 - Fetch real-time metrics from pool-manager
   useEffect(() => {
     async function fetchMetrics() {
-      if (!slug || vmData.length === 0) {
+      // Prevent infinite loop - check if already fetched
+      if (!slug || vmData.length === 0 || metricsFetched.current) {
         return;
       }
 
       try {
         setMetricsLoading(true);
+        setMetricsError(false);
+
+        // Set 5-second timeout matching API timeout
+        metricsTimeoutRef.current = setTimeout(() => {
+          setMetricsError(true);
+          setMetricsLoading(false);
+        }, 5000);
+
         const response = await fetch(`/api/w/${slug}/pool/workspaces`);
+
+        // Clear timeout on response
+        if (metricsTimeoutRef.current) {
+          clearTimeout(metricsTimeoutRef.current);
+          metricsTimeoutRef.current = null;
+        }
 
         if (!response.ok) {
           console.warn("Failed to fetch real-time metrics");
+          setMetricsError(true);
           return;
         }
 
         const result = await response.json();
+
+        // Check for warning about unavailable metrics
+        if (result.warning) {
+          setMetricsError(true);
+        }
 
         if (result.success && result.data) {
           setVmData(result.data.workspaces || []);
         }
       } catch (err) {
         console.warn("Failed to load real-time metrics:", err);
-        // Don't set error - we already have basic data
+        setMetricsError(true);
+        // Clear timeout on error
+        if (metricsTimeoutRef.current) {
+          clearTimeout(metricsTimeoutRef.current);
+          metricsTimeoutRef.current = null;
+        }
       } finally {
         setMetricsLoading(false);
+        metricsFetched.current = true;
       }
     }
 
@@ -104,6 +142,57 @@ export default function CapacityPage() {
       fetchMetrics();
     }
   }, [slug, isPoolActive, basicDataLoading, vmData.length]);
+
+  // Manual refresh handler
+  const handleRefreshMetrics = async () => {
+    metricsFetched.current = false;
+    setMetricsError(false);
+    setMetricsLoading(true);
+    
+    try {
+      // Set 5-second timeout matching API timeout
+      metricsTimeoutRef.current = setTimeout(() => {
+        setMetricsError(true);
+        setMetricsLoading(false);
+      }, 5000);
+
+      const response = await fetch(`/api/w/${slug}/pool/workspaces`);
+
+      // Clear timeout on response
+      if (metricsTimeoutRef.current) {
+        clearTimeout(metricsTimeoutRef.current);
+        metricsTimeoutRef.current = null;
+      }
+
+      if (!response.ok) {
+        console.warn("Failed to fetch real-time metrics");
+        setMetricsError(true);
+        return;
+      }
+
+      const result = await response.json();
+
+      // Check for warning about unavailable metrics
+      if (result.warning) {
+        setMetricsError(true);
+      }
+
+      if (result.success && result.data) {
+        setVmData(result.data.workspaces || []);
+      }
+    } catch (err) {
+      console.warn("Failed to load real-time metrics:", err);
+      setMetricsError(true);
+      // Clear timeout on error
+      if (metricsTimeoutRef.current) {
+        clearTimeout(metricsTimeoutRef.current);
+        metricsTimeoutRef.current = null;
+      }
+    } finally {
+      setMetricsLoading(false);
+      metricsFetched.current = true;
+    }
+  };
 
   // Pool not complete - show banner
   if (workspace?.poolState !== "COMPLETE") {
@@ -165,6 +254,24 @@ export default function CapacityPage() {
             onViewModeChange={handleViewChange}
           />
 
+          {/* Metrics Error Banner with Retry Button */}
+          {metricsError && (
+            <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>Metrics unavailable</span>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={handleRefreshMetrics}
+                disabled={metricsLoading}
+                className="ml-auto"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${metricsLoading ? 'animate-spin' : ''}`} /> 
+                {metricsLoading ? 'Retrying...' : 'Retry'}
+              </Button>
+            </div>
+          )}
+
           {/* 3D View */}
           {viewMode === '3d' && (
             <CapacityVisualization3D vmData={vmData} />
@@ -172,7 +279,11 @@ export default function CapacityPage() {
 
           {/* 2D View */}
           {viewMode === '2d' && (
-            <VMGrid vms={vmData} />
+            <VMGrid 
+              vms={vmData} 
+              metricsLoading={metricsLoading}
+              metricsError={metricsError}
+            />
           )}
         </>
       )}

@@ -10,10 +10,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import React, { useState } from "react";
 
 interface VMGridProps {
   vms: VMData[];
+  metricsLoading?: boolean;
+  metricsError?: boolean;
 }
 
 function getStatusIndicator(state: string, usage_status: string) {
@@ -29,7 +31,7 @@ function getStatusIndicator(state: string, usage_status: string) {
   return <Circle className="h-2 w-2 fill-muted-foreground text-muted-foreground" />;
 }
 
-function VMCard({ vm }: { vm: VMData }) {
+function VMCard({ vm, metricsLoading, metricsError }: { vm: VMData; metricsLoading?: boolean; metricsError?: boolean }) {
   const [copySuccess, setCopySuccess] = useState(false);
 
   const cpuPercent = vm.resource_usage.available
@@ -141,7 +143,12 @@ function VMCard({ vm }: { vm: VMData }) {
           </div>
         ) : (
           <div className="space-y-2 pt-1">
-            <p className="text-xs text-muted-foreground italic">Fetching metrics...</p>
+            {metricsLoading && !metricsError && (
+              <p className="text-xs text-muted-foreground italic">Fetching metrics...</p>
+            )}
+            {metricsError && (
+              <p className="text-xs text-muted-foreground italic">Metrics unavailable</p>
+            )}
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">CPU</span>
@@ -162,11 +169,16 @@ function VMCard({ vm }: { vm: VMData }) {
   );
 }
 
-export function VMGrid({ vms }: VMGridProps) {
+export function VMGrid({ vms, metricsLoading, metricsError }: VMGridProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
       {vms.map((vm) => (
-        <VMCard key={vm.id} vm={vm} />
+        <VMCard 
+          key={vm.id} 
+          vm={vm} 
+          metricsLoading={metricsLoading}
+          metricsError={metricsError}
+        />
       ))}
     </div>
   );
