@@ -177,4 +177,33 @@ export class StakworkService extends BaseServiceClass {
       status: response.data.project.workflow_state,
     };
   }
+
+  /**
+   * Stop a running project
+   * @param projectId - The Stakwork project ID to stop
+   * @returns void (optimistic - does not throw on API errors)
+   */
+  async stopProject(projectId: number): Promise<void> {
+    try {
+      const endpoint = `${config.STAKWORK_BASE_URL}/projects/${projectId}/stop`;
+
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Token token=${encryptionService.decryptField(
+          "stakworkApiKey",
+          this.config.apiKey,
+        )}`,
+      };
+
+      const client = this.getClient();
+      const requestFn = () => {
+        return client.post<unknown>(endpoint, {}, headers, this.serviceName);
+      };
+
+      await this.handleRequest(requestFn, `stakworkRequest ${endpoint}`);
+    } catch (error) {
+      // Optimistic approach - log error but don't throw
+      console.error(`Failed to stop Stakwork project ${projectId}:`, error);
+    }
+  }
 }

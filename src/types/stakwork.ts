@@ -132,6 +132,15 @@ export interface StakworkRunListResponse {
   offset: number;
 }
 
+export interface StopStakworkRunResponse {
+  success: boolean;
+  run: {
+    id: string;
+    status: WorkflowStatus;
+    updatedAt: string;
+  };
+}
+
 // Helper type for determining data type
 export type DataType = "string" | "number" | "boolean" | "json" | "array" | "null";
 

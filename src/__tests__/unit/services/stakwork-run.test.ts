@@ -4,6 +4,7 @@ import {
   processStakworkRunWebhook,
   getStakworkRuns,
   updateStakworkRunDecision,
+  stopStakworkRun,
 } from "@/services/stakwork-run";
 import { db } from "@/lib/db";
 import { stakworkService } from "@/lib/service-factory";
@@ -1552,6 +1553,362 @@ describe("Stakwork Run Service", () => {
       });
 
       expect(result).toBeDefined();
+    });
+  });
+
+  describe("stopStakworkRun", () => {
+    test("should stop a stakwork run successfully", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        status: WorkflowStatus.IN_PROGRESS,
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+      };
+
+      const updatedRun = {
+        ...mockRun,
+        status: WorkflowStatus.HALTED,
+        result: null,
+        feedback: null,
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockStopProject = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      const result = await stopStakworkRun("run-1", "user-1");
+
+      expect(mockStopProject).toHaveBeenCalledWith("12345");
+      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+        where: { id: "run-1" },
+        data: {
+          status: WorkflowStatus.HALTED,
+          result: null,
+          feedback: null,
+        },
+      });
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        "workspace-test-workspace",
+        "stakwork-run-update",
+        expect.objectContaining({
+          runId: "run-1",
+          status: WorkflowStatus.HALTED,
+        })
+      );
+      expect(result.status).toBe(WorkflowStatus.HALTED);
+    });
+
+    test("should throw error when run not found", async () => {
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(null);
+
+      await expect(
+        stopStakworkRun("non-existent", "user-1")
+      ).rejects.toThrow("Run not found");
+    });
+
+    test("should throw error when workspace is deleted", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: true,
+          members: [],
+        },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+
+      await expect(
+        stopStakworkRun("run-1", "user-1")
+      ).rejects.toThrow("Workspace has been deleted");
+    });
+
+    test("should throw error when user is not owner or member", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "different-user",
+          deleted: false,
+          members: [], // User is not a member
+        },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+
+      await expect(
+        stopStakworkRun("run-1", "user-1")
+      ).rejects.toThrow("Access denied: user is not a member of this workspace");
+    });
+
+    test("should throw error when run does not have projectId", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: null,
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+
+      await expect(
+        stopStakworkRun("run-1", "user-1")
+      ).rejects.toThrow("Run does not have a projectId - cannot stop");
+    });
+
+    test("should continue with optimistic update even if Stakwork API fails", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+      };
+
+      const updatedRun = {
+        ...mockRun,
+        status: WorkflowStatus.HALTED,
+        result: null,
+        feedback: null,
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      // Stakwork API fails
+      const mockStopProject = vi.fn().mockRejectedValue(new Error("Stakwork API error"));
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      // Should not throw error
+      const result = await stopStakworkRun("run-1", "user-1");
+
+      expect(mockStopProject).toHaveBeenCalledWith("12345");
+      expect(db.stakworkRun.update).toHaveBeenCalled();
+      expect(result.status).toBe(WorkflowStatus.HALTED);
+    });
+
+    test("should allow workspace owner to stop run", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "owner-user",
+          deleted: false,
+          members: [], // Not a member, but is owner
+        },
+      };
+
+      const updatedRun = {
+        ...mockRun,
+        status: WorkflowStatus.HALTED,
+        result: null,
+        feedback: null,
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockStopProject = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      const result = await stopStakworkRun("run-1", "owner-user");
+
+      expect(result.status).toBe(WorkflowStatus.HALTED);
+    });
+
+    test("should allow workspace member to stop run", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "different-user",
+          deleted: false,
+          members: [{ userId: "member-user", role: "MEMBER" }],
+        },
+      };
+
+      const updatedRun = {
+        ...mockRun,
+        status: WorkflowStatus.HALTED,
+        result: null,
+        feedback: null,
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockStopProject = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      const result = await stopStakworkRun("run-1", "member-user");
+
+      expect(result.status).toBe(WorkflowStatus.HALTED);
+    });
+
+    test("should handle Pusher failure gracefully", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+      };
+
+      const updatedRun = {
+        ...mockRun,
+        status: WorkflowStatus.HALTED,
+        result: null,
+        feedback: null,
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedPusherServer.trigger = vi.fn().mockRejectedValue(new Error("Pusher error"));
+
+      const mockStopProject = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      // Should not throw error
+      const result = await stopStakworkRun("run-1", "user-1");
+
+      expect(result).toBeDefined();
+      expect(result.status).toBe(WorkflowStatus.HALTED);
+    });
+
+    test("should broadcast correct event data to Pusher", async () => {
+      const mockRun = {
+        id: "run-1",
+        type: StakworkRunType.ARCHITECTURE,
+        projectId: "12345",
+        featureId: "feature-1",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+      };
+
+      const updatedRun = {
+        ...mockRun,
+        id: "run-1",
+        status: WorkflowStatus.HALTED,
+        type: StakworkRunType.ARCHITECTURE,
+        featureId: "feature-1",
+        result: null,
+        feedback: null,
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockStopProject = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      await stopStakworkRun("run-1", "user-1");
+
+      expect(pusherServer.trigger).toHaveBeenCalledWith(
+        "workspace-test-workspace",
+        "stakwork-run-update",
+        expect.objectContaining({
+          runId: "run-1",
+          type: StakworkRunType.ARCHITECTURE,
+          status: WorkflowStatus.HALTED,
+          featureId: "feature-1",
+          timestamp: expect.any(Date),
+        })
+      );
+    });
+
+    test("should clear result and feedback when stopping", async () => {
+      const mockRun = {
+        id: "run-1",
+        projectId: "12345",
+        result: "Previous result content",
+        feedback: "Previous feedback",
+        workspace: {
+          id: "ws-1",
+          slug: "test-workspace",
+          ownerId: "user-1",
+          deleted: false,
+          members: [{ userId: "user-1", role: "OWNER" }],
+        },
+      };
+
+      const updatedRun = {
+        ...mockRun,
+        status: WorkflowStatus.HALTED,
+        result: null,
+        feedback: null,
+      };
+
+      mockedDb.stakworkRun.findUnique = vi.fn().mockResolvedValue(mockRun);
+      mockedDb.stakworkRun.update = vi.fn().mockResolvedValue(updatedRun);
+      mockedPusherServer.trigger = vi.fn().mockResolvedValue({});
+
+      const mockStopProject = vi.fn().mockResolvedValue({});
+      mockedStakworkService.mockReturnValue({
+        stopProject: mockStopProject,
+      } as any);
+
+      await stopStakworkRun("run-1", "user-1");
+
+      expect(db.stakworkRun.update).toHaveBeenCalledWith({
+        where: { id: "run-1" },
+        data: {
+          status: WorkflowStatus.HALTED,
+          result: null,
+          feedback: null,
+        },
+      });
     });
   });
 });
