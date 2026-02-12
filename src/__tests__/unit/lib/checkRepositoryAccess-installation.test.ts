@@ -148,7 +148,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
 
       expect(result).toBe(true);
       expect(global.fetch).toHaveBeenCalledWith(
-        `https://api.github.com/user/installations/${testInstallationId}/repositories`,
+        `https://api.github.com/user/installations/${testInstallationId}/repositories?per_page=100&page=1`,
         expect.any(Object),
       );
     });
@@ -226,7 +226,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       await checkRepositoryAccess(testUserId, testInstallationId, testRepositoryUrls.https);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        `https://api.github.com/user/installations/${testInstallationId}/repositories`,
+        `https://api.github.com/user/installations/${testInstallationId}/repositories?per_page=100&page=1`,
         expect.objectContaining({
           headers: {
             Accept: "application/vnd.github+json",
@@ -397,7 +397,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       await checkRepositoryAccess(testUserId, "", testRepositoryUrls.https);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.github.com/user/installations//repositories",
+        "https://api.github.com/user/installations//repositories?per_page=100&page=1",
         expect.any(Object),
       );
     });
@@ -419,7 +419,7 @@ describe("checkRepositoryAccess (Installation-Scoped Version)", () => {
       await checkRepositoryAccess(testUserId, customInstallationId, testRepositoryUrls.https);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        `https://api.github.com/user/installations/${customInstallationId}/repositories`,
+        `https://api.github.com/user/installations/${customInstallationId}/repositories?per_page=100&page=1`,
         expect.any(Object),
       );
     });

@@ -43,9 +43,16 @@ export function useFavicon({ workspaceLogoUrl, enabled = true, showNotificationD
           try {
             finalFaviconUrl = await createFaviconWithNotificationDot(baseFaviconUrl);
           } catch (error) {
-            console.error('Failed to create notification dot overlay:', error);
-            // Fall back to base favicon without dot
-            finalFaviconUrl = baseFaviconUrl;
+            console.error('Failed to create notification dot with workspace logo, falling back to default:', error);
+            // Fallback to default favicon WITH notification dot
+            const isDevMode = isDevelopmentMode();
+            const defaultFavicon = `${isDevMode ? '/dev' : ''}/favicon-32x32.png`;
+            try {
+              finalFaviconUrl = await createFaviconWithNotificationDot(defaultFavicon);
+            } catch (fallbackError) {
+              console.error('Failed to create notification dot on default favicon:', fallbackError);
+              finalFaviconUrl = defaultFavicon;
+            }
           }
         }
 
@@ -162,7 +169,17 @@ async function createFaviconWithNotificationDot(baseIconUrl: string): Promise<st
     };
 
     img.onerror = () => {
-      reject(new Error('Failed to load base favicon image'));
+      // If this was already a fallback attempt with default favicon, reject
+      const isDevMode = isDevelopmentMode();
+      const defaultFavicon = `${isDevMode ? '/dev' : ''}/favicon-32x32.png`;
+      
+      if (baseIconUrl === defaultFavicon || baseIconUrl.startsWith('data:')) {
+        // Already using default or data URL, can't fallback further
+        reject(new Error('Failed to load base favicon image'));
+      } else {
+        // Try with default favicon to avoid infinite loop
+        resolve(createFaviconWithNotificationDot(defaultFavicon));
+      }
     };
 
     // Handle data URLs and regular URLs
