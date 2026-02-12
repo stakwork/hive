@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { Prisma, PodUsageStatus } from "@prisma/client";
 import {
   ChatRole,
   ChatStatus,
@@ -288,6 +288,24 @@ export async function POST(request: NextRequest) {
             console.log(
               `✅ Stored podId=${podId}, agentPassword=${agentPassword ? "[encrypted]" : "undefined"} from artifact for task ${taskId}`,
             );
+
+            // Sync pods table so pool status stays accurate
+            // Stakwork claims pods via Pool Manager directly, so we need to mark the pod as USED here
+            if (podId) {
+              try {
+                await db.pod.updateMany({
+                  where: { podId, deletedAt: null },
+                  data: {
+                    usageStatus: PodUsageStatus.USED,
+                    usageStatusMarkedAt: new Date(),
+                    usageStatusMarkedBy: taskId,
+                  },
+                });
+                console.log(`✅ Synced pods table: marked ${podId} as USED for task ${taskId}`);
+              } catch (podSyncError) {
+                console.error("Failed to sync pods table:", podSyncError);
+              }
+            }
 
             // Broadcast podId update to both channels for real-time UI updates
             const podUpdatePayload = {
