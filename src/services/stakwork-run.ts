@@ -844,3 +844,89 @@ function determineDataType(result: unknown): DataType {
 
   return "string"; // Fallback
 }
+
+/**
+ * Stop an in-progress Stakwork run
+ * @param runId - The run ID to stop
+ * @param userId - The authenticated user ID
+ * @returns Updated StakworkRun with status HALTED
+ * @throws Error if run not found, workspace access denied, or projectId is null
+ */
+export async function stopStakworkRun(
+  runId: string,
+  userId: string,
+) {
+  // Query run with workspace access validation
+  const run = await db.stakworkRun.findUnique({
+    where: { id: runId },
+    include: {
+      workspace: {
+        select: {
+          id: true,
+          slug: true,
+          ownerId: true,
+          deleted: true,
+          members: { where: { userId }, select: { role: true } },
+        },
+      },
+    },
+  });
+
+  // Validate run exists
+  if (!run) {
+    throw new Error("Run not found");
+  }
+
+  // Validate workspace not deleted
+  if (run.workspace.deleted) {
+    throw new Error("Workspace has been deleted");
+  }
+
+  // Validate user access (must be owner or member)
+  const isOwner = run.workspace.ownerId === userId;
+  const isMember = run.workspace.members.length > 0;
+
+  if (!isOwner && !isMember) {
+    throw new Error("Access denied: user is not a member of this workspace");
+  }
+
+  // Validate projectId exists
+  if (!run.projectId) {
+    throw new Error("Run does not have a projectId - cannot stop");
+  }
+
+  // Attempt to stop the Stakwork project (optimistic - don't fail if API errors)
+  try {
+    await stakworkService().stopProject(run.projectId);
+  } catch (error) {
+    console.error(`Failed to stop Stakwork project ${run.projectId}:`, error);
+    // Continue with optimistic update even if Stakwork API fails
+  }
+
+  // Optimistically update the run
+  const updatedRun = await db.stakworkRun.update({
+    where: { id: runId },
+    data: {
+      status: WorkflowStatus.HALTED,
+      result: null,
+      feedback: null,
+    },
+  });
+
+  // Broadcast Pusher event for real-time UI updates
+  try {
+    const channelName = getWorkspaceChannelName(run.workspace.slug);
+    await pusherServer.trigger(channelName, PUSHER_EVENTS.STAKWORK_RUN_UPDATE, {
+      runId: updatedRun.id,
+      type: updatedRun.type,
+      status: WorkflowStatus.HALTED,
+      featureId: updatedRun.featureId,
+      timestamp: new Date(),
+    });
+  } catch (error) {
+    console.error("Error broadcasting to Pusher:", error);
+    // Don't throw - update succeeded
+  }
+
+  return updatedRun;
+}
