@@ -10,6 +10,7 @@ import {
   WorkflowStatus,
 } from "@prisma/client";
 import { config as dotenvConfig } from "dotenv";
+import { seedDeploymentTracking } from "./seed-deployment-tracking";
 
 dotenvConfig({ path: ".env.local" });
 
@@ -753,13 +754,14 @@ export async function seedAutoMergeTestScenarios(
     data: {
       messageId: edgeMessage1.id,
       type: "PULL_REQUEST",
-      content: JSON.stringify({
+      content: {
         url: "https://github.com/test/repo/pull/101",
         number: 101,
         title: "Add feature with auto-merge",
         status: "IN_PROGRESS",
         autoMergeEnabled: true,
-      }),
+        merge_commit_sha: "a1b2c3d4e5f6789012345678901234567890abcd",
+      },
     },
   });
 
@@ -795,13 +797,14 @@ export async function seedAutoMergeTestScenarios(
     data: {
       messageId: edgeMessage2.id,
       type: "PULL_REQUEST",
-      content: JSON.stringify({
+      content: {
         url: "https://github.com/test/repo/pull/102",
         number: 102,
         title: "Completed feature",
         status: "DONE",
         mergedAt: new Date().toISOString(),
-      }),
+        merge_commit_sha: "b2c3d4e5f67890123456789012345678901abcde",
+      },
     },
   });
 
@@ -837,13 +840,14 @@ export async function seedAutoMergeTestScenarios(
     data: {
       messageId: edgeMessage3.id,
       type: "PULL_REQUEST",
-      content: JSON.stringify({
+      content: {
         url: "https://github.com/test/repo/pull/103",
         number: 103,
         title: "Feature requiring manual review",
         status: "IN_PROGRESS",
         autoMergeEnabled: false,
-      }),
+        merge_commit_sha: "c3d4e5f678901234567890123456789012abcdef",
+      },
     },
   });
 
@@ -882,6 +886,7 @@ async function main() {
   await seedTasksWithLayerTypes(users);
   await seedFeaturesWithStakworkRuns(users);
   await seedAutoMergeTestScenarios(users);
+  await seedDeploymentTracking();
 
   console.log("Seed completed.");
 }
