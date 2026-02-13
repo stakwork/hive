@@ -53,6 +53,8 @@ export interface Repository {
   docsEnabled?: boolean;           // default true - whether to generate docs on ingest/sync
   mocksEnabled?: boolean;          // default true - whether to generate mocks on ingest/sync
   embeddingsEnabled?: boolean;     // default true - generate embeddings for semantic search
+  // Pod repair trigger (transient field - not persisted to database)
+  triggerPodRepair?: boolean;      // triggers pod repair workflow when adding new repository
 }
 
 export interface RepositoryData {

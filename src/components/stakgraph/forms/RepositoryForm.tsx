@@ -170,6 +170,7 @@ export default function RepositoryForm({
       updatedRepos[index] = {
         ...updatedRepos[index],
         ...settings,
+        triggerPodRepair: settings.triggerPodRepair, // Capture pod repair flag
       };
       onChange({ repositories: updatedRepos });
     } else {
