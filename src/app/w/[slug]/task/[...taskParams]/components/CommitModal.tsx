@@ -15,6 +15,7 @@ interface CommitModalProps {
   initialCommitMessage: string;
   initialBranchName: string;
   isCommitting: boolean;
+  isSubsequentCommit?: boolean;
 }
 
 export function CommitModal({
@@ -24,6 +25,7 @@ export function CommitModal({
   initialCommitMessage,
   initialBranchName,
   isCommitting,
+  isSubsequentCommit = false,
 }: CommitModalProps) {
   const [commitMessage, setCommitMessage] = useState(initialCommitMessage);
   const [branchName, setBranchName] = useState(initialBranchName);
@@ -38,6 +40,11 @@ export function CommitModal({
     await onConfirm(commitMessage, branchName);
   };
 
+  // For subsequent commits, validation should not require branch name
+  const isValid = isSubsequentCommit 
+    ? commitMessage.trim().length > 0
+    : commitMessage.trim().length > 0 && branchName.trim().length > 0;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px]">
@@ -50,22 +57,33 @@ export function CommitModal({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Branch Name */}
-          <div className="space-y-2">
-            <Label htmlFor="branch-name" className="flex items-center gap-2 text-sm font-medium">
-              <GitBranch className="w-4 h-4" />
-              GitHub Branch
-            </Label>
-            <Input
-              id="branch-name"
-              value={branchName}
-              onChange={(e) => setBranchName(e.target.value)}
-              placeholder="feat/my-feature"
-              className="font-mono text-sm"
-              disabled={isCommitting}
-            />
-            <p className="text-xs text-muted-foreground">Your changes will be saved to this branch</p>
-          </div>
+          {/* Branch Name - Hidden for subsequent commits */}
+          {!isSubsequentCommit && (
+            <div className="space-y-2">
+              <Label htmlFor="branch-name" className="flex items-center gap-2 text-sm font-medium">
+                <GitBranch className="w-4 h-4" />
+                GitHub Branch
+              </Label>
+              <Input
+                id="branch-name"
+                value={branchName}
+                onChange={(e) => setBranchName(e.target.value)}
+                placeholder="feat/my-feature"
+                className="font-mono text-sm"
+                disabled={isCommitting}
+              />
+              <p className="text-xs text-muted-foreground">Your changes will be saved to this branch</p>
+            </div>
+          )}
+
+          {/* Subsequent commit info */}
+          {isSubsequentCommit && branchName && (
+            <div className="rounded-md bg-muted p-3 text-sm">
+              <p className="text-muted-foreground">
+                Pushing to existing PR branch: <span className="font-mono text-foreground">{branchName}</span>
+              </p>
+            </div>
+          )}
 
           {/* Change Description */}
           <div className="space-y-2">
@@ -89,7 +107,7 @@ export function CommitModal({
           <Button variant="outline" onClick={onClose} disabled={isCommitting}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={isCommitting || !commitMessage.trim() || !branchName.trim()}>
+          <Button onClick={handleConfirm} disabled={isCommitting || !isValid}>
             {isCommitting ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

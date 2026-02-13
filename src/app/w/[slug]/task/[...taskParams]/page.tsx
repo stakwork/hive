@@ -129,6 +129,7 @@ export default function TaskChatPage() {
   const [commitMessage, setCommitMessage] = useState("");
   const [branchName, setBranchName] = useState("");
   const [isGeneratingCommitInfo, setIsGeneratingCommitInfo] = useState(false);
+  const [isSubsequentCommit, setIsSubsequentCommit] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showBountyModal, setShowBountyModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelName>("sonnet");
@@ -1323,6 +1324,15 @@ export default function TaskChatPage() {
     setIsGeneratingCommitInfo(true);
 
     try {
+      // Check if there's an existing PR artifact (for subsequent commits)
+      const existingPRArtifact = messages
+        .slice()
+        .reverse()
+        .find((msg) => msg.artifacts?.some((artifact) => artifact.type === "PULL_REQUEST"));
+      
+      const isSubsequent = !!existingPRArtifact;
+      setIsSubsequentCommit(isSubsequent);
+
       // First, generate commit message and branch name
       const branchResponse = await fetch("/api/agent/branch", {
         method: "POST",
@@ -1341,9 +1351,23 @@ export default function TaskChatPage() {
 
       const branchResult = await branchResponse.json();
 
+      // For subsequent commits, extract the branch name from the existing PR artifact
+      let branchNameToUse = branchResult.data.branch_name;
+      if (isSubsequent && existingPRArtifact) {
+        const prArtifact = existingPRArtifact.artifacts?.find((a) => a.type === "PULL_REQUEST");
+        if (prArtifact) {
+          const prContent = prArtifact.content as PullRequestContent;
+          // Extract branch name from PR URL (format: /owner/repo/pull/123)
+          // Or use a stored branch name if available in content
+          if ('branch' in prContent) {
+            branchNameToUse = (prContent as any).branch;
+          }
+        }
+      }
+
       // Set the generated values and show the modal
       setCommitMessage(branchResult.data.commit_message);
-      setBranchName(branchResult.data.branch_name);
+      setBranchName(branchNameToUse);
       setShowCommitModal(true);
     } catch (error) {
       console.error("Error generating commit information:", error);
@@ -1790,6 +1814,7 @@ export default function TaskChatPage() {
       initialCommitMessage={commitMessage}
       initialBranchName={branchName}
       isCommitting={isCommitting}
+      isSubsequentCommit={isSubsequentCommit}
     />
 
     {/* Bounty Request Modal */}
