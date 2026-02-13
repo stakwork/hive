@@ -250,6 +250,9 @@ export async function GET(request: NextRequest) {
           systemAssigneeType: true,
           dependsOnTaskIds: true,
           autoMerge: true,
+          deploymentStatus: true,
+          deployedToStagingAt: true,
+          deployedToProductionAt: true,
           createdAt: true,
           updatedAt: true,
           feature: {
