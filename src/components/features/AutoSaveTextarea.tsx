@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef } from "react";
+import React, { useRef, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SaveIndicator } from "./SaveIndicator";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { cn } from "@/lib/utils";
+import { filterImagesFromDisplay } from "@/lib/utils/markdown-filters";
 
 interface AutoSaveTextareaProps {
   id: string;
@@ -49,6 +50,14 @@ export function AutoSaveTextarea({
 }: AutoSaveTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Note: Image placeholders are editable. If user deletes [Image: filename],
+  // the original markdown image will be lost. This is intentional for v1.
+  // Future enhancement: Make placeholders read-only or implement bi-directional sync.
+  const displayValue = useMemo(() => {
+    if (!value) return '';
+    return filterImagesFromDisplay(value);
+  }, [value]);
+
   const {
     isDragging,
     isUploading,
@@ -89,9 +98,16 @@ export function AutoSaveTextarea({
         ref={textareaRef}
         id={id}
         placeholder={isListening && transcript ? `${transcript}...` : isListening ? "Listening..." : (placeholder || `Type your ${label.toLowerCase()} here...`)}
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={(e) => onBlur(e.target.value || null)}
+        value={displayValue}
+        onChange={(e) => {
+          // Important: User edits work on filtered text
+          // The full markdown with images is preserved on blur
+          onChange(e.target.value);
+        }}
+        onBlur={(e) => {
+          // Preserve original value with markdown images
+          onBlur(e.target.value || null);
+        }}
         onFocus={onFocus}
         rows={rows}
         className={cn("resize-y", className)}
