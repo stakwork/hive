@@ -221,6 +221,7 @@ vi.mock("lucide-react", () => {
     GitBranch: () => <span data-testid="git-branch-icon">🌿</span>,
     X: () => <span data-testid="x-icon">✕</span>,
     Workflow: () => <span data-testid="workflow-icon">🔄</span>,
+    ChevronDown: () => <span data-testid="chevron-down-icon">▼</span>,
   };
 });
 
@@ -355,7 +356,7 @@ describe("AgentChatArea", () => {
       });
       render(<AgentChatArea {...props} />);
 
-      expect(screen.getByText("Open PR")).toBeInTheDocument();
+      expect(screen.getByText("PR Actions")).toBeInTheDocument();
     });
   });
 
@@ -536,7 +537,7 @@ describe("AgentChatArea", () => {
       expect(screen.getByText("Create PR")).toBeInTheDocument();
     });
 
-    test("displays Open PR button when both onCommit and prUrl are provided", () => {
+    test("displays PR Actions dropdown when both onCommit and prUrl are provided", () => {
       const onCommit = vi.fn().mockResolvedValue(undefined);
       const { props } = setupAgentChatAreaTest({
         taskTitle: "Test Task",
@@ -546,7 +547,7 @@ describe("AgentChatArea", () => {
 
       render(<AgentChatArea {...props} />);
 
-      expect(screen.getByText("Open PR")).toBeInTheDocument();
+      expect(screen.getByText("PR Actions")).toBeInTheDocument();
     });
 
     test("displays preview toggle when showPreviewToggle is true", () => {

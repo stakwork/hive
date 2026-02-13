@@ -3,7 +3,7 @@ import { generateObject } from "ai";
 import { getApiKeyForProvider, getModel, Provider } from "@/lib/ai/provider";
 import { db } from "@/lib/db";
 
-export async function generateCommitMessage(taskId: string, baseUrl?: string) {
+export async function generateCommitMessage(taskId: string, baseUrl?: string, sinceTimestamp?: Date) {
   // Load conversation history from the task and get workspace slug
   const task = await db.task.findUnique({
     where: { id: taskId },
@@ -20,8 +20,30 @@ export async function generateCommitMessage(taskId: string, baseUrl?: string) {
     throw new Error("Task not found");
   }
 
+  // Find the most recent PULL_REQUEST artifact for this task
+  let messagesSince: Date | undefined = sinceTimestamp;
+  
+  if (!messagesSince) {
+    const latestPRArtifact = await db.artifact.findFirst({
+      where: {
+        message: { taskId },
+        type: "PULL_REQUEST",
+      },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    
+    if (latestPRArtifact) {
+      messagesSince = latestPRArtifact.createdAt;
+    }
+  }
+
+  // Fetch messages, optionally filtered by timestamp
   const chatMessages = await db.chatMessage.findMany({
-    where: { taskId },
+    where: { 
+      taskId,
+      ...(messagesSince && { timestamp: { gt: messagesSince } }),
+    },
     orderBy: { timestamp: "asc" },
     select: {
       role: true,
@@ -30,7 +52,11 @@ export async function generateCommitMessage(taskId: string, baseUrl?: string) {
     },
   });
 
+  // Handle case where no new messages exist
   if (chatMessages.length === 0) {
+    if (messagesSince) {
+      throw new Error("No new conversation since last commit");
+    }
     throw new Error("No conversation history found for this task");
   }
 
