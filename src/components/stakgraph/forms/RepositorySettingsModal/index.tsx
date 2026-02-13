@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Loader2, Database, FileText, Copy, Layers } from "lucide-react";
+import { Loader2, Database, FileText, Copy, Layers, RefreshCw } from "lucide-react";
 import type { Repository } from "../../types";
 
 export interface RepositorySyncSettings {
@@ -20,6 +20,7 @@ export interface RepositorySyncSettings {
   docsEnabled: boolean;
   mocksEnabled: boolean;
   embeddingsEnabled: boolean;
+  triggerPodRepair: boolean;
 }
 
 interface RepositorySettingsModalProps {
@@ -44,6 +45,7 @@ export function RepositorySettingsModal({
     docsEnabled: repository.docsEnabled ?? true,
     mocksEnabled: repository.mocksEnabled ?? true,
     embeddingsEnabled: repository.embeddingsEnabled ?? true,
+    triggerPodRepair: isNewRepository ? true : false,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -54,8 +56,9 @@ export function RepositorySettingsModal({
       docsEnabled: repository.docsEnabled ?? true,
       mocksEnabled: repository.mocksEnabled ?? true,
       embeddingsEnabled: repository.embeddingsEnabled ?? true,
+      triggerPodRepair: isNewRepository ? true : false,
     });
-  }, [repository]);
+  }, [repository, isNewRepository]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -89,6 +92,31 @@ export function RepositorySettingsModal({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Pod Repair Toggle - Only for new repositories */}
+          {isNewRepository && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="h-5 w-5 text-muted-foreground" />
+                <div className="space-y-0.5">
+                  <Label htmlFor="trigger-pod-repair" className="text-sm font-medium">
+                    Re-configure Pod Configuration
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Regenerate PM2/Docker files to include this repository
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="trigger-pod-repair"
+                checked={settings.triggerPodRepair}
+                onCheckedChange={(checked) =>
+                  setSettings((prev) => ({ ...prev, triggerPodRepair: checked }))
+                }
+                disabled={loading || isSaving}
+              />
+            </div>
+          )}
+
           {/* Code Ingestion Toggle - Main toggle */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

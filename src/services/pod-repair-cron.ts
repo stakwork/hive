@@ -126,10 +126,10 @@ export function getFailedProcesses(jlist: JlistProcess[]): string[] {
 }
 
 /**
- * Check if there's an active repair workflow for this workspace
- * Returns true if there's an IN_PROGRESS run with a running Stakwork project
+ * Checks if a pod repair workflow is currently in progress for a workspace.
+ * @description Used to prevent duplicate repair triggers.
  */
-async function isRepairInProgress(workspaceId: string): Promise<boolean> {
+export async function isRepairInProgress(workspaceId: string): Promise<boolean> {
   const inProgressRun = await db.stakworkRun.findFirst({
     where: {
       workspaceId,
@@ -293,8 +293,9 @@ async function getRepairHistory(workspaceId: string) {
 
 /**
  * Create a pod repair StakworkRun and trigger the workflow
+ * @description Triggers pod repair workflow. Can be called from cron or manually when adding repositories.
  */
-async function triggerPodRepair(
+export async function triggerPodRepair(
   workspaceId: string,
   workspaceSlug: string,
   podId: string,
@@ -480,7 +481,7 @@ export async function executePodRepairRuns(): Promise<PodRepairCronResult> {
         }
 
         // 4. Health checks - jlist, staklink, frontend
-        const decryptedPoolApiKey = encryptionService.decryptField(
+        const _decryptedPoolApiKey = encryptionService.decryptField(
           "poolApiKey",
           workspace.swarm.poolApiKey
         );
