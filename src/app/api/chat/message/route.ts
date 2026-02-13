@@ -54,12 +54,14 @@ async function fetchChatHistory(taskId: string, excludeMessageId: string): Promi
     status: msg.status,
     timestamp: msg.createdAt.toISOString(),
     contextTags: msg.contextTags ? JSON.parse(msg.contextTags as string) : [],
-    artifacts: msg.artifacts.map((artifact) => ({
-      id: artifact.id,
-      type: artifact.type,
-      content: artifact.content,
-      icon: artifact.icon,
-    })),
+    artifacts: msg.artifacts
+      .filter((artifact) => artifact.type === "LONGFORM")
+      .map((artifact) => ({
+        id: artifact.id,
+        type: artifact.type,
+        content: artifact.content,
+        icon: artifact.icon,
+      })),
     attachments:
       msg.attachments?.map((attachment) => ({
         id: attachment.id,
