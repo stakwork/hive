@@ -185,7 +185,7 @@ export class StakworkService extends BaseServiceClass {
    */
   async stopProject(projectId: number): Promise<void> {
     try {
-      const endpoint = `${config.STAKWORK_BASE_URL}/projects/${projectId}/stop`;
+      const endpoint = `/projects/${projectId}/stop`;
 
       const headers = {
         "Content-Type": "application/json",

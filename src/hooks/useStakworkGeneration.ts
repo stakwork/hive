@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { getPusherClient } from "@/lib/pusher";
+import { toast } from "sonner";
 import type { StakworkRunType, WorkflowStatus, StakworkRunDecision } from "@prisma/client";
 
 interface StakworkRun {
@@ -30,6 +31,7 @@ export function useStakworkGeneration({
 }: UseStakworkGenerationOptions) {
   const [latestRun, setLatestRun] = useState<StakworkRun | null>(null);
   const [querying, setQuerying] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const { workspace } = useWorkspace();
 
   const queryLatestRunRef = useRef<(() => Promise<void>) | undefined>(undefined);
@@ -116,9 +118,34 @@ export function useStakworkGeneration({
     };
   }, [enabled, workspace?.slug, featureId, type]);
 
+  const stopRun = useCallback(async () => {
+    if (!latestRun?.id || isStopping) return;
+
+    try {
+      setIsStopping(true);
+      const response = await fetch(`/api/stakwork/runs/${latestRun.id}/stop`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to stop run");
+      }
+
+      toast.success("Deep Research stopped");
+      await queryLatestRun();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to stop run");
+    } finally {
+      setIsStopping(false);
+    }
+  }, [latestRun?.id, isStopping, queryLatestRun]);
+
   return {
     latestRun,
     querying,
     refetch: queryLatestRun,
+    stopRun,
+    isStopping,
   };
 }

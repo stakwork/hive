@@ -82,7 +82,7 @@ export function AITextareaSection({
   // Map the section type to StakworkRunType
   const stakworkType = getStakworkType(type);
   
-  const { latestRun, refetch } = useStakworkGeneration({
+  const { latestRun, refetch, stopRun, isStopping } = useStakworkGeneration({
     featureId,
     type: stakworkType,
     enabled: true, // Enable for both requirements and architecture
@@ -165,28 +165,6 @@ export function AITextareaSection({
       console.error("Retry failed:", error);
     } finally {
       setInitiatingDeepThink(false);
-    }
-  };
-
-  const handleStop = async () => {
-    if (!latestRun?.id) return;
-    
-    try {
-      const response = await fetch(`/api/stakwork/runs/${latestRun.id}/stop`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to stop run");
-      }
-
-      // Refetch to update the run status
-      await refetch();
-      toast.success("Deep research stopped");
-    } catch (error) {
-      console.error("Failed to stop run:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to stop run");
     }
   };
 
@@ -291,9 +269,11 @@ export function AITextareaSection({
               onQuickGenerate={() => {}}
               onDeepThink={handleDeepThink}
               onRetry={handleRetry}
+              onStop={stopRun}
               status={latestRun?.status}
               isLoading={aiGeneration.isLoading || initiatingDeepThink}
               isQuickGenerating={false}
+              isStopping={isStopping}
               disabled={false}
               showDeepThink={true}
               showGenerateDiagram={type === "architecture" && mode === "preview" && !!value?.trim()}
@@ -310,10 +290,9 @@ export function AITextareaSection({
       )}
 
       {latestRun?.status === "IN_PROGRESS" && latestRun.projectId ? (
-        <DeepResearchProgress 
-          projectId={latestRun.projectId} 
+        <DeepResearchProgress
+          projectId={latestRun.projectId}
           runId={latestRun.id}
-          onStop={handleStop}
         />
       ) : parsedContent?.type === "questions" ? (
         <ClarifyingQuestionsPreview
