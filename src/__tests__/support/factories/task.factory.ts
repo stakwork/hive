@@ -93,7 +93,7 @@ export async function createTestTask(
       testFilePath: options.testFilePath ?? null,
       testFileUrl: options.testFileUrl ?? null,
       stakworkProjectId: options.stakworkProjectId ?? null,
-      autoMerge: options.autoMerge ?? true,
+      autoMerge: options.autoMerge ?? false,
     },
   });
 }
