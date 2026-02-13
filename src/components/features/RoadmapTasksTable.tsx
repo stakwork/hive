@@ -207,7 +207,7 @@ function SortableTableRow({
           className="flex items-center justify-center"
         >
           <Switch
-            checked={task.autoMerge ?? true}
+            checked={task.autoMerge ?? false}
             onCheckedChange={onAutoMergeUpdate}
           />
         </div>

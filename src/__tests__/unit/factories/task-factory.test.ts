@@ -17,11 +17,11 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
   });
 
   describe("createTestTask with autoMerge", () => {
-    it("should pass autoMerge: true to database by default", async () => {
+    it("should pass autoMerge: false to database by default", async () => {
       const mockTask = {
         id: "task-1",
         title: "Test task",
-        autoMerge: true,
+        autoMerge: false,
         workspaceId: "ws-1",
         createdById: "user-1",
       };
@@ -38,11 +38,11 @@ describe("Task Factory - Auto-Merge Support (Unit)", () => {
       expect(db.task.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            autoMerge: true,
+            autoMerge: false,
           }),
         })
       );
-      expect(task.autoMerge).toBe(true);
+      expect(task.autoMerge).toBe(false);
     });
 
     it("should pass autoMerge: true when explicitly set", async () => {

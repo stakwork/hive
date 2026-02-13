@@ -46,7 +46,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
   }, 10000); // 10 second timeout for cleanup
 
   describe("createTestTask", () => {
-    it("should create task with autoMerge: true by default", async () => {
+    it("should create task with autoMerge: false by default", async () => {
       const task = await createTestTask({
         workspaceId: testWorkspace.id,
         createdById: testUser.id,
@@ -54,7 +54,7 @@ describe("Seed Database - Auto-Merge Test Data", () => {
       });
 
       expect(task).toBeDefined();
-      expect(task.autoMerge).toBe(true);
+      expect(task.autoMerge).toBe(false);
     });
 
     it("should create task with autoMerge: true when explicitly set", async () => {
