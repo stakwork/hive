@@ -39,7 +39,11 @@ async function fetchChatHistory(taskId: string, excludeMessageId: string): Promi
       id: { not: excludeMessageId },
     },
     include: {
-      artifacts: true,
+      artifacts: {
+        where: {
+          type: ArtifactType.LONGFORM,
+        },
+      },
       attachments: true,
     },
     orderBy: {
