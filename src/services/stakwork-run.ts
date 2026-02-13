@@ -110,9 +110,10 @@ export async function createStakworkRun(
         },
       },
       repositories: {
-        take: 1,
         orderBy: { createdAt: "asc" },
         select: {
+          id: true,
+          name: true,
           repositoryUrl: true,
           branch: true,
         },
@@ -258,8 +259,8 @@ export async function createStakworkRun(
       featureId: input.featureId,
       webhookUrl,
 
-      // Repository & credentials
-      repo_url: workspace.repositories[0]?.repositoryUrl || null,
+      // Repository & credentials — send all repo URLs comma-separated for multi-repo support
+      repo_url: workspace.repositories.map(r => r.repositoryUrl).join(",") || null,
       base_branch: workspace.repositories[0]?.branch || null,
       username: githubUsername,
       pat: decryptedPAT,
@@ -589,6 +590,14 @@ async function applyAcceptResult(
         throw new Error("No phase found for feature");
       }
 
+      // Build URL→ID map for multi-repo task assignment
+      const repos = await db.repository.findMany({
+        where: { workspaceId: featureWithPhase.workspace.id },
+        select: { id: true, repositoryUrl: true },
+      });
+      const repoUrlToId = new Map(repos.map(r => [r.repositoryUrl, r.id]));
+      const firstRepoId = repos[0]?.id || null;
+
       const tasks = tasksData.phases[0]?.tasks || [];
       const tempIdToRealId: Record<string, string> = {};
 
@@ -596,6 +605,9 @@ async function applyAcceptResult(
         const dependsOnTaskIds = (task.dependsOn || [])
           .map((tempId: string) => tempIdToRealId[tempId])
           .filter(Boolean);
+
+        // Resolve repositoryId from repoUrl if provided by AI, fallback to first repo
+        const repositoryId = (task.repoUrl && repoUrlToId.get(task.repoUrl)) || firstRepoId;
 
         const createdTask = await db.task.create({
           data: {
@@ -607,6 +619,7 @@ async function applyAcceptResult(
             workspaceId: featureWithPhase.workspace.id,
             status: "TODO",
             dependsOnTaskIds,
+            repositoryId,
             createdById: userId,
             updatedById: userId,
           },

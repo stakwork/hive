@@ -123,6 +123,13 @@ export async function GET(
                     image: true,
                   },
                 },
+                repository: {
+                  select: {
+                    id: true,
+                    name: true,
+                    repositoryUrl: true,
+                  },
+                },
               },
             },
           },
@@ -160,6 +167,13 @@ export async function GET(
                 name: true,
                 email: true,
                 image: true,
+              },
+            },
+            repository: {
+              select: {
+                id: true,
+                name: true,
+                repositoryUrl: true,
               },
             },
           },

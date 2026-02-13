@@ -225,6 +225,13 @@ export async function createTicket(
       assignee: {
         select: USER_SELECT,
       },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+        },
+      },
       phase: {
         select: {
           id: true,
@@ -307,6 +314,22 @@ export async function updateTicket(
 
   if (data.autoMerge !== undefined) {
     updateData.autoMerge = data.autoMerge;
+  }
+
+  if (data.repositoryId !== undefined) {
+    if (data.repositoryId !== null) {
+      const repository = await db.repository.findFirst({
+        where: {
+          id: data.repositoryId,
+          workspaceId: task.feature?.workspace.id,
+        },
+      });
+
+      if (!repository) {
+        throw new Error("Repository not found or does not belong to this workspace");
+      }
+    }
+    updateData.repositoryId = data.repositoryId;
   }
 
   if (data.phaseId !== undefined) {
@@ -442,6 +465,13 @@ export async function updateTicket(
       systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
+      },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+        },
       },
       phase: {
         select: {
@@ -599,6 +629,13 @@ export async function reorderTickets(
       systemAssigneeType: true,
       assignee: {
         select: USER_SELECT,
+      },
+      repository: {
+        select: {
+          id: true,
+          name: true,
+          repositoryUrl: true,
+        },
       },
       phase: {
         select: {
