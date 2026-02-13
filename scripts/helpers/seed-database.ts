@@ -379,47 +379,258 @@ async function seedFeaturesWithStakworkRuns(
 
   console.log("Creating features with StakworkRuns for testing needs attention...");
 
-  // Create features with various states
-  const featuresData = [
+  // Helper to create dates relative to now
+  const now = new Date();
+  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+
+  // Scenario 1: Old pending + newer accepted ARCHITECTURE run
+  // Should NOT show indicator (latest is accepted)
+  const feature1 = await prisma.feature.create({
+    data: {
+      title: "Sequential Test: Old Pending → New Accepted",
+      brief: "Test case: older ARCHITECTURE run pending, newer ARCHITECTURE run accepted",
+      status: FeatureStatus.IN_PROGRESS,
+      priority: FeaturePriority.HIGH,
+      workspaceId: workspace.id,
+      createdById: userId,
+      updatedById: userId,
+      phases: {
+        create: {
+          name: "Phase 1",
+          description: null,
+          status: "NOT_STARTED",
+          order: 0,
+        },
+      },
+    },
+  });
+
+  // Old pending run
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature1.id}/old`,
+      type: StakworkRunType.ARCHITECTURE,
+      featureId: feature1.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        architecture: "Old architecture proposal that was never reviewed",
+        components: ["ComponentA", "ComponentB"]
+      }),
+      dataType: "json",
+      decision: null,
+      createdAt: threeDaysAgo,
+    },
+  });
+
+  // Newer accepted run
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature1.id}/new`,
+      type: StakworkRunType.ARCHITECTURE,
+      featureId: feature1.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        architecture: "Updated architecture proposal (auto-accepted)",
+        components: ["ComponentX", "ComponentY", "ComponentZ"]
+      }),
+      dataType: "json",
+      decision: "ACCEPTED",
+      autoAccept: true,
+      createdAt: oneDayAgo,
+    },
+  });
+
+  // Scenario 2: Old accepted + newer pending REQUIREMENTS run
+  // Should show indicator (latest is pending)
+  const feature2 = await prisma.feature.create({
+    data: {
+      title: "Sequential Test: Old Accepted → New Pending",
+      brief: "Test case: older REQUIREMENTS run accepted, newer REQUIREMENTS run pending",
+      status: FeatureStatus.PLANNED,
+      priority: FeaturePriority.MEDIUM,
+      workspaceId: workspace.id,
+      createdById: userId,
+      updatedById: userId,
+      phases: {
+        create: {
+          name: "Phase 1",
+          description: null,
+          status: "NOT_STARTED",
+          order: 0,
+        },
+      },
+    },
+  });
+
+  // Old accepted run
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature2.id}/old`,
+      type: StakworkRunType.REQUIREMENTS,
+      featureId: feature2.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        requirements: ["Req1", "Req2", "Req3"],
+        functionalRequirements: "Initial requirements that were accepted"
+      }),
+      dataType: "json",
+      decision: "ACCEPTED",
+      createdAt: twoDaysAgo,
+    },
+  });
+
+  // Newer pending run
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature2.id}/new`,
+      type: StakworkRunType.REQUIREMENTS,
+      featureId: feature2.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        requirements: ["Req1", "Req2", "Req3", "Req4", "Req5"],
+        functionalRequirements: "Updated requirements with additional items - needs review"
+      }),
+      dataType: "json",
+      decision: null,
+      createdAt: now,
+    },
+  });
+
+  // Scenario 3: Mixed types with different states
+  // ARCHITECTURE: accepted (latest), REQUIREMENTS: pending (latest), 
+  // TASK_GENERATION: old pending + newer accepted
+  // Should only show indicator for REQUIREMENTS
+  const feature3 = await prisma.feature.create({
+    data: {
+      title: "Mixed Sequential Test: Multiple Run Types",
+      brief: "Test case: mixed run types with different decision states to test per-type logic",
+      status: FeatureStatus.IN_PROGRESS,
+      priority: FeaturePriority.HIGH,
+      workspaceId: workspace.id,
+      createdById: userId,
+      updatedById: userId,
+      phases: {
+        create: {
+          name: "Phase 1",
+          description: null,
+          status: "NOT_STARTED",
+          order: 0,
+        },
+      },
+    },
+  });
+
+  // ARCHITECTURE - latest is accepted
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature3.id}/arch`,
+      type: StakworkRunType.ARCHITECTURE,
+      featureId: feature3.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        architecture: "Architecture design (accepted)",
+        patterns: ["MVC", "Repository", "Factory"]
+      }),
+      dataType: "json",
+      decision: "ACCEPTED",
+      autoAccept: true,
+      createdAt: oneDayAgo,
+    },
+  });
+
+  // REQUIREMENTS - latest is pending (should show indicator)
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature3.id}/req`,
+      type: StakworkRunType.REQUIREMENTS,
+      featureId: feature3.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        requirements: ["Critical Req1", "Critical Req2"],
+        functionalRequirements: "Requirements analysis needs review"
+      }),
+      dataType: "json",
+      decision: null,
+      createdAt: now,
+    },
+  });
+
+  // TASK_GENERATION - old pending run
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature3.id}/tasks-old`,
+      type: StakworkRunType.TASK_GENERATION,
+      featureId: feature3.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        tasks: [
+          { title: "Task 1", description: "Old task breakdown" },
+          { title: "Task 2", description: "Another old task" }
+        ]
+      }),
+      dataType: "json",
+      decision: null,
+      createdAt: threeDaysAgo,
+    },
+  });
+
+  // TASK_GENERATION - newer accepted run
+  await prisma.stakworkRun.create({
+    data: {
+      webhookUrl: `https://example.com/webhook/${feature3.id}/tasks-new`,
+      type: StakworkRunType.TASK_GENERATION,
+      featureId: feature3.id,
+      workspaceId: workspace.id,
+      status: WorkflowStatus.COMPLETED,
+      result: JSON.stringify({ 
+        tasks: [
+          { title: "Updated Task 1", description: "Refined task breakdown" },
+          { title: "Updated Task 2", description: "Another refined task" },
+          { title: "New Task 3", description: "Additional task" }
+        ]
+      }),
+      dataType: "json",
+      decision: "ACCEPTED",
+      autoAccept: true,
+      createdAt: oneDayAgo,
+    },
+  });
+
+  // Keep existing simple features for backward compatibility
+  const simpleFeatures = [
     {
       title: "User Authentication System",
       brief: "Implement user authentication with OAuth",
       status: FeatureStatus.IN_PROGRESS,
       priority: FeaturePriority.HIGH,
-      needsAttention: true, // Has pending architecture review
+      needsAttention: true,
     },
     {
       title: "Dashboard Analytics",
       brief: "Build analytics dashboard with charts",
       status: FeatureStatus.PLANNED,
       priority: FeaturePriority.MEDIUM,
-      needsAttention: true, // Has pending requirements review
+      needsAttention: true,
     },
     {
       title: "Notification Service",
       brief: "Real-time notifications via websockets",
       status: FeatureStatus.BACKLOG,
       priority: FeaturePriority.LOW,
-      needsAttention: false, // No pending reviews
-    },
-    {
-      title: "API Rate Limiting",
-      brief: "Implement rate limiting for API endpoints",
-      status: FeatureStatus.IN_PROGRESS,
-      priority: FeaturePriority.HIGH,
-      needsAttention: true, // Has pending task generation review
-    },
-    {
-      title: "Search Functionality",
-      brief: "Full-text search across all content",
-      status: FeatureStatus.PLANNED,
-      priority: FeaturePriority.MEDIUM,
-      needsAttention: false, // No pending reviews (decision already made)
+      needsAttention: false,
     },
   ];
 
-  for (const featureData of featuresData) {
-    // Create the feature with a Phase
+  for (const featureData of simpleFeatures) {
     const feature = await prisma.feature.create({
       data: {
         title: featureData.title,
@@ -441,7 +652,6 @@ async function seedFeaturesWithStakworkRuns(
     });
 
     if (featureData.needsAttention) {
-      // Create a StakworkRun with status=COMPLETED and decision=null (needs attention)
       const runTypes = [
         StakworkRunType.ARCHITECTURE,
         StakworkRunType.REQUIREMENTS,
@@ -458,11 +668,10 @@ async function seedFeaturesWithStakworkRuns(
           status: WorkflowStatus.COMPLETED,
           result: JSON.stringify({ generated: "Sample AI-generated content for review" }),
           dataType: "json",
-          decision: null, // User hasn't made a decision yet
+          decision: null,
         },
       });
     } else {
-      // Create a StakworkRun with decision already made
       await prisma.stakworkRun.create({
         data: {
           webhookUrl: `https://example.com/webhook/${feature.id}`,
@@ -472,13 +681,14 @@ async function seedFeaturesWithStakworkRuns(
           status: WorkflowStatus.COMPLETED,
           result: JSON.stringify({ generated: "Sample accepted content" }),
           dataType: "json",
-          decision: "ACCEPTED", // User already accepted
+          decision: "ACCEPTED",
         },
       });
     }
   }
 
-  console.log(`✓ Created ${featuresData.length} features with StakworkRuns`);
+  console.log(`✓ Created 3 sequential test features with multiple runs per type`);
+  console.log(`✓ Created ${simpleFeatures.length} simple features with StakworkRuns`);
 }
 
 /**
