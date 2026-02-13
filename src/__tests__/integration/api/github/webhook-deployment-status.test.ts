@@ -477,4 +477,127 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
     // Assert
     expect(response.status).toBe(401);
   });
+
+  it("should include deployment fields in task query for task list display", async () => {
+    // Setup
+    const testSetup = await createWebhookTestScenario();
+    const task = await createTestTask({ 
+      workspaceId: testSetup.workspace.id,
+      repositoryId: testSetup.repository.id,
+      createdById: testSetup.user.id 
+    });
+    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    await createTestArtifact({
+      messageId: message.id,
+      type: "PULL_REQUEST",
+      content: {
+        url: "https://github.com/owner/repo/pull/1",
+        merge_commit_sha: COMMIT_SHA,
+        status: "DONE",
+      },
+    });
+
+    // Create staging deployment
+    const stagingPayload = createDeploymentStatusPayload("success", "staging");
+    const stagingSignature = computeValidWebhookSignature(
+      testSetup.webhookSecret,
+      JSON.stringify(stagingPayload)
+    );
+
+    const stagingRequest = createWebhookRequest(
+      `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+      stagingPayload,
+      stagingSignature,
+      testSetup.repository.githubWebhookId!,
+      "deployment_status"
+    );
+
+    await POST(stagingRequest, { params: { workspaceId: testSetup.workspace.id } });
+
+    // Query task with deployment fields (simulating task list query)
+    const updatedTask = await db.task.findUnique({
+      where: { id: task.id },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        deploymentStatus: true,
+        deployedToStagingAt: true,
+        deployedToProductionAt: true,
+      },
+    });
+
+    // Assert - verify deployment fields are populated for badge display
+    expect(updatedTask).toBeTruthy();
+    expect(updatedTask?.deploymentStatus).toBe("staging");
+    expect(updatedTask?.deployedToStagingAt).toBeInstanceOf(Date);
+    expect(updatedTask?.deployedToProductionAt).toBeNull();
+  });
+
+  it("should show production badge after production deployment webhook", async () => {
+    // Setup
+    const testSetup = await createWebhookTestScenario();
+    const task = await createTestTask({ 
+      workspaceId: testSetup.workspace.id,
+      repositoryId: testSetup.repository.id,
+      createdById: testSetup.user.id 
+    });
+    const message = await createTestChatMessage({ taskId: task.id, message: "Test message" });
+    await createTestArtifact({
+      messageId: message.id,
+      type: "PULL_REQUEST",
+      content: {
+        url: "https://github.com/owner/repo/pull/1",
+        merge_commit_sha: COMMIT_SHA,
+        status: "DONE",
+      },
+    });
+
+    // First deploy to staging
+    const stagingPayload = createDeploymentStatusPayload("success", "staging");
+    const stagingSignature = computeValidWebhookSignature(
+      testSetup.webhookSecret,
+      JSON.stringify(stagingPayload)
+    );
+    const stagingRequest = createWebhookRequest(
+      `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+      stagingPayload,
+      stagingSignature,
+      testSetup.repository.githubWebhookId!,
+      "deployment_status"
+    );
+    await POST(stagingRequest, { params: { workspaceId: testSetup.workspace.id } });
+
+    // Then deploy to production
+    const productionPayload = createDeploymentStatusPayload("success", "production");
+    const productionSignature = computeValidWebhookSignature(
+      testSetup.webhookSecret,
+      JSON.stringify(productionPayload)
+    );
+    const productionRequest = createWebhookRequest(
+      `http://localhost/api/github/webhook/${testSetup.workspace.id}`,
+      productionPayload,
+      productionSignature,
+      testSetup.repository.githubWebhookId!,
+      "deployment_status"
+    );
+    await POST(productionRequest, { params: { workspaceId: testSetup.workspace.id } });
+
+    // Query task as task list would
+    const updatedTask = await db.task.findUnique({
+      where: { id: task.id },
+      select: {
+        id: true,
+        title: true,
+        deploymentStatus: true,
+        deployedToStagingAt: true,
+        deployedToProductionAt: true,
+      },
+    });
+
+    // Assert - verify badge should show production (not staging)
+    expect(updatedTask?.deploymentStatus).toBe("production");
+    expect(updatedTask?.deployedToStagingAt).toBeInstanceOf(Date);
+    expect(updatedTask?.deployedToProductionAt).toBeInstanceOf(Date);
+  });
 });

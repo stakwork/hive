@@ -8,7 +8,7 @@ interface DeploymentStatusBadgeProps {
   deployedAt?: Date | string | null;
 }
 
-export default function DeploymentStatusBadge({
+export function DeploymentStatusBadge({
   environment,
   deploymentUrl,
 }: DeploymentStatusBadgeProps) {
