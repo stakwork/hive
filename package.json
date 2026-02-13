@@ -88,7 +88,7 @@
     "@xyflow/react": "^12.8.6",
     "ai": "^5.0.50",
     "ai-sdk-provider-goose-web": "^0.1.9",
-    "aieo": "^0.1.25",
+    "aieo": "0.1.25",
     "autoprefixer": "^10.4.21",
     "axios": "^1.10.0",
     "bcryptjs": "^3.0.2",
