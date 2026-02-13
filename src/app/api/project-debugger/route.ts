@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
 
     // Build Stakwork payload
     const stakworkPayload = {
+      name: `project-debugger-${projectData.id}-${Date.now()}`,
       workflow_params: {
         set_var: {
           attributes: {
