@@ -523,7 +523,7 @@ model Task {
   // Build and test configuration
   runBuild     Boolean @default(true) @map("run_build")
   runTestSuite Boolean @default(true) @map("run_test_suite")
-  autoMerge    Boolean @default(true) @map("auto_merge")
+  autoMerge    Boolean @default(false) @map("auto_merge")
 
   // Deployment tracking
   deploymentStatus       String?   @map("deployment_status")
