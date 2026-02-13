@@ -15,10 +15,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import type { TicketListItem } from "@/types/roadmap";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -26,6 +34,12 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Priority, TaskStatus } from "@prisma/client";
 import { ExternalLink, GripVertical, Play, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+
+interface WorkspaceRepo {
+  id: string;
+  name: string;
+  repositoryUrl: string;
+}
 
 interface RoadmapTasksTableProps {
   phaseId: string;
@@ -43,12 +57,14 @@ function SortableTableRow({
   workspaceSlug,
   phaseId,
   allTasks,
+  workspaceRepos,
   onClick,
   onStatusUpdate,
   onPriorityUpdate,
   onAssigneeUpdate,
   onDependenciesUpdate,
   onAutoMergeUpdate,
+  onRepoUpdate,
   onDelete,
   onStartTask,
 }: {
@@ -56,12 +72,14 @@ function SortableTableRow({
   workspaceSlug: string;
   phaseId: string;
   allTasks: TicketListItem[];
+  workspaceRepos: WorkspaceRepo[];
   onClick: () => void;
   onStatusUpdate: (status: TaskStatus) => Promise<void>;
   onPriorityUpdate: (priority: Priority) => Promise<void>;
   onAssigneeUpdate: (assigneeId: string | null) => Promise<void>;
   onDependenciesUpdate: (dependencyIds: string[]) => Promise<void>;
   onAutoMergeUpdate: (autoMerge: boolean) => Promise<void>;
+  onRepoUpdate: (repositoryId: string | null) => Promise<void>;
   onDelete: () => void;
   onStartTask: () => void;
 }) {
@@ -128,6 +146,8 @@ function SortableTableRow({
         ]),
   ];
 
+  const showRepoColumn = workspaceRepos.length > 1;
+
   return (
     <TableRow
       ref={setNodeRef}
@@ -191,6 +211,28 @@ function SortableTableRow({
           }}
         />
       </TableCell>
+      {showRepoColumn && (
+        <TableCell className="w-[150px]">
+          <div onClick={(e) => e.stopPropagation()}>
+            <Select
+              value={task.repository?.id || "none"}
+              onValueChange={(value) => onRepoUpdate(value === "none" ? null : value)}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="No repo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No repo</SelectItem>
+                {workspaceRepos.map((repo) => (
+                  <SelectItem key={repo.id} value={repo.id}>
+                    {repo.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </TableCell>
+      )}
       <TableCell className="w-[200px]">
         <DependenciesCombobox
           currentTicketId={task.id}
@@ -202,8 +244,8 @@ function SortableTableRow({
         />
       </TableCell>
       <TableCell className="w-[100px]">
-        <div 
-          onClick={(e) => e.stopPropagation()} 
+        <div
+          onClick={(e) => e.stopPropagation()}
           className="flex items-center justify-center"
         >
           <Switch
@@ -222,6 +264,14 @@ function SortableTableRow({
 export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReordered, onTaskUpdate }: RoadmapTasksTableProps) {
   const router = useRouter();
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
+  const { workspace } = useWorkspace();
+
+  const workspaceRepos: WorkspaceRepo[] = (workspace?.repositories || []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    repositoryUrl: r.repositoryUrl,
+  }));
+  const showRepoColumn = workspaceRepos.length > 1;
 
   const { updateTicket } = useRoadmapTaskMutations();
   const { sensors, taskIds, handleDragEnd, collisionDetection } = useReorderRoadmapTasks({
@@ -266,7 +316,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
     }
   };
 
-  const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; dependsOnTaskIds?: string[]; autoMerge?: boolean }) => {
+  const handleUpdateTask = async (taskId: string, updates: { status?: TaskStatus; priority?: Priority; assigneeId?: string | null; repositoryId?: string | null; dependsOnTaskIds?: string[]; autoMerge?: boolean }) => {
     const updatedTask = await updateTicket({ taskId, updates });
     if (updatedTask && onTaskUpdate) {
       onTaskUpdate(taskId, updatedTask);
@@ -317,6 +367,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
               <TableHead className="w-[120px]">Status</TableHead>
               <TableHead className="w-[120px]">Priority</TableHead>
               <TableHead className="w-[180px]">Assignee</TableHead>
+              {showRepoColumn && <TableHead className="w-[150px]">Repo</TableHead>}
               <TableHead className="w-[200px]">Dependencies</TableHead>
               <TableHead className="w-[100px]">Auto-Merge</TableHead>
               <TableHead className="w-[50px]"></TableHead>
@@ -333,12 +384,14 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
                     workspaceSlug={workspaceSlug}
                     phaseId={phaseId}
                     allTasks={tasks}
+                    workspaceRepos={workspaceRepos}
                     onClick={() => handleRowClick(task.id)}
                     onStatusUpdate={async (status) => handleUpdateTask(task.id, { status })}
                     onPriorityUpdate={async (priority) => handleUpdateTask(task.id, { priority })}
                     onAssigneeUpdate={async (assigneeId) => handleUpdateTask(task.id, { assigneeId })}
                     onDependenciesUpdate={async (dependsOnTaskIds) => handleUpdateTask(task.id, { dependsOnTaskIds })}
                     onAutoMergeUpdate={async (autoMerge) => handleUpdateTask(task.id, { autoMerge })}
+                    onRepoUpdate={async (repositoryId) => handleUpdateTask(task.id, { repositoryId })}
                     onDelete={() => handleDeleteTask(task.id)}
                     onStartTask={() => handleStartTask(task)}
                   />
