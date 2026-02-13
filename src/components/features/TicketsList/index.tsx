@@ -85,16 +85,13 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
   // Bulk assign state
   const [assigningTasks, setAssigningTasks] = useState(false);
 
-  // Deep research stop state
-  const [isStopping, setIsStopping] = useState(false);
-
   // Refs
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const { createTicket, loading: creatingTicket } = useRoadmapTaskMutations();
 
   // Deep research hooks
-  const { latestRun, refetch: refetchStakworkRun } = useStakworkGeneration({
+  const { latestRun, refetch: refetchStakworkRun, stopRun, isStopping } = useStakworkGeneration({
     featureId,
     type: "TASK_GENERATION",
     enabled: true,
@@ -512,32 +509,6 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     }
   };
 
-  const handleStopDeepResearch = async () => {
-    if (!latestRun?.id || isStopping) return;
-    
-    try {
-      setIsStopping(true);
-      
-      const response = await fetch(`/api/stakwork/runs/${latestRun.id}/stop`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to stop research");
-      }
-      
-      toast.success("Deep Research stopped");
-      await refetchStakworkRun(); // Refresh run state
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to stop research";
-      toast.error(message);
-    } finally {
-      setIsStopping(false);
-    }
-  };
-
   if (!defaultPhase) {
     return (
       <Empty>
@@ -549,43 +520,21 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     );
   }
 
-  // Show progress overlay while deep research is running
-  if (latestRun?.status === "IN_PROGRESS" && latestRun.projectId) {
-    return (
-      <DeepResearchProgress 
-        projectId={latestRun.projectId}
-        runId={latestRun.id}
-        onStop={handleStopDeepResearch}
-        isStopping={isStopping}
-      />
-    );
-  }
+  // Build generation preview content
+  const generationPreviewContent = generatedContent
+    ? (generatedContent.phases[0]?.tasks || [])
+        .map((task, idx) => {
+          let content = `**${idx + 1}. ${task.title}**`;
+          if (task.description) {
+            content += `\n${task.description}`;
+          }
+          content += `\n*Priority: ${task.priority}*`;
+          return content;
+        })
+        .join("\n\n")
+    : null;
 
-  // Show generation preview if we have generated task content (JSON format)
-  if (generatedContent) {
-    const generatedTasks = generatedContent.phases[0]?.tasks || [];
-    const previewContent = generatedTasks
-      .map((task, idx) => {
-        let content = `**${idx + 1}. ${task.title}**`;
-        if (task.description) {
-          content += `\n${task.description}`;
-        }
-        content += `\n*Priority: ${task.priority}*`;
-        return content;
-      })
-      .join("\n\n");
-
-    return (
-      <GenerationPreview
-        content={previewContent}
-        source={aiGeneration.source || "quick"}
-        onAccept={handleAcceptGenerated}
-        onReject={handleRejectGenerated}
-        onProvideFeedback={aiGeneration.source === "deep" ? handleProvideFeedback : undefined}
-        isLoading={aiGeneration.isLoading || acceptingTasks}
-      />
-    );
-  }
+  const isResearching = latestRun?.status === "IN_PROGRESS" && !!latestRun.projectId;
 
   return (
     <div className="space-y-2">
@@ -617,9 +566,11 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
             onQuickGenerate={() => {}}
             onDeepThink={handleDeepThink}
             onRetry={handleRetry}
+            onStop={stopRun}
             status={latestRun?.status}
             isLoading={aiGeneration.isLoading || initiatingDeepThink}
             isQuickGenerating={false}
+            isStopping={isStopping}
             disabled={false}
             showDeepThink={true}
           />
@@ -632,6 +583,26 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
           )}
         </div>
       </div>
+
+      {/* Deep Research Progress */}
+      {isResearching && (
+        <DeepResearchProgress
+          projectId={latestRun.projectId}
+          runId={latestRun.id}
+        />
+      )}
+
+      {/* Generation Preview */}
+      {!isResearching && generationPreviewContent && (
+        <GenerationPreview
+          content={generationPreviewContent}
+          source={aiGeneration.source || "quick"}
+          onAccept={handleAcceptGenerated}
+          onReject={handleRejectGenerated}
+          onProvideFeedback={aiGeneration.source === "deep" ? handleProvideFeedback : undefined}
+          isLoading={aiGeneration.isLoading || acceptingTasks}
+        />
+      )}
 
       {/* Inline Task Creation Form */}
       {isCreatingTicket && (
