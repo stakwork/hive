@@ -24,7 +24,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import { useStakworkGeneration } from "@/hooks/useStakworkGeneration";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
-import { usePusherConnection, TaskTitleUpdateEvent } from "@/hooks/usePusherConnection";
+import { usePusherConnection, TaskTitleUpdateEvent, DeploymentStatusChangeEvent } from "@/hooks/usePusherConnection";
 import { GenerationControls } from "@/components/features/GenerationControls";
 import type { FeatureDetail, TicketListItem } from "@/types/roadmap";
 import { TaskStatus, Priority } from "@prisma/client";
@@ -179,12 +179,45 @@ export function TicketsList({ featureId, feature, onUpdate, onDecisionMade }: Ti
     [feature, onUpdate]
   );
 
+  // Handle real-time deployment status changes
+  const handleDeploymentStatusChange = useCallback(
+    (event: DeploymentStatusChangeEvent) => {
+      if (!feature) return;
+
+      const updatedFeature = {
+        ...feature,
+        phases: feature.phases.map((phase) => ({
+          ...phase,
+          tasks: phase.tasks.map((task) => {
+            if (task.id !== event.taskId) return task;
+
+            // Update deployment status fields
+            const updatedTask = { ...task };
+            updatedTask.deploymentStatus = event.deploymentStatus;
+            
+            if (event.environment === "staging") {
+              updatedTask.deployedToStagingAt = event.deployedAt ? new Date(event.deployedAt) : null;
+            } else if (event.environment === "production") {
+              updatedTask.deployedToProductionAt = event.deployedAt ? new Date(event.deployedAt) : null;
+            }
+
+            return updatedTask;
+          }),
+        })),
+      };
+
+      onUpdate(updatedFeature);
+    },
+    [feature, onUpdate]
+  );
+
   // Subscribe to workspace-level Pusher updates for real-time task changes
   usePusherConnection({
     workspaceSlug,
     enabled: !!workspaceSlug,
     onTaskTitleUpdate: handleRealtimeTaskUpdate,
     onPRStatusChange: handlePRStatusChange,
+    onDeploymentStatusChange: handleDeploymentStatusChange,
   });
 
   // Auto-focus after ticket creation completes

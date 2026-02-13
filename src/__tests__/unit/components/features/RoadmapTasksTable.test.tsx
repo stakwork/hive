@@ -85,6 +85,13 @@ vi.mock("@/components/ui/priority-popover", () => ({
   ),
 }));
 
+// Mock DeploymentStatusBadge
+vi.mock("@/components/tasks/DeploymentStatusBadge", () => ({
+  DeploymentStatusBadge: ({ environment }: any) => (
+    <div data-testid="deployment-badge">{environment}</div>
+  ),
+}));
+
 describe("RoadmapTasksTable", () => {
   const mockRouter = {
     push: vi.fn(),
@@ -452,6 +459,106 @@ describe("RoadmapTasksTable", () => {
       expect(screen.getByText("Task 1")).toBeInTheDocument();
       expect(screen.getByText("Task 2")).toBeInTheDocument();
       expect(screen.getByText("Task 3")).toBeInTheDocument();
+    });
+  });
+
+  describe("Deployment badges", () => {
+    test("renders deployment badge for task with staging deployment", () => {
+      const deployedAt = new Date("2024-01-15T10:00:00Z");
+      const task = createMockTask({ 
+        title: "Deployed Task",
+        deploymentStatus: "staging",
+        deployedToStagingAt: deployedAt,
+      } as any);
+      
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      expect(screen.getByText("Deployed Task")).toBeInTheDocument();
+      const badge = screen.getByTestId("deployment-badge");
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent("staging");
+    });
+
+    test("renders deployment badge for task with production deployment", () => {
+      const deployedAt = new Date("2024-01-15T12:00:00Z");
+      const task = createMockTask({ 
+        title: "Production Task",
+        deploymentStatus: "production",
+        deployedToProductionAt: deployedAt,
+      } as any);
+      
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      expect(screen.getByText("Production Task")).toBeInTheDocument();
+      const badge = screen.getByTestId("deployment-badge");
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent("production");
+    });
+
+    test("does not render deployment badge for task without deployment", () => {
+      const task = createMockTask({ 
+        title: "Non-Deployed Task",
+      });
+      
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={[task]}
+        />
+      );
+
+      expect(screen.getByText("Non-Deployed Task")).toBeInTheDocument();
+      expect(screen.queryByTestId("deployment-badge")).not.toBeInTheDocument();
+    });
+
+    test("renders deployment badges for multiple deployed tasks", () => {
+      const stagingDate = new Date("2024-01-15T10:00:00Z");
+      const productionDate = new Date("2024-01-15T12:00:00Z");
+      
+      const tasks = [
+        createMockTask({ 
+          id: "task-1", 
+          title: "Staging Task", 
+          deploymentStatus: "staging",
+          deployedToStagingAt: stagingDate,
+        } as any),
+        createMockTask({ 
+          id: "task-2", 
+          title: "Production Task",
+          deploymentStatus: "production",
+          deployedToProductionAt: productionDate,
+        } as any),
+        createMockTask({ 
+          id: "task-3", 
+          title: "Not Deployed",
+        }),
+      ];
+      
+      render(
+        <RoadmapTasksTable
+          phaseId="phase-123"
+          workspaceSlug="test-workspace"
+          tasks={tasks}
+        />
+      );
+
+      const badges = screen.getAllByTestId("deployment-badge");
+      expect(badges).toHaveLength(2);
+      expect(badges[0]).toHaveTextContent("staging");
+      expect(badges[1]).toHaveTextContent("production");
     });
   });
 });

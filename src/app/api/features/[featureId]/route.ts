@@ -112,6 +112,9 @@ export async function GET(
                 dependsOnTaskIds: true,
                 bountyCode: true,
                 autoMerge: true,
+                deploymentStatus: true,
+                deployedToStagingAt: true,
+                deployedToProductionAt: true,
                 assignee: {
                   select: {
                     id: true,
@@ -148,6 +151,9 @@ export async function GET(
             dependsOnTaskIds: true,
             bountyCode: true,
             autoMerge: true,
+            deploymentStatus: true,
+            deployedToStagingAt: true,
+            deployedToProductionAt: true,
             assignee: {
               select: {
                 id: true,

@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { DeploymentStatusBadge } from "@/components/tasks/DeploymentStatusBadge";
 import { useReorderRoadmapTasks } from "@/hooks/useReorderRoadmapTasks";
 import { useRoadmapTaskMutations } from "@/hooks/useRoadmapTaskMutations";
 import type { TicketListItem } from "@/types/roadmap";
@@ -144,8 +145,24 @@ function SortableTableRow({
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
       </TableCell>
-      <TableCell className="w-[300px] font-medium truncate" onClick={onClick}>
-        {task.title}
+      <TableCell className="w-[300px] font-medium" onClick={onClick}>
+        <div className="flex items-center gap-2">
+          <span className="truncate">{task.title}</span>
+          {task.deploymentStatus && (
+            <DeploymentStatusBadge
+              environment={task.deploymentStatus as "staging" | "production"}
+              deployedAt={
+                task.deploymentStatus === "production"
+                  ? task.deployedToProductionAt
+                    ? new Date(task.deployedToProductionAt)
+                    : undefined
+                  : task.deployedToStagingAt
+                  ? new Date(task.deployedToStagingAt)
+                  : undefined
+              }
+            />
+          )}
+        </div>
       </TableCell>
       <TableCell className="w-[120px]">
         <StatusPopover
