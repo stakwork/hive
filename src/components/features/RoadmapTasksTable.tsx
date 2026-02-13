@@ -367,7 +367,7 @@ export function RoadmapTasksTable({ phaseId, workspaceSlug, tasks, onTasksReorde
               <TableHead className="w-[120px]">Status</TableHead>
               <TableHead className="w-[120px]">Priority</TableHead>
               <TableHead className="w-[180px]">Assignee</TableHead>
-              {showRepoColumn && <TableHead className="w-[150px]">Repo</TableHead>}
+              {showRepoColumn && <TableHead className="w-[150px]">Repository</TableHead>}
               <TableHead className="w-[200px]">Dependencies</TableHead>
               <TableHead className="w-[100px]">Auto-Merge</TableHead>
               <TableHead className="w-[50px]"></TableHead>
