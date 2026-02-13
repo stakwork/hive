@@ -70,6 +70,13 @@ export function useImageUpload({
     filename: string,
     textarea: HTMLTextAreaElement
   ) => {
+    // Defensive validation: prevent base64 insertion
+    if (url.startsWith('data:image')) {
+      console.error('Attempted to insert base64 data URI - only S3 URLs allowed');
+      if (onError) onError('Base64 images are not supported - upload failed');
+      return;
+    }
+
     const cursorPos = textarea.selectionStart;
     const textBefore = textarea.value.substring(0, cursorPos);
     const textAfter = textarea.value.substring(cursorPos);

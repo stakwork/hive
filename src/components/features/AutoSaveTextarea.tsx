@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef } from "react";
+import React, { useRef, useMemo } from "react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SaveIndicator } from "./SaveIndicator";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { cn } from "@/lib/utils";
+import { filterBase64FromDisplay } from "@/lib/utils/text-filters";
 
 interface AutoSaveTextareaProps {
   id: string;
@@ -49,6 +50,12 @@ export function AutoSaveTextarea({
 }: AutoSaveTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Filter base64 images from display while preserving them in storage
+  const displayValue = useMemo(() => {
+    if (!value) return '';
+    return filterBase64FromDisplay(value);
+  }, [value]);
+
   const {
     isDragging,
     isUploading,
@@ -89,9 +96,9 @@ export function AutoSaveTextarea({
         ref={textareaRef}
         id={id}
         placeholder={isListening && transcript ? `${transcript}...` : isListening ? "Listening..." : (placeholder || `Type your ${label.toLowerCase()} here...`)}
-        value={value || ""}
+        value={displayValue}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={(e) => onBlur(e.target.value || null)}
+        onBlur={() => onBlur(value)}
         onFocus={onFocus}
         rows={rows}
         className={cn("resize-y", className)}
