@@ -60,6 +60,13 @@ export async function getPhase(phaseId: string, userId: string): Promise<PhaseWi
               image: true,
             },
           },
+          repository: {
+            select: {
+              id: true,
+              name: true,
+              repositoryUrl: true,
+            },
+          },
           phase: {
             select: {
               id: true,
