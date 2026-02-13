@@ -29,7 +29,7 @@ export function DeepResearchProgress({
   const [displayedMessage, setDisplayedMessage] = useState(DEFAULT_MESSAGE);
   const [processedCount, setProcessedCount] = useState(0);
   const [showStopDialog, setShowStopDialog] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
+  const [isButtonHovered, setIsButtonHovered] = useState(false);
   const lastDisplayTimeRef = useRef<number>(Date.now());
 
   // Process new logs with minimum display time
@@ -61,15 +61,26 @@ export function DeepResearchProgress({
 
   return (
     <>
-      <div 
-        className="group relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300"
-        onMouseEnter={() => !isStopping && setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
+      <div className="group relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300">
         <div className="flex flex-col items-center justify-center py-16 px-4">
-          <div className="relative mb-4">
-            <Brain className="h-8 w-8 text-purple-600 animate-pulse" />
-          </div>
+          {/* Deep Research button with stop functionality */}
+          <button
+            type="button"
+            className="relative mb-4 p-3 rounded-full transition-all duration-200 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:cursor-not-allowed"
+            onMouseEnter={() => !isStopping && setIsButtonHovered(true)}
+            onMouseLeave={() => setIsButtonHovered(false)}
+            onClick={() => !isStopping && setShowStopDialog(true)}
+            disabled={isStopping}
+            aria-label={isStopping ? "Stopping research..." : "Stop deep research"}
+          >
+            {isStopping ? (
+              <Spinner className="h-8 w-8 text-purple-600" />
+            ) : isButtonHovered ? (
+              <StopCircle className="h-8 w-8 text-red-500" />
+            ) : (
+              <Brain className="h-8 w-8 text-purple-600 animate-pulse" />
+            )}
+          </button>
 
           <h3 className="text-sm font-medium text-foreground mb-2">
             Deep Research
@@ -79,26 +90,6 @@ export function DeepResearchProgress({
             {displayedMessage}
           </p>
         </div>
-
-        {/* Stop icon overlay on hover */}
-        {isHovered && !isStopping && (
-          <div 
-            className="absolute inset-0 flex items-center justify-center bg-black/50 cursor-pointer rounded-md"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowStopDialog(true);
-            }}
-          >
-            <StopCircle className="h-12 w-12 text-white" />
-          </div>
-        )}
-
-        {/* Spinner overlay when stopping */}
-        {isStopping && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-md">
-            <Spinner className="h-8 w-8 text-white" />
-          </div>
-        )}
       </div>
 
       {/* Confirmation dialog */}
