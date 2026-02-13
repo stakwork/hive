@@ -98,16 +98,25 @@ export default function FeatureDetailPage() {
         // Check if tasks already exist in the feature
         const hasTasks = feature?.phases?.some(phase => phase.tasks && phase.tasks.length > 0) ?? false;
         
-        // Filter for runs that need attention (decision is null)
+        // Group runs by type and keep only the most recent run per type
+        // Runs are already ordered by createdAt desc from the API
+        const latestPerType = new Map<StakworkRunType, { type: StakworkRunType; decision: string | null }>();
+        data.runs.forEach((run: { type: StakworkRunType; decision: string | null }) => {
+          if (!latestPerType.has(run.type)) {
+            latestPerType.set(run.type, run);
+          }
+        });
+        
+        // Filter for latest runs that need attention (decision is null)
         const pendingTypes = new Set<StakworkRunType>(
-          data.runs
-            .filter((run: { decision: string | null; type: StakworkRunType }) => {
+          Array.from(latestPerType.values())
+            .filter((run) => {
               if (run.decision !== null) return false;
               // If tasks already exist, don't show indicator for TASK_GENERATION
               if (run.type === "TASK_GENERATION" && hasTasks) return false;
               return ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"].includes(run.type);
             })
-            .map((run: { type: StakworkRunType }) => run.type)
+            .map((run) => run.type)
         );
         setPendingRunTypes(pendingTypes);
       }

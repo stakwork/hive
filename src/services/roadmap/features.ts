@@ -113,7 +113,7 @@ export async function listFeatures({
     ? { [sortBy]: sortOrder || "asc" }
     : { updatedAt: "desc" };
 
-  const [features, totalCount, totalCountWithoutFilters] = await Promise.all([
+  const [rawFeatures, totalCount, totalCountWithoutFilters] = await Promise.all([
     db.feature.findMany({
       where: whereClause,
       select: {
@@ -132,13 +132,21 @@ export async function listFeatures({
         _count: {
           select: {
             userStories: true,
-            stakworkRuns: {
-              where: {
-                status: "COMPLETED",
-                decision: null,
-                type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
-              },
-            },
+          },
+        },
+        // Fetch actual stakwork runs to compute count client-side
+        stakworkRuns: {
+          where: {
+            status: "COMPLETED",
+            decision: null,
+            type: { in: ["ARCHITECTURE", "REQUIREMENTS", "TASK_GENERATION", "USER_STORIES"] },
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            type: true,
+            decision: true,
+            createdAt: true,
           },
         },
       },
@@ -157,6 +165,36 @@ export async function listFeatures({
       },
     }),
   ]);
+
+  // Compute correct pending count per feature (only latest run per type)
+  const features = rawFeatures.map(feature => {
+    const latestPerType = new Map();
+    // Handle case where stakworkRuns might be undefined
+    if (feature.stakworkRuns) {
+      feature.stakworkRuns.forEach(run => {
+        if (!latestPerType.has(run.type)) {
+          latestPerType.set(run.type, run);
+        }
+      });
+    }
+    const pendingCount = Array.from(latestPerType.values())
+      .filter(run => run.decision === null).length;
+    
+    return {
+      id: feature.id,
+      title: feature.title,
+      status: feature.status,
+      priority: feature.priority,
+      createdAt: feature.createdAt,
+      updatedAt: feature.updatedAt,
+      assignee: feature.assignee,
+      createdBy: feature.createdBy,
+      _count: {
+        userStories: feature._count.userStories,
+        stakworkRuns: pendingCount,
+      },
+    };
+  });
 
   const totalPages = Math.ceil(totalCount / limit);
   const hasMore = page < totalPages;
