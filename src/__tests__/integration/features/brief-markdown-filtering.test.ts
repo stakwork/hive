@@ -168,25 +168,18 @@ More text`;
   });
 
   it('should handle empty or null brief correctly', async () => {
-    const user = await createTestUser({ email: 'test5@example.com' });
-    const workspace = await createTestWorkspace({ 
-      ownerId: user.id,
-      name: 'Test Workspace 5',
-      slug: 'test-workspace-5',
-    });
-
-    const feature = await createTestFeature({
-      workspaceId: workspace.id,
-      createdById: user.id,
-      updatedById: user.id,
-      title: 'No Brief',
-      brief: null,
-      status: 'BACKLOG',
-      priority: 'LOW',
-    });
-
-    const displayText = filterImagesFromDisplay(feature.brief || '');
-    expect(displayText).toBe('');
+    // Test null brief
+    const nullDisplayText = filterImagesFromDisplay(null as any);
+    expect(nullDisplayText).toBe('');
+    
+    // Test empty string brief
+    const emptyDisplayText = filterImagesFromDisplay('');
+    expect(emptyDisplayText).toBe('');
+    
+    // Test undefined brief (using || operator like component does)
+    const undefinedBrief = undefined as any;
+    const undefinedDisplayText = filterImagesFromDisplay(undefinedBrief || '');
+    expect(undefinedDisplayText).toBe('');
   });
 
   it('should handle brief with no images', async () => {
