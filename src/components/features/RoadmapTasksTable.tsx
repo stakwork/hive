@@ -215,14 +215,13 @@ function SortableTableRow({
         <TableCell className="w-[150px]">
           <div onClick={(e) => e.stopPropagation()}>
             <Select
-              value={task.repository?.id || "none"}
-              onValueChange={(value) => onRepoUpdate(value === "none" ? null : value)}
+              value={task.repository?.id || workspaceRepos[0]?.id || ""}
+              onValueChange={(value) => onRepoUpdate(value)}
             >
               <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="No repo" />
+                <SelectValue placeholder="Select repo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No repo</SelectItem>
                 {workspaceRepos.map((repo) => (
                   <SelectItem key={repo.id} value={repo.id}>
                     {repo.name}
