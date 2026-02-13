@@ -11,13 +11,12 @@ import { getWorkspaceBySlug } from "@/services/workspace";
 import type { SwarmSelectResult } from "@/types/swarm";
 import { syncPM2AndServices, extractRepoName } from "@/utils/stakgraphSync";
 import { extractEnvVarsFromPM2Config, SERVICE_CONFIG_ENV_VARS } from "@/utils/devContainerUtils";
-import { SwarmStatus, PodState } from "@prisma/client";
+import { SwarmStatus } from "@prisma/client";
 import { ServiceConfig as SwarmServiceConfig } from "@/services/swarm/db";
 import { getServerSession } from "next-auth/next";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryRepository } from "@/lib/helpers/repository";
 import type { ServiceDataConfig } from "@/components/stakgraph/types";
-import { triggerPodRepair, isRepairInProgress } from "@/services/pod-repair-cron";
 
 import { z } from "zod";
 
@@ -466,73 +465,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             embeddingsEnabled: repo.embeddingsEnabled ?? true,
           })),
         });
-
-        // Check if any new repos have triggerPodRepair enabled
-        const shouldTriggerPodRepair = reposToCreate.some((repo) => (repo as any).triggerPodRepair === true);
-        
-        if (shouldTriggerPodRepair) {
-          try {
-            // Fetch workspace with pod details
-            const workspaceWithPod = await db.workspace.findUnique({
-              where: { id: workspace.id },
-              select: {
-                id: true,
-                slug: true,
-                swarm: {
-                  select: {
-                    id: true,
-                    podState: true,
-                    pods: {
-                      where: { deletedAt: null },
-                      select: { podId: true, password: true },
-                      take: 1,
-                    },
-                  },
-                },
-              },
-            });
-
-            // Skip if no swarm or pods configured yet
-            if (!workspaceWithPod?.swarm) {
-              console.log(`[Pod Repair] Skipping pod repair for workspace ${slug}: No swarm configured`);
-            } else if (!workspaceWithPod.swarm.pods || workspaceWithPod.swarm.pods.length === 0) {
-              console.log(`[Pod Repair] Skipping pod repair for workspace ${slug}: No pods configured`);
-            } else if (workspaceWithPod.swarm.podState === PodState.FAILED) {
-              console.log(`[Pod Repair] Skipping pod repair for workspace ${slug}: Pod state is FAILED`);
-            } else {
-              // Check if repair is already in progress
-              const repairInProgress = await isRepairInProgress(workspaceWithPod.id);
-              
-              if (repairInProgress) {
-                console.warn(`[Pod Repair] Skipping pod repair for workspace ${slug}: Repair already in progress`);
-              } else {
-                // Trigger pod repair
-                const pod = workspaceWithPod.swarm.pods[0];
-                
-                // Skip if pod has no password (shouldn't happen but safety check)
-                if (!pod.password) {
-                  console.log(`[Pod Repair] Skipping pod repair for workspace ${slug}: Pod has no password`);
-                } else {
-                  const repoNames = reposToCreate.map(r => r.name).join(", ");
-                  
-                  await triggerPodRepair(
-                    workspaceWithPod.id,
-                    workspaceWithPod.slug,
-                    pod.podId,
-                    pod.password,
-                    [],
-                    `Repository added: ${repoNames}`
-                  );
-                  
-                  console.log(`[Pod Repair] Successfully triggered pod repair for workspace ${slug} after adding repositories: ${repoNames}`);
-                }
-              }
-            }
-          } catch (error) {
-            console.error(`[Pod Repair] Failed to trigger pod repair for workspace ${slug}:`, error);
-            // Don't fail repository creation - just log the error
-          }
-        }
       }
 
       const reposToUpdate = incomingRepos.filter((r) => r.id);
