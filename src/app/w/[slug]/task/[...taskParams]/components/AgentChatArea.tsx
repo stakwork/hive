@@ -10,7 +10,13 @@ import { LogEntry } from "@/hooks/useProjectLogWebSocket";
 import type { Artifact, ChatMessage, WorkflowStatus } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Github, Monitor, Server, ServerOff } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, Github, GitCommit, Monitor, Server, ServerOff } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
 import { AgentChatMessage } from "./AgentChatMessage";
 import { ChatInput } from "./ChatInput";
@@ -217,18 +223,32 @@ export function AgentChatArea({
                 </TooltipProvider>
               )}
 
-              {/* Create PR / Open PR Button */}
+              {/* Create PR / Open PR Dropdown */}
               {onCommit && (
                 prUrl ? (
-                  <Button
-                    size="sm"
-                    onClick={() => window.open(prUrl, '_blank')}
-                    className="flex-shrink-0 gap-1 text-white hover:opacity-90"
-                    style={{ backgroundColor: "#238636" }}
-                  >
-                    <Github className="w-3 h-3" />
-                    Open PR
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        className="flex-shrink-0 gap-1 text-white hover:opacity-90"
+                        style={{ backgroundColor: "#238636" }}
+                      >
+                        <Github className="w-3 h-3" />
+                        PR Actions
+                        <ChevronDown className="w-3 h-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => window.open(prUrl, '_blank')}>
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Open PR
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={onCommit} disabled={isCommitting}>
+                        <GitCommit className="w-4 h-4 mr-2" />
+                        {isCommitting ? "Pushing..." : "Push New Commit"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 ) : (
                   <Button
                     size="sm"
