@@ -52,33 +52,127 @@ const getProviders = () => {
 
   // Add mock provider for development when POD_URL is defined
   if (process.env.POD_URL) {
-    providers.push(
-      CredentialsProvider({
-        id: "mock",
-        name: "Development Mock Login",
-        credentials: {
-          username: {
-            label: "Username",
-            type: "text",
-            placeholder: "Enter any username",
-          },
+    const mockProvider = CredentialsProvider({
+      id: "mock",
+      name: "Development Mock Login",
+      credentials: {
+        username: {
+          label: "Username",
+          type: "text",
+          placeholder: "Enter any username",
         },
-        async authorize(credentials) {
-          // Mock authentication - accept any username in development
-          if (credentials?.username) {
-            const username = credentials.username.trim();
-            return {
-              id: `mock-${username}`,
-              name: username,
-              email: `${username}@mock.dev`,
-              image: `https://avatars.githubusercontent.com/u/1?v=4`, // Generic avatar
-            };
-          }
-          return null;
-        },
-      }),
-    );
+      },
+      async authorize(credentials) {
+        // Mock authentication - accept any username in development
+        if (credentials?.username) {
+          const username = credentials.username.trim();
+          return {
+            id: `mock-${username}`,
+            name: username,
+            email: `${username}@mock.dev`,
+            image: `https://avatars.githubusercontent.com/u/1?v=4`, // Generic avatar
+          };
+        }
+        return null;
+      },
+    });
+    // Override the default id (NextAuth v4 doesn't respect custom ids for CredentialsProvider)
+    mockProvider.id = "mock";
+    mockProvider.name = "Development Mock Login";
+    providers.push(mockProvider);
   }
+
+  // Add Sphinx Lightning provider
+  const sphinxProvider = CredentialsProvider({
+    id: "sphinx",
+    name: "Sphinx Lightning",
+    credentials: {
+      challenge: { type: "text" },
+      pubkey: { type: "text" },
+    },
+    authorize: async (credentials) => {
+        try {
+          // Validate required fields
+          if (!credentials?.challenge || !credentials?.pubkey) {
+            logger.authError(
+              "Missing challenge or pubkey in Sphinx authorization",
+              "SPHINX_AUTH_MISSING_CREDENTIALS",
+              { hasChallenge: !!credentials?.challenge, hasPubkey: !!credentials?.pubkey }
+            );
+            return null;
+          }
+
+          // Fetch the challenge from database
+          const sphinxChallenge = await db.sphinxChallenge.findUnique({
+            where: { k1: credentials.challenge },
+          });
+
+          // Validate challenge exists
+          if (!sphinxChallenge) {
+            logger.authError(
+              "Sphinx challenge not found",
+              "SPHINX_AUTH_CHALLENGE_NOT_FOUND",
+              { challenge: credentials.challenge }
+            );
+            return null;
+          }
+
+          // Validate challenge is verified (used)
+          if (!sphinxChallenge.used) {
+            logger.authError(
+              "Sphinx challenge not verified",
+              "SPHINX_AUTH_CHALLENGE_NOT_VERIFIED",
+              { challenge: credentials.challenge }
+            );
+            return null;
+          }
+
+          // Validate challenge has pubkey
+          if (!sphinxChallenge.pubkey) {
+            logger.authError(
+              "Sphinx challenge missing pubkey",
+              "SPHINX_AUTH_CHALLENGE_NO_PUBKEY",
+              { challenge: credentials.challenge }
+            );
+            return null;
+          }
+
+          // Validate challenge not expired
+          if (sphinxChallenge.expiresAt < new Date()) {
+            logger.authError(
+              "Sphinx challenge expired",
+              "SPHINX_AUTH_CHALLENGE_EXPIRED",
+              { challenge: credentials.challenge, expiresAt: sphinxChallenge.expiresAt }
+            );
+            return null;
+          }
+
+          // Validate pubkey matches
+          if (sphinxChallenge.pubkey !== credentials.pubkey) {
+            logger.authError(
+              "Sphinx pubkey mismatch",
+              "SPHINX_AUTH_PUBKEY_MISMATCH",
+              { challenge: credentials.challenge }
+            );
+            return null;
+          }
+
+          // Return user object for signIn callback
+          // Use temporary ID that will be replaced in signIn callback
+          return {
+            id: "sphinx-temp",
+            pubkey: credentials.pubkey,
+          };
+        } catch (error) {
+          logger.authError("Sphinx authorization failed", "SPHINX_AUTH_ERROR", error);
+          return null;
+        }
+      },
+  });
+  // Override the default id (NextAuth v4 doesn't respect custom ids for CredentialsProvider)
+  sphinxProvider.id = "sphinx";
+  sphinxProvider.name = "Sphinx Lightning";
+  providers.push(sphinxProvider);
 
   return providers;
 };
@@ -226,6 +320,141 @@ export const authOptions: NextAuthOptions = {
           logger.authError("Failed to handle GitHub re-authentication", "SIGNIN_GITHUB", error);
         }
       }
+
+      // Handle Sphinx Lightning authentication
+      if (account?.provider === "sphinx") {
+        try {
+          // Extract Lightning pubkey from user object
+          const lightningPubkey = (user as { pubkey?: string }).pubkey;
+
+          if (!lightningPubkey) {
+            logger.authError(
+              "Missing Lightning pubkey in Sphinx sign-in",
+              "SIGNIN_SPHINX_NO_PUBKEY",
+              { userId: user.id }
+            );
+            return false;
+          }
+
+          // Check if Lightning pubkey already exists in database
+          const existingUserWithPubkey = await db.user.findFirst({
+            where: {
+              lightningPubkey: {
+                not: null,
+              },
+            },
+          });
+
+          // We need to decrypt and compare Lightning pubkeys to find existing user
+          let existingSphinxUser = null;
+          if (existingUserWithPubkey) {
+            try {
+              const decryptedPubkey = encryptionService.decryptField(
+                "lightningPubkey",
+                existingUserWithPubkey.lightningPubkey!
+              );
+              if (decryptedPubkey === lightningPubkey) {
+                existingSphinxUser = existingUserWithPubkey;
+              }
+            } catch (error) {
+              logger.authWarn(
+                "Failed to decrypt existing Lightning pubkey during comparison",
+                "SIGNIN_SPHINX_DECRYPT_COMPARE",
+                { error }
+              );
+            }
+          }
+
+          // Scenario 1: Existing Sphinx user - log in to existing account
+          if (existingSphinxUser) {
+            user.id = existingSphinxUser.id;
+
+            // Update lastLoginAt
+            await db.user.update({
+              where: { id: existingSphinxUser.id },
+              data: { lastLoginAt: new Date() },
+            });
+
+            logger.authInfo("Existing Sphinx user logged in", "SIGNIN_SPHINX_EXISTING_USER", {
+              userId: existingSphinxUser.id,
+            });
+
+            return true;
+          }
+
+          // Check if user is already authenticated (has existing session)
+          // This would happen when linking Sphinx to an existing GitHub account
+          // For NextAuth, we check if there's an existing user ID that's not the temp ID
+          const isLinkingToExisting = user.id && user.id !== "sphinx-temp";
+
+          // Scenario 2: Existing GitHub user linking Sphinx authentication
+          if (isLinkingToExisting) {
+            const existingUserId = user.id;
+
+            // Encrypt and store Lightning pubkey on existing user
+            const encryptedPubkey = encryptionService.encryptField("lightningPubkey", lightningPubkey);
+
+            await db.user.update({
+              where: { id: existingUserId },
+              data: {
+                lightningPubkey: JSON.stringify(encryptedPubkey),
+                lastLoginAt: new Date(),
+              },
+            });
+
+            // Create Account record for Sphinx provider
+            await db.account.create({
+              data: {
+                userId: existingUserId,
+                type: "credentials",
+                provider: "sphinx",
+                providerAccountId: lightningPubkey, // Use pubkey as provider account ID
+              },
+            });
+
+            logger.authInfo("Sphinx authentication linked to existing user", "SIGNIN_SPHINX_LINKED", {
+              userId: existingUserId,
+            });
+
+            return true;
+          }
+
+          // Scenario 3: New Sphinx user - create new account
+          const encryptedPubkey = encryptionService.encryptField("lightningPubkey", lightningPubkey);
+
+          const newUser = await db.user.create({
+            data: {
+              lightningPubkey: JSON.stringify(encryptedPubkey),
+              name: `Sphinx User`, // Default name, can be updated later
+              emailVerified: new Date(), // Lightning auth is verified
+              lastLoginAt: new Date(),
+            },
+          });
+
+          // Create Account record for Sphinx provider
+          await db.account.create({
+            data: {
+              userId: newUser.id,
+              type: "credentials",
+              provider: "sphinx",
+              providerAccountId: lightningPubkey,
+            },
+          });
+
+          // Update user object with new user ID
+          user.id = newUser.id;
+
+          logger.authInfo("New Sphinx user created", "SIGNIN_SPHINX_NEW_USER", {
+            userId: newUser.id,
+          });
+
+          return true;
+        } catch (error) {
+          logger.authError("Failed to handle Sphinx authentication", "SIGNIN_SPHINX", error);
+          return false;
+        }
+      }
+
       return true;
     },
     async session({ session, user, token }) {
@@ -237,6 +466,27 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (session.user) {
+        // Add Lightning pubkey to session if user authenticated via Sphinx
+        // This needs to happen BEFORE any early returns
+        if (userId) {
+          try {
+            const userRecord = await db.user.findUnique({
+              where: { id: userId },
+              select: { lightningPubkey: true },
+            });
+
+            if (userRecord?.lightningPubkey) {
+              const decryptedPubkey = encryptionService.decryptField("lightningPubkey", userRecord.lightningPubkey);
+              (session.user as { lightningPubkey?: string }).lightningPubkey = decryptedPubkey;
+            }
+          } catch (error) {
+            logger.authWarn("Failed to decrypt Lightning pubkey for session", "SESSION_LIGHTNING_PUBKEY", {
+              userId,
+              error,
+            });
+          }
+        }
+
         // For JWT sessions (mock provider), get data from token
         if (process.env.POD_URL && token) {
           (session.user as { id: string }).id = token.id as string;
