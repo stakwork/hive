@@ -61,9 +61,10 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deleted       Boolean   @default(false)
-  deletedAt     DateTime? @map("deleted_at")
-  lastLoginAt   DateTime? @map("last_login_at")
-  poolApiKey    String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
+  deletedAt        DateTime? @map("deleted_at")
+  lastLoginAt      DateTime? @map("last_login_at")
+  poolApiKey       String?   @map("pool_api_key") // Pool API Key for Pool Manager (will be removed in separate PR)
+  lightningPubkey  String?   @unique @map("lightning_pubkey") // Lightning Network public key for Sphinx auth
 
   // Authentication relationships
   accounts   Account[]
@@ -139,6 +140,19 @@ model GitHubAuth {
   @@index([githubUserId])
   @@index([githubUsername])
   @@map("github_auth")
+}
+
+model SphinxChallenge {
+  id        String   @id @default(cuid())
+  k1        String   @unique // 64-character hex challenge
+  pubkey    String? // 66-character hex Lightning pubkey (set after verification)
+  used      Boolean  @default(false)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([k1])
+  @@index([expiresAt])
+  @@map("sphinx_challenges")
 }
 
 // =============================================
