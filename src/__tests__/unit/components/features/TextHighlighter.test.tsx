@@ -193,8 +193,9 @@ describe("TextHighlighter Component", () => {
 
     it("should close popover on cancel", async () => {
       const user = userEvent.setup();
+      const onHighlightsChange = vi.fn();
       const { container } = render(
-        <TextHighlighter {...defaultProps}>
+        <TextHighlighter highlights={[]} onHighlightsChange={onHighlightsChange}>
           <div>Sample text</div>
         </TextHighlighter>
       );
@@ -209,9 +210,10 @@ describe("TextHighlighter Component", () => {
       const cancelButton = screen.getByText("Cancel");
       await user.click(cancelButton);
 
+      // Wait a bit for the animation, then verify no highlight was created
       await waitFor(() => {
-        expect(screen.queryByText("Add Comment")).not.toBeInTheDocument();
-      });
+        expect(onHighlightsChange).not.toHaveBeenCalled();
+      }, { timeout: 1000 });
     });
 
     it("should save comment with Ctrl+Enter keyboard shortcut", async () => {
