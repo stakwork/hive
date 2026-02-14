@@ -57,7 +57,8 @@ export function ConversationHistorySheet({
     }
   };
 
-  const formatTimestamp = (timestamp: string | Date) => {
+  const formatTimestamp = (timestamp: string | Date | null) => {
+    if (!timestamp) return "";
     const date = typeof timestamp === "string" ? new Date(timestamp) : timestamp;
 
     if (isToday(date)) {
