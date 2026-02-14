@@ -8,6 +8,10 @@ export const selectors = {
   auth: {
     mockSignInButton: '[data-testid="mock-signin-button"]',
     githubSignInButton: '[data-testid="github-signin-button"]',
+    sphinxSignInButton: '[data-testid="sphinx-signin-button"]',
+    sphinxQRCode: '[data-testid="sphinx-qr-code"]',
+    sphinxDeepLink: '[data-testid="sphinx-deep-link"]',
+    sphinxCancelButton: '[data-testid="sphinx-cancel-button"]',
     welcomeMessage: 'div.grid.auto-rows-min.items-start:has-text("Welcome to Hive")',
   },
 
@@ -227,15 +231,6 @@ export const selectors = {
   userJourneys: {
     createButton: '[data-testid="create-user-journey-button"]',
     browserPanel: '[data-testid="browser-artifact-panel"]',
-  },
-
-  // Janitors
-  janitors: {
-    pageTitle: '[data-testid="page-title"]:has-text("Janitors")',
-    taskCoordinatorSection: '[data-testid="janitor-section-task-coordinator"]',
-    testingSection: '[data-testid="janitor-section-testing"]',
-    maintainabilitySection: '[data-testid="janitor-section-maintainability"]',
-    securitySection: '[data-testid="janitor-section-security"]',
   },
 
   // Common UI elements
