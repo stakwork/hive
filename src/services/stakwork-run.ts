@@ -286,6 +286,9 @@ export async function createStakworkRun(
       // Auto-accept flag
       autoAccept: input.autoAccept ?? false,
 
+      // Skip clarifying questions flag
+      skipClarifyingQuestions: input.params?.skipClarifyingQuestions ?? false,
+
       // Allow params override
       ...(input.params || {}),
 
