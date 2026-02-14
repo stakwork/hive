@@ -2,18 +2,66 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { 
   generatePM2Apps,
   formatPM2Apps,
-  getPM2AppsContent
+  getPM2AppsContent,
+  resolveCwd
 } from "@/utils/devContainerUtils";
-import type { ServiceDataConfig } from "@/types/devContainer";
+import type { ServiceDataConfig } from "@/components/stakgraph/types";
 
 describe("DevContainer Utils - Unit Tests", () => {
   beforeEach(() => {
     // Clear any test state if needed
   });
 
+  describe("resolveCwd", () => {
+    test("should return default repo for empty cwd", () => {
+      const result = resolveCwd("", ["repo1", "repo2"], "repo1");
+      expect(result).toBe("/workspaces/repo1");
+    });
+
+    test("should return default repo for undefined cwd", () => {
+      const result = resolveCwd(undefined, ["repo1", "repo2"], "repo1");
+      expect(result).toBe("/workspaces/repo1");
+    });
+
+    test("should pass through absolute paths unchanged", () => {
+      const result = resolveCwd("/workspaces/custom-repo/subdir", ["repo1", "repo2"], "repo1");
+      expect(result).toBe("/workspaces/custom-repo/subdir");
+    });
+
+    test("should treat cwd as subdirectory for single repo", () => {
+      const result = resolveCwd("subdir", ["repo1"], "repo1");
+      expect(result).toBe("/workspaces/repo1/subdir");
+    });
+
+    test("should use repo name when first segment matches a repo (multi-repo)", () => {
+      const result = resolveCwd("jarvis-backend", ["sphinx-nav-fiber", "jarvis-boltwall", "jarvis-backend"], "sphinx-nav-fiber");
+      expect(result).toBe("/workspaces/jarvis-backend");
+    });
+
+    test("should use repo with subdir when first segment matches a repo (multi-repo)", () => {
+      const result = resolveCwd("jarvis-boltwall/boltwall", ["sphinx-nav-fiber", "jarvis-boltwall", "jarvis-backend"], "sphinx-nav-fiber");
+      expect(result).toBe("/workspaces/jarvis-boltwall/boltwall");
+    });
+
+    test("should use default repo when no match found (multi-repo)", () => {
+      const result = resolveCwd("some-subdir", ["sphinx-nav-fiber", "jarvis-boltwall", "jarvis-backend"], "sphinx-nav-fiber");
+      expect(result).toBe("/workspaces/sphinx-nav-fiber/some-subdir");
+    });
+
+    test("should handle leading slashes in cwd", () => {
+      const result = resolveCwd("/subdir", ["repo1"], "repo1");
+      expect(result).toBe("/workspaces/repo1/subdir");
+    });
+
+    test("should handle deeply nested subdirectories", () => {
+      const result = resolveCwd("jarvis-backend/src/api", ["sphinx-nav-fiber", "jarvis-backend"], "sphinx-nav-fiber");
+      expect(result).toBe("/workspaces/jarvis-backend/src/api");
+    });
+  });
+
   describe("generatePM2Apps", () => {
     test("should return default configuration when no services provided", () => {
-      const result = generatePM2Apps("test-repo", []);
+      const result = generatePM2Apps(["test-repo"], []);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -35,7 +83,7 @@ describe("DevContainer Utils - Unit Tests", () => {
     });
 
     test("should return default configuration when services is null/undefined", () => {
-      const result = generatePM2Apps("test-repo", null as any);
+      const result = generatePM2Apps(["test-repo"], null as any);
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe("default-service");
@@ -62,7 +110,7 @@ describe("DevContainer Utils - Unit Tests", () => {
         },
       ];
 
-      const result = generatePM2Apps("my-repo", serviceData);
+      const result = generatePM2Apps(["my-repo"], serviceData);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -98,7 +146,7 @@ describe("DevContainer Utils - Unit Tests", () => {
         },
       ];
 
-      const result = generatePM2Apps("python-repo", serviceData);
+      const result = generatePM2Apps(["python-repo"], serviceData);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -135,7 +183,7 @@ describe("DevContainer Utils - Unit Tests", () => {
         },
       ];
 
-      const result = generatePM2Apps("fullstack-app", serviceData);
+      const result = generatePM2Apps(["fullstack-app"], serviceData);
 
       expect(result).toHaveLength(2);
       
@@ -178,7 +226,7 @@ describe("DevContainer Utils - Unit Tests", () => {
         },
       ];
 
-      const result = generatePM2Apps("test-repo", serviceData);
+      const result = generatePM2Apps(["test-repo"], serviceData);
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -205,7 +253,7 @@ describe("DevContainer Utils - Unit Tests", () => {
         },
       ];
 
-      const result = generatePM2Apps("test-repo", serviceData);
+      const result = generatePM2Apps(["test-repo"], serviceData);
 
       expect(result[0].env.PORT).toBe("9000");
       expect(typeof result[0].env.PORT).toBe("string");
@@ -222,7 +270,7 @@ describe("DevContainer Utils - Unit Tests", () => {
         },
       ];
 
-      const result = generatePM2Apps("test-repo", serviceData);
+      const result = generatePM2Apps(["test-repo"], serviceData);
 
       expect(result[0].script).toBe("");
       expect(result[0].env.BUILD_COMMAND).toBe("npm run build");
