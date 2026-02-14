@@ -1,0 +1,14 @@
+--- src/__tests__/unit/components/features/GenerationPreview-feedback.test.tsx
++++ src/__tests__/unit/components/features/GenerationPreview-feedback.test.tsx
+@@ -81,8 +81,9 @@ describe("GenerationPreview Feedback Integration", () => {
+       });
+ 
+       const textarea = screen.getByPlaceholderText("Enter your comment...");
+-      fireEvent.change(textarea, { target: { value: "Consider using microservices" } });
+-      fireEvent.input(textarea, { target: { value: "Consider using microservices" } });
++      await user.clear(textarea);
++      await user.type(textarea, "Consider using microservices");
++      await waitFor(() => expect(textarea).toHaveValue("Consider using microservices"));
+       const saveButton = screen.getByText("Save");
+       await waitFor(() => {
+         expect(saveButton).not.toBeDisabled();

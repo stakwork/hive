@@ -52,21 +52,6 @@ const createMockSelection = (text: string, startOffset: number, endOffset: numbe
 };
 
 describe("GenerationPreview Feedback Integration", () => {
-  // Helper to properly update textarea values in React 18
-  const updateTextarea = (textarea: HTMLElement, value: string) => {
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      "value"
-    )?.set;
-    nativeInputValueSetter?.call(textarea, value);
-    
-    // Dispatch both change and input events to ensure React state updates
-    const changeEvent = new Event("change", { bubbles: true });
-    textarea.dispatchEvent(changeEvent);
-    const inputEvent = new Event("input", { bubbles: true });
-    textarea.dispatchEvent(inputEvent);
-  };
-
   beforeEach(() => {
     createMockSelection("", 0, 0);
   });
@@ -96,8 +81,8 @@ describe("GenerationPreview Feedback Integration", () => {
 
       // Add first comment
       const textarea1 = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea1, "Consider using microservices");
-      
+      fireEvent.change(textarea1, { target: { value: "Consider using microservices" } });
+      fireEvent.input(textarea1, { target: { value: "Consider using microservices" } });
       const saveButton1 = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton1).not.toBeDisabled();
@@ -127,7 +112,8 @@ describe("GenerationPreview Feedback Integration", () => {
 
       // Add second comment
       const textarea2 = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea2, "Add rate limiting");
+      fireEvent.change(textarea2, { target: { value: "Add rate limiting" } });
+      fireEvent.input(textarea2, { target: { value: "Add rate limiting" } });
       const saveButton2 = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton2).not.toBeDisabled();
@@ -194,7 +180,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       const textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, "This needs improvement");
+      fireEvent.change(textarea, { target: { value: "This needs improvement" } });
+      fireEvent.input(textarea, { target: { value: "This needs improvement" } });
       const saveButton = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton).not.toBeDisabled();
@@ -273,7 +260,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       const textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, "This section is too long");
+      fireEvent.change(textarea, { target: { value: "This section is too long" } });
+      fireEvent.input(textarea, { target: { value: "This section is too long" } });
       
       // Wait for Save button to be enabled
       const saveButton = screen.getByText("Save");
@@ -325,7 +313,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       const textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, "Review formatting");
+      fireEvent.change(textarea, { target: { value: "Review formatting" } });
+      fireEvent.input(textarea, { target: { value: "Review formatting" } });
       const saveButton = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton).not.toBeDisabled();
@@ -341,10 +330,10 @@ describe("GenerationPreview Feedback Integration", () => {
       const submitButton = screen.getByRole("button", { name: /submit feedback/i });
       await user.click(submitButton);
 
-      // Verify markdown was properly encoded (using rendered text without markdown symbols)
+      // Verify markdown was properly encoded
       await waitFor(() => {
         expect(onProvideFeedback).toHaveBeenCalledWith(
-          expect.stringContaining("<highlight>bold text and code block</highlight>")
+          expect.stringContaining("<highlight>**bold text** and `code block`</highlight>")
         );
       });
     });
@@ -373,7 +362,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       const textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, 'Use "props" & \'state\'');
+      fireEvent.change(textarea, { target: { value: 'Use "props" & \'state\'' } });
+      fireEvent.input(textarea, { target: { value: 'Use "props" & \'state\'' } });
       const saveButton = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton).not.toBeDisabled();
@@ -444,7 +434,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       const textarea1 = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea1, "First comment");
+      fireEvent.change(textarea1, { target: { value: "First comment" } });
+      fireEvent.input(textarea1, { target: { value: "First comment" } });
       const saveButton1 = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton1).not.toBeDisabled();
@@ -511,7 +502,13 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       const textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, "Comment text");
+      fireEvent.change(textarea, { target: { value: "Comment text" } });
+      fireEvent.input(textarea, { target: { value: "Comment text" } });
+      
+      // Wait for text to be fully typed
+      await waitFor(() => {
+        expect(textarea).toHaveValue("Comment text");
+      });
       
       const saveButton = screen.getByText("Save");
       await waitFor(() => {
@@ -547,7 +544,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       let textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, "First comment");
+      fireEvent.change(textarea, { target: { value: "First comment" } });
+      fireEvent.input(textarea, { target: { value: "First comment" } });
       let saveButton = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton).not.toBeDisabled();
@@ -575,8 +573,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, "Second comment");
-      await waitFor(() => expect(textarea).toHaveValue("Second comment"));
+      fireEvent.change(textarea, { target: { value: "Second comment" } });
+      fireEvent.input(textarea, { target: { value: "Second comment" } });
       saveButton = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton).not.toBeDisabled();
@@ -611,7 +609,8 @@ describe("GenerationPreview Feedback Integration", () => {
       });
 
       const textarea = screen.getByPlaceholderText("Enter your comment...");
-      updateTextarea(textarea, "Comment");
+      fireEvent.change(textarea, { target: { value: "Comment" } });
+      fireEvent.input(textarea, { target: { value: "Comment" } });
       const saveButton = screen.getByText("Save");
       await waitFor(() => {
         expect(saveButton).not.toBeDisabled();

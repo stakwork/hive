@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { Check, X, Sparkles, Brain, ArrowUp } from "lucide-react";
+import { Check, X, Sparkles, Brain, ArrowUp, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
+import { TextHighlighter, type Highlight } from "@/components/features/TextHighlighter";
 import type { GenerationSource } from "@/hooks/useAIGeneration";
 
 interface GenerationPreviewProps {
@@ -14,6 +16,38 @@ interface GenerationPreviewProps {
   isLoading?: boolean;
 }
 
+/**
+ * Escapes special XML characters in text content
+ */
+function escapeXML(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Formats highlights and general feedback into XML structure
+ */
+function formatFeedbackXML(highlights: Highlight[], generalFeedback: string): string {
+  let xml = "";
+  
+  // Add highlight-comment pairs
+  highlights.forEach((highlight) => {
+    xml += `<highlight>${escapeXML(highlight.text)}</highlight>`;
+    xml += `<comment>${escapeXML(highlight.comment)}</comment>`;
+  });
+  
+  // Add general feedback if present
+  if (generalFeedback.trim()) {
+    xml += `<general_feedback>${escapeXML(generalFeedback.trim())}</general_feedback>`;
+  }
+  
+  return xml;
+}
+
 export function GenerationPreview({
   content,
   source,
@@ -23,13 +57,16 @@ export function GenerationPreview({
   isLoading = false,
 }: GenerationPreviewProps) {
   const [feedback, setFeedback] = useState("");
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
   const Icon = source === "quick" ? Sparkles : Brain;
   const iconColor = source === "quick" ? "text-purple-500" : "text-purple-600";
 
   const handleProvideFeedback = () => {
-    if (feedback.trim() && onProvideFeedback) {
-      onProvideFeedback(feedback.trim());
+    if (onProvideFeedback && (feedback.trim() || highlights.length > 0)) {
+      const xmlFeedback = formatFeedbackXML(highlights, feedback);
+      onProvideFeedback(xmlFeedback);
       setFeedback("");
+      setHighlights([]);
     }
   };
 
@@ -44,9 +81,22 @@ export function GenerationPreview({
     <div className="relative rounded-md border border-border bg-muted/50 animate-in fade-in slide-in-from-top-2 duration-300 pb-[112px]">
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <Icon className={`h-4 w-4 ${iconColor} flex-shrink-0 mt-1`} />
+          <div className="flex items-center gap-2">
+            <Icon className={`h-4 w-4 ${iconColor} flex-shrink-0 mt-1`} />
+            {highlights.length > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                <MessageSquare className="h-3 w-3 mr-1" />
+                {highlights.length} {highlights.length === 1 ? "comment" : "comments"}
+              </Badge>
+            )}
+          </div>
           <div className="flex-1 text-sm">
-            <MarkdownRenderer size="compact">{content}</MarkdownRenderer>
+            <TextHighlighter
+              highlights={highlights}
+              onHighlightsChange={setHighlights}
+            >
+              <MarkdownRenderer size="compact">{content}</MarkdownRenderer>
+            </TextHighlighter>
           </div>
         </div>
       </div>
@@ -69,7 +119,7 @@ export function GenerationPreview({
                 size="sm"
                 variant="default"
                 onClick={handleProvideFeedback}
-                disabled={isLoading || !feedback.trim()}
+                disabled={isLoading || (!feedback.trim() && highlights.length === 0)}
               >
                 <ArrowUp className="h-4 w-4 mr-2" />
                 Submit Feedback
