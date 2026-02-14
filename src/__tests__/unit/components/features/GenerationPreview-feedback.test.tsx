@@ -1,458 +1,422 @@
-import React from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import GenerationPreview from '@/components/features/GenerationPreview';
+import React from "react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import GenerationPreview from "@/components/features/GenerationPreview";
 
-// Mock MarkdownRenderer to avoid theme detection dependency
-vi.mock('@/components/MarkdownRenderer', () => ({
-  MarkdownRenderer: ({ children }: { children: string }) => <div>{children}</div>,
-}));
+// Define Highlight type locally to avoid import issues with mocked module
+type Highlight = {
+  id: string;
+  text: string;
+  comment: string;
+  range: { start: number; end: number };
+};
 
-// Mock fetch for API calls
-global.fetch = vi.fn();
+// Mock state for TextHighlighter
+let mockHighlights: Highlight[] = [];
+let mockOnHighlightsChange: ((highlights: Highlight[]) => void) | undefined;
 
-describe('GenerationPreview Feedback Integration Tests', () => {
-  const mockWorkspaceId = 'test-workspace-id';
-  const mockFeatureId = 'test-feature-id';
-  const mockRunId = 'test-run-id';
+// Mock TextHighlighter component
+vi.mock("@/components/features/TextHighlighter", () => {
+  const React = require("react");
+  const MockTextHighlighter = ({ children, highlights, onHighlightsChange }: any) => {
+    // Store the callback in module scope so tests can trigger it
+    if (onHighlightsChange) {
+      (global as any).__mockOnHighlightsChange = onHighlightsChange;
+    }
+    return React.createElement("div", { "data-testid": "text-highlighter" }, children);
+  };
+  
+  return {
+    TextHighlighter: MockTextHighlighter,
+    default: MockTextHighlighter,
+  };
+});
 
+// Mock MarkdownRenderer
+vi.mock("@/components/MarkdownRenderer", () => {
+  const React = require("react");
+  const MockMarkdownRenderer = ({ markdown, children }: { markdown?: string; children?: string }) =>
+    React.createElement("div", { "data-testid": "markdown-content" }, markdown || children);
+  
+  return {
+    default: MockMarkdownRenderer,
+    MarkdownRenderer: MockMarkdownRenderer,
+  };
+});
+
+// Mock window.matchMedia
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: vi.fn().mockImplementation((query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
+// Helper to simulate adding highlights
+const simulateAddHighlight = (text: string, comment: string) => {
+  const callback = (global as any).__mockOnHighlightsChange;
+  if (!callback) return;
+  
+  const newHighlight: Highlight = {
+    id: `highlight-${Date.now()}-${Math.random()}`,
+    text,
+    comment,
+    range: { start: 0, end: text.length },
+  };
+  
+  mockHighlights = [...mockHighlights, newHighlight];
+  callback(mockHighlights);
+};
+
+describe("GenerationPreview Feedback Integration", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockHighlights = [];
+    mockOnHighlightsChange = undefined;
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  describe('Feedback Submission with API', () => {
-    it('should submit feedback and trigger API call', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-      global.fetch = mockFetch;
-
-      const onProvideFeedback = vi.fn(async (feedback: string) => {
-        await fetch(`/api/stakwork/runs/${mockRunId}/decision`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            decision: 'FEEDBACK',
-            feedback,
-            featureId: mockFeatureId,
-          }),
-        });
-      });
+  describe("Complete Feedback Flow", () => {
+    it("should format and submit feedback with highlights and general feedback", async () => {
+      const user = userEvent.setup();
+      const onProvideFeedback = vi.fn();
 
       render(
         <GenerationPreview
-          content="Generated content"
+          content="This is a test architecture proposal. The API design needs review."
           source="deep"
           onAccept={vi.fn()}
           onReject={vi.fn()}
           onProvideFeedback={onProvideFeedback}
-          isLoading={false}
         />
       );
 
-      // Type feedback
-      const feedbackInput = screen.getByPlaceholderText('Provide feedback...');
-      fireEvent.change(feedbackInput, {
-        target: { value: 'This needs improvement' },
-      });
+      // Simulate adding two highlights
+      simulateAddHighlight("architecture proposal", "Consider using microservices");
+      simulateAddHighlight("API design", "Add rate limiting");
 
-      // Submit via button
-      const submitButton = screen.getByRole('button', {
-        name: /submit feedback/i,
-      });
-      fireEvent.click(submitButton);
-
-      // Verify handler was called
-      expect(onProvideFeedback).toHaveBeenCalledWith('This needs improvement');
-
-      // Wait for API call
+      // Wait for highlights to be reflected in UI
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          `/api/stakwork/runs/${mockRunId}/decision`,
-          expect.objectContaining({
-            method: 'PATCH',
-            body: JSON.stringify({
-              decision: 'FEEDBACK',
-              feedback: 'This needs improvement',
-              featureId: mockFeatureId,
-            }),
-          })
-        );
+        expect(screen.getByText("2 comments")).toBeInTheDocument();
+      });
+
+      // Add general feedback
+      const feedbackInput = screen.getByPlaceholderText("Provide feedback...");
+      await user.type(feedbackInput, "Overall looks good");
+
+      // Submit all feedback
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      // Verify XML structure
+      await waitFor(() => {
+        const callArg = onProvideFeedback.mock.calls[0][0];
+        expect(callArg).toContain("<highlight>architecture proposal</highlight>");
+        expect(callArg).toContain("<comment>Consider using microservices</comment>");
+        expect(callArg).toContain("<highlight>API design</highlight>");
+        expect(callArg).toContain("<comment>Add rate limiting</comment>");
+        expect(callArg).toContain("<general_feedback>Overall looks good</general_feedback>");
       });
     });
 
-    it('should submit feedback via Enter key and trigger API call', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-      global.fetch = mockFetch;
-
-      const onProvideFeedback = vi.fn(async (feedback: string) => {
-        await fetch(`/api/stakwork/runs/${mockRunId}/decision`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            decision: 'FEEDBACK',
-            feedback,
-            featureId: mockFeatureId,
-          }),
-        });
-      });
+    it("should submit only highlights without general feedback", async () => {
+      const user = userEvent.setup();
+      const onProvideFeedback = vi.fn();
 
       render(
         <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={vi.fn()}
-          onReject={vi.fn()}
-          onProvideFeedback={onProvideFeedback}
-          isLoading={false}
-        />
-      );
-
-      // Type feedback
-      const feedbackInput = screen.getByPlaceholderText('Provide feedback...');
-      fireEvent.change(feedbackInput, {
-        target: { value: 'Add more details' },
-      });
-
-      // Submit via Enter key - use keyPress event as defined in component
-      fireEvent.keyPress(feedbackInput, { key: 'Enter', code: 'Enter', charCode: 13 });
-
-      // Verify handler was called
-      expect(onProvideFeedback).toHaveBeenCalledWith('Add more details');
-
-      // Wait for API call
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          `/api/stakwork/runs/${mockRunId}/decision`,
-          expect.objectContaining({
-            method: 'PATCH',
-            body: JSON.stringify({
-              decision: 'FEEDBACK',
-              feedback: 'Add more details',
-              featureId: mockFeatureId,
-            }),
-          })
-        );
-      });
-    });
-
-    it('should handle API errors gracefully', async () => {
-      const mockFetch = vi.fn().mockRejectedValue(new Error('API Error'));
-      global.fetch = mockFetch;
-
-      const onProvideFeedback = vi.fn(async (feedback: string) => {
-        try {
-          await fetch(`/api/stakwork/runs/${mockRunId}/decision`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              decision: 'FEEDBACK',
-              feedback,
-              featureId: mockFeatureId,
-            }),
-          });
-        } catch (error) {
-          console.error('Failed to submit feedback:', error);
-        }
-      });
-
-      render(
-        <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={vi.fn()}
-          onReject={vi.fn()}
-          onProvideFeedback={onProvideFeedback}
-          isLoading={false}
-        />
-      );
-
-      // Type feedback
-      const feedbackInput = screen.getByPlaceholderText('Provide feedback...');
-      fireEvent.change(feedbackInput, {
-        target: { value: 'Test feedback' },
-      });
-
-      // Submit
-      const submitButton = screen.getByRole('button', {
-        name: /submit feedback/i,
-      });
-      fireEvent.click(submitButton);
-
-      // Verify handler was called
-      expect(onProvideFeedback).toHaveBeenCalledWith('Test feedback');
-
-      // Wait for API call to fail
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalled();
-      });
-    });
-  });
-
-  describe('Accept/Reject Decision Persistence', () => {
-    it('should submit Accept decision for deep research runs', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-      global.fetch = mockFetch;
-
-      const onAccept = vi.fn(async () => {
-        await fetch(`/api/stakwork/runs/${mockRunId}/decision`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            decision: 'ACCEPTED',
-            featureId: mockFeatureId,
-          }),
-        });
-      });
-
-      render(
-        <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={onAccept}
-          onReject={vi.fn()}
-          isLoading={false}
-        />
-      );
-
-      // Click Accept button
-      const acceptButton = screen.getByRole('button', { name: /accept/i });
-      fireEvent.click(acceptButton);
-
-      // Verify handler was called
-      expect(onAccept).toHaveBeenCalledTimes(1);
-
-      // Wait for API call
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          `/api/stakwork/runs/${mockRunId}/decision`,
-          expect.objectContaining({
-            method: 'PATCH',
-            body: JSON.stringify({
-              decision: 'ACCEPTED',
-              featureId: mockFeatureId,
-            }),
-          })
-        );
-      });
-    });
-
-    it('should submit Reject decision for deep research runs', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
-      global.fetch = mockFetch;
-
-      const onReject = vi.fn(async () => {
-        await fetch(`/api/stakwork/runs/${mockRunId}/decision`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            decision: 'REJECTED',
-            featureId: mockFeatureId,
-          }),
-        });
-      });
-
-      render(
-        <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={vi.fn()}
-          onReject={onReject}
-          isLoading={false}
-        />
-      );
-
-      // Click Reject button
-      const rejectButton = screen.getByRole('button', { name: /reject/i });
-      fireEvent.click(rejectButton);
-
-      // Verify handler was called
-      expect(onReject).toHaveBeenCalledTimes(1);
-
-      // Wait for API call
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          `/api/stakwork/runs/${mockRunId}/decision`,
-          expect.objectContaining({
-            method: 'PATCH',
-            body: JSON.stringify({
-              decision: 'REJECTED',
-              featureId: mockFeatureId,
-            }),
-          })
-        );
-      });
-    });
-
-    it('should not persist decisions for quick generation', () => {
-      const mockFetch = vi.fn();
-      global.fetch = mockFetch;
-
-      const onAccept = vi.fn();
-      const onReject = vi.fn();
-
-      render(
-        <GenerationPreview
-          content="Generated content"
+          content="Test content for highlighting"
           source="quick"
-          onAccept={onAccept}
-          onReject={onReject}
-          isLoading={false}
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onProvideFeedback={onProvideFeedback}
         />
       );
 
-      // Click Accept button
-      const acceptButton = screen.getByRole('button', { name: /accept/i });
-      fireEvent.click(acceptButton);
+      // Simulate adding highlight
+      simulateAddHighlight("Test content", "This needs improvement");
 
-      // Handler should be called
-      expect(onAccept).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByText("1 comment")).toBeInTheDocument();
+      });
 
-      // But no API call should be made for quick generation
-      expect(mockFetch).not.toHaveBeenCalled();
+      // Submit without general feedback
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      // Should contain only highlight-comment pair, no general_feedback tag
+      await waitFor(() => {
+        expect(onProvideFeedback).toHaveBeenCalledWith(
+          "<highlight>Test content</highlight><comment>This needs improvement</comment>"
+        );
+      });
+    });
+
+    it("should submit only general feedback without highlights", async () => {
+      const user = userEvent.setup();
+      const onProvideFeedback = vi.fn();
+
+      render(
+        <GenerationPreview
+          content="Test content"
+          source="quick"
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onProvideFeedback={onProvideFeedback}
+        />
+      );
+
+      // Add only general feedback
+      const feedbackInput = screen.getByPlaceholderText("Provide feedback...");
+      await user.type(feedbackInput, "Looks good overall");
+
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      // Should contain only general_feedback tag
+      await waitFor(() => {
+        expect(onProvideFeedback).toHaveBeenCalledWith(
+          "<general_feedback>Looks good overall</general_feedback>"
+        );
+      });
     });
   });
 
-  describe('Loading State During API Calls', () => {
-    it('should disable all buttons during loading', () => {
+  describe("XML Encoding", () => {
+    it("should handle very long text in highlights", async () => {
+      const user = userEvent.setup();
+      const onProvideFeedback = vi.fn();
+      const longText = "a".repeat(1000);
+
       render(
         <GenerationPreview
-          content="Generated content"
+          content={`Introduction: ${longText} Conclusion`}
           source="deep"
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onProvideFeedback={onProvideFeedback}
+        />
+      );
+
+      simulateAddHighlight(longText, "This section is too long");
+
+      await waitFor(() => {
+        expect(screen.getByText("1 comment")).toBeInTheDocument();
+      });
+
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        const call = onProvideFeedback.mock.calls[0][0];
+        expect(call).toContain("<highlight>");
+        expect(call).toContain(longText);
+        expect(call).toContain("</highlight>");
+        expect(call).toContain("<comment>This section is too long</comment>");
+      });
+    });
+
+    it("should escape special XML characters in highlights and comments", async () => {
+      const user = userEvent.setup();
+      const onProvideFeedback = vi.fn();
+
+      render(
+        <GenerationPreview
+          content="Use <Component> & check props"
+          source="deep"
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onProvideFeedback={onProvideFeedback}
+        />
+      );
+
+      simulateAddHighlight("<Component> & check", 'Use "props" & \'state\'');
+
+      await waitFor(() => {
+        expect(screen.getByText("1 comment")).toBeInTheDocument();
+      });
+
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        const call = onProvideFeedback.mock.calls[0][0];
+        expect(call).toContain("&lt;Component&gt; &amp; check");
+        expect(call).toContain("&quot;props&quot; &amp; &apos;state&apos;");
+      });
+    });
+
+    it("should handle markdown formatting in highlighted text", async () => {
+      const user = userEvent.setup();
+      const onProvideFeedback = vi.fn();
+
+      render(
+        <GenerationPreview
+          content="Here is **bold text** and `code block`"
+          source="deep"
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onProvideFeedback={onProvideFeedback}
+        />
+      );
+
+      simulateAddHighlight("**bold text** and `code block`", "Review formatting");
+
+      await waitFor(() => {
+        expect(screen.getByText("1 comment")).toBeInTheDocument();
+      });
+
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(onProvideFeedback).toHaveBeenCalledWith(
+          expect.stringContaining("<highlight>**bold text** and `code block`</highlight>")
+        );
+      });
+    });
+  });
+
+  describe("Highlight Badge Display", () => {
+    it("should not show badge when no highlights exist", () => {
+      render(
+        <GenerationPreview
+          content="Test content"
+          source="quick"
           onAccept={vi.fn()}
           onReject={vi.fn()}
           onProvideFeedback={vi.fn()}
-          isLoading={true}
         />
       );
 
-      const submitButton = screen.getByRole('button', {
-        name: /submit feedback/i,
-      });
-      const acceptButton = screen.getByRole('button', { name: /accept/i });
-      const rejectButton = screen.getByRole('button', { name: /reject/i });
-
-      expect(submitButton).toBeDisabled();
-      expect(acceptButton).toBeDisabled();
-      expect(rejectButton).toBeDisabled();
+      expect(screen.queryByText(/comment/i)).not.toBeInTheDocument();
     });
 
-    it('should prevent multiple submissions during loading', () => {
-      const onAccept = vi.fn();
-
-      const { rerender } = render(
+    it("should show '1 comment' badge with single highlight", async () => {
+      render(
         <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={onAccept}
+          content="Test content"
+          source="quick"
+          onAccept={vi.fn()}
           onReject={vi.fn()}
-          isLoading={false}
+          onProvideFeedback={vi.fn()}
         />
       );
 
-      const acceptButton = screen.getByRole('button', { name: /accept/i });
+      simulateAddHighlight("Test", "Comment text");
 
-      // First click
-      fireEvent.click(acceptButton);
-      expect(onAccept).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByText("1 comment")).toBeInTheDocument();
+      });
+    });
 
-      // Simulate loading state
-      rerender(
+    it("should show '2 comments' badge with multiple highlights", async () => {
+      render(
         <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={onAccept}
+          content="First section and second section"
+          source="quick"
+          onAccept={vi.fn()}
           onReject={vi.fn()}
-          isLoading={true}
+          onProvideFeedback={vi.fn()}
         />
       );
 
-      // Try to click again while loading
-      fireEvent.click(acceptButton);
+      simulateAddHighlight("First", "First comment");
+      simulateAddHighlight("second", "Second comment");
 
-      // Should not be called again
-      expect(onAccept).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByText("2 comments")).toBeInTheDocument();
+      });
+    });
+
+    it("should hide badge after feedback submission", async () => {
+      const user = userEvent.setup();
+
+      render(
+        <GenerationPreview
+          content="Test content"
+          source="quick"
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onProvideFeedback={vi.fn()}
+        />
+      );
+
+      simulateAddHighlight("Test", "Comment");
+
+      await waitFor(() => {
+        expect(screen.getByText("1 comment")).toBeInTheDocument();
+      });
+
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(screen.queryByText(/comment/i)).not.toBeInTheDocument();
+      });
     });
   });
 
-  describe('Independent Button Functionality', () => {
-    it('should allow Accept and Reject to work independently', () => {
-      const onAccept = vi.fn();
-      const onReject = vi.fn();
+  describe("State Management", () => {
+    it("should clear highlights and feedback after submission", async () => {
+      const user = userEvent.setup();
       const onProvideFeedback = vi.fn();
 
       render(
         <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={onAccept}
-          onReject={onReject}
+          content="Test content"
+          source="quick"
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
           onProvideFeedback={onProvideFeedback}
-          isLoading={false}
         />
       );
 
-      // Click Accept
-      const acceptButton = screen.getByRole('button', { name: /accept/i });
-      fireEvent.click(acceptButton);
+      simulateAddHighlight("Test", "Comment");
 
-      expect(onAccept).toHaveBeenCalledTimes(1);
-      expect(onReject).not.toHaveBeenCalled();
-      expect(onProvideFeedback).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByText("1 comment")).toBeInTheDocument();
+      });
 
-      // Click Reject
-      const rejectButton = screen.getByRole('button', { name: /reject/i });
-      fireEvent.click(rejectButton);
+      const feedbackInput = screen.getByPlaceholderText("Provide feedback...");
+      await user.type(feedbackInput, "General feedback");
 
-      expect(onAccept).toHaveBeenCalledTimes(1);
-      expect(onReject).toHaveBeenCalledTimes(1);
-      expect(onProvideFeedback).not.toHaveBeenCalled();
+      const submitButton = screen.getByRole("button", { name: /submit feedback/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(screen.queryByText(/comment/i)).not.toBeInTheDocument();
+        expect(feedbackInput).toHaveValue("");
+      });
     });
 
-    it('should allow feedback submission independently from Accept/Reject', () => {
-      const onAccept = vi.fn();
-      const onReject = vi.fn();
-      const onProvideFeedback = vi.fn();
-
+    it("should maintain highlights until submission", async () => {
       render(
         <GenerationPreview
-          content="Generated content"
-          source="deep"
-          onAccept={onAccept}
-          onReject={onReject}
-          onProvideFeedback={onProvideFeedback}
-          isLoading={false}
+          content="Test content with multiple sections"
+          source="quick"
+          onAccept={vi.fn()}
+          onReject={vi.fn()}
+          onProvideFeedback={vi.fn()}
         />
       );
 
-      // Submit feedback
-      const feedbackInput = screen.getByPlaceholderText('Provide feedback...');
-      fireEvent.change(feedbackInput, {
-        target: { value: 'Test feedback' },
+      simulateAddHighlight("Test", "First comment");
+      simulateAddHighlight("multiple", "Second comment");
+      simulateAddHighlight("sections", "Third comment");
+
+      await waitFor(() => {
+        expect(screen.getByText("3 comments")).toBeInTheDocument();
       });
 
-      const submitButton = screen.getByRole('button', {
-        name: /submit feedback/i,
-      });
-      fireEvent.click(submitButton);
-
-      expect(onProvideFeedback).toHaveBeenCalledTimes(1);
-      expect(onAccept).not.toHaveBeenCalled();
-      expect(onReject).not.toHaveBeenCalled();
+      // Highlights should persist until submit is clicked
+      expect(screen.getByText("3 comments")).toBeInTheDocument();
     });
   });
 });
