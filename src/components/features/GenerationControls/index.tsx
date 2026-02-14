@@ -90,16 +90,19 @@ export function GenerationControls({
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
                 <span className="ml-1.5 text-red-600 dark:text-red-400">Stopping...</span>
               </>
-            ) : isLoadingState && hovered && onStop ? (
-              <>
-                <CircleStop className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="ml-1.5">Stop</span>
-              </>
             ) : isLoadingState ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
-                <span className="ml-1.5">Researching...</span>
-              </>
+              <span className="relative inline-flex items-center">
+                <span className={`inline-flex items-center ${hovered && onStop ? "invisible" : ""}`}>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500" />
+                  <span className="ml-1.5">Researching...</span>
+                </span>
+                {hovered && onStop && (
+                  <span className="absolute inset-0 inline-flex items-center">
+                    <CircleStop className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="ml-1.5">Stop</span>
+                  </span>
+                )}
+              </span>
             ) : isErrorState ? (
               <>
                 <Brain className="h-3.5 w-3.5 text-yellow-700 dark:text-yellow-500" />
