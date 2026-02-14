@@ -15,9 +15,7 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120000,
-    // Pass all environment variables from parent process to subprocess
-    env: process.env as Record<string, string>,
   },
 });
