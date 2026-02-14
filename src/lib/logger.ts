@@ -46,6 +46,8 @@ const SENSITIVE_KEYS = new Set([
   'authorization',
   'session_state',
   'providerAccountId',
+  'lightningpubkey',
+  'lightning_pubkey',
 ]);
 
 // Email pattern for partial masking
@@ -75,7 +77,7 @@ function sanitizeData(data: any): any {
     // Check for sensitive patterns in strings
     for (const pattern of SENSITIVE_PATTERNS) {
       if (pattern.test(data)) {
-        return data.length > 10 ? `${data.substring(0, 4)}***REDACTED***` : '***REDACTED***';
+        return data.length > 10 ? `${data.substring(0, 4)}[REDACTED]` : '[REDACTED]';
       }
     }
     
@@ -92,7 +94,7 @@ function sanitizeData(data: any): any {
       // Check if key is sensitive
       if (SENSITIVE_KEYS.has(key.toLowerCase()) || 
           SENSITIVE_PATTERNS.some(pattern => pattern.test(key))) {
-        sanitized[key] = value ? '***REDACTED***' : value;
+        sanitized[key] = value ? '[REDACTED]' : value;
       } else {
         sanitized[key] = sanitizeData(value);
       }

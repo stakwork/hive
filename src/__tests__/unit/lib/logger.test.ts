@@ -63,9 +63,9 @@ describe('Logger', () => {
     });
 
     it('should sanitize strings matching sensitive patterns', () => {
-      expect(sanitizeData('access_token_value')).toBe('acce***REDACTED***');
-      expect(sanitizeData('secret_key_123')).toBe('secr***REDACTED***');
-      expect(sanitizeData('api_key')).toBe('***REDACTED***');
+      expect(sanitizeData('access_token_value')).toBe('acce[REDACTED]');
+      expect(sanitizeData('secret_key_123')).toBe('secr[REDACTED]');
+      expect(sanitizeData('api_key')).toBe('[REDACTED]');
     });
 
     it('should sanitize objects with sensitive keys', () => {
@@ -79,8 +79,8 @@ describe('Logger', () => {
 
       const result = sanitizeData(sensitiveObj);
       
-      expect(result.access_token).toBe('***REDACTED***');
-      expect(result.refresh_token).toBe('***REDACTED***');
+      expect(result.access_token).toBe('[REDACTED]');
+      expect(result.refresh_token).toBe('[REDACTED]');
       expect(result.username).toBe('testuser');
       expect(result.email).toMatch(/te\*\*\*@\*\*\*\.\*\*\*/);
       expect(result.normalField).toBe('normal_value');
@@ -102,9 +102,9 @@ describe('Logger', () => {
       const result = sanitizeData(nestedObj);
       
       expect(result.user.id).toBe(123);
-      expect(result.user.secret).toBe('***REDACTED***');
+      expect(result.user.secret).toBe('[REDACTED]');
       expect(result.user.profile.email).toMatch(/ne\*\*\*@\*\*\*\.\*\*\*/);
-      expect(result.user.profile.api_key).toBe('***REDACTED***');
+      expect(result.user.profile.api_key).toBe('[REDACTED]');
       expect(result.normalData).toBe('normal');
     });
 
@@ -118,7 +118,7 @@ describe('Logger', () => {
       const result = sanitizeData(arrayWithSensitive);
       
       expect(result[0]).toBe('normal_string');
-      expect(result[1].access_token).toBe('***REDACTED***');
+      expect(result[1].access_token).toBe('[REDACTED]');
       expect(result[1].username).toBe('user1');
       expect(result[2]).toMatch(/te\*\*\*@\*\*\*\.\*\*\*/);
     });
@@ -249,7 +249,7 @@ describe('Logger', () => {
         const logCall = mockConsole.info.mock.calls[0][0];
         const logData = JSON.parse(logCall);
         
-        expect(logData.metadata.access_token).toBe('***REDACTED***');
+        expect(logData.metadata.access_token).toBe('[REDACTED]');
         expect(logData.metadata.username).toBe('testuser');
       });
     });
@@ -320,7 +320,7 @@ describe('Logger', () => {
       it('should handle special characters in sensitive data', () => {
         const specialChars = 'special!@#$%^&*()_+{}[]|\\:";\'<>?,./';
         const result = sanitizeData({ password: specialChars });
-        expect(result.password).toBe('***REDACTED***');
+        expect(result.password).toBe('[REDACTED]');
       });
 
       it('should handle case-insensitive sensitive key matching', () => {
@@ -333,9 +333,9 @@ describe('Logger', () => {
 
         const result = sanitizeData(mixedCaseObj);
         
-        expect(result.ACCESS_TOKEN).toBe('***REDACTED***');
-        expect(result.Access_Token).toBe('***REDACTED***');
-        expect(result.access_TOKEN).toBe('***REDACTED***');
+        expect(result.ACCESS_TOKEN).toBe('[REDACTED]');
+        expect(result.Access_Token).toBe('[REDACTED]');
+        expect(result.access_TOKEN).toBe('[REDACTED]');
         expect(result.normalKey).toBe('normal');
       });
     });
