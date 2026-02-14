@@ -234,6 +234,13 @@ export type FeatureDetail = Prisma.FeatureGetPayload<{
                 image: true;
               };
             };
+            repository: {
+              select: {
+                id: true;
+                name: true;
+                repositoryUrl: true;
+              };
+            };
             phase: {
               select: {
                 id: true;
@@ -452,6 +459,13 @@ export type PhaseWithTasks = Prisma.PhaseGetPayload<{
             image: true;
           };
         };
+        repository: {
+          select: {
+            id: true;
+            name: true;
+            repositoryUrl: true;
+          };
+        };
         phase: {
           select: {
             id: true;
@@ -517,6 +531,13 @@ type RoadmapTaskListItemBase = Prisma.TaskGetPayload<{
         name: true;
         email: true;
         image: true;
+      };
+    };
+    repository: {
+      select: {
+        id: true;
+        name: true;
+        repositoryUrl: true;
       };
     };
     phase: {
@@ -621,6 +642,7 @@ export interface UpdateRoadmapTaskRequest {
   order?: number;
   phaseId?: string | null;
   assigneeId?: string | null;
+  repositoryId?: string | null;
   dependsOnTaskIds?: string[];
   runBuild?: boolean;
   runTestSuite?: boolean;

@@ -492,6 +492,13 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
           deleted: false,
         },
         include: {
+          repository: {
+            select: {
+              name: true,
+              repositoryUrl: true,
+              branch: true,
+            },
+          },
           workspace: {
             include: {
               swarm: {
@@ -507,6 +514,7 @@ describe("createChatMessageAndTriggerStakwork (via sendMessageToStakwork)", () =
                 take: 1,
                 orderBy: { createdAt: "asc" },
                 select: {
+                  name: true,
                   repositoryUrl: true,
                   branch: true,
                 },

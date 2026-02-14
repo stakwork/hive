@@ -23,6 +23,7 @@ interface UpdateRoadmapTaskParams {
     status?: TaskStatus;
     priority?: Priority;
     assigneeId?: string | null;
+    repositoryId?: string | null;
     dependsOnTaskIds?: string[];
     autoMerge?: boolean;
   };

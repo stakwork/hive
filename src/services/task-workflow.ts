@@ -111,6 +111,7 @@ export async function createTaskWithStakworkWorkflow(params: {
             take: 1,
             orderBy: { createdAt: "asc" },
             select: {
+              name: true,
               repositoryUrl: true,
               branch: true,
             },
@@ -175,6 +176,13 @@ export async function sendMessageToStakwork(params: {
       deleted: false,
     },
     include: {
+      repository: {
+        select: {
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+        },
+      },
       workspace: {
         include: {
           swarm: {
@@ -190,6 +198,7 @@ export async function sendMessageToStakwork(params: {
             take: 1,
             orderBy: { createdAt: "asc" },
             select: {
+              name: true,
               repositoryUrl: true,
               branch: true,
             },
@@ -244,6 +253,13 @@ export async function startTaskWorkflow(params: {
       runBuild: true,
       runTestSuite: true,
       autoMerge: true,
+      repository: {
+        select: {
+          name: true,
+          repositoryUrl: true,
+          branch: true,
+        },
+      },
       workspace: {
         select: {
           id: true,
@@ -261,6 +277,7 @@ export async function startTaskWorkflow(params: {
             take: 1,
             orderBy: { createdAt: "asc" },
             select: {
+              name: true,
               repositoryUrl: true,
               branch: true,
             },
@@ -326,6 +343,13 @@ export async function createChatMessageAndTriggerStakwork(params: {
     task = await db.task.findUnique({
       where: { id: taskId },
       include: {
+        repository: {
+          select: {
+            name: true,
+            repositoryUrl: true,
+            branch: true,
+          },
+        },
         workspace: {
           include: {
             swarm: true,
@@ -387,10 +411,10 @@ export async function createChatMessageAndTriggerStakwork(params: {
     const poolName = swarm?.id || null;
     const repo2GraphUrl = swarm?.swarmUrl ? swarm.swarmUrl.replace("/api", ":3355") : "";
 
-    // Get repository URL and branch
-    const repoUrl = task.workspace.repositories?.[0]?.repositoryUrl || null;
-    const baseBranch = task.workspace.repositories?.[0]?.branch || null;
-    const repoName = task.workspace.repositories?.[0]?.name || null;
+    // Get repository URL and branch — prefer task-linked repo, fallback to workspace first repo
+    const repoUrl = task.repository?.repositoryUrl || task.workspace.repositories?.[0]?.repositoryUrl || null;
+    const baseBranch = task.repository?.branch || task.workspace.repositories?.[0]?.branch || null;
+    const repoName = task.repository?.name || task.workspace.repositories?.[0]?.name || null;
     const taskBranch = task.branch || null;
 
     // Decrypt pod password if available

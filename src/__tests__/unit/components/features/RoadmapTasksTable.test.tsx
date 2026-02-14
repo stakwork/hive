@@ -28,6 +28,14 @@ vi.mock("@/hooks/useRoadmapTaskMutations", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useWorkspace", () => ({
+  useWorkspace: () => ({
+    workspace: {
+      repositories: [],
+    },
+  }),
+}));
+
 // Mock dnd-kit
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children }: any) => <div>{children}</div>,
@@ -126,9 +134,16 @@ describe("RoadmapTasksTable", () => {
     updatedAt: new Date(),
     phaseId: "phase-123",
     featureId: "feature-123",
+    workspaceId: "workspace-123",
     dependsOnTaskIds: [],
     assignee: null,
+    repository: null,
+    phase: { id: "phase-123", name: "Phase 1" },
     bountyCode: null,
+    autoMerge: false,
+    deploymentStatus: null,
+    deployedToStagingAt: null,
+    deployedToProductionAt: null,
     ...overrides,
   });
 
@@ -314,6 +329,7 @@ describe("RoadmapTasksTable", () => {
           id: "system:bounty-hunter",
           name: "Bounty Hunter",
           email: "",
+          image: null,
         },
         bountyCode: "BOUNTY123",
       });
@@ -351,6 +367,7 @@ describe("RoadmapTasksTable", () => {
           id: "user-123",
           name: "Regular User",
           email: "user@example.com",
+          image: null,
         },
       });
       
@@ -385,6 +402,7 @@ describe("RoadmapTasksTable", () => {
           id: "user-123",
           name: "Regular User",
           email: "user@example.com",
+          image: null,
         },
       });
       
