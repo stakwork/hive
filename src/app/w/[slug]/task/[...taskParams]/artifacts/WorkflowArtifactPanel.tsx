@@ -300,20 +300,8 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
   return (
     <div className="h-full w-full flex flex-col overflow-hidden relative">
       <div className="overflow-y-auto flex-1">
-        {/* Render ProjectInfoCard if in project debugger mode */}
-        {isProjectDebuggerMode && projectInfo && (
-          <div className="px-4 pt-4">
-            <ProjectInfoCard
-              projectData={{
-                ...projectInfo,
-                current_transition_completion: polledWorkflowData?.current_transition_completion,
-              }}
-            />
-          </div>
-        )}
-
         {projectId && (
-          <div className="px-4 pt-2">
+          <div className="px-4 pt-4">
             <Button variant="outline" size="sm" asChild className="mb-2">
               <Link
                 href={`https://jobs.stakwork.com/admin/projects/${projectId}`}
@@ -324,6 +312,18 @@ export function WorkflowArtifactPanel({ artifacts, isActive, onStepSelect }: Wor
                 <ExternalLink className="w-4 h-4 ml-1" />
               </Link>
             </Button>
+          </div>
+        )}
+
+        {/* Render ProjectInfoCard if in project debugger mode */}
+        {isProjectDebuggerMode && projectInfo && (
+          <div className="px-4 pt-2">
+            <ProjectInfoCard
+              projectData={{
+                ...projectInfo,
+                current_transition_completion: polledWorkflowData?.current_transition_completion,
+              }}
+            />
           </div>
         )}
 
