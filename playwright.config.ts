@@ -17,7 +17,5 @@ export default defineConfig({
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI, // Don't reuse in CI to ensure clean env
     timeout: 120000,
-    // Pass through all environment variables to the dev server
-    env: process.env as Record<string, string>,
   },
 });
