@@ -13,9 +13,7 @@ export default defineConfig({
   },
   testDir: "src/__tests__/e2e",
   webServer: {
-    command: process.env.CI 
-      ? "set -a && [ -f .env.local ] && . ./.env.local && set +a && npm run dev"
-      : "npm run dev",
+    command: process.env.CI ? "./start-dev.sh" : "npm run dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI, // Don't reuse in CI to ensure clean env
     timeout: 120000,

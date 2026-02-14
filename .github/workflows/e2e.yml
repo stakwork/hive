@@ -52,31 +52,34 @@ jobs:
           DATABASE_URL: postgresql://hive_user:hive_password@localhost:5432/hive_db
         run: npx prisma migrate deploy
 
-      - name: Create .env.local for Playwright webServer
+      - name: Create dev server wrapper script
         run: |
-          cat > .env.local << EOF
-          DATABASE_URL=postgresql://hive_user:hive_password@localhost:5432/hive_db
-          NEXTAUTH_URL=http://localhost:3000
-          NEXTAUTH_SECRET=fake_secret
-          JWT_SECRET=fake_secret
-          GITHUB_CLIENT_ID=fake_secret
-          GITHUB_CLIENT_SECRET=fake_secret
-          TOKEN_ENCRYPTION_KEY=fake_secret
-          TOKEN_ENCRYPTION_KEY_ID=test-key-1
-          STAKWORK_API_KEY=fake_secret
-          STAKWORK_BASE_URL=https://jobs.stakwork.com/api/v1
-          STAKWORK_CUSTOMERS_EMAIL=fake_secret
-          STAKWORK_CUSTOMERS_PASSWORD=fake_secret
-          POOL_MANAGER_API_KEY=fake_secret
-          POOL_MANAGER_BASE_URL=https://workspaces.sphinx.chat/api
-          SWARM_SUPERADMIN_API_KEY=fake_secret
-          POOL_MANAGER_API_USERNAME=fake_secret
-          POOL_MANAGER_API_PASSWORD=fake_secret
-          SWARM_SUPER_ADMIN_URL=placeholder
-          GITHUB_APP_SLUG=hivechatai
-          POD_URL=http://localhost:3000
-          NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION=true
+          cat > start-dev.sh << 'EOF'
+          #!/bin/bash
+          export DATABASE_URL="postgresql://hive_user:hive_password@localhost:5432/hive_db"
+          export NEXTAUTH_URL="http://localhost:3000"
+          export NEXTAUTH_SECRET="fake_secret"
+          export JWT_SECRET="fake_secret"
+          export GITHUB_CLIENT_ID="fake_secret"
+          export GITHUB_CLIENT_SECRET="fake_secret"
+          export TOKEN_ENCRYPTION_KEY="fake_secret"
+          export TOKEN_ENCRYPTION_KEY_ID="test-key-1"
+          export STAKWORK_API_KEY="fake_secret"
+          export STAKWORK_BASE_URL="https://jobs.stakwork.com/api/v1"
+          export STAKWORK_CUSTOMERS_EMAIL="fake_secret"
+          export STAKWORK_CUSTOMERS_PASSWORD="fake_secret"
+          export POOL_MANAGER_API_KEY="fake_secret"
+          export POOL_MANAGER_BASE_URL="https://workspaces.sphinx.chat/api"
+          export SWARM_SUPERADMIN_API_KEY="fake_secret"
+          export POOL_MANAGER_API_USERNAME="fake_secret"
+          export POOL_MANAGER_API_PASSWORD="fake_secret"
+          export SWARM_SUPER_ADMIN_URL="placeholder"
+          export GITHUB_APP_SLUG="hivechatai"
+          export POD_URL="http://localhost:3000"
+          export NEXT_PUBLIC_FEATURE_CODEBASE_RECOMMENDATION="true"
+          exec npm run dev
           EOF
+          chmod +x start-dev.sh
 
       - name: Run Playwright tests
         run: npx playwright test
