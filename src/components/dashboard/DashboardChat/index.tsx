@@ -7,6 +7,7 @@ import { getPusherClient, getWorkspaceChannelName, PUSHER_EVENTS } from "@/lib/p
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
 import { CreateFeatureModal } from "./CreateFeatureModal";
+import { ConversationHistorySheet } from "./ConversationHistorySheet";
 import { ProvenanceTree, type ProvenanceData } from "./ProvenanceTree";
 import { toast } from "sonner";
 import type { ModelMessage } from "ai";
@@ -42,6 +43,8 @@ export function DashboardChat() {
   const [provenanceData, setProvenanceData] = useState<ProvenanceData | null>(null);
   const [isProvenanceSidebarOpen, setIsProvenanceSidebarOpen] = useState(false);
   const [_isSharing, setIsSharing] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [isHistorySheetOpen, setIsHistorySheetOpen] = useState(false);
   const hasReceivedContentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { processStream } = useStreamProcessor();
@@ -315,6 +318,9 @@ export function DashboardChat() {
 
       // Clear active tool call indicator when streaming is complete
       setActiveToolCalls([]);
+
+      // Auto-save conversation after assistant response completes
+      await saveConversation();
     } catch (error) {
       console.error("Error calling ask API:", error);
       const errorMessage: Message = {
@@ -330,11 +336,99 @@ export function DashboardChat() {
     }
   };
 
+  const saveConversation = async () => {
+    if (!slug || messages.length === 0) return;
+
+    try {
+      // Prepare messages for API (convert Date to ISO string)
+      const apiMessages = messages.map((m) => ({
+        ...m,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+      }));
+
+      if (currentConversationId) {
+        // Update existing conversation
+        const response = await fetch(`/api/workspaces/${slug}/chat/conversations/${currentConversationId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: apiMessages,
+            followUpQuestions: followUpQuestions || [],
+            provenanceData: provenanceData || undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to update conversation");
+        }
+      } else {
+        // Create new conversation
+        const response = await fetch(`/api/workspaces/${slug}/chat/conversations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: apiMessages,
+            followUpQuestions: followUpQuestions || [],
+            provenanceData: provenanceData || undefined,
+            source: "dashboard",
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to create conversation");
+        }
+
+        const data = await response.json();
+        setCurrentConversationId(data.conversation.id);
+      }
+    } catch (error) {
+      console.error("Error saving conversation:", error);
+      // Silent fail - don't interrupt user experience
+    }
+  };
+
+  const handleLoadConversation = async (conversationId: string) => {
+    if (!slug) return;
+
+    try {
+      const response = await fetch(`/api/workspaces/${slug}/chat/conversations/${conversationId}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to load conversation");
+      }
+
+      const data = await response.json();
+
+      // Transform API messages to component format
+      const loadedMessages: Message[] = data.conversation.messages.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.timestamp),
+        imageData: m.imageData,
+        toolCalls: m.toolCalls,
+      }));
+
+      // Update state
+      setMessages(loadedMessages);
+      setFollowUpQuestions(data.conversation.followUpQuestions || []);
+      setProvenanceData(data.conversation.provenanceData || null);
+      setCurrentConversationId(conversationId);
+      setIsHistorySheetOpen(false);
+    } catch (error) {
+      console.error("Error loading conversation:", error);
+      toast.error("Failed to load conversation", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  };
+
   const handleClearAll = () => {
     setMessages([]);
     setFollowUpQuestions([]);
     setProvenanceData(null);
     setIsProvenanceSidebarOpen(false);
+    setCurrentConversationId(null);
   };
 
   const handleImageUpload = (imageData: string) => {
@@ -635,6 +729,8 @@ export function DashboardChat() {
           onToggleProvenance={() => setIsProvenanceSidebarOpen(!isProvenanceSidebarOpen)}
           showShareButton={messages.length > 0}
           onShare={handleShare}
+          showHistoryButton={true}
+          onHistory={() => setIsHistorySheetOpen(true)}
         />
       </div>
 
@@ -644,6 +740,14 @@ export function DashboardChat() {
         onOpenChange={setShowFeatureModal}
         onSubmit={handleCreateFeature}
         isCreating={isCreatingFeature}
+      />
+
+      {/* Conversation History Sheet */}
+      <ConversationHistorySheet
+        open={isHistorySheetOpen}
+        onOpenChange={setIsHistorySheetOpen}
+        onLoadConversation={handleLoadConversation}
+        workspaceSlug={slug}
       />
     </div>
   );
