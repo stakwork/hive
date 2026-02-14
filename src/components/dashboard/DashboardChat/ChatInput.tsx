@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Eye, Image as ImageIcon, Lightbulb, Send, Share2, X } from "lucide-react";
+import { Eye, History, Image as ImageIcon, Lightbulb, Send, Share2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface ChatInputProps {
@@ -18,6 +18,8 @@ interface ChatInputProps {
   onToggleProvenance?: () => void;
   showShareButton?: boolean;
   onShare?: () => void;
+  showHistoryButton?: boolean;
+  onHistory?: () => void;
 }
 
 export function ChatInput({
@@ -34,6 +36,8 @@ export function ChatInput({
   onToggleProvenance,
   showShareButton = false,
   onShare,
+  showHistoryButton = false,
+  onHistory,
 }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -278,6 +282,19 @@ export function ChatInput({
           title="Share conversation"
         >
           <Share2 className="w-4 h-4" />
+        </Button>
+      )}
+      {showHistoryButton && (
+        <Button
+          type="button"
+          onClick={onHistory}
+          disabled={disabled}
+          variant="outline"
+          size="icon"
+          className="rounded-full h-10 w-10"
+          title="View conversation history"
+        >
+          <History className="w-4 h-4" />
         </Button>
       )}
     </form>
