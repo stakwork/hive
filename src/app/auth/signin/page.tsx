@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Github, Loader2, UserCheck } from "lucide-react";
+import { ArrowLeft, Github, Loader2, UserCheck, Zap, X } from "lucide-react";
 import type { ClientSafeProvider } from "next-auth/react";
 import { getProviders, signIn, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useRef } from "react";
+import Image from "next/image";
 
 function SignInContent() {
   const { data: session, status } = useSession();
@@ -19,6 +20,14 @@ function SignInContent() {
   const [isMockSigningIn, setIsMockSigningIn] = useState(false);
   const [mockUsername, setMockUsername] = useState("");
   const [providers, setProviders] = useState<Record<string, ClientSafeProvider> | null>(null);
+  
+  // Sphinx authentication state
+  const [isSphinxAuthenticating, setIsSphinxAuthenticating] = useState(false);
+  const [sphinxQRCode, setSphinxQRCode] = useState<string | null>(null);
+  const [sphinxDeepLink, setSphinxDeepLink] = useState<string | null>(null);
+  const [sphinxChallenge, setSphinxChallenge] = useState<string | null>(null);
+  const [sphinxError, setSphinxError] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if there's a redirect parameter
   const redirectPath = searchParams.get("redirect");
@@ -103,6 +112,108 @@ function SignInContent() {
     }
   };
 
+  const stopSphinxPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  };
+
+  const startSphinxPolling = (challenge: string, pubkey?: string) => {
+    // Stop any existing polling
+    stopSphinxPolling();
+
+    const startTime = Date.now();
+    const TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        // Check for timeout
+        if (Date.now() - startTime > TIMEOUT) {
+          stopSphinxPolling();
+          setSphinxError("Authentication timed out. Please try again.");
+          setIsSphinxAuthenticating(false);
+          return;
+        }
+
+        const response = await fetch(`/api/auth/sphinx/poll/${challenge}`);
+        
+        if (!response.ok) {
+          throw new Error("Polling failed");
+        }
+
+        const data = await response.json();
+
+        if (data.verified && data.pubkey) {
+          stopSphinxPolling();
+
+          // Sign in with Sphinx
+          const result = await signIn("sphinx", {
+            challenge,
+            pubkey: data.pubkey,
+            redirect: false,
+          });
+
+          if (result?.error) {
+            console.error("Sphinx sign in error:", result.error);
+            setSphinxError("Authentication failed. Please try again.");
+            setIsSphinxAuthenticating(false);
+          }
+          // Note: On success, the useEffect will handle the redirect based on session
+        }
+      } catch (error) {
+        console.error("Sphinx polling error:", error);
+        stopSphinxPolling();
+        setSphinxError("Connection error. Please try again.");
+        setIsSphinxAuthenticating(false);
+      }
+    }, 2500); // Poll every 2.5 seconds
+  };
+
+  const handleSphinxSignIn = async () => {
+    try {
+      setIsSphinxAuthenticating(true);
+      setSphinxError(null);
+
+      const response = await fetch("/api/auth/sphinx/challenge", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate challenge");
+      }
+
+      const data = await response.json();
+      
+      setSphinxChallenge(data.challenge);
+      setSphinxQRCode(data.qrCode);
+      setSphinxDeepLink(data.deepLink);
+
+      // Start polling for verification
+      startSphinxPolling(data.challenge);
+    } catch (error) {
+      console.error("Sphinx challenge error:", error);
+      setSphinxError("Failed to start authentication. Please try again.");
+      setIsSphinxAuthenticating(false);
+    }
+  };
+
+  const handleSphinxCancel = () => {
+    stopSphinxPolling();
+    setIsSphinxAuthenticating(false);
+    setSphinxQRCode(null);
+    setSphinxDeepLink(null);
+    setSphinxChallenge(null);
+    setSphinxError(null);
+  };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      stopSphinxPolling();
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -119,86 +230,161 @@ function SignInContent() {
             <CardTitle className="text-2xl font-bold">Hive</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {providers?.github && (
-              <Button
-                data-testid="github-signin-button"
-                onClick={handleGitHubSignIn}
-                disabled={isSigningIn || isMockSigningIn}
-                className="w-full h-12 text-base font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-              >
-                {isSigningIn ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    <Github className="w-5 h-5 mr-3" />
-                    Continue with GitHub
-                  </>
-                )}
-              </Button>
-            )}
-
-            {hasMockProvider && (
+            {!isSphinxAuthenticating ? (
               <>
                 {providers?.github && (
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">Or for development</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="mock-username">Username (optional)</Label>
-                    <Input
-                      id="mock-username"
-                      type="text"
-                      placeholder="Enter username (defaults to 'dev-user')"
-                      value={mockUsername}
-                      onChange={(e) => setMockUsername(e.target.value)}
-                      disabled={isMockSigningIn || isSigningIn}
-                    />
-                  </div>
                   <Button
-                    data-testid="mock-signin-button"
-                    onClick={handleMockSignIn}
-                    disabled={isMockSigningIn || isSigningIn}
-                    className="w-full h-12 text-base font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
+                    data-testid="github-signin-button"
+                    onClick={handleGitHubSignIn}
+                    disabled={isSigningIn || isMockSigningIn}
+                    className="w-full h-12 text-base font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
                   >
-                    {isMockSigningIn ? (
+                    {isSigningIn ? (
                       <>
                         <Loader2 className="w-5 h-5 mr-3 animate-spin" />
                         Signing in...
                       </>
                     ) : (
                       <>
-                        <UserCheck className="w-5 h-5 mr-3" />
-                        Mock Sign In (Dev)
+                        <Github className="w-5 h-5 mr-3" />
+                        Continue with GitHub
                       </>
                     )}
                   </Button>
+                )}
+
+                {/* Sphinx Sign In Button */}
+                <Button
+                  data-testid="sphinx-signin-button"
+                  onClick={handleSphinxSignIn}
+                  disabled={isSigningIn || isMockSigningIn}
+                  className="w-full h-12 text-base font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
+                >
+                  <Zap className="w-5 h-5 mr-3" />
+                  Continue with Sphinx
+                </Button>
+
+                {hasMockProvider && (
+                  <>
+                    {providers?.github && (
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-background px-2 text-muted-foreground">Or for development</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="mock-username">Username (optional)</Label>
+                        <Input
+                          id="mock-username"
+                          type="text"
+                          placeholder="Enter username (defaults to 'dev-user')"
+                          value={mockUsername}
+                          onChange={(e) => setMockUsername(e.target.value)}
+                          disabled={isMockSigningIn || isSigningIn}
+                        />
+                      </div>
+                      <Button
+                        data-testid="mock-signin-button"
+                        onClick={handleMockSignIn}
+                        disabled={isMockSigningIn || isSigningIn}
+                        className="w-full h-12 text-base font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
+                      >
+                        {isMockSigningIn ? (
+                          <>
+                            <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                            Signing in...
+                          </>
+                        ) : (
+                          <>
+                            <UserCheck className="w-5 h-5 mr-3" />
+                            Mock Sign In (Dev)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">
+                    By continuing, you agree to our{" "}
+                    <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">
+                      Terms of Service
+                    </a>{" "}
+                    and{" "}
+                    <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">
+                      Privacy Policy
+                    </a>
+                  </p>
                 </div>
               </>
-            )}
+            ) : (
+              // Sphinx QR Code Display
+              <div className="space-y-6">
+                <div className="text-center">
+                  <h3 className="text-lg font-semibold mb-2">Sign in with Sphinx</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Scan with Sphinx app or click link to authenticate
+                  </p>
+                </div>
 
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                By continuing, you agree to our{" "}
-                <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">
-                  Terms of Service
-                </a>{" "}
-                and{" "}
-                <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline">
-                  Privacy Policy
-                </a>
-              </p>
-            </div>
+                {sphinxError && (
+                  <div className="p-3 bg-destructive/10 border border-destructive rounded-md">
+                    <p className="text-sm text-destructive text-center">{sphinxError}</p>
+                  </div>
+                )}
+
+                {sphinxQRCode && (
+                  <div className="flex flex-col items-center space-y-4">
+                    {/* QR Code */}
+                    <div className="bg-white p-4 rounded-lg">
+                      <img 
+                        src={sphinxQRCode} 
+                        alt="Sphinx QR Code" 
+                        className="w-64 h-64"
+                        data-testid="sphinx-qr-code"
+                      />
+                    </div>
+
+                    {/* Deep Link Button */}
+                    {sphinxDeepLink && (
+                      <a
+                        href={sphinxDeepLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium"
+                        data-testid="sphinx-deep-link"
+                      >
+                        Open in Sphinx App
+                      </a>
+                    )}
+
+                    {/* Loading Indicator */}
+                    <div className="flex items-center space-x-2 text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Waiting for Sphinx app...</span>
+                    </div>
+
+                    {/* Cancel Button */}
+                    <Button
+                      onClick={handleSphinxCancel}
+                      variant="outline"
+                      className="w-full"
+                      data-testid="sphinx-cancel-button"
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

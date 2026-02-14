@@ -81,4 +81,4 @@ mock-tests/
 test-results
 
 # Private files
-private/
+private/.env.test
