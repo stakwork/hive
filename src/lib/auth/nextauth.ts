@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { EncryptionService } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { ensureMockWorkspaceForUser } from "@/utils/mockSetup";
+import { ensureMockWorkspaceForUser, ensureStakworkMockWorkspace } from "@/utils/mockSetup";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import axios from "axios";
 import { NextAuthOptions } from "next-auth";
@@ -242,6 +242,23 @@ export const authOptions: NextAuthOptions = {
             userId: user.id,
             workspaceSlug,
           });
+
+          // Create stakwork workspace for testing stakwork-specific features
+          // This should not fail authentication if it errors
+          try {
+            const stakworkSlug = await ensureStakworkMockWorkspace(user.id as string);
+            logger.authInfo("Stakwork mock workspace created successfully", "SIGNIN_STAKWORK_SUCCESS", {
+              userId: user.id,
+              stakworkSlug,
+            });
+          } catch (error) {
+            logger.authError(
+              "Failed to create stakwork mock workspace - continuing authentication",
+              "SIGNIN_STAKWORK_FAILED",
+              error
+            );
+            // Don't return false - authentication should continue even if stakwork workspace fails
+          }
         } catch (error) {
           logger.authError("Failed to handle mock authentication", "SIGNIN_MOCK", error);
           return false;

@@ -48,6 +48,7 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/utils/mockSetup', () => ({
   ensureMockWorkspaceForUser: vi.fn(),
+  ensureStakworkMockWorkspace: vi.fn(),
 }));
 
 describe('signIn callback', () => {
