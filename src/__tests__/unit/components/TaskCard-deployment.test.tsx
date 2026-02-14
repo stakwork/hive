@@ -52,18 +52,10 @@ vi.mock("@/hooks/useWorkspaceAccess", () => ({
 }));
 
 /**
- * NOTE: These tests are currently skipped because the TaskCard component
- * does not yet implement the DeploymentStatusBadge feature.
- * 
- * The DeploymentStatusBadge component exists at @/components/tasks/DeploymentStatusBadge
- * but TaskCard.tsx does not import or render it.
- * 
- * To enable these tests, the TaskCard component needs to:
- * 1. Import DeploymentStatusBadge from "@/components/tasks/DeploymentStatusBadge"
- * 2. Render it alongside the PRStatusBadge when task.deploymentStatus exists
- * 3. Pass the appropriate props: status, stagingTimestamp, productionTimestamp
+ * These tests verify the TaskCard component's integration with DeploymentStatusBadge.
+ * The TaskCard component now imports and renders DeploymentStatusBadge alongside PRStatusBadge.
  */
-describe.skip("TaskCard - Deployment Badge Integration", () => {
+describe("TaskCard - Deployment Badge Integration", () => {
   const mockTaskBase = {
     id: "task-1",
     title: "Test Task",
@@ -76,9 +68,15 @@ describe.skip("TaskCard - Deployment Badge Integration", () => {
     repositoryId: null,
     assigneeId: null,
     createdById: "user-1",
-    prUrl: "https://github.com/test/repo/pull/123",
-    prStatus: "merged",
     autoMerge: false,
+    prArtifact: {
+      id: "pr-artifact-1",
+      type: "PR",
+      content: {
+        url: "https://github.com/test/repo/pull/123",
+        status: "DONE" as const,
+      },
+    },
   };
 
   beforeEach(() => {
@@ -132,7 +130,6 @@ describe.skip("TaskCard - Deployment Badge Integration", () => {
     it("renders deployment badge after PR status badge", () => {
       const taskWithBothStatuses = {
         ...mockTaskBase,
-        prStatus: "merged",
         deploymentStatus: "staging",
         deployedToStagingAt: "2024-01-15T12:00:00Z",
         deployedToProductionAt: null,
@@ -148,7 +145,7 @@ describe.skip("TaskCard - Deployment Badge Integration", () => {
       expect(deploymentBadge).toBeInTheDocument();
 
       // Check that deployment badge comes after PR badge in DOM order
-      const badges = container.querySelectorAll("[class*='badge']");
+      const badges = container.querySelectorAll('[data-slot="badge"]');
       const badgeTexts = Array.from(badges).map((b) => b.textContent);
 
       const prIndex = badgeTexts.findIndex((text) =>
