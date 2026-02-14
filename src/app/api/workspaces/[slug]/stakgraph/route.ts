@@ -522,9 +522,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       },
     });
 
-    // Get repo name for pm2 generation
+    // Get all repo names for pm2 generation (needed for multi-repo cwd resolution)
     const primaryRepo = await getPrimaryRepository(workspace.id);
-    const repoName = extractRepoName(primaryRepo?.repositoryUrl || settings.repositories?.[0]?.repositoryUrl);
+    const allRepos = await db.repository.findMany({
+      where: { workspaceId: workspace.id },
+      select: { repositoryUrl: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const repoNames = allRepos.map((r) => extractRepoName(r.repositoryUrl));
+    // Fallback to incoming repos if no repos in DB yet
+    if (repoNames.length === 0 && settings.repositories) {
+      repoNames.push(...settings.repositories.map((r) => extractRepoName(r.repositoryUrl)));
+    }
 
     // Get global env vars for PM2 config generation
     const globalEnvVars = Array.isArray(settings.environmentVariables)
@@ -537,7 +546,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       (existingSwarm?.containerFiles as unknown as Record<string, string>) || {},
       settings.services as SwarmServiceConfig[] | undefined,
       settings.containerFiles,
-      repoName,
+      repoNames,
       globalEnvVars,
     );
 
