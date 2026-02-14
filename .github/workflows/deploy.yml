@@ -89,7 +89,7 @@ jobs:
               state: 'success',
               description: 'Deployment completed successfully',
               environment: 'production',
-              environment_url: '${{ steps.vercel_deploy.outputs.deployment_url }}'
+              environment_url: 'https://hive.sphinx.chat'
             });
 
       - name: Set Deployment Status to Failure
