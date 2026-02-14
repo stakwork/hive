@@ -63,6 +63,7 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [copiedNotation, setCopiedNotation] = useState(false);
+  const [copiedValue, setCopiedValue] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [isEditing, setIsEditing] = useState(false);
   const [selectedUsages, setSelectedUsages] = useState<PromptUsage[]>([]);
@@ -253,6 +254,14 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
     }
   };
 
+  const handleCopyValue = async () => {
+    if (selectedPrompt?.value) {
+      await navigator.clipboard.writeText(selectedPrompt.value);
+      setCopiedValue(true);
+      setTimeout(() => setCopiedValue(false), 2000);
+    }
+  };
+
   if (isLoading && prompts.length === 0 && viewMode === "list") {
     return (
       <div className="flex items-center justify-center h-full p-8">
@@ -417,10 +426,27 @@ export function PromptsPanel({ workflowId }: PromptsPanelProps) {
                 )}
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Prompt Value
-                </label>
+              <div className="relative">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Prompt Value
+                  </label>
+                  {!isEditing && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCopyValue}
+                      className="h-6 w-6 p-0"
+                      title="Copy prompt value"
+                    >
+                      {copiedValue ? (
+                        <Check className="h-3.5 w-3.5 text-green-500" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  )}
+                </div>
                 {isEditing ? (
                   <Textarea
                     className="mt-1 font-mono text-sm min-h-[200px]"
