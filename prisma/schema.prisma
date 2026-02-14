@@ -367,6 +367,9 @@ model Swarm {
   minimumVms Int     @default(2) @map("minimum_vms")
   webhookUrl String? @map("webhook_url")
 
+  // Deferred pod repair trigger (set when repo added, cleared when repair runs)
+  pendingRepairTrigger Json? @map("pending_repair_trigger")
+
   // One-to-one relationship with workspace
   workspaceId String    @unique @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

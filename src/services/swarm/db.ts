@@ -78,6 +78,7 @@ export const select = {
   autoLearnEnabled: true,
   minimumVms: true,
   webhookUrl: true,
+  pendingRepairTrigger: true,
 };
 
 export async function saveOrUpdateSwarm(params: SaveOrUpdateSwarmParams) {
