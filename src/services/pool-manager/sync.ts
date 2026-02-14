@@ -129,11 +129,17 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
       };
     }
 
-    // Get repository name for file generation
-    const repository = await db.repository.findFirst({
+    // Get all repository names for multi-repo cwd resolution
+    const allRepos = await db.repository.findMany({
       where: { workspaceId: swarm.workspaceId },
+      orderBy: { createdAt: "asc" },
     });
-    const repoName = repository?.name || workspaceSlug;
+    const repoNames = allRepos.map((r) => r.name).filter(Boolean);
+    // Fallback to workspace slug if no repos
+    if (repoNames.length === 0) {
+      repoNames.push(workspaceSlug);
+    }
+    const primaryRepoName = repoNames[0];
 
     // Convert swarm services to ServiceDataConfig format
     let services: ServiceDataConfig[] = [];
@@ -167,7 +173,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     }
 
     // Generate container files with merged env vars
-    const pm2Apps = generatePM2Apps(repoName, services, globalEnvVars);
+    const pm2Apps = generatePM2Apps(repoNames, services, globalEnvVars);
 
     // Parse existing PM2 config to preserve any env vars not in the new config
     const existingContainerFiles = (swarm.containerFiles as Record<string, string>) || {};
@@ -190,7 +196,7 @@ export async function syncPoolManagerSettings(params: SyncPoolManagerParams): Pr
     }
 
     const containerFilesContent = {
-      "devcontainer.json": devcontainerJsonContent(repoName),
+      "devcontainer.json": devcontainerJsonContent(primaryRepoName),
       "pm2.config.js": `module.exports = {\n  apps: ${formatPM2Apps(pm2Apps)},\n};\n`,
       "docker-compose.yml": dockerComposeContent(),
       Dockerfile: dockerfileContent(),
