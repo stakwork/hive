@@ -2,9 +2,9 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Check, Trash2, Bot, Mic } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Trash2, Bot, Mic, Rocket } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-import type { StakworkRunType } from "@prisma/client";
+import type { StakworkRunType, WorkflowStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditableTitle } from "@/components/ui/editable-title";
@@ -26,6 +26,9 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { useDetailResource } from "@/hooks/useDetailResource";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import type { FeatureDetail } from "@/types/roadmap";
+import { getPusherClient } from "@/lib/pusher";
+import { PUSHER_EVENTS } from "@/lib/pusher";
+import { toast } from "sonner";
 
 export default function FeatureDetailPage() {
   const router = useRouter();
@@ -62,6 +65,11 @@ export default function FeatureDetailPage() {
 
   // Pending StakworkRuns state (for tab indicators)
   const [pendingRunTypes, setPendingRunTypes] = useState<Set<StakworkRunType>>(new Set());
+
+  // Auto-launch state management
+  const [isAutoLaunching, setIsAutoLaunching] = useState(false);
+  const [autoLaunchStep, setAutoLaunchStep] = useState<"architecture" | "tasks" | null>(null);
+  const [currentAutoLaunchRunId, setCurrentAutoLaunchRunId] = useState<string | null>(null);
 
   const fetchFeature = useCallback(async (id: string) => {
     const response = await fetch(`/api/features/${id}`);
@@ -445,6 +453,164 @@ export default function FeatureDetailPage() {
     }
   };
 
+  // Auto-launch handlers
+  const handleLaunchTasks = useCallback(async () => {
+    if (!workspaceId || !featureId) return;
+
+    try {
+      setAutoLaunchStep("tasks");
+      
+      const response = await fetch("/api/stakwork/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "TASK_GENERATION",
+          featureId,
+          workspaceId,
+          autoAccept: true,
+          params: { skipClarifyingQuestions: true },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start task generation");
+      }
+
+      const result = await response.json();
+      if (result.success && result.data?.id) {
+        setCurrentAutoLaunchRunId(result.data.id);
+      }
+    } catch (error) {
+      console.error("Failed to launch tasks:", error);
+      setIsAutoLaunching(false);
+      setAutoLaunchStep(null);
+      setCurrentAutoLaunchRunId(null);
+      toast.error("Failed to start task generation. Please try again.");
+    }
+  }, [workspaceId, featureId]);
+
+  const handleLaunch = async () => {
+    if (!workspaceId || !featureId) return;
+
+    try {
+      setIsAutoLaunching(true);
+      setAutoLaunchStep("architecture");
+
+      const response = await fetch("/api/stakwork/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "ARCHITECTURE",
+          featureId,
+          workspaceId,
+          autoAccept: true,
+          params: { skipClarifyingQuestions: true },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start architecture generation");
+      }
+
+      const result = await response.json();
+      if (result.success && result.data?.id) {
+        setCurrentAutoLaunchRunId(result.data.id);
+        toast.success("Auto-launch started");
+      }
+    } catch (error) {
+      console.error("Failed to launch:", error);
+      setIsAutoLaunching(false);
+      setAutoLaunchStep(null);
+      setCurrentAutoLaunchRunId(null);
+      toast.error("Failed to start auto-launch. Please try again.");
+    }
+  };
+
+  const handleStopLaunch = async () => {
+    if (!currentAutoLaunchRunId) return;
+
+    try {
+      const response = await fetch(`/api/stakwork/runs/${currentAutoLaunchRunId}/stop`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to stop run");
+      }
+
+      setIsAutoLaunching(false);
+      setAutoLaunchStep(null);
+      setCurrentAutoLaunchRunId(null);
+      toast.success("Auto-launch stopped");
+    } catch (error) {
+      console.error("Failed to stop launch:", error);
+      toast.error("Failed to stop auto-launch. Please try again.");
+    }
+  };
+
+  // Pusher event listener for sequential execution
+  useEffect(() => {
+    if (!workspaceSlug || !featureId) return;
+
+    const pusher = getPusherClient();
+    const channelName = `workspace-${workspaceSlug}`;
+    const channel = pusher.subscribe(channelName);
+
+    const handleStakworkRunUpdate = (data: {
+      runId: string;
+      type: StakworkRunType;
+      status: WorkflowStatus;
+      featureId?: string;
+      timestamp: Date;
+    }) => {
+      // Only process events for this feature
+      if (data.featureId !== featureId) return;
+
+      // Handle completion of architecture run during auto-launch
+      if (
+        data.type === "ARCHITECTURE" &&
+        data.status === "COMPLETED" &&
+        isAutoLaunching &&
+        autoLaunchStep === "architecture"
+      ) {
+        handleLaunchTasks();
+      }
+
+      // Handle completion of task generation run during auto-launch
+      if (
+        data.type === "TASK_GENERATION" &&
+        data.status === "COMPLETED" &&
+        isAutoLaunching &&
+        autoLaunchStep === "tasks"
+      ) {
+        setIsAutoLaunching(false);
+        setAutoLaunchStep(null);
+        setCurrentAutoLaunchRunId(null);
+        toast.success("Auto-launch completed successfully");
+      }
+
+      // Handle failures during auto-launch
+      if (
+        isAutoLaunching &&
+        (data.status === "FAILED" || data.status === "ERROR" || data.status === "HALTED")
+      ) {
+        setIsAutoLaunching(false);
+        setAutoLaunchStep(null);
+        setCurrentAutoLaunchRunId(null);
+        toast.error("Deep research failed. Please try again.", {
+          position: "top-right",
+        });
+      }
+    };
+
+    channel.bind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleStakworkRunUpdate);
+
+    return () => {
+      channel.unbind(PUSHER_EVENTS.STAKWORK_RUN_UPDATE, handleStakworkRunUpdate);
+      pusher.unsubscribe(channelName);
+    };
+  }, [workspaceSlug, featureId, isAutoLaunching, autoLaunchStep, handleLaunchTasks]);
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -746,7 +912,19 @@ export default function FeatureDetailPage() {
               />
 
               {/* Navigation buttons */}
-              <div className="flex justify-end pt-4">
+              <div className="flex justify-between items-center pt-4">
+                <Button
+                  onClick={isAutoLaunching ? handleStopLaunch : handleLaunch}
+                  disabled={
+                    !feature?.requirements ||
+                    feature.requirements.trim() === "" ||
+                    (savedField === "requirements" && saving)
+                  }
+                  variant={isAutoLaunching ? "destructive" : "default"}
+                >
+                  <Rocket className="mr-2 h-4 w-4" />
+                  {isAutoLaunching ? "Stop Launch" : "Launch"}
+                </Button>
                 <Button onClick={() => setActiveTab("architecture")}>Next</Button>
               </div>
             </TabsContent>
