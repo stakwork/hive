@@ -17,11 +17,11 @@ export interface CallsResponse {
 export interface JarvisNode {
   ref_id: string;
   node_type: string;
-  date_added_to_graph: number;
-  properties: {
-    episode_title: string;
-    media_url: string;
-    source_link: string;
+  date_added_to_graph?: number; // Mark as optional since it might be missing
+  properties?: {                // Mark properties as optional
+    episode_title?: string;     // Mark as optional since it might be missing
+    media_url?: string;
+    source_link?: string;
     description?: string;
   };
 }

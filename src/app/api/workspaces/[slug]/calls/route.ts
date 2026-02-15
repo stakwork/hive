@@ -5,8 +5,36 @@ import {
   CallRecording,
   CallsResponse,
   JarvisSearchResponse,
+  JarvisNode,
 } from "@/types/calls";
 import { getWorkspaceSwarmAccess } from "@/lib/helpers/swarm-access";
+
+/**
+ * Validates if a JarvisNode has all required fields for a call recording
+ */
+function isValidCallNode(node: JarvisNode): boolean {
+  return (
+    typeof node.date_added_to_graph === 'number' &&
+    node.properties?.episode_title !== undefined
+  );
+}
+
+/**
+ * Logs warning for invalid call nodes with missing fields
+ */
+function logInvalidNode(node: JarvisNode): void {
+  const missingFields: string[] = [];
+  if (typeof node.date_added_to_graph !== 'number') {
+    missingFields.push('date_added_to_graph');
+  }
+  if (!node.properties?.episode_title) {
+    missingFields.push('episode_title');
+  }
+  console.warn(
+    `Filtering out invalid call node: ${node.ref_id}`,
+    `Missing fields: ${missingFields.join(', ')}`
+  );
+}
 
 export async function GET(
   request: NextRequest,
@@ -103,11 +131,21 @@ export async function GET(
 
     const jarvisData: JarvisSearchResponse = await jarvisResponse.json();
 
-    const allCalls: CallRecording[] = jarvisData.nodes.map((node) => ({
+    // Filter out invalid nodes and log warnings
+    const validNodes = jarvisData.nodes.filter(node => {
+      const valid = isValidCallNode(node);
+      if (!valid) {
+        logInvalidNode(node);
+      }
+      return valid;
+    });
+
+    // Map valid nodes to CallRecording format with default title fallback
+    const allCalls: CallRecording[] = validNodes.map((node) => ({
       ref_id: node.ref_id,
-      episode_title: node.properties.episode_title,
-      date_added_to_graph: node.date_added_to_graph,
-      description: node.properties.description,
+      episode_title: node.properties!.episode_title || "Untitled Call",
+      date_added_to_graph: node.date_added_to_graph!,
+      description: node.properties!.description,
     }));
 
     const hasMore = allCalls.length > limit;
