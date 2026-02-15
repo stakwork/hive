@@ -19,6 +19,7 @@ interface TestEnvDefaults {
   AWS_ROLE_ARN: string;
   S3_BUCKET_NAME: string;
   AWS_REGION: string;
+  NEXTAUTH_SECRET: string;
 }
 
 const TEST_ENV_DEFAULTS: TestEnvDefaults = {
@@ -37,6 +38,7 @@ const TEST_ENV_DEFAULTS: TestEnvDefaults = {
   AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/test-role",
   S3_BUCKET_NAME: "test-bucket",
   AWS_REGION: "us-east-1",
+  NEXTAUTH_SECRET: "test-nextauth-secret-for-integration-tests",
 };
 
 /**
