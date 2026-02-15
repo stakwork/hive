@@ -52,10 +52,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify the signature
+    // Verify the signature (timestamp is extracted from token internally)
     let isValidSignature: boolean;
     try {
-      isValidSignature = verifySphinxToken(token, timestamp, pubkey);
+      isValidSignature = verifySphinxToken(token, pubkey);
     } catch (verifyError) {
       logger.error("Signature verification error", "SPHINX_AUTH", { error: verifyError });
       return NextResponse.json(
