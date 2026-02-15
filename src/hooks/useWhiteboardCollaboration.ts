@@ -265,7 +265,7 @@ export function useWhiteboardCollaboration({
 
           excalidrawAPI.updateScene({
             elements: mergedElements,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             appState: data.appState as any,
           });
 
