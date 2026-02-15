@@ -22,7 +22,7 @@ export class WebhookService extends BaseServiceClass {
     repositoryUrl,
     callbackUrl,
     repositoryName,
-    events = ["push", "pull_request"],
+    events = ["push", "pull_request", "deployment_status"],
     active = true,
   }: {
     userId: string;
@@ -121,7 +121,7 @@ export class WebhookService extends BaseServiceClass {
     workspaceId,
     repositoryUrl,
     callbackUrl,
-    events = ["push", "pull_request"],
+    events = ["push", "pull_request", "deployment_status"],
     active = true,
     workspaceSlug,
   }: {
