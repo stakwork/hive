@@ -8,6 +8,7 @@ export default defineConfig({
     headless: true,
     browserName: "chromium",
     trace: "on-first-retry",
+    baseURL: "http://localhost:3000",
     // Bypass Next.js dev overlay that intercepts pointer events
     bypassCSP: true,
   },
@@ -15,6 +16,7 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: "http://localhost:3000",
+    // Always try to reuse existing server (CI manually starts it with proper env vars)
     reuseExistingServer: true,
     timeout: 120000,
   },
