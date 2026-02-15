@@ -1,10 +1,31 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { POST } from "@/app/api/github/webhook/[workspaceId]/route";
 import { db } from "@/lib/db";
-import { pusherServer } from "@/lib/pusher";
 import { createWebhookTestScenario, computeValidWebhookSignature, createWebhookRequest } from "@/__tests__/support/factories/github-webhook.factory";
 import { createTestTask, createTestChatMessage, createTestArtifact } from "@/__tests__/support/factories/task.factory";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
+
+// Mock Octokit before importing the route handler
+const mockCompareCommits = vi.fn().mockResolvedValue({
+  data: {
+    commits: [
+      { sha: "abc123def456" },
+    ],
+  },
+});
+
+vi.mock("@octokit/rest", () => ({
+  Octokit: vi.fn().mockImplementation(() => ({
+    repos: {
+      compareCommits: mockCompareCommits,
+    },
+  })),
+}));
+
+vi.mock("@/lib/githubApp", () => ({
+  getUserAppTokens: vi.fn().mockResolvedValue({
+    accessToken: "test-token",
+  }),
+}));
 
 vi.mock("@/lib/pusher", () => ({
   pusherServer: {
@@ -17,11 +38,17 @@ vi.mock("@/lib/pusher", () => ({
   },
 }));
 
+// Import route handler AFTER all mocks are set up
+import { POST } from "@/app/api/github/webhook/[workspaceId]/route";
+import { pusherServer } from "@/lib/pusher";
+
 describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
   const COMMIT_SHA = "abc123def456";
 
   beforeEach(async () => {
     await resetDatabase();
+    // Explicitly clean up deployment records for test isolation
+    await db.deployment.deleteMany({});
     vi.clearAllMocks();
   });
 
@@ -48,6 +75,10 @@ describe("POST /api/github/webhook/[workspaceId] - deployment_status", () => {
     repository: {
       html_url: repositoryUrl || "https://github.com/test-owner/test-repo",
       full_name: "test-owner/test-repo",
+      name: "test-repo",
+      owner: {
+        login: "test-owner",
+      },
     },
   });
 

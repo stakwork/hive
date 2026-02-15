@@ -15,34 +15,39 @@ import { createWebhookTestScenario, computeValidWebhookSignature, createWebhookR
 import { createTestTask, createTestChatMessage, createTestArtifact } from "@/__tests__/support/factories/task.factory";
 import { resetDatabase } from "@/__tests__/support/utilities/database";
 
-// Create mock Octokit instance
+// IMPORTANT: Mock Octokit BEFORE importing the route handler (for dynamic imports)
+// Create mock at module level so it persists across all Octokit instances
 const mockCompareCommits = vi.fn();
 
-// IMPORTANT: Mock Octokit BEFORE importing the route handler (for dynamic imports)
-vi.mock("@octokit/rest", () => ({
-  Octokit: vi.fn().mockImplementation(() => ({
-    repos: {
-      compareCommits: mockCompareCommits,
-    },
-  })),
-}));
+vi.mock("@octokit/rest", () => {
+  return {
+    Octokit: vi.fn(() => ({
+      repos: {
+        compareCommits: mockCompareCommits,
+      },
+    })),
+    // Export mock for access in tests
+    __mockCompareCommits: mockCompareCommits,
+  };
+});
 
 // Mock GitHub App tokens
-vi.mock("@/lib/githubApp", () => ({
-  getUserAppTokens: vi.fn().mockResolvedValue({
-    accessToken: "test-token",
-  }),
-}));
+vi.mock("@/lib/githubApp", () => {
+  const mockGetUserAppTokens = vi.fn();
+  return {
+    getUserAppTokens: mockGetUserAppTokens,
+    __mockGetUserAppTokens: mockGetUserAppTokens,
+  };
+});
 
 // Mock getGithubUsernameAndPAT for credentials check
 vi.mock("@/lib/auth/nextauth", async () => {
   const actual = await vi.importActual("@/lib/auth/nextauth");
+  const mockGetGithubUsernameAndPAT = vi.fn();
   return {
     ...actual,
-    getGithubUsernameAndPAT: vi.fn().mockResolvedValue({
-      username: "test-user",
-      token: "test-github-pat",
-    }),
+    getGithubUsernameAndPAT: mockGetGithubUsernameAndPAT,
+    __mockGetGithubUsernameAndPAT: mockGetGithubUsernameAndPAT,
   };
 });
 
@@ -61,6 +66,13 @@ vi.mock("@/lib/pusher", () => ({
 // Import route handler AFTER all mocks are set up
 import { POST } from "@/app/api/github/webhook/[workspaceId]/route";
 
+// Get mock references from the mocked modules
+import * as githubAppModule from "@/lib/githubApp";
+import * as nextauthModule from "@/lib/auth/nextauth";
+
+const mockGetUserAppTokens = (githubAppModule as any).__mockGetUserAppTokens;
+const mockGetGithubUsernameAndPAT = (nextauthModule as any).__mockGetGithubUsernameAndPAT;
+
 describe("Deployment Webhook - Multiple Tasks", () => {
   let testSetup: any;
   let task1: any;
@@ -69,9 +81,15 @@ describe("Deployment Webhook - Multiple Tasks", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    vi.clearAllMocks();
     
-    // Setup mock to return all commits by default
+    // Explicitly clean up deployment records for test isolation
+    await db.deployment.deleteMany({});
+    
+    // Add small delay to ensure database operations are fully committed
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Clear mock call history and re-setup implementations
+    mockCompareCommits.mockClear();
     mockCompareCommits.mockResolvedValue({
       data: {
         commits: [
@@ -80,6 +98,17 @@ describe("Deployment Webhook - Multiple Tasks", () => {
           { sha: "commit3sha" },
         ],
       },
+    });
+
+    mockGetUserAppTokens.mockClear();
+    mockGetUserAppTokens.mockResolvedValue({
+      accessToken: "test-token",
+    });
+
+    mockGetGithubUsernameAndPAT.mockClear();
+    mockGetGithubUsernameAndPAT.mockResolvedValue({
+      username: "test-user",
+      token: "test-github-pat",
     });
 
     // Create test scenario
@@ -297,44 +326,22 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     const response = await POST(request, { params: { workspaceId: testSetup.workspace.id } });
     expect(response.status).toBe(202);
 
-    // Add delay to ensure webhook processing completes
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait for webhook processing to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Poll database until updates complete (max 2 seconds)
-    // Use $queryRaw to bypass Prisma cache
-    let updatedTask1: any, updatedTask2: any, updatedTask3: any;
-    const maxAttempts = 20;
-    let attempts = 0;
-    
-    while (attempts < maxAttempts) {
-      const results = await db.$queryRaw<Array<{
-        id: string;
-        deploymentStatus: string | null;
-        deployedToProductionAt: Date | null;
-        deployedToStagingAt: Date | null;
-      }>>`
-        SELECT id, deployment_status as "deploymentStatus", 
-               deployed_to_production_at as "deployedToProductionAt",
-               deployed_to_staging_at as "deployedToStagingAt"
-        FROM tasks 
-        WHERE id = ${task1.id} OR id = ${task2.id} OR id = ${task3.id}
-      `;
-      
-      updatedTask1 = results.find(t => t.id === task1.id);
-      updatedTask2 = results.find(t => t.id === task2.id);
-      updatedTask3 = results.find(t => t.id === task3.id);
-      
-      if (
-        updatedTask1?.deploymentStatus === "production" &&
-        updatedTask2?.deploymentStatus === "production" &&
-        updatedTask3?.deploymentStatus === "production"
-      ) {
-        break;
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 100));
-      attempts++;
-    }
+    // Query tasks - they should be updated to production
+    const updatedTask1 = await db.task.findUnique({
+      where: { id: task1.id },
+      select: { deploymentStatus: true, deployedToProductionAt: true, deployedToStagingAt: true },
+    });
+    const updatedTask2 = await db.task.findUnique({
+      where: { id: task2.id },
+      select: { deploymentStatus: true, deployedToProductionAt: true, deployedToStagingAt: true },
+    });
+    const updatedTask3 = await db.task.findUnique({
+      where: { id: task3.id },
+      select: { deploymentStatus: true, deployedToProductionAt: true, deployedToStagingAt: true },
+    });
 
     expect(updatedTask1?.deploymentStatus).toBe("production");
     expect(updatedTask2?.deploymentStatus).toBe("production");
@@ -438,28 +445,24 @@ describe("Deployment Webhook - Multiple Tasks", () => {
     expect(response.status).toBe(202);
 
     // Add delay to ensure webhook processing completes
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Poll database until update completes (max 2 seconds)
-    // Use $queryRaw to bypass Prisma cache and ensure fresh data
+    // Poll database until update completes (max 3 seconds)
     let updatedTask1: any;
-    const maxAttempts = 20;
+    const maxAttempts = 30;
     let attempts = 0;
     
     while (attempts < maxAttempts) {
-      const result = await db.$queryRaw<Array<{
-        id: string;
-        deploymentStatus: string | null;
-        deployedToProductionAt: Date | null;
-        deployedToStagingAt: Date | null;
-      }>>`
-        SELECT id, deployment_status as "deploymentStatus", 
-               deployed_to_production_at as "deployedToProductionAt",
-               deployed_to_staging_at as "deployedToStagingAt"
-        FROM tasks 
-        WHERE id = ${task1.id}
-      `;
-      updatedTask1 = result[0];
+      // Use findUnique to let Prisma handle caching properly
+      updatedTask1 = await db.task.findUnique({
+        where: { id: task1.id },
+        select: {
+          id: true,
+          deploymentStatus: true,
+          deployedToProductionAt: true,
+          deployedToStagingAt: true,
+        },
+      });
       
       if (updatedTask1?.deploymentStatus === "production") {
         break;
