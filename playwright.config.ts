@@ -8,6 +8,7 @@ export default defineConfig({
     headless: true,
     browserName: "chromium",
     trace: "on-first-retry",
+    baseURL: "http://localhost:3000",
     // Bypass Next.js dev overlay that intercepts pointer events
     bypassCSP: true,
   },
