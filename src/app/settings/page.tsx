@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/card";
 import { DisconnectAccount } from "@/components/DisconnectAccount";
 import { ThemeSettings } from "@/components/ThemeSettings";
-import { Github } from "lucide-react";
+import { SphinxLink } from "@/components/SphinxLink";
+import { Github, Zap } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
 
 export default async function UserSettingsPage() {
@@ -26,19 +27,23 @@ export default async function UserSettingsPage() {
   }
 
 
+  const sessionUser = session.user as {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    github?: {
+      username?: string;
+      publicRepos?: number;
+      followers?: number;
+    };
+    lightningPubkey?: string | null;
+  };
+
   const user = {
-    name: session?.user?.name,
-    email: session?.user?.email,
-    image: session?.user?.image,
-    github: (
-      session?.user as {
-        github?: {
-          username?: string;
-          publicRepos?: number;
-          followers?: number;
-        };
-      }
-    )?.github,
+    name: sessionUser.name,
+    email: sessionUser.email,
+    image: sessionUser.image,
+    github: sessionUser.github,
   };
 
 
@@ -70,6 +75,21 @@ export default async function UserSettingsPage() {
             </CardHeader>
             <CardContent>
               <DisconnectAccount user={user} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-5 h-5" />
+                Sphinx Wallet
+              </CardTitle>
+              <CardDescription>
+                Link your Sphinx Lightning identity to your Hive account
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SphinxLink linkedPubkey={sessionUser.lightningPubkey} />
             </CardContent>
           </Card>
         </div>

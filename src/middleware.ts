@@ -155,11 +155,35 @@ export async function middleware(request: NextRequest) {
       return continueRequest(requestHeaders, routeAccess);
     }
 
-    const token = await getToken({
+    // Try cookie-based NextAuth token first, then fall back to Bearer header
+    let token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
       secureCookie: shouldUseSecureCookie(request),
     });
+
+    // If no cookie token, check for Authorization: Bearer <jwt> header
+    if (!token) {
+      const authHeader = request.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const bearerJwt = authHeader.slice(7);
+        try {
+          // Decode the JWT using next-auth's getToken with the raw token
+          // We create a minimal request with the token as a cookie so getToken can decode it
+          const { decode } = await import("next-auth/jwt");
+          const decoded = await decode({
+            token: bearerJwt,
+            secret: process.env.NEXTAUTH_SECRET!,
+          });
+          if (decoded) {
+            token = decoded;
+          }
+        } catch {
+          // Invalid Bearer token — fall through to unauthenticated handling
+        }
+      }
+    }
+
     if (!token) {
       if (isApiRoute) {
         return respondWithJson({ error: "Unauthorized" }, { status: 401, requestId, authStatus: "unauthorized" });
