@@ -12,7 +12,7 @@ import { logger } from "@/lib/logger";
  * 
  * @returns JSON with challenge k1, deep link, and QR code data URL
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     // Generate random 32-byte challenge (64 hex characters)
     const k1 = randomBytes(32).toString("hex");
@@ -23,9 +23,11 @@ export async function POST(request: NextRequest) {
     // Get current timestamp for deep link
     const timestamp = Date.now();
 
-    // Get host from environment
-    const host = process.env.NEXTAUTH_URL;
-    if (!host) {
+    // Get host from environment - extract just the hostname (not full URL)
+    // The Sphinx app expects just the hostname (e.g., "hive.sphinx.chat")
+    // and constructs the verify URL as https://{host}/verify/{challenge}
+    const nextAuthUrl = process.env.NEXTAUTH_URL;
+    if (!nextAuthUrl) {
       logger.error("NEXTAUTH_URL environment variable not set", "SPHINX_AUTH");
       return NextResponse.json(
         { error: "Server configuration error" },
@@ -33,10 +35,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Parse the URL to extract just the host (hostname:port)
+    let host: string;
+    try {
+      const url = new URL(nextAuthUrl);
+      host = url.host; // e.g., "hive.sphinx.chat" or "localhost:3000"
+    } catch (urlError) {
+      logger.error("Invalid NEXTAUTH_URL format", "SPHINX_AUTH", {
+        error: urlError,
+        nextAuthUrl,
+      });
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     // Create deep link for Sphinx app
-    const deepLink = `sphinx.chat://?action=auth&host=${encodeURIComponent(
-      host
-    )}&challenge=${k1}&ts=${timestamp}`;
+    // Format: sphinx.chat://?action=auth&host={hostname}&challenge={k1}&ts={timestamp}
+    // Note: host should NOT be URL-encoded as Sphinx app expects raw hostname
+    const deepLink = `sphinx.chat://?action=auth&host=${host}&challenge=${k1}&ts=${timestamp}`;
 
     // Generate QR code as base64 PNG data URL
     let qrCode: string;

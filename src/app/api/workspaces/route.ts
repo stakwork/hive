@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { getToken } from "next-auth/jwt";
 import { authOptions } from "@/lib/auth/nextauth";
 import {
   createWorkspace,
@@ -15,12 +16,37 @@ import { getErrorMessage } from "@/lib/utils/error";
 // Prevent caching of user-specific data
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/**
+ * Helper to get user ID from session cookie or Bearer token.
+ * 
+ * Note: This route is marked as "webhook" in middleware config (to allow external API creation),
+ * so we can't use getMiddlewareContext(). Instead we check auth manually here.
+ * Supports both session cookies (web UI) and Bearer tokens (Sphinx app).
+ */
+async function getUserId(request: NextRequest): Promise<string | null> {
+  // First try session cookie (web UI)
   const session = await getServerSession(authOptions);
-  if (!session?.user || !(session.user as { id?: string }).id) {
+  if (session?.user && (session.user as { id?: string }).id) {
+    return (session.user as { id: string }).id;
+  }
+
+  // Then try Bearer token (Sphinx app auth)
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET!,
+  });
+  if (token?.id && typeof token.id === "string") {
+    return token.id;
+  }
+
+  return null;
+}
+
+export async function GET(request: NextRequest) {
+  const userId = await getUserId(request);
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const userId = (session.user as { id: string }).id;
   const workspaces = await getUserWorkspaces(userId);
   return NextResponse.json({ workspaces }, { status: 200 });
 }
